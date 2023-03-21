@@ -1,0 +1,19 @@
+{
+    "name": "Game.Entities.Editor",
+    "rootNamespace": "",
+    "references": [
+        "GUID:066ff3ec501668c49b0b5db9297457b7",
+        "GUID:978865a30a1cf9348a87cf28452c0ee3"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
