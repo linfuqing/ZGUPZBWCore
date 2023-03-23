@@ -82,6 +82,14 @@ public class GameProgressbar : MonoBehaviour
         __coroutines[index] = coroutine;
     }
 
+    public int StartCoroutine(Coroutine coroutine)
+    {
+        if (__coroutines == null)
+            __coroutines = new Pool<Coroutine>();
+
+        return __coroutines.Add(coroutine);
+    }
+
     public void ShowProgressBar(ProgressbarType type, int coroutineIndex = -1)
     {
         print($"Show Progress Bar : {type} : {coroutineIndex}");

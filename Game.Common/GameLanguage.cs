@@ -6,26 +6,35 @@ public static class GameLanguage
 
     public const string CHINESE_SIMPLIFIED = "zh-CN";
     public const string CHINESE_TRADITIONAL = "zh-TW";
+    public const string INDONESIAN = "in_ID";
     public const string ENGLISH = "en";
 
     public static string systemLanguage
     {
         get
         {
-            string language = GameConstantManager.Get("Language");
-            if (language != null)
-                return language;
+            string result;
 
             switch (Application.systemLanguage)
             {
                 case SystemLanguage.Chinese:
                 case SystemLanguage.ChineseSimplified:
-                    return CHINESE_SIMPLIFIED;
+                    result = CHINESE_SIMPLIFIED; 
+                    break;
                 case SystemLanguage.ChineseTraditional:
-                    return CHINESE_TRADITIONAL;
+                    result = CHINESE_TRADITIONAL;
+                    break;
+                case SystemLanguage.Indonesian:
+                    result = INDONESIAN;
+                    break;
+                default:
+                    result = ENGLISH;
+                    break;
             }
 
-            return ENGLISH;
+            string language = GameConstantManager.Get("Language");
+
+            return language != null && !language.Contains(result) ? ENGLISH : result;
         }
     }
 

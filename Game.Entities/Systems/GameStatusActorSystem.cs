@@ -46,13 +46,13 @@ public partial struct GameStatusActorSystem : ISystem
 
                 if ((level.flag & GameStatusActorFlag.Action) == GameStatusActorFlag.Action)
                 {
-                    if (actors.HasComponent(entity))
+                    if (actors.HasBuffer(entity))
                         actors[entity].Reinterpret<int>().Add(level.sliceIndex);
 
                     continue;
                 }
 
-                if (spawners.HasComponent(entity))
+                if (spawners.HasBuffer(entity))
                     spawners[entity].Reinterpret<int>().Add(level.sliceIndex);
             }
         }
