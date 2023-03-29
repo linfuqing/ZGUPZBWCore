@@ -255,7 +255,7 @@ public class GameAssetManager : MonoBehaviour
 
         yield return __LoadAssets(assetURL, new AssetPath[] { new AssetPath(scenePath, language) }, null);
 
-        __isMissingConfirm = false;
+        //__isMissingConfirm = false;
 
         //world = WorldUtility.GetOrCreateWorld("Client");
 
@@ -758,6 +758,8 @@ public class GameAssetManager : MonoBehaviour
 
     private IEnumerator __Confirm(ulong size)
     {
+        Debug.LogError(size.ToString() + ":" + __isMissingConfirm);
+
         if (__isMissingConfirm)
         {
             __isConfirm = true;

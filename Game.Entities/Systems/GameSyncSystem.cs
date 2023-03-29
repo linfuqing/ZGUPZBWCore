@@ -177,10 +177,10 @@ public struct GameDeadline : IEquatable<GameDeadline>, IComparable<GameDeadline>
     }
 }
 
-public struct GameSyncUTCTime : IComponentData
+/*public struct GameSyncUTCTime : IComponentData
 {
     public double value;
-}
+}*/
 
 public struct GameSyncUTCTimeOffset : IComponentData
 {
@@ -308,7 +308,7 @@ public struct GameSyncManager : IComponentData
         }
     }
 
-    public double utcTime
+    /*public double utcTime
     {
         get => Group.GetSingleton<GameSyncUTCTime>().value;
 
@@ -318,17 +318,17 @@ public struct GameSyncManager : IComponentData
             result.value = value;
             Group.SetSingleton(result);
         }
-    }
+    }*/
 
     //public double utcElapsedTime => utcTime - utcTimeOffset;
 
-    public uint utcFrameIndex => (uint)GetFrameIndex(utcTime);
+    //public uint utcFrameIndex => (uint)GetFrameIndex(utcTime);
 
     public static ComponentType[] ComponentTypes = new ComponentType[]
     {
         ComponentType.ReadWrite<GameSyncVersion>(),
         ComponentType.ReadWrite<GameSyncUTCTimeOffset>(),
-        ComponentType.ReadWrite<GameSyncUTCTime>(),
+        //ComponentType.ReadWrite<GameSyncUTCTime>(),
         ComponentType.ReadOnly<GameSyncManager>()
     };
 
@@ -377,13 +377,13 @@ public struct GameSyncManager : IComponentData
         version = 0;
     }
 
-    public void Reset(int frameOffset)
+    public void Reset(int frameOffset, double utcTime)
     {
         UnityEngine.Assertions.Assert.IsFalse(isVail);
 
         SyncTime.frameOffset += frameOffset;
 
-        __ResetUTCTime();
+        __ResetUTCTime(utcTime);
 
         ++version;
     }
@@ -415,11 +415,11 @@ public struct GameSyncManager : IComponentData
 
     public void UpdateToUTCFrameIndex(double utcTime, ref WorldUnmanaged world)
     {
-        this.utcTime = utcTime;
+        //this.utcTime = utcTime;
 
         if (isVail)
         {
-            uint utcFrameIndex = this.utcFrameIndex;
+            uint utcFrameIndex = (uint)GetFrameIndex(utcTime);
             for (uint i = SyncTime.frameIndex; i < utcFrameIndex; ++i)
                 __systemGroup.Update(ref world);
         }
@@ -427,7 +427,7 @@ public struct GameSyncManager : IComponentData
 
     public void Update(uint upperFrameCount, uint lowerFrameCount, uint maxFrameCountToUpdate, double utcTime, ref WorldUnmanaged world)
     {
-        this.utcTime = utcTime;
+        //this.utcTime = utcTime;
 
         bool isUpdate = true;
 
@@ -439,7 +439,7 @@ public struct GameSyncManager : IComponentData
             utcData.elapsedTime = utcElapsedTime;
             EntityManager.SetComponentData(__entity, utcData);*/
 
-            uint utcFrameIndex = this.utcFrameIndex/*(uint)GetFrameIndex(utcElapsedTime)*/, realFrameIndex = SyncTime.frameIndex;
+            uint utcFrameIndex = (uint)GetFrameIndex(utcTime)/*(uint)GetFrameIndex(utcElapsedTime)*/, realFrameIndex = SyncTime.frameIndex;
 
             if (utcFrameIndex > realFrameIndex + upperFrameCount)
             {
@@ -448,6 +448,8 @@ public struct GameSyncManager : IComponentData
                 //for (uint i = realFrameIndex + (upperFrameCount >> 1); i <= utcFrameIndex; ++i)
                 for (uint i = 0; i < frameCountToUpdate; ++i)
                     __systemGroup.Update(ref world);
+
+                //UnityEngine.Debug.Log($"Update Real {realFrameIndex} To UTC {utcFrameIndex}");
 
                 isUpdate = false;
             }
@@ -459,7 +461,7 @@ public struct GameSyncManager : IComponentData
             __systemGroup.Update(ref world);
     }
 
-    private void __ResetUTCTime()
+    private void __ResetUTCTime(double utcTime)
     {
         utcTimeOffset = utcTime - (double)SyncTime.frameDelta * SyncTime.frameIndex;
     }
@@ -472,7 +474,7 @@ public partial class GameSyncSystemGroup : SystemBase
 
     public float animationMaxDelta = 0.05f;
 
-    public uint maxFrameCountPerUpdate = 16;//UnityEngine.Time.maximumDeltaTime;
+    public uint maxFrameCountPerUpdate = 64;//UnityEngine.Time.maximumDeltaTime;
 
     //public uint maxFrameCountForWating = 8;
     //public uint maxFrameCountForUpdating = 8;
@@ -539,7 +541,7 @@ public partial class GameSyncSystemGroup : SystemBase
     {
         animationElapsedTime = -animationMaxDelta * 0.5f;
 
-        __manager.Reset(frameOffset);
+        __manager.Reset(frameOffset, utcTime);
     }
 
     public void Wait(uint frames)
@@ -572,7 +574,9 @@ public partial class GameSyncSystemGroup : SystemBase
     protected override void OnUpdate()
     {
         var world = World.Unmanaged;
-        __manager.Update(upperFrameCount, lowerFrameCount, maxFrameCountPerUpdate, utcTime, ref world);
+
+        //__manager.Update(upperFrameCount, lowerFrameCount, maxFrameCountPerUpdate, utcTime, ref world);
+        GameSyncUtility.UpdateFunction(upperFrameCount, lowerFrameCount, maxFrameCountPerUpdate, utcTime, ref world, ref __manager);
 
         double time = rollbackManager.time, animationElapsedTime = this.animationElapsedTime;
         //if (animationElapsedTime < time)
@@ -587,6 +591,33 @@ public partial class GameSyncSystemGroup : SystemBase
         }
         /*else
             UnityEngine.Debug.Log($"animationElapsedTime {animationElapsedTime} great than time {time}");*/
+    }
+}
+
+[BurstCompile]
+public static class GameSyncUtility
+{
+    public delegate void UpdateDelegate(
+        uint upperFrameCount,
+        uint lowerFrameCount,
+        uint maxFrameCountToUpdate,
+        double utcTime,
+        ref WorldUnmanaged world,
+        ref GameSyncManager manager);
+
+    public readonly static UpdateDelegate UpdateFunction = BurstCompiler.CompileFunctionPointer<UpdateDelegate>(Update).Invoke;
+
+    [BurstCompile]
+    [MonoPInvokeCallback(typeof(UpdateDelegate))]
+    public static void Update(
+        uint upperFrameCount, 
+        uint lowerFrameCount, 
+        uint maxFrameCountToUpdate, 
+        double utcTime, 
+        ref WorldUnmanaged world, 
+        ref GameSyncManager manager)
+    {
+        manager.Update(upperFrameCount, lowerFrameCount, maxFrameCountToUpdate, utcTime, ref world);
     }
 }
 

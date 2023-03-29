@@ -119,6 +119,11 @@ public struct GameDataDeadlineRange : IComponentData
     }
 }
 
+public struct GameDataDeadlineTrigger : IComponentData
+{
+
+}
+
 public partial class GameDataTimeSerializationSystem<TTime, TStatus, TMask> : EntityDataSerializationComponentSystem<
     TTime,
     GameDataTimeSerializationSystem<TTime, TStatus, TMask>.Serializer,
@@ -197,6 +202,89 @@ public partial class GameDataDeadlineSerializationSystem : GameDataTimeSerializa
 [BurstCompile, AutoCreateIn("Server"), UpdateAfter(typeof(NetworkRPCSystem))]
 public partial struct GameDataDeadlineSystem : ISystem
 {
+    private struct TriggerEntry : System.IEquatable<TriggerEntry>
+    {
+        public int node;
+        public int camp;
+
+        public bool Equals(TriggerEntry other)
+        {
+            return node == other.node && camp == other.camp;
+        }
+
+        public override int GetHashCode()
+        {
+            return node ^ camp;
+        }
+    }
+
+    [BurstCompile]
+    private struct Clear : IJob
+    {
+        [ReadOnly, DeallocateOnJobCompletion]
+        public NativeArray<int> count;
+        public NativeParallelHashSet<TriggerEntry> triggerEntries;
+
+        public void Execute()
+        {
+            triggerEntries.Clear();
+            triggerEntries.Capacity = math.max(triggerEntries.Capacity, count[0]);
+        }
+    }
+
+    private struct Trigger
+    {
+        [ReadOnly]
+        public NetworkRPCManager<int>.ReadOnly networkManager;
+
+        [ReadOnly]
+        public NativeArray<NetworkIdentity> identities;
+
+        [ReadOnly]
+        public NativeArray<GameEntityCamp> camps;
+
+        public NativeParallelHashSet<TriggerEntry>.ParallelWriter triggerEntries;
+
+        public void Execute(int index)
+        {
+            TriggerEntry triggerEntry;
+            if (!networkManager.TryGetNode(identities[index].id, out triggerEntry.node))
+                return;
+
+            triggerEntry.camp = camps[index].value;
+
+            triggerEntries.Add(triggerEntry);
+        }
+    }
+
+    [BurstCompile]
+    private struct TriggerEx : IJobChunk
+    {
+        [ReadOnly]
+        public NetworkRPCManager<int>.ReadOnly networkManager;
+
+        [ReadOnly]
+        public ComponentTypeHandle<NetworkIdentity> identityType;
+
+        [ReadOnly]
+        public ComponentTypeHandle<GameEntityCamp> campType;
+
+        public NativeParallelHashSet<TriggerEntry>.ParallelWriter triggerEntries;
+
+        public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+        {
+            Trigger trigger;
+            trigger.networkManager = networkManager;
+            trigger.identities = chunk.GetNativeArray(ref identityType);
+            trigger.camps = chunk.GetNativeArray(ref campType);
+            trigger.triggerEntries = triggerEntries;
+
+            var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+            while(iterator.NextEntityIndex(out int i))
+                trigger.Execute(i);
+        }
+    }
+
     private struct Refresh
     {
         public double elpasedTime;
@@ -207,13 +295,7 @@ public partial struct GameDataDeadlineSystem : ISystem
         public NetworkRPCManager<int>.ReadOnly networkManager;
 
         [ReadOnly]
-        public SharedHashMap<uint, Entity>.Reader idEntities;
-
-        [ReadOnly]
-        public ComponentLookup<GameEntityCamp> campMap;
-
-        [ReadOnly]
-        public ComponentLookup<NetworkIdentity> identityMap;
+        public NativeParallelHashSet<TriggerEntry> triggerEntries;
 
         [ReadOnly]
         public NativeArray<NetworkIdentity> identities;
@@ -233,29 +315,23 @@ public partial struct GameDataDeadlineSystem : ISystem
 
         public bool Execute(int index)
         {
-            uint id;
-            Entity entity;
-            var camp = camps[index].value;
-            var enumerator = networkManager.GetNodeIDs(identities[index].id);
-            while (enumerator.MoveNext())
+            TriggerEntry triggerEntry;
+            if (!networkManager.TryGetNode(identities[index].id, out triggerEntry.node))
+                return true;
+
+            triggerEntry.camp = camps[index].value;
+
+            if (triggerEntries.Contains(triggerEntry))
             {
-                id = enumerator.Current;
-                if (idEntities.TryGetValue(id, out entity) &&
-                    identityMap.HasComponent(entity) &&
-                    identityMap[entity].isLocalPlayer &&
-                    campMap.HasComponent(entity) &&
-                    campMap[entity].value == camp)
-                {
-                    GameDataDeadlineMask deadlineMask;
-                    deadlineMask.time = elpasedTime;
-                    deadlineMasks[index] = deadlineMask;
+                GameDataDeadlineMask deadlineMask;
+                deadlineMask.time = elpasedTime;
+                deadlineMasks[index] = deadlineMask;
 
-                    GameDataDeadline deadline;
-                    deadline.value = deadlineRanges[index].GetValue(ref random);
-                    deadlines[index] = deadline;
+                GameDataDeadline deadline;
+                deadline.value = deadlineRanges[index].GetValue(ref random);
+                deadlines[index] = deadline;
 
-                    return true;
-                }
+                return true;
             }
 
             return GameDataTimeUtility.CalculateTime(
@@ -275,13 +351,7 @@ public partial struct GameDataDeadlineSystem : ISystem
         public NetworkRPCManager<int>.ReadOnly networkManager;
 
         [ReadOnly]
-        public SharedHashMap<uint, Entity>.Reader idEntities;
-
-        [ReadOnly]
-        public ComponentLookup<GameEntityCamp> camps;
-
-        [ReadOnly]
-        public ComponentLookup<NetworkIdentity> identities;
+        public NativeParallelHashSet<TriggerEntry> triggerEntries;
 
         [ReadOnly]
         public ComponentTypeHandle<NetworkIdentity> identityType;
@@ -312,9 +382,7 @@ public partial struct GameDataDeadlineSystem : ISystem
             var seed64 = math.aslong(elpasedTime);
             refresh.random = new Random((uint)seed64 ^ (uint)(seed64 >> 32));
             refresh.networkManager = networkManager;
-            refresh.idEntities = idEntities;
-            refresh.campMap = camps;
-            refresh.identityMap = identities;
+            refresh.triggerEntries = triggerEntries;
             refresh.identities = chunk.GetNativeArray(ref identityType);
             refresh.camps = chunk.GetNativeArray(ref campType);
             refresh.deadlineRanges = chunk.GetNativeArray(ref deadlineRangeType);
@@ -339,12 +407,12 @@ public partial struct GameDataDeadlineSystem : ISystem
         }
     }
 
-    private EntityQuery __group;
+    private EntityQuery __triggerGroup;
+    private EntityQuery __deadlineGroup;
     private NetworkRPCController __networkRPCController;
-    private SharedHashMap<uint, Entity> __idEntities;
 
-    private ComponentLookup<GameEntityCamp> __camps;
-    private ComponentLookup<NetworkIdentity> __identities;
+    private NativeParallelHashSet<TriggerEntry> __triggerEntries;
+
     private ComponentTypeHandle<NetworkIdentity> __identityType;
     private ComponentTypeHandle<GameEntityCamp> __campType;
     private ComponentTypeHandle<GameDataDeadlineRange> __deadlineRangeType;
@@ -355,7 +423,12 @@ public partial struct GameDataDeadlineSystem : ISystem
 
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
+        __triggerGroup = state.GetEntityQuery(
+            ComponentType.ReadOnly<NetworkIdentity>(),
+            ComponentType.ReadOnly<GameEntityCamp>(),
+            ComponentType.ReadOnly<GameDataDeadlineTrigger>());
+
+        __deadlineGroup = state.GetEntityQuery(
             ComponentType.ReadOnly<NetworkIdentity>(),
             ComponentType.ReadOnly<GameEntityCamp>(),
             ComponentType.ReadOnly<GameDataDeadlineRange>(),
@@ -365,10 +438,8 @@ public partial struct GameDataDeadlineSystem : ISystem
 
         __networkRPCController = state.World.GetOrCreateSystemUnmanaged<NetworkRPCFactorySystem>().controller;
 
-        __idEntities = state.World.GetOrCreateSystemUnmanaged<NetworkEntitySystem>().entities;
+        __triggerEntries = new NativeParallelHashSet<TriggerEntry>(1, Allocator.Persistent);
 
-        __camps = state.GetComponentLookup<GameEntityCamp>(true);
-        __identities = state.GetComponentLookup<NetworkIdentity>(true);
         __identityType = state.GetComponentTypeHandle<NetworkIdentity>(true);
         __campType = state.GetComponentTypeHandle<GameEntityCamp>(true);
         __deadlineRangeType = state.GetComponentTypeHandle<GameDataDeadlineRange>(true);
@@ -380,35 +451,51 @@ public partial struct GameDataDeadlineSystem : ISystem
 
     public void OnDestroy(ref SystemState state)
     {
-
+        __triggerEntries.Dispose();
     }
 
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
+        var triggerCount = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
+        var jobHandle = __triggerGroup.CalculateEntityCountAsync(triggerCount, state.Dependency);
+
+        Clear clear;
+        clear.count = triggerCount;
+        clear.triggerEntries = __triggerEntries;
+        jobHandle = clear.ScheduleByRef(jobHandle);
+
+        var identityType = __identityType.UpdateAsRef(ref state);
+        var campType = __campType.UpdateAsRef(ref state);
+        var networkManager = __networkRPCController.manager.AsReadOnly();
+
+        TriggerEx trigger;
+        trigger.networkManager = networkManager;
+        trigger.identityType = identityType;
+        trigger.campType = campType;
+        trigger.triggerEntries = __triggerEntries.AsParallelWriter();
+
+        ref var networkRPCJobManager = ref __networkRPCController.lookupJobManager;
+
+        jobHandle = trigger.ScheduleParallelByRef(
+            __triggerGroup,
+            JobHandle.CombineDependencies(networkRPCJobManager.readOnlyJobHandle, jobHandle));
+
         RefreshEx refresh;
         refresh.elpasedTime = state.WorldUnmanaged.Time.ElapsedTime;
         refresh.networkManager = __networkRPCController.manager.AsReadOnly();
-        refresh.idEntities = __idEntities.reader;
-        refresh.camps = __camps.UpdateAsRef(ref state);
-        refresh.identities = __identities.UpdateAsRef(ref state);
-        refresh.identityType = __identityType.UpdateAsRef(ref state);
-        refresh.campType = __campType.UpdateAsRef(ref state);
+        refresh.triggerEntries = __triggerEntries;
+        refresh.identityType = identityType;
+        refresh.campType = campType;
         refresh.deadlineRangeType = __deadlineRangeType.UpdateAsRef(ref state);
         refresh.deadlineStatusType = __deadlineStatusType.UpdateAsRef(ref state);
         refresh.deadlineMaskType = __deadlineMaskType.UpdateAsRef(ref state);
         refresh.deadlineType = __deadlineType.UpdateAsRef(ref state);
         refresh.statusType = __statusType.UpdateAsRef(ref state);
 
-        ref var networkRPCJobManager = ref __networkRPCController.lookupJobManager;
-        ref var idEntitiesJobManager = ref __idEntities.lookupJobManager;
-
-        var jobHandle = refresh.ScheduleParallelByRef(
-            __group,
-            JobHandle.CombineDependencies(networkRPCJobManager.readOnlyJobHandle, idEntitiesJobManager.readOnlyJobHandle, state.Dependency));
+        jobHandle = refresh.ScheduleParallelByRef(__deadlineGroup, jobHandle);
 
         networkRPCJobManager.AddReadOnlyDependency(jobHandle);
-        idEntitiesJobManager.AddReadOnlyDependency(jobHandle);
 
         state.Dependency = jobHandle;
     }
