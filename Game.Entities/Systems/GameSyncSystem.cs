@@ -490,14 +490,14 @@ public partial class GameSyncSystemGroup : SystemBase
 
     //public new uint clearRestoreFrameIndex => base.clearRestoreFrameIndex > 0 ? (uint)(base.clearRestoreFrameIndex + __frameOffset) : realFrameIndex;
 
-    public uint utcFrameIndex => math.max((uint)__manager.GetFrameIndex(utcTime), __manager.SyncTime.frameIndex);
+    public uint utcFrameIndex => math.max((uint)__manager.GetFrameIndex(GameSyncUtility.utcTime), __manager.SyncTime.frameIndex);
 
-    public double utcTime =>
+    /*public double utcTime =>
 #if UNITY_EDITOR
         World.Time.ElapsedTime;
 #else
         DateTime.UtcNow.Ticks / (double)TimeSpan.TicksPerSecond;
-#endif
+#endif*/
 
     public double animationElapsedTime
     {
@@ -541,7 +541,7 @@ public partial class GameSyncSystemGroup : SystemBase
     {
         animationElapsedTime = -animationMaxDelta * 0.5f;
 
-        __manager.Reset(frameOffset, utcTime);
+        __manager.Reset(frameOffset, GameSyncUtility.utcTime);
     }
 
     public void Wait(uint frames)
@@ -557,7 +557,7 @@ public partial class GameSyncSystemGroup : SystemBase
     public void UpdateToUTCFrameIndex()
     {
         var world = World.Unmanaged;
-        __manager.UpdateToUTCFrameIndex(utcTime, ref world);
+        __manager.UpdateToUTCFrameIndex(GameSyncUtility.utcTime, ref world);
     }
 
     protected override void OnCreate()
@@ -576,7 +576,7 @@ public partial class GameSyncSystemGroup : SystemBase
         var world = World.Unmanaged;
 
         //__manager.Update(upperFrameCount, lowerFrameCount, maxFrameCountPerUpdate, utcTime, ref world);
-        GameSyncUtility.UpdateFunction(upperFrameCount, lowerFrameCount, maxFrameCountPerUpdate, utcTime, ref world, ref __manager);
+        GameSyncUtility.UpdateFunction(upperFrameCount, lowerFrameCount, maxFrameCountPerUpdate, GameSyncUtility.utcTime, ref world, ref __manager);
 
         double time = rollbackManager.time, animationElapsedTime = this.animationElapsedTime;
         //if (animationElapsedTime < time)
@@ -619,6 +619,13 @@ public static class GameSyncUtility
     {
         manager.Update(upperFrameCount, lowerFrameCount, maxFrameCountToUpdate, utcTime, ref world);
     }
+
+    public static double utcTime =>
+#if UNITY_EDITOR
+        UnityEngine.Time.timeAsDouble;
+#else
+        DateTime.UtcNow.Ticks / (double)TimeSpan.TicksPerSecond;
+#endif
 }
 
 #if GAME_DEBUG_COMPARSION
