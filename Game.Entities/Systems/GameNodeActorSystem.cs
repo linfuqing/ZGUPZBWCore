@@ -60,12 +60,12 @@ public partial struct GameNodeActorSystem : ISystem
 
         public uint frameIndex;
 
-        public Words delayName;
-        public Words statusName;
-        public Words characterStatusName;
-        public Words characterAreaName;
-        public Words oldActorStatusName;
-        public Words newActorStatusName;
+        public FixedString32Bytes delayName;
+        public FixedString32Bytes statusName;
+        public FixedString32Bytes characterStatusName;
+        public FixedString32Bytes characterAreaName;
+        public FixedString32Bytes oldActorStatusName;
+        public FixedString32Bytes newActorStatusName;
 
         public ComparisonStream<int> stream;
         [ReadOnly]

@@ -631,7 +631,7 @@ public static class GameSyncUtility
 #if GAME_DEBUG_COMPARSION
 public struct GameEntityIndex : IComponentData
 {
-    public int value;
+    public uint value;
 }
 
 public struct MassProperties : IEquatable<MassProperties>
@@ -656,7 +656,7 @@ public struct MassProperties : IEquatable<MassProperties>
 }
 
 [DisableAutoCreation]
-public partial class GameComparsionSystem : ComparisionSystem<int>
+public partial class GameComparsionSystem : ComparisionSystem<uint>
 {
     private static GameComparsionSystem __instance;
 
@@ -665,7 +665,7 @@ public partial class GameComparsionSystem : ComparisionSystem<int>
         get
         {
             if (__instance == null)
-                __instance = World.DefaultGameObjectInjectionWorld.CreateSystem<GameComparsionSystem>();
+                __instance = World.DefaultGameObjectInjectionWorld.CreateSystemManaged<GameComparsionSystem>();
 
             return __instance;
         }

@@ -42,12 +42,12 @@ public partial struct GameDreamerSystem : ISystem
 
         public uint frameIndex;
 
-        public Words statusName;
-        public Words dreamerName;
-        public Words dreamerTimeName;
-        public Words delayTimeName;
+        public FixedString32Bytes statusName;
+        public FixedString32Bytes dreamerName;
+        public FixedString32Bytes dreamerTimeName;
+        public FixedString32Bytes delayTimeName;
 
-        public ComparisonStream<int> stream;
+        public ComparisonStream<uint> stream;
         [ReadOnly]
         public NativeArray<GameEntityIndex> entityIndices;
 #endif
@@ -460,13 +460,13 @@ public partial struct GameDreamerSystem : ISystem
 #if GAME_DEBUG_COMPARSION
         public uint frameIndex;
 
-        public Words statusName;
-        public Words dreamerName;
+        public FixedString32Bytes statusName;
+        public FixedString32Bytes dreamerName;
 
-        public Words dreamerTimeName;
-        public Words delayTimeName;
+        public FixedString32Bytes dreamerTimeName;
+        public FixedString32Bytes delayTimeName;
 
-        public ComparisonStream<int> stream;
+        public ComparisonStream<uint> stream;
         [ReadOnly]
         public ComponentTypeHandle<GameEntityIndex> entityIndexType;
 #endif
@@ -494,7 +494,7 @@ public partial struct GameDreamerSystem : ISystem
             dreaming.dreamerTimeName = dreamerTimeName;
             dreaming.delayTimeName = delayTimeName;
             dreaming.stream = stream;
-            dreaming.entityIndices = chunk.GetNativeArray(entityIndexType);
+            dreaming.entityIndices = chunk.GetNativeArray(ref entityIndexType);
 #endif
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -551,14 +551,14 @@ public partial struct GameDreamerSystem : ISystem
         dreaming.entityManager = entityManager.parallelWriter;
 
 #if GAME_DEBUG_COMPARSION
-        uint frameIndex = __time.frame.index;
+        uint frameIndex = __time.frameIndex;
         var streamScheduler = GameComparsionSystem.instance.Create(false, frameIndex, typeof(GameDreamerSystem).Name, state.World.Name);
 
         dreaming.frameIndex = frameIndex;
-        dreaming.statusName = WordsUtility.Create("status");
-        dreaming.dreamerName = WordsUtility.Create("dreamer");
-        dreaming.dreamerTimeName = WordsUtility.Create("dreamerTime");
-        dreaming.delayTimeName = WordsUtility.Create("delayTime");
+        dreaming.statusName = "status";
+        dreaming.dreamerName = "dreamer";
+        dreaming.dreamerTimeName = "dreamerTime";
+        dreaming.delayTimeName = "delayTime";
         dreaming.stream = streamScheduler.Begin(__group.CalculateEntityCount());
         dreaming.entityIndexType = state.GetComponentTypeHandle<GameEntityIndex>(true);
 #endif

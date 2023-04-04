@@ -146,6 +146,8 @@ public struct GameEntityActionInfo : ICleanupComponentData, IEquatable<GameEntit
 
     public float3 distance;
 
+    public float3 offset;
+
     public Entity entity;
 
     public bool Equals(GameEntityActionInfo other)
@@ -157,6 +159,7 @@ public struct GameEntityActionInfo : ICleanupComponentData, IEquatable<GameEntit
             time == other.time &&
             forward.Equals(other.forward) &&
             distance.Equals(other.distance) &&
+            offset.Equals(other.offset) &&
             entity == other.entity;
     }
 
@@ -280,6 +283,7 @@ public struct GameEntityActionCommand : IComponentData
     public Entity entity;
     public float3 forward;
     public float3 distance;
+    public float3 offset;
 }
 
 public struct GameEntityBreakCommand : IComponentData
@@ -503,7 +507,13 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         return this.GetComponentData<GameNodeDelay>().Check(time);
     }
 
-    public int Do(in GameDeadline time, int index, Entity target, float3 forward, float3 distance = default)
+    public int Do(
+        in GameDeadline time, 
+        int index,
+        in Entity target,
+        in float3 forward, 
+        in float3 distance = default,
+        in float3 offset = default)
     {
         GameEntityActionCommand command;
         command.version = commandVersion;
@@ -512,13 +522,21 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         command.entity = target;
         command.forward = forward;
         command.distance = distance;
-        
+        command.offset = offset;
+
         this.SetComponentData(command);
 
         return command.version;
     }
 
-    public int Do(EntityCommander commander, in GameDeadline time, int index, Entity target, float3 forward, float3 distance = default)
+    public int Do(
+        EntityCommander commander, 
+        in GameDeadline time, 
+        int index, 
+        in Entity target, 
+        in float3 forward, 
+        in float3 distance = default, 
+        in float3 offset = default)
     {
         GameEntityActionCommand command;
         command.version = this.commandVersion;
@@ -527,6 +545,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         command.entity = target;
         command.forward = forward;
         command.distance = distance;
+        command.offset = offset;
 
         commander.SetComponentData(entity, command);
         commander.SetComponentData<GameEntityEventCommand>(entity, default);
@@ -703,6 +722,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         actionInfo.time = 0.0;
         actionInfo.forward = float3.zero;
         actionInfo.distance = float3.zero;
+        actionInfo.offset = float3.zero;
         actionInfo.entity = Entity.Null;
 
         assigner.SetComponentData(entity, actionInfo);

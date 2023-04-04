@@ -584,7 +584,7 @@ public partial struct GameEntityEventSystem : ISystem
 
 #if GAME_DEBUG_COMPARSION
             trigger.frameIndex = frameIndex;
-            trigger.entityIndices = batchInChunk.GetNativeArray(entityIndexType);
+            trigger.entityIndices = chunk.GetNativeArray(ref entityIndexType);
 #endif
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -893,16 +893,17 @@ public partial struct GameEntityActorSystem : ISystem
 
 #if GAME_DEBUG_COMPARSION
         public uint frameIndex;
-        public Words angleName;
-        public Words delayTimeName;
-        public Words commandTimeName;
-        public Words entityName;
-        public Words forwardName;
-        public Words rotationName;
-        public Words positionName;
-        public Words distanceName;
+        public FixedString32Bytes angleName;
+        public FixedString32Bytes delayTimeName;
+        public FixedString32Bytes commandTimeName;
+        public FixedString32Bytes entityName;
+        public FixedString32Bytes forwardName;
+        public FixedString32Bytes offsetName;
+        public FixedString32Bytes rotationName;
+        public FixedString32Bytes positionName;
+        public FixedString32Bytes distanceName;
 
-        public ComparisonStream<int> stream;
+        public ComparisonStream<uint> stream;
         [ReadOnly]
         public NativeArray<GameEntityIndex> entityIndices;
 #endif
@@ -1062,7 +1063,7 @@ public partial struct GameEntityActorSystem : ISystem
                         forward = command.forward;
                         rotation = quaternion.LookRotationSafe(forward, up);
 
-                        offset = math.mul(rotation, action.instance.offset);
+                        offset = command.offset;//math.mul(rotation, action.instance.offset);
                         position = source + offset;
 
                         distance = command.distance;// - offset;
@@ -1287,6 +1288,7 @@ public partial struct GameEntityActorSystem : ISystem
                     //UnityEngine.Debug.Log($"Do: {frameIndex} : {entityIndices[index].value} : {entityArray[index].Index} : {command.index} : {position} : {translations[index].Value} : {action.instance.offset}");
 
                     stream.Assert(forwardName, forward);
+                    stream.Assert(offsetName, offset);
                     stream.Assert(rotationName, rotation);
                     stream.Assert(positionName, position);
                     stream.Assert(distanceName, distance);
@@ -1329,105 +1331,10 @@ public partial struct GameEntityActorSystem : ISystem
                             rotations[index] = result;
                         }
                     }
-                    /*else if (index < angles.Length)
-                    {
-                        surfaceForward = math.forward(quaternion.RotateY(angles[index].value));
-
-                        surfaceAngle = math.atan2(surfaceForward.x, action.info.distance < 0.0f ? -surfaceForward.z : surfaceForward.z);
-
-                        surfaceForwardLength = 1.0f;
-                    }*/
                     else
                         return;
 
                     float3 direction = math.normalizesafe(distance, forward);
-                    /*bool isTrack = command.entity != Entity.Null &&
-                            velocityMap.HasComponent(command.entity);
-                    //为了同步,故意提取出来
-                    float3 direction;// = math.normalizesafe(distance, forward);
-                    if ((action.instance.flag & GameActionFlag.UseGravity) == GameActionFlag.UseGravity)
-                    {
-                        float3 targetDistance;
-                        if (isTrack)
-                        {
-                            float targetVelocity = velocityMap[command.entity].value;
-                            float3 targetDirection = math.forward(rotationMap[command.entity].Value);
-
-                            targetDistance = distance + targetDirection * (targetVelocity * action.info.castingTime);
-
-                            if (isTrack && 
-                                action.info.actionMoveSpeed > math.FLT_MIN_NORMAL &&
-                                actor.accuracy > math.FLT_MIN_NORMAL &&
-                                Math.CalculateParabolaTrajectory(
-                                    actor.accuracy,
-                                    gravity,
-                                    action.info.actionMoveSpeed,
-                                    targetVelocity,
-                                    targetDirection,
-                                    position + targetDistance,
-                                    position,
-                                    out direction))
-                                direction = math.normalize(direction);
-                            else
-                            {
-                                isTrack = false;
-
-                                direction = math.normalizesafe(targetDistance, forward);
-                            }
-                        }
-                        else
-                        {
-                            targetDistance = distance;
-
-                            direction = math.normalizesafe(distance, forward);
-                        }
-
-                        if (!isTrack)
-                        {
-                            float2 angleAndTime = Math.CalculateParabolaAngleAndTime(
-                               action.info.actionMoveSpeed,
-                               gravity,
-                               targetDistance,
-                               ref direction);
-
-                            if (angleAndTime.y < math.FLT_MIN_NORMAL)
-                                //LookRotationSafe防止direction==up
-                                direction = math.mul(quaternion.LookRotationSafe(direction, up), Act.forward);
-                        }
-                    }
-                    else
-                    {
-                        isTrack = action.info.actionMoveSpeed > math.FLT_MIN_NORMAL &&
-                            command.entity != Entity.Null &&
-                            velocityMap.HasComponent(command.entity);
-
-                        if (isTrack)
-                        {
-                            float targetVelocity = velocityMap[command.entity].value;
-                            float3 targetDirection = math.forward(rotationMap[command.entity].Value),
-                                targetDistance = distance + targetDirection * (targetVelocity * action.info.castingTime);
-
-                            if (isTrack &&
-                                action.info.actionMoveSpeed > math.FLT_MIN_NORMAL &&
-                                Math.CalculateLinearTrajectory(
-                                action.info.actionMoveSpeed,
-                                  position,
-                                  position + targetDistance,
-                                  targetDirection,
-                                  targetVelocity,
-                                  out var hitPoint))
-                                direction = math.normalize(hitPoint - position);
-                            else
-                            {
-                                direction = math.normalizesafe(targetDistance, forward);
-
-                                isTrack = false;
-                            }
-                        }
-                        else
-                            direction = math.normalizesafe(distance, forward);
-                    }*/
-
                     if (math.any(math.abs(action.info.angleLimit) > math.FLT_MIN_NORMAL))
                     {
                         float3 surfaceDirection = math.mul(inverseSurfaceRotation, direction);
@@ -1492,28 +1399,6 @@ public partial struct GameEntityActorSystem : ISystem
                             velocityComponent.duration = action.info.actorMoveDuration;
                             velocityComponents.Add(velocityComponent);
                         }
-
-                        /*if(math.abs(action.info.actorMomentum) > math.FLT_MIN_NORMAL)
-                        {
-                            velocityComponent.mode = GameNodeVelocityComponent.Mode.Indirect;
-
-                            var characterVelocity = characterVelocities[index];
-                            characterVelocity.value -= Math.ProjectSafe(characterVelocity.value, gravity);
-                            float3 velocity = Math.Project(characterVelocity.value * action.info.actorMomentum,
-                                (action.instance.flag & GameActionFlag.ActorOnSurface) == GameActionFlag.ActorOnSurface ? math.mul(surfaceRotation, forward) : forward);
-
-                            characterVelocity.value = float3.zero;
-                            characterVelocities[index] = characterVelocity;
-
-                            physicsVelocities[index] = default;
-
-                            velocityComponent.value = velocity;
-                            velocityComponent.time = command.time;
-                            --velocityComponent.time.count;
-
-                            velocityComponent.duration = action.info.actorMomentumDuration;
-                            velocityComponents.Add(velocityComponent);
-                        }*/
 
                         if (math.abs(action.info.actorJumpSpeed) > math.FLT_MIN_NORMAL)
                         {
@@ -1642,6 +1527,7 @@ public partial struct GameEntityActorSystem : ISystem
                     actionInfo.time = artTime;
                     actionInfo.forward = forward;
                     actionInfo.distance = distance;// command.distance;// distance + offset;
+                    actionInfo.offset = offset;
                     actionInfo.entity = command.entity;
 
                     actionInfos[entity] = actionInfo;
@@ -1827,16 +1713,17 @@ public partial struct GameEntityActorSystem : ISystem
 
 #if GAME_DEBUG_COMPARSION
         public uint frameIndex;
-        public Words angleName;
-        public Words delayTimeName;
-        public Words entityName;
-        public Words commandTimeName;
-        public Words forwardName;
-        public Words rotationName;
-        public Words positionName;
-        public Words distanceName;
+        public FixedString32Bytes angleName;
+        public FixedString32Bytes delayTimeName;
+        public FixedString32Bytes entityName;
+        public FixedString32Bytes commandTimeName;
+        public FixedString32Bytes forwardName;
+        public FixedString32Bytes offsetName;
+        public FixedString32Bytes rotationName;
+        public FixedString32Bytes positionName;
+        public FixedString32Bytes distanceName;
 
-        public ComparisonStream<int> stream;
+        public ComparisonStream<uint> stream;
         [ReadOnly]
         public ComponentTypeHandle<GameEntityIndex> entityIndexType;
 #endif
@@ -1897,11 +1784,12 @@ public partial struct GameEntityActorSystem : ISystem
             act.entityName = entityName;
             act.commandTimeName = commandTimeName;
             act.forwardName = forwardName;
+            act.offsetName = offsetName;
             act.rotationName = rotationName;
             act.positionName = positionName;
             act.distanceName = distanceName;
             act.stream = stream;
-            act.entityIndices = batchInChunk.GetNativeArray(entityIndexType);
+            act.entityIndices = chunk.GetNativeArray(ref entityIndexType);
 #endif
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -2040,14 +1928,15 @@ public partial struct GameEntityActorSystem : ISystem
         uint frameIndex = __frame.index;
 
         act.frameIndex = frameIndex;
-        act.angleName = WordsUtility.Create("angle");
-        act.delayTimeName = WordsUtility.Create("delayTime");
-        act.entityName = WordsUtility.Create("entity");
-        act.commandTimeName = WordsUtility.Create("commandTime");
-        act.forwardName = WordsUtility.Create("forward");
-        act.rotationName = WordsUtility.Create("rotation");
-        act.positionName = WordsUtility.Create("position");
-        act.distanceName = WordsUtility.Create("distance");
+        act.angleName = "angle";
+        act.delayTimeName = "delayTime";
+        act.entityName = "entity";
+        act.commandTimeName = "commandTime";
+        act.forwardName = "forward";
+        act.offsetName = "offset";
+        act.rotationName = "rotation";
+        act.positionName = "position";
+        act.distanceName = "distance";
 
         var streamScheduler = GameComparsionSystem.instance.Create(false, frameIndex, typeof(GameEntityActorSystem).Name, state.World.Name);
         act.stream = streamScheduler.Begin(__group.CalculateEntityCount());
@@ -2297,12 +2186,12 @@ public partial struct GameEntityBreakSystem : ISystem
 
 #if GAME_DEBUG_COMPARSION
         public uint frameIndex;
-        public Words alertTimeName;
-        public Words commandTimeName;
-        public Words commandDelayTimeName;
-        public Words commandAlertTimeName;
+        public FixedString32Bytes alertTimeName;
+        public FixedString32Bytes commandTimeName;
+        public FixedString32Bytes commandDelayTimeName;
+        public FixedString32Bytes commandAlertTimeName;
 
-        public ComparisonStream<int> stream;
+        public ComparisonStream<uint> stream;
 
         [ReadOnly]
         public NativeArray<GameEntityIndex> entityIndices;
@@ -2473,12 +2362,12 @@ public partial struct GameEntityBreakSystem : ISystem
 
 #if GAME_DEBUG_COMPARSION
         public uint frameIndex;
-        public Words alertTimeName;
-        public Words commandTimeName;
-        public Words commandDelayTimeName;
-        public Words commandAlertTimeName;
+        public FixedString32Bytes alertTimeName;
+        public FixedString32Bytes commandTimeName;
+        public FixedString32Bytes commandDelayTimeName;
+        public FixedString32Bytes commandAlertTimeName;
 
-        public ComparisonStream<int> stream;
+        public ComparisonStream<uint> stream;
 
         [ReadOnly]
         public ComponentTypeHandle<GameEntityIndex> entityIndexType;
@@ -2514,7 +2403,7 @@ public partial struct GameEntityBreakSystem : ISystem
 
             interrupt.stream = stream;
 
-            interrupt.entityIndices = chunk.GetNativeArray(entityIndexType);
+            interrupt.entityIndices = chunk.GetNativeArray(ref entityIndexType);
 #endif
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -2573,13 +2462,13 @@ public partial struct GameEntityBreakSystem : ISystem
         interrupt.actionStates = state.GetComponentLookup<GameActionStatus>();
 
 #if GAME_DEBUG_COMPARSION
-        interrupt.frameIndex = state.World.GetExistingSystem<GameSyncSystemGroup>().frameIndex;
-        interrupt.alertTimeName = WordsUtility.Create("alertTime");
-        interrupt.commandTimeName = WordsUtility.Create("commandTime");
-        interrupt.commandDelayTimeName = WordsUtility.Create("commandDelayTime");
-        interrupt.commandAlertTimeName = WordsUtility.Create("commandAlertTime");
+        interrupt.frameIndex = SystemAPI.GetSingleton<GameSyncManager>().SyncTime.frameIndex;
+        interrupt.alertTimeName = "alertTime";
+        interrupt.commandTimeName = "commandTime";
+        interrupt.commandDelayTimeName = "commandDelayTime";
+        interrupt.commandAlertTimeName = "commandAlertTime";
 
-        var streamScheduler = GameComparsionSystem.instance.Create(false, state.World.GetExistingSystem<GameSyncSystemGroup>().frameIndex, typeof(GameEntityBreakSystem).Name, state.World.Name);
+        var streamScheduler = GameComparsionSystem.instance.Create(false, interrupt.frameIndex, typeof(GameEntityBreakSystem).Name, state.World.Name);
         interrupt.stream = streamScheduler.Begin(__group.CalculateEntityCount());
         interrupt.entityIndexType = state.GetComponentTypeHandle<GameEntityIndex>(true);
 #endif

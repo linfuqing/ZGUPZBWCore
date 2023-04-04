@@ -39,6 +39,7 @@ public partial class GameRandomActorSystem : SystemBase
                 command.entity = Entity.Null;
                 command.forward = math.forward(rotation);
                 command.distance = float3.zero;
+                command.offset = float3.zero;
 
                 commands[entity] = command;
 

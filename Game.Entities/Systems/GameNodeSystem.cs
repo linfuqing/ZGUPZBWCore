@@ -267,25 +267,25 @@ public partial struct GameNodeSystem : ISystem
 
         public uint frameIndex;
 
-        public Words statusName;
-        public Words dataName;
-        public Words oldAngleName;
-        public Words oldVelocityName;
-        public Words deltaTimeName;
-        public Words speedScaleName;
-        public Words distanceName;
-        public Words translationName;
-        public Words rotationName;
-        public Words positionName;
-        public Words positionCountName;
-        public Words nextVelocityName;
-        public Words newVelocityName;
-        public Words newAngleName;
+        public FixedString32Bytes statusName;
+        public FixedString32Bytes dataName;
+        public FixedString32Bytes oldAngleName;
+        public FixedString32Bytes oldVelocityName;
+        public FixedString32Bytes deltaTimeName;
+        public FixedString32Bytes speedScaleName;
+        public FixedString32Bytes distanceName;
+        public FixedString32Bytes translationName;
+        public FixedString32Bytes rotationName;
+        public FixedString32Bytes positionName;
+        public FixedString32Bytes positionCountName;
+        public FixedString32Bytes nextVelocityName;
+        public FixedString32Bytes newVelocityName;
+        public FixedString32Bytes newAngleName;
 
         [ReadOnly]
         public NativeArray<Entity> entityArray;
 
-        public ComparisonStream<int> stream;
+        public ComparisonStream<uint> stream;
         [ReadOnly]
         public NativeArray<GameEntityIndex> entityIndices;
 #endif
@@ -808,25 +808,25 @@ public partial struct GameNodeSystem : ISystem
         //public NativeQueue<LogInfo>.ParallelWriter logInfos;
 
         public uint frameIndex;
-        public Words statusName;
-        public Words dataName;
-        public Words oldAngleName;
-        public Words oldVelocityName;
-        public Words deltaTimeName;
-        public Words speedScaleName;
-        public Words distanceName;
-        public Words translationName;
-        public Words rotationName;
-        public Words positionName;
-        public Words positionCountName;
-        public Words nextVelocityName;
-        public Words newVelocityName;
-        public Words newAngleName;
+        public FixedString32Bytes statusName;
+        public FixedString32Bytes dataName;
+        public FixedString32Bytes oldAngleName;
+        public FixedString32Bytes oldVelocityName;
+        public FixedString32Bytes deltaTimeName;
+        public FixedString32Bytes speedScaleName;
+        public FixedString32Bytes distanceName;
+        public FixedString32Bytes translationName;
+        public FixedString32Bytes rotationName;
+        public FixedString32Bytes positionName;
+        public FixedString32Bytes positionCountName;
+        public FixedString32Bytes nextVelocityName;
+        public FixedString32Bytes newVelocityName;
+        public FixedString32Bytes newAngleName;
 
         [ReadOnly]
         public EntityTypeHandle entityArrayType;
 
-        public ComparisonStream<int> stream;
+        public ComparisonStream<uint> stream;
         [ReadOnly]
         public ComponentTypeHandle<GameEntityIndex> entityIndexType;
 #endif
@@ -873,10 +873,10 @@ public partial struct GameNodeSystem : ISystem
             updateTransforms.newVelocityName = newVelocityName;
             updateTransforms.newAngleName = newAngleName;
 
-            updateTransforms.entityArray = batchInChunk.GetNativeArray(entityArrayType);
+            updateTransforms.entityArray = chunk.GetNativeArray(entityArrayType);
 
             updateTransforms.stream = stream;
-            updateTransforms.entityIndices = batchInChunk.GetNativeArray(entityIndexType);
+            updateTransforms.entityIndices = chunk.GetNativeArray(ref entityIndexType);
 #endif
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -886,10 +886,6 @@ public partial struct GameNodeSystem : ISystem
     }
 
     private EntityQuery __group;
-
-#if GAME_DEBUG_COMPARSION
-    private EntityQuery __frameSyncFlagGroup;
-#endif
 
     /*private EntityQuery __syncDataGroup;
     private EntityQuery __updateDataGroup;*/
@@ -935,10 +931,6 @@ public partial struct GameNodeSystem : ISystem
 
         /*__syncDataGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameSyncData>());
         __updateDataGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameUpdateData>());*/
-
-#if GAME_DEBUG_COMPARSION
-        __frameSyncFlagGroup = state.GetEntityQuery(ComponentType.ReadOnly<FrameSyncFlag>());
-#endif
 
         __time = new GameUpdateTime(ref state);
 
@@ -1002,28 +994,28 @@ public partial struct GameNodeSystem : ISystem
         updateTransforms.positions = __positions.UpdateAsRef(ref state);
 
 #if GAME_DEBUG_COMPARSION
-        uint frameIndex = __time.rollbackTime.frame.index;
+        uint frameIndex = __time.RollbackTime.frameIndex;
 
         updateTransforms.frameIndex = frameIndex;
         //updateTransform.logInfos = __logInfos.AsParallelWriter();
-        updateTransforms.statusName = WordsUtility.Create("status");
-        updateTransforms.dataName = WordsUtility.Create("data");
-        updateTransforms.oldAngleName = WordsUtility.Create("oldAngle");
-        updateTransforms.oldVelocityName = WordsUtility.Create("oldVelocity");
-        updateTransforms.deltaTimeName = WordsUtility.Create("deltaTime");
-        updateTransforms.speedScaleName = WordsUtility.Create("speedScale");
-        updateTransforms.distanceName = WordsUtility.Create("distance");
-        updateTransforms.translationName = WordsUtility.Create("translation");
-        updateTransforms.rotationName = WordsUtility.Create("rotation");
-        updateTransforms.positionName = WordsUtility.Create("position");
-        updateTransforms.positionCountName = WordsUtility.Create("positionCount");
-        updateTransforms.nextVelocityName = WordsUtility.Create("nextVelocity");
-        updateTransforms.newVelocityName = WordsUtility.Create("newVelocity");
-        updateTransforms.newAngleName = WordsUtility.Create("newAngle");
+        updateTransforms.statusName = "status";
+        updateTransforms.dataName = "data";
+        updateTransforms.oldAngleName = "oldAngle";
+        updateTransforms.oldVelocityName = "oldVelocity";
+        updateTransforms.deltaTimeName = "deltaTime";
+        updateTransforms.speedScaleName = "speedScale";
+        updateTransforms.distanceName = "distance";
+        updateTransforms.translationName = "translation";
+        updateTransforms.rotationName = "rotation";
+        updateTransforms.positionName = "position";
+        updateTransforms.positionCountName = "positionCount";
+        updateTransforms.nextVelocityName = "nextVelocity";
+        updateTransforms.newVelocityName = "newVelocity";
+        updateTransforms.newAngleName = "newAngle";
 
         updateTransforms.entityArrayType = state.GetEntityTypeHandle();
 
-        var streamScheduler = GameComparsionSystem.instance.Create(__frameSyncFlagGroup.GetSingleton<FrameSyncFlag>().isClear, frameIndex, typeof(GameNodeSystem).Name, state.World.Name);
+        var streamScheduler = GameComparsionSystem.instance.Create(SystemAPI.GetSingleton<FrameSyncFlag>().isClear, frameIndex, typeof(GameNodeSystem).Name, state.World.Name);
         updateTransforms.stream = streamScheduler.Begin(__group.CalculateEntityCount());
         updateTransforms.entityIndexType = state.GetComponentTypeHandle<GameEntityIndex>(true);
 #endif
@@ -1357,7 +1349,7 @@ public partial struct GameNodeVelocityComponentSystem : ISystem
             calculate.velocityComponents = chunk.GetBufferAccessor(ref velocityComponentsType);
 
 #if GAME_DEBUG_COMPARSION
-            calculate.entityIndices = chunk.GetNativeArray(entityIndexType);
+            calculate.entityIndices = chunk.GetNativeArray(ref entityIndexType);
 #endif
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -1547,10 +1539,10 @@ public partial struct GameNodeStatusSystem : ISystem
 #if GAME_DEBUG_COMPARSION
         public uint frameIndex;
 
-        public Words oldStatusName;
-        public Words newStatusName;
+        public FixedString32Bytes oldStatusName;
+        public FixedString32Bytes newStatusName;
 
-        public ComparisonStream<int> stream;
+        public ComparisonStream<uint> stream;
         [ReadOnly]
         public NativeArray<GameEntityIndex> entityIndices;
 #endif
@@ -1628,10 +1620,10 @@ public partial struct GameNodeStatusSystem : ISystem
 #if GAME_DEBUG_COMPARSION
         public uint frameIndex;
 
-        public Words oldStatusName;
-        public Words newStatusName;
+        public FixedString32Bytes oldStatusName;
+        public FixedString32Bytes newStatusName;
 
-        public ComparisonStream<int> stream;
+        public ComparisonStream<uint> stream;
         [ReadOnly]
         public ComponentTypeHandle<GameEntityIndex> entityIndexType;
 #endif
@@ -1652,7 +1644,7 @@ public partial struct GameNodeStatusSystem : ISystem
             updateStates.oldStatusName = oldStatusName;
             updateStates.newStatusName = newStatusName;
             updateStates.stream = stream;
-            updateStates.entityIndices = chunk.GetNativeArray(entityIndexType);
+            updateStates.entityIndices = chunk.GetNativeArray(ref entityIndexType);
 #endif
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -1704,12 +1696,12 @@ public partial struct GameNodeStatusSystem : ISystem
         updateStates.velocityComponentType = state.GetBufferTypeHandle<GameNodeVelocityComponent>();
 
 #if GAME_DEBUG_COMPARSION
-        uint frameIndex = state.World.GetExistingSystem<GameSyncSystemGroup>().frameIndex;
+        uint frameIndex = SystemAPI.GetSingleton<GameSyncManager>().SyncTime.frameIndex;
         var streamScheduler = GameComparsionSystem.instance.Create(false, frameIndex, typeof(GameNodeStatusSystem).Name, state.World.Name);
 
         updateStates.frameIndex = frameIndex;
-        updateStates.oldStatusName = WordsUtility.Create("oldStatus");
-        updateStates.newStatusName = WordsUtility.Create("newStatus");
+        updateStates.oldStatusName = "oldStatus";
+        updateStates.newStatusName = "newStatus";
         updateStates.stream = streamScheduler.Begin(__group.CalculateEntityCount());
         updateStates.entityIndexType = state.GetComponentTypeHandle<GameEntityIndex>(true);
 #endif

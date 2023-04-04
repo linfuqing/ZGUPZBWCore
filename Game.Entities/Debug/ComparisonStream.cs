@@ -340,6 +340,7 @@ public partial class ComparisionSystem<T> : SystemBase where T : unmanaged, IEqu
                                                 case "GameEntityActorSystem":
                                                     switch (sourceName)
                                                     {
+                                                        case "offset":
                                                         case "distance":
                                                             UnityEngine.Assertions.Assert.AreEqual(*(Unity.Mathematics.float3*)sourceBytes, *(Unity.Mathematics.float3*)destinationBytes);
                                                             break;
@@ -517,7 +518,7 @@ public partial class ComparisionSystem<T> : SystemBase where T : unmanaged, IEqu
     }
 }
 
-public partial class ComparisionValueSystem<TKey, TValue> : SystemBase
+public partial class ComparisionValueSystem<TKey, TValue> : SystemBase where TValue : IEquatable<TValue>
 {
     private Dictionary<TKey, TValue> __items;
 
@@ -541,7 +542,8 @@ public partial class ComparisionValueSystem<TKey, TValue> : SystemBase
 
         if (__items.TryGetValue(key, out var temp))
         {
-            UnityEngine.Assertions.Assert.AreEqual(temp, value, message);
+            if(!temp.Equals(value))
+                UnityEngine.Assertions.Assert.AreEqual(temp, value, message);
         }
         else
             __items[key] = value;

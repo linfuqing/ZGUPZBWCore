@@ -449,24 +449,24 @@ public partial struct GameNodeCharacterSystem : ISystem
 #if GAME_DEBUG_COMPARSION
         public uint frameIndex;
 
-        public Words hitsName;
-        public Words angleName;
-        public Words characterAngleName;
-        public Words flagName;
-        public Words distanceName;
-        public Words surfaceRotationName;
-        public Words velocityName;
-        public Words oldVelocityName;
-        public Words oldStatusName;
-        public Words oldNormalName;
-        public Words oldPositionName;
-        public Words oldRotationName;
-        public Words newRotationName;
-        public Words newPositionName;
-        public Words newNormalName;
-        public Words newVelocityName;
+        public FixedString32Bytes hitsName;
+        public FixedString32Bytes angleName;
+        public FixedString32Bytes characterAngleName;
+        public FixedString32Bytes flagName;
+        public FixedString32Bytes distanceName;
+        public FixedString32Bytes surfaceRotationName;
+        public FixedString32Bytes velocityName;
+        public FixedString32Bytes oldVelocityName;
+        public FixedString32Bytes oldStatusName;
+        public FixedString32Bytes oldNormalName;
+        public FixedString32Bytes oldPositionName;
+        public FixedString32Bytes oldRotationName;
+        public FixedString32Bytes newRotationName;
+        public FixedString32Bytes newPositionName;
+        public FixedString32Bytes newNormalName;
+        public FixedString32Bytes newVelocityName;
 
-        public ComparisonStream<int> stream;
+        public ComparisonStream<uint> stream;
         [ReadOnly]
         public NativeArray<GameEntityIndex> entityIndices;
         [ReadOnly]
@@ -2060,24 +2060,24 @@ public partial struct GameNodeCharacterSystem : ISystem
 #if GAME_DEBUG_COMPARSION
         public uint frameIndex;
 
-        public Words hitsName;
-        public Words angleName;
-        public Words characterAngleName;
-        public Words flagName;
-        public Words distanceName;
-        public Words surfaceRotationName;
-        public Words velocityName;
-        public Words oldVelocityName;
-        public Words oldStatusName;
-        public Words oldNormalName;
-        public Words oldPositionName;
-        public Words oldRotationName;
-        public Words newRotationName;
-        public Words newPositionName;
-        public Words newNormalName;
-        public Words newVelocityName;
+        public FixedString32Bytes hitsName;
+        public FixedString32Bytes angleName;
+        public FixedString32Bytes characterAngleName;
+        public FixedString32Bytes flagName;
+        public FixedString32Bytes distanceName;
+        public FixedString32Bytes surfaceRotationName;
+        public FixedString32Bytes velocityName;
+        public FixedString32Bytes oldVelocityName;
+        public FixedString32Bytes oldStatusName;
+        public FixedString32Bytes oldNormalName;
+        public FixedString32Bytes oldPositionName;
+        public FixedString32Bytes oldRotationName;
+        public FixedString32Bytes newRotationName;
+        public FixedString32Bytes newPositionName;
+        public FixedString32Bytes newNormalName;
+        public FixedString32Bytes newVelocityName;
 
-        public ComparisonStream<int> stream;
+        public ComparisonStream<uint> stream;
         [ReadOnly]
         public ComponentTypeHandle<GameEntityIndex> entityIndexType;
         [ReadOnly]
@@ -2141,7 +2141,7 @@ public partial struct GameNodeCharacterSystem : ISystem
             applyTransforms.newVelocityName = newVelocityName;
 
             applyTransforms.stream = stream;
-            applyTransforms.entityIndices = batchInChunk.GetNativeArray(entityIndexType);
+            applyTransforms.entityIndices = chunk.GetNativeArray(ref entityIndexType);
             applyTransforms.entityIndexMap = entityIndices;
 #endif
 
@@ -2181,10 +2181,6 @@ public partial struct GameNodeCharacterSystem : ISystem
     private ComponentTypeHandle<Rotation> __rotationType;
     private ComponentTypeHandle<PhysicsVelocity> __physicsVelocityType;
 
-#if GAME_DEBUG_COMPARSION
-    private EntityQuery __frameSyncFlagGroup;
-#endif
-
     private GameUpdateTime __time;
 
     private SharedPhysicsWorld __physicsWorld;
@@ -2216,10 +2212,6 @@ public partial struct GameNodeCharacterSystem : ISystem
             ComponentType.ReadWrite<GameNodeCharacterDistanceHit>(), 
             ComponentType.Exclude<GameNodeParent>(),
             ComponentType.Exclude<Disabled>());
-
-#if GAME_DEBUG_COMPARSION
-        __frameSyncFlagGroup = state.GetEntityQuery(ComponentType.ReadOnly<FrameSyncFlag>());
-#endif
 
         __time = new GameUpdateTime(ref state);
 
@@ -2318,26 +2310,26 @@ public partial struct GameNodeCharacterSystem : ISystem
             applyTransforms.constraints = new NativeArray<SurfaceConstraintInfo>(count << (queryHitShilft + 2), Allocator.TempJob, NativeArrayOptions.UninitializedMemory);*/
 
 #if GAME_DEBUG_COMPARSION
-            uint frameIndex = __time.rollbackTime.frame.index;
+            uint frameIndex = __time.RollbackTime.frameIndex;
             applyTransforms.frameIndex = frameIndex;
-            applyTransforms.hitsName = WordsUtility.Create("hits");
-            applyTransforms.angleName = WordsUtility.Create("angle");
-            applyTransforms.characterAngleName = WordsUtility.Create("characterAngle");
-            applyTransforms.flagName = WordsUtility.Create("flag");
-            applyTransforms.distanceName = WordsUtility.Create("distance");
-            applyTransforms.surfaceRotationName = WordsUtility.Create("surfaceRotation");
-            applyTransforms.velocityName = WordsUtility.Create("velocity");
-            applyTransforms.oldVelocityName = WordsUtility.Create("oldVelocity");
-            applyTransforms.oldStatusName = WordsUtility.Create("oldStatus");
-            applyTransforms.oldNormalName = WordsUtility.Create("oldNormal");
-            applyTransforms.oldPositionName = WordsUtility.Create("oldPosition");
-            applyTransforms.oldRotationName = WordsUtility.Create("oldRotation");
-            applyTransforms.newRotationName = WordsUtility.Create("newRotation");
-            applyTransforms.newPositionName = WordsUtility.Create("newPosition");
-            applyTransforms.newNormalName = WordsUtility.Create("newNormal");
-            applyTransforms.newVelocityName = WordsUtility.Create("newVelocity");
+            applyTransforms.hitsName = "hits";
+            applyTransforms.angleName = "angle";
+            applyTransforms.characterAngleName = "characterAngle";
+            applyTransforms.flagName = "flag";
+            applyTransforms.distanceName = "distance";
+            applyTransforms.surfaceRotationName = "surfaceRotation";
+            applyTransforms.velocityName = "velocity";
+            applyTransforms.oldVelocityName = "oldVelocity";
+            applyTransforms.oldStatusName = "oldStatus";
+            applyTransforms.oldNormalName = "oldNormal";
+            applyTransforms.oldPositionName = "oldPosition";
+            applyTransforms.oldRotationName = "oldRotation";
+            applyTransforms.newRotationName = "newRotation";
+            applyTransforms.newPositionName = "newPosition";
+            applyTransforms.newNormalName = "newNormal";
+            applyTransforms.newVelocityName = "newVelocity";
 
-            var streamScheduler = GameComparsionSystem.instance.Create(__frameSyncFlagGroup.GetSingleton<FrameSyncFlag>().isClear, frameIndex, typeof(GameNodeCharacterSystem).Name, state.World.Name);
+            var streamScheduler = GameComparsionSystem.instance.Create(SystemAPI.GetSingleton<FrameSyncFlag>().isClear, frameIndex, typeof(GameNodeCharacterSystem).Name, state.World.Name);
             applyTransforms.stream = streamScheduler.Begin(__transformGroup.CalculateEntityCount());
             applyTransforms.entityIndexType = state.GetComponentTypeHandle<GameEntityIndex>(true);
             applyTransforms.entityIndices = state.GetComponentLookup<GameEntityIndex>(true);
@@ -2605,7 +2597,7 @@ public partial class GameNodeCharacterRotationComparsionSystem : JobComponentSys
 {
     private struct Comparsion
     {
-        public Words resultName;
+        public FixedString32Bytes resultName;
 
         public ComparisonStream<int> stream;
         [ReadOnly]
@@ -2624,7 +2616,7 @@ public partial class GameNodeCharacterRotationComparsionSystem : JobComponentSys
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Deterministic)]
     private struct ComparsionEx : IJobChunk
     {
-        public Words resultName;
+        public FixedString32Bytes resultName;
 
         public ComparisonStream<int> stream;
         [ReadOnly]
@@ -2663,7 +2655,7 @@ public partial class GameNodeCharacterRotationComparsionSystem : JobComponentSys
     protected override JobHandle OnUpdate(JobHandle inputDeps)
     {
         ComparsionEx comparsion;
-        comparsion.resultName = WordsUtility.Create("result");
+        comparsion.resultName = "result";
 
         var streamScheduler = GameComparsionSystem.instance.Create(false, __syncSystemGroup.frameIndex, this);
         comparsion.stream = streamScheduler.Begin(__group.CalculateEntityCount());
@@ -2682,7 +2674,7 @@ public class GameNodeCharacterRotationComparsionSystem2 : JobComponentSystem
 {
     private struct Comparsion
     {
-        public Words resultName;
+        public FixedString32Bytes resultName;
 
         public ComparisonStream<int> stream;
         [ReadOnly]
@@ -2701,7 +2693,7 @@ public class GameNodeCharacterRotationComparsionSystem2 : JobComponentSystem
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Deterministic)]
     private struct ComparsionEx : IJobChunk
     {
-        public Words resultName;
+        public FixedString32Bytes resultName;
 
         public ComparisonStream<int> stream;
         [ReadOnly]
@@ -2742,7 +2734,7 @@ public class GameNodeCharacterRotationComparsionSystem2 : JobComponentSystem
     protected override JobHandle OnUpdate(JobHandle inputDeps)
     {
         ComparsionEx comparsion;
-        comparsion.resultName = WordsUtility.Create("result");
+        comparsion.resultName = "result";
 
         var streamScheduler = GameComparsionSystem.instance.Create(false, __syncSystemGroup.frameIndex, this);
         comparsion.stream = streamScheduler.Begin(__group.CalculateEntityCount());
