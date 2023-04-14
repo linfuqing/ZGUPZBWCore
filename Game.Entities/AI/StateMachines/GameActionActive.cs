@@ -799,7 +799,7 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
                     command.entity = info.entity;
                     command.forward = forward / distance;
                     command.distance = float3.zero;
-                    command.offset = float3.zero;
+                    //command.offset = float3.zero;
 
                     commands[entity] = command;
                 }
@@ -965,7 +965,7 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
                                         command.entity = info.entity;
                                         command.forward = forward;
                                         command.distance = float3.zero;
-                                        command.offset = float3.zero;
+                                        //command.offset = float3.zero;
                                         commands[entity] = command;
 
                                         isHasPosition = false;
@@ -1033,7 +1033,7 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
                                             command.entity = info.entity;
                                             command.forward = forward;
                                             command.distance = float3.zero;
-                                            command.offset = float3.zero;
+                                            //command.offset = float3.zero;
                                             commands[entity] = command;
 
                                             isHasPosition = false;

@@ -144,7 +144,7 @@ public partial class GameTimeActorSystem : SystemBase
                                     command.entity = Entity.Null;
                                     command.forward = math.forward(transform.rot);
                                     command.distance = float3.zero;
-                                    command.offset = float3.zero;
+                                    //command.offset = float3.zero;
 
                                     commands[entity] = command;
                                 }

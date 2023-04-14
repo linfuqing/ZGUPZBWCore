@@ -31,7 +31,7 @@ public partial class GameRandomSpawnerSystem : SystemBase
 
             public EntityCommandQueue<GameSpawnData>.ParallelWriter entityManager;
 
-            public RandomItemType Set(int startIndex, int count)
+            public RandomResult Set(int startIndex, int count)
             {
                 GameSpawnData spawnData;
                 //spawnData.time = time;
@@ -48,7 +48,7 @@ public partial class GameRandomSpawnerSystem : SystemBase
                     entityManager.Enqueue(spawnData);
                 }
 
-                return RandomItemType.Pass;
+                return RandomResult.Pass;
             }
         }
         

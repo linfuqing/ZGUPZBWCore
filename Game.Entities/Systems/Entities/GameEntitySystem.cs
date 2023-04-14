@@ -1063,15 +1063,21 @@ public partial struct GameEntityActorSystem : ISystem
                         forward = command.forward;
                         rotation = quaternion.LookRotationSafe(forward, up);
 
-                        offset = command.offset;//math.mul(rotation, action.instance.offset);
+                        offset = math.mul(rotation, action.instance.offset); //command.offset;//math.mul(rotation, action.instance.offset);
                         position = source + offset;
 
                         distance = command.distance;// - offset;
                     }
                     else
                     {
-                        if ((isTowardTarget || (action.instance.flag & GameActionFlag.ActorTowardForce) == GameActionFlag.ActorTowardForce) && math.lengthsq(command.forward) > math.FLT_MIN_NORMAL)
+                        if ((isTowardTarget || (action.instance.flag & GameActionFlag.ActorTowardForce) == GameActionFlag.ActorTowardForce) &&
+                            math.lengthsq(command.forward) > math.FLT_MIN_NORMAL)
+                        {
                             forward = command.forward;
+
+                            //这里会不同步
+                            //rotation = quaternion.LookRotationSafe(forward, up);
+                        }
                         else
                         {
                             if (index < angles.Length)
@@ -1094,10 +1100,10 @@ public partial struct GameEntityActorSystem : ISystem
                         }
 
                         //为了同步,故意提取出来
-                        rotation = quaternion.LookRotationSafe(forward, up);
+                        //rotation = quaternion.LookRotationSafe(forward, up);
 
-                        offset = math.mul(rotation, action.instance.offset);
-                        position = source + offset;
+                        /*offset = math.mul(rotation, action.instance.offset);
+                        position = source + offset;*/
 
                         if (command.entity != Entity.Null && translationMap.HasComponent(command.entity))
                         {
@@ -1129,13 +1135,32 @@ public partial struct GameEntityActorSystem : ISystem
                                 }
                             }
 
+                            if (isTowardTarget)
+                            {
+                                forward = math.normalizesafe(transform.pos - source, forward);
+
+                                if (action.instance.trackType == GameActionRangeType.Source)
+                                {
+                                    forward -= Math.ProjectSafe(forward, gravity);
+
+                                    forward = math.normalizesafe(forward);
+                                }
+
+                                //rotation = quaternion.LookRotationSafe(forward, up);
+                            }
+
+                            rotation = quaternion.LookRotationSafe(forward, up);
+
+                            offset = math.mul(rotation, action.instance.offset);
+                            position = source + offset;
+
                             float3 targetPosition;
                             bool isTrack = command.entity != Entity.Null &&
                                     velocityMap.HasComponent(command.entity);
                             if (isTrack)
                             {
                                 float targetVelocity = velocityMap[command.entity].value;
-                                float3 targetDirection = math.forward(rotationMap[command.entity].Value);
+                                float3 targetDirection = math.forward(transform.rot/*rotationMap[command.entity].Value*/);
 
                                 targetPosition = destination;// + targetDirection * (targetVelocity * action.info.damageTime);
 
@@ -1200,7 +1225,7 @@ public partial struct GameEntityActorSystem : ISystem
                             else
                                 targetPosition = destination;
 
-                            if (isTowardTarget)
+                            /*if (isTowardTarget)
                             {
                                 forward = math.normalizesafe(targetPosition - source, forward);
 
@@ -1212,7 +1237,7 @@ public partial struct GameEntityActorSystem : ISystem
                                 }
 
                                 rotation = quaternion.LookRotationSafe(forward, up);
-                            }
+                            }*/
 
                             //这样会打不准
                             /*offset = math.mul(rotation, action.instance.offset);
@@ -1236,8 +1261,10 @@ public partial struct GameEntityActorSystem : ISystem
                         }
                         else
                         {
-                            /*offset = math.mul(rotation, action.instance.offset);
-                            position = source + offset;*/
+                            rotation = quaternion.LookRotationSafe(forward, up);
+
+                            offset = math.mul(rotation, action.instance.offset);
+                            position = source + offset;
 
                             if (action.instance.direction.Equals(float3.zero))
                             {
@@ -1527,7 +1554,7 @@ public partial struct GameEntityActorSystem : ISystem
                     actionInfo.time = artTime;
                     actionInfo.forward = forward;
                     actionInfo.distance = distance;// command.distance;// distance + offset;
-                    actionInfo.offset = offset;
+                    //actionInfo.offset = offset;
                     actionInfo.entity = command.entity;
 
                     actionInfos[entity] = actionInfo;

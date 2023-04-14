@@ -65,7 +65,7 @@ public partial class GameAnimalSystem : SystemBase
         public BlobAssetReference<GameAnimalFoodsDefinition> definition;
         public NativeQueue<Item>.ParallelWriter items;
 
-        public RandomItemType Set(int startIndex, int count)
+        public RandomResult Set(int startIndex, int count)
         {
             Item item;
             item.handle = handle;
@@ -82,7 +82,7 @@ public partial class GameAnimalSystem : SystemBase
                 this.items.Enqueue(item);
             }
 
-            return RandomItemType.Success;
+            return RandomResult.Success;
         }
     }
 

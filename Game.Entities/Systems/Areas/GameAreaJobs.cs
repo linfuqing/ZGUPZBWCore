@@ -8,6 +8,11 @@ using Unity.Entities;
 using ZG;
 using Random = Unity.Mathematics.Random;
 
+public enum GameAreaFlag
+{
+    CreateOnStart = 0x01
+}
+
 public interface IGameAreaNeighborEnumerator
 {
     void Execute(int areaIndex);
@@ -58,6 +63,7 @@ public struct GameAreaPrefabDefinition
 {
     public struct Asset
     {
+        public GameAreaFlag flag;
         public int groupStartIndex;
         public int groupCount;
         public float time;
@@ -321,7 +327,7 @@ public struct GameAreaInvokeCommands<T> : IJobParalledForDeferBurstSchedulable, 
 
         public T validator;
 
-        public RandomItemType Set(int startIndex, int count)
+        public RandomResult Set(int startIndex, int count)
         {
             GameAreaCreateNodeCommand command;
             command.prefabIndex = prefabIndex;
@@ -334,11 +340,11 @@ public struct GameAreaInvokeCommands<T> : IJobParalledForDeferBurstSchedulable, 
                 {
                     entityManager.Enqueue(command);
 
-                    return RandomItemType.Success;
+                    return RandomResult.Success;
                 }
             }
 
-            return RandomItemType.Fail;
+            return RandomResult.Pass;
         }
     }
 
@@ -387,20 +393,23 @@ public struct GameAreaInvokeCommands<T> : IJobParalledForDeferBurstSchedulable, 
             instances.Enqueue(instance);
         }*/
 
+        GameAreaInternalInstance instance;
         var randomGroups = definition.randomGroups.AsArray();
-        if (random.Next(
-                ref randomItemHandler,
-                randomGroups.Slice(asset.groupStartIndex, asset.groupCount)))
-            return;
-
         if ((command.flag & GameAreaInternalInstance.Flag.Random) == GameAreaInternalInstance.Flag.Random)
         {
-            GameAreaInternalInstance instance;
-            instance.flag = GameAreaInternalInstance.Flag.NeedTime;
-            instance.areaIndex = command.areaIndex;
-            instance.prefabIndex = command.prefabIndex;
-
-            instances.Create().value = instance;
+            switch (random.Next(
+                    ref randomItemHandler,
+                    randomGroups.Slice(asset.groupStartIndex, asset.groupCount)))
+            {
+                case RandomResult.Success:
+                    return;
+                case RandomResult.Pass:
+                    instance.flag = command.flag & ~(/*GameAreaInternalInstance.Flag.NeedTime | */GameAreaInternalInstance.Flag.Random);
+                    break;
+                default:
+                    instance.flag = command.flag;
+                    break;
+            }
         }
         else
         {
@@ -421,17 +430,26 @@ public struct GameAreaInvokeCommands<T> : IJobParalledForDeferBurstSchedulable, 
                 {
                     randomGroup = randomGroups[i + asset.groupStartIndex];
                     chance += randomGroup.chance / sum;
-                    if (chance > randomValue && randomItemHandler.Set(randomGroup.startIndex, randomGroup.count) == RandomItemType.Success)
+                    if (chance > randomValue && randomItemHandler.Set(randomGroup.startIndex, randomGroup.count) == RandomResult.Success)
+                        return;
+                }
+            }
+            else
+            {
+                for (i = 0; i < asset.groupCount; ++i)
+                {
+                    randomGroup = randomGroups[i + asset.groupStartIndex];
+                    if (randomItemHandler.Set(randomGroup.startIndex, randomGroup.count) == RandomResult.Success)
                         return;
                 }
             }
 
-            GameAreaInternalInstance instance;
-            instance.flag = command.flag & GameAreaInternalInstance.Flag.NeedTime;
-            instance.areaIndex = command.areaIndex;
-            instance.prefabIndex = command.prefabIndex;
-
-            instances.Create().value = instance;
+            instance.flag = command.flag |/*&*/ GameAreaInternalInstance.Flag.NeedTime;
         }
+
+        instance.areaIndex = command.areaIndex;
+        instance.prefabIndex = command.prefabIndex;
+
+        instances.Create().value = instance;
     }
 }

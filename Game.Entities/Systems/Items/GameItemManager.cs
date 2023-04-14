@@ -55,7 +55,6 @@ public struct GameItemCommand
     public Handle destinationHandle;
 }
 
-[Serializable]
 public struct GameItemHandle : IEquatable<Handle>
 {
     public int index;
@@ -79,7 +78,6 @@ public struct GameItemHandle : IEquatable<Handle>
     }
 }
 
-[Serializable]
 public struct GameItemInfo
 {
     public int version;
@@ -117,6 +115,13 @@ public struct GameItemDataDefinition
 
 public struct GameItemManager
 {
+    public enum FindResult
+    {
+        None,
+        Empty, 
+        Normal
+    }
+
     public struct ReadOnlyInfos
     {
         [ReadOnly]
@@ -392,7 +397,7 @@ public struct GameItemManager
                 __positiveFilters, 
                 __negativefilters, 
                 out parentChildIndex, 
-                out parentHandle);
+                out parentHandle) != FindResult.None;
         }
     }
 
@@ -760,7 +765,7 @@ public struct GameItemManager
             __positiveFilters, 
             __negativefilters, 
             out parentChildIndex, 
-            out parentHandle);
+            out parentHandle) != FindResult.None;
     }
 
     public bool CompareExchange(ref Handle handle, ref int value, out Info item)
@@ -1891,7 +1896,7 @@ public struct GameItemManager
         return true;
     }
 
-    private static bool __Find(
+    private static FindResult __Find(
         bool isRoot,
         GameItemFindFlag flag,
         int type,
@@ -1905,60 +1910,112 @@ public struct GameItemManager
         out int parentChildIndex,
         out Handle parentHandle)
     {
-        if (!isRoot && __Find(
-            flag, 
-            1, 
-            type, 
-            count,
-            handle,
-            types,
-            items,
-            children,
-            positiveFilters,
-            negativefilters, 
-            out parentChildIndex, 
-            out parentHandle))
-            return true;
+        parentChildIndex = -1;
+        parentHandle = Handle.empty;
 
-        if ((flag & GameItemFindFlag.Siblings) == GameItemFindFlag.Siblings && 
-            items.TryGetValue(handle, out var item) && 
-            __Find(
-                false,
-                flag | GameItemFindFlag.Self | GameItemFindFlag.Children, 
-                type, 
-                count,
-                item.siblingHandle,
-                types, 
-                items, 
-                children,
-                positiveFilters,
-                negativefilters,
-                out parentChildIndex, 
-                out parentHandle))
-            return true;
+        var result = FindResult.None;
 
-        if (isRoot && __Find(
-                flag, 
-                0, 
-                type, 
+        if (!isRoot)
+        {
+            var resultTemp = __Find(
+                flag,
+                1,
+                type,
                 count,
                 handle,
-                types, 
+                types,
                 items,
                 children,
                 positiveFilters,
                 negativefilters,
-                out parentChildIndex, 
-                out parentHandle))
-            return true;
+                out parentChildIndex,
+                out parentHandle);
 
-        parentChildIndex = -1;
-        parentHandle = Handle.empty;
+            if (resultTemp == FindResult.Normal)
+                return FindResult.Normal;
 
-        return false;
+            result = resultTemp;
+        }
+
+        if ((flag & GameItemFindFlag.Siblings) == GameItemFindFlag.Siblings &&
+            items.TryGetValue(handle, out var item))
+        {
+            var resultTemp = __Find(
+                false,
+                flag | GameItemFindFlag.Self | GameItemFindFlag.Children,
+                type,
+                count,
+                item.siblingHandle,
+                types,
+                items,
+                children,
+                positiveFilters,
+                negativefilters,
+                out int parentChildIndexTemp,
+                out Handle parentHandleTemp);
+
+            switch(resultTemp)
+            {
+                case FindResult.Empty:
+                    if (result == FindResult.None)
+                    {
+                        parentChildIndex = parentChildIndexTemp;
+                        parentHandle = parentHandleTemp;
+
+                        result = FindResult.Empty;
+                    }
+                    break;
+                case FindResult.Normal:
+                    parentChildIndex = parentChildIndexTemp;
+                    parentHandle = parentHandleTemp;
+
+                    return FindResult.Normal;
+                default:
+                    break;
+            }
+        }
+
+        if (isRoot)
+        {
+            var resultTemp = __Find(
+                flag,
+                0,
+                type,
+                count,
+                handle,
+                types,
+                items,
+                children,
+                positiveFilters,
+                negativefilters,
+                out int parentChildIndexTemp,
+                out Handle parentHandleTemp);
+
+            switch (resultTemp)
+            {
+                case FindResult.Empty:
+                    if (result == FindResult.None)
+                    {
+                        parentChildIndex = parentChildIndexTemp;
+                        parentHandle = parentHandleTemp;
+
+                        result = FindResult.Empty;
+                    }
+                    break;
+                case FindResult.Normal:
+                    parentChildIndex = parentChildIndexTemp;
+                    parentHandle = parentHandleTemp;
+
+                    return FindResult.Normal;
+                default:
+                    break;
+            }
+        }
+
+        return result;
     }
 
-    private static bool __Find(
+    private static FindResult __Find(
         GameItemFindFlag flag,
         int depth,
         int type,
@@ -1976,10 +2033,11 @@ public struct GameItemManager
         parentHandle = Handle.empty;
 
         if (!items.TryGetValue(handle, out var item))
-            return false;
+            return FindResult.None;
 
         if ((flag & GameItemFindFlag.Children) == GameItemFindFlag.Children && children.TryGetFirstValue(handle.index, out var child, out var iterator))
         {
+            FindResult result;
             Info temp;
             do
             {
@@ -1988,25 +2046,28 @@ public struct GameItemManager
                     parentHandle = handle;
                     parentChildIndex = child.index;
 
-                    return true;
+                    return FindResult.Normal;
                 }
 
-                if (depth > 0 && 
-                    __Find(
-                        flag | GameItemFindFlag.Self, 
-                        depth - 1, 
-                        type, 
+                if (depth > 0)
+                {
+                    result = __Find(
+                        flag | GameItemFindFlag.Self,
+                        depth - 1,
+                        type,
                         count,
                         child.handle,
-                        types, 
-                        items, 
+                        types,
+                        items,
                         children,
                         positiveFilters,
                         negativefilters,
-                        out parentChildIndex, 
-                        out parentHandle))
-                    return true;
+                        out parentChildIndex,
+                        out parentHandle);
 
+                    if(result != FindResult.None)
+                        return result;
+                }
             } while (children.TryGetNextValue(out child, ref iterator));
         }
 
@@ -2025,12 +2086,12 @@ public struct GameItemManager
                     parentHandle = handle;
                     parentChildIndex = i;
 
-                    return true;
+                    return FindResult.Empty;
                 }
             }
         }
 
-        return false;
+        return FindResult.None;
     }
 
     private static bool __Find(

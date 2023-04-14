@@ -30,7 +30,7 @@ public partial class GameRandomActorSystem : SystemBase
             [NativeDisableParallelForRestriction]
             public ComponentLookup<GameEntityActionCommand> commands;
 
-            public RandomItemType Set(int startIndex, int count)
+            public RandomResult Set(int startIndex, int count)
             {
                 GameEntityActionCommand command;
                 command.version = version;
@@ -39,11 +39,11 @@ public partial class GameRandomActorSystem : SystemBase
                 command.entity = Entity.Null;
                 command.forward = math.forward(rotation);
                 command.distance = float3.zero;
-                command.offset = float3.zero;
+                //command.offset = float3.zero;
 
                 commands[entity] = command;
 
-                return RandomItemType.Success;
+                return RandomResult.Success;
             }
         }
 

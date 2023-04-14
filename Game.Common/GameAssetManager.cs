@@ -758,8 +758,6 @@ public class GameAssetManager : MonoBehaviour
 
     private IEnumerator __Confirm(ulong size)
     {
-        Debug.LogError(size.ToString() + ":" + __isMissingConfirm);
-
         if (__isMissingConfirm)
         {
             __isConfirm = true;
