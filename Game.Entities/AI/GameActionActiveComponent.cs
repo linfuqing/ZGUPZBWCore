@@ -297,6 +297,10 @@ public class GameActionActiveComponent : EntityProxyComponent, IEntityComponent
     [Serializable]
     public struct Condition
     {
+#if UNITY_EDITOR
+        public string name;
+#endif
+
         public int actionIndex;
         public int groupMask;
 

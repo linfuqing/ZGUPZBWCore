@@ -444,7 +444,7 @@ public struct GameAreaInvokeCommands<T> : IJobParalledForDeferBurstSchedulable, 
                 }
             }
 
-            instance.flag = command.flag |/*&*/ GameAreaInternalInstance.Flag.NeedTime;
+            instance.flag = command.flag & GameAreaInternalInstance.Flag.NeedTime;
         }
 
         instance.areaIndex = command.areaIndex;
