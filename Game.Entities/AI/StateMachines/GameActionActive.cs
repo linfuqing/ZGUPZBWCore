@@ -82,23 +82,18 @@ public class GameActionActive : StateMachineNode
     public float minDistance = 0.0f;
 
     [Tooltip("最大环绕距离")]
-    [NonSerialized]
     public float maxAlertDistance = 10.0f;
 
     [Tooltip("最小环绕距离")]
-    [NonSerialized]
     public float minAlertDistance = 0.0f;
 
     [Tooltip("最大环绕时间")]
-    [NonSerialized]
     public float maxAlertTime = 10.0f;
 
     [Tooltip("最小环绕时间")]
-    [NonSerialized]
     public float minAlertTime = 3.0f;
 
     [Tooltip("环绕概率")]
-    [NonSerialized]
     public float alertChance = 0.1f;
 
     [Tooltip("环绕速度")]
