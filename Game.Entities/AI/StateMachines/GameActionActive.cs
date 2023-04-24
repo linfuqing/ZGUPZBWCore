@@ -969,7 +969,7 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
                                         info.groupMask = 0;
                                 }
 
-                                if(info.groupMask == 0 && isHasPosition)
+                                /*if(info.groupMask == 0 && isHasPosition)
                                 {
                                     GameActionGroup group;
                                     int numGroups = groups.Length;
@@ -985,7 +985,7 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
                                             instance.minAlertDistance = math.max(instance.minAlertDistance, group.minDistance);
                                         }
                                     }
-                                }
+                                }*/
                             }
                             else
                             {
@@ -1041,7 +1041,7 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
 
                             if (isHasPosition)
                             {
-                                if (/*info.status == GameActionActiveInfo.Status.Forward || */distance > instance.maxAlertDistance || dot < 0.0f)
+                                if (/*info.status == GameActionActiveInfo.Status.Forward || */distance > instance.maxAlertDistance/* || dot < 0.0f*/)
                                 {
                                     isRunAway = (instance.flag & GameActionActiveFlag.Timid) == GameActionActiveFlag.Timid;
                                     if (!isRunAway)
@@ -1084,11 +1084,7 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
                                         default:
                                             float3 right = math.cross(forward, math.up());
 
-                                            int sign = math.dot(right, direction.value) < 0.0f ? -1 : 1;
-
-                                            value = right/*math.rotate(
-                                            quaternion.RotateY(math.acos(instance.dot) * (sign * (direction.mode == GameNodeDirection.Mode.Backward ? -1 : 1))), 
-                                            right)*/ * sign;
+                                            value = right * (int)info.status;
                                             break;
                                     }
 

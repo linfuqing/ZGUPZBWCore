@@ -390,6 +390,8 @@ public partial struct GameDataItemSystem : ISystem
         [ReadOnly]
         public ComponentLookup<EntityDataSerializable> serializables;
 
+        public NativeHashSet<GameItemHandle> handles;
+
         public SharedHashMap<Entity, Entity>.Writer serializableEntities;
 
         public EntityCommandQueue<EntityCommandStructChange>.Writer addComponentCommander;
@@ -421,6 +423,14 @@ public partial struct GameDataItemSystem : ISystem
 
         public void Execute(in GameItemHandle handle, in Entity rootEntity)
         {
+            if (!handles.Add(handle))
+            {
+                if (!handle.Equals(GameItemHandle.empty))
+                    UnityEngine.Debug.LogError($"Wrong Handle!!!");
+
+                return;
+            }
+
             if (!hierarchy.GetChildren(handle, out var enumerator, out var item))
                 return;
 
@@ -523,8 +533,9 @@ public partial struct GameDataItemSystem : ISystem
     private EntityCommandPool<EntityCommandStructChange> __addComponentCommander;
     private EntityCommandPool<EntityCommandStructChange> __removeComponentCommander;
 
-    private NativeCounterLite __hierarchyCount;
-    private NativeListLite<Entity> __oldEntities;
+    private NativeCounter __hierarchyCount;
+    private NativeList<Entity> __oldEntities;
+    private NativeHashSet<GameItemHandle> __handles;
 
     public void OnCreate(ref SystemState state)
     {
@@ -560,8 +571,10 @@ public partial struct GameDataItemSystem : ISystem
         __removeComponentCommander = manager.removeComponentPool;
         __addComponentCommander = manager.addComponentPool;
 
-        __hierarchyCount = new NativeCounterLite(Allocator.Persistent);
-        __oldEntities = new NativeListLite<Entity>(Allocator.Persistent);
+        __hierarchyCount = new NativeCounter(Allocator.Persistent);
+        __oldEntities = new NativeList<Entity>(Allocator.Persistent);
+
+        __handles = new NativeHashSet<GameItemHandle>(1, Allocator.Persistent);
 
         serializableEntities = new SharedHashMap<Entity, Entity>(Allocator.Persistent);
     }
@@ -570,6 +583,7 @@ public partial struct GameDataItemSystem : ISystem
     {
         __hierarchyCount.Dispose();
         __oldEntities.Dispose();
+        __handles.Dispose();
 
         serializableEntities.Dispose();
     }
@@ -670,12 +684,15 @@ public partial struct GameDataItemSystem : ISystem
         filter.entityManager = removeComponentParallelWriter;
         jobHandle = filter.ScheduleParallel(oldEntities, InnerloopBatchCount, jobHandle);
 
+        __handles.Clear();
+
         Change change;
         change.result = result;
         change.hierarchy = hierarchy;
         change.entities = handleEntitiesReader;
         //change.rootEntities = __rootEntities.reader;
         change.serializables = serializables;
+        change.handles = __handles;
         change.serializableEntities = serializableEntities.writer;
         change.addComponentCommander = addComponentWriter;
         change.removeComponentCommander = removeComponentWriter;
