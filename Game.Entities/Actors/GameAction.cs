@@ -142,6 +142,9 @@ public struct GameActionInfo
     [Tooltip("最大击退速度")]
     public float impactMaxSpeed;
 
+    [Tooltip("扇形命中区域，填大于0的值生效，COS值")]
+    public float dot;
+
     [Tooltip("角度限制")]
     public float4 angleLimit;
 
@@ -172,6 +175,7 @@ public struct GameActionInfo
         x.impactForce += y.impactForce;
         x.impactTime += y.impactTime;
         x.impactMaxSpeed += y.impactMaxSpeed;
+        x.dot += y.dot;
         x.angleLimit += y.angleLimit;
 
         return x;
@@ -203,6 +207,7 @@ public struct GameActionInfo
         x.impactForce -= y.impactForce;
         x.impactTime -= y.impactTime;
         x.impactMaxSpeed -= y.impactMaxSpeed;
+        x.dot -= y.dot;
         x.angleLimit -= y.angleLimit;
 
         return x;

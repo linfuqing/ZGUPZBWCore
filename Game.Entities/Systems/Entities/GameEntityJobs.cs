@@ -215,6 +215,7 @@ public struct GameEntityCastCollector<TQueryResult, TQueryResultWrapper, THandle
     private int __camp;
     private GameActionTargetType __hitType;
     private GameActionTargetType __damageType;
+    private float __dot;
     private float __distance;
     private float __interval;
     private float __value;
@@ -250,6 +251,7 @@ public struct GameEntityCastCollector<TQueryResult, TQueryResultWrapper, THandle
         int camp,
         GameActionTargetType hitType,
         GameActionTargetType damageType,
+        float dot,
         float interval,
         float value,
         float impactForce,
@@ -279,6 +281,7 @@ public struct GameEntityCastCollector<TQueryResult, TQueryResultWrapper, THandle
         __camp = camp;
         __hitType = hitType;
         __damageType = damageType;
+        __dot = dot;
         __interval = interval;
         __value = value;
         __impactForce = impactForce;
@@ -310,6 +313,10 @@ public struct GameEntityCastCollector<TQueryResult, TQueryResultWrapper, THandle
     public bool AddHit(TQueryResult hit)
     {
         var transform = __start.LerpTo(__end, hit.Fraction);
+
+        float3 position = __wrapper.GetPosition(hit);
+        if (!__IsHit(position, transform.value))
+            return false;
 
         var rigidbodies = __collisionWorld.Bodies;
         RigidBody rigidbody = rigidbodies[hit.RigidBodyIndex];
@@ -346,7 +353,7 @@ public struct GameEntityCastCollector<TQueryResult, TQueryResultWrapper, THandle
             return true;
         }
 
-        __Apply(count, hit, transform, rigidbody.Entity, rigidbodies);
+        __Apply(count, position, transform, rigidbody.Entity, rigidbodies);
 
         return true;
     }
@@ -363,6 +370,10 @@ public struct GameEntityCastCollector<TQueryResult, TQueryResultWrapper, THandle
         var hit = closestHit;
 
         transform = __start.LerpTo(__end, hit.Fraction);
+
+        float3 position = __wrapper.GetPosition(hit);
+        if (!__IsHit(position, transform.value))
+            return false;
 
         var rigidbodies = __collisionWorld.Bodies;
         RigidBody rigidbody = rigidbodies[hit.RigidBodyIndex];
@@ -381,12 +392,12 @@ public struct GameEntityCastCollector<TQueryResult, TQueryResultWrapper, THandle
                 count = __actionEntities.Hit(rigidbody.Entity, transform.elapsedTime, __interval, __value);
         }
 
-        __Apply(count, hit, transform, rigidbody.Entity, rigidbodies);
+        __Apply(count, position, transform, rigidbody.Entity, rigidbodies);
 
         return true;
     }
 
-    private void __Apply(int count, in TQueryResult hit, in GameEntityTransform transform, in Entity entity, in NativeSlice<RigidBody> rigidbodies)
+    private void __Apply(int count, in float3 position, in GameEntityTransform transform, in Entity entity, in NativeSlice<RigidBody> rigidbodies)
     {
         __handler.Hit(
             __index,
@@ -397,7 +408,6 @@ public struct GameEntityCastCollector<TQueryResult, TQueryResultWrapper, THandle
             transform.value,
             __instance);
 
-        float3 position = __wrapper.GetPosition(hit);
         if (count > 0)
         {
             float3 normal = __direction;// math.normalizesafe(position - transform.value.pos, __direction);// __wrapper.GetSurfaceNormal(hit);
@@ -465,6 +475,11 @@ public struct GameEntityCastCollector<TQueryResult, TQueryResultWrapper, THandle
 
             NumHits += collector.NumHits;
         }
+    }
+
+    private bool __IsHit(in float3 position, in RigidTransform transform)
+    {
+        return !(__dot > math.FLT_MIN_NORMAL && __dot < math.dot(math.normalizesafe(position - transform.pos), math.forward(transform.rot)));
     }
 }
 
@@ -1033,6 +1048,7 @@ public struct GameEntityPerform<THandler, TFactory> : IJobChunk
                             instanceEx.camp,
                             instanceEx.value.hitType,
                             instanceEx.value.damageType,
+                            instanceEx.info.dot,
                             instanceEx.info.interval,
                             instanceEx.info.hitDestination,
                             instanceEx.info.impactForce,
@@ -1075,6 +1091,7 @@ public struct GameEntityPerform<THandler, TFactory> : IJobChunk
                             instanceEx.camp,
                             instanceEx.value.hitType,
                             instanceEx.value.damageType,
+                            instanceEx.info.dot,
                             instanceEx.info.interval,
                             instanceEx.info.hitDestination,
                             instanceEx.info.impactForce,
