@@ -1574,7 +1574,7 @@ public partial struct GameEntityActorSystem : ISystem
                                 velocityComponent.value = direction * action.info.actionMoveSpeed;
 
                                 velocityComponent.time = command.time;
-                                velocityComponent.time += action.info.performTime;
+                                velocityComponent.time += action.info.damageTime;
 
                                 velocityComponent.duration = action.info.actionMoveTime;
                                 velocityComponents.Add(velocityComponent);
