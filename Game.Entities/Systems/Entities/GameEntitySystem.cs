@@ -1566,6 +1566,19 @@ public partial struct GameEntityActorSystem : ISystem
                                 velocityComponent.duration = action.info.actorMoveDurationIndirect;
                                 velocityComponents.Add(velocityComponent);
                             }
+
+                            if((action.instance.flag & GameActionFlag.MoveWithActor) == GameActionFlag.MoveWithActor)
+                            {
+                                velocityComponent.mode = GameNodeVelocityComponent.Mode.Indirect;
+
+                                velocityComponent.value = direction * action.info.actionMoveSpeed;
+
+                                velocityComponent.time = command.time;
+                                velocityComponent.time += action.info.performTime;
+
+                                velocityComponent.duration = action.info.actionMoveTime;
+                                velocityComponents.Add(velocityComponent);
+                            }
                         }
 
                         if (index < velocities.Length)

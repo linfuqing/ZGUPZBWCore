@@ -202,7 +202,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
 
-        __group.SetChangedVersionFilter(typeof(GameRandomSpawnerNode));
+        __group.SetChangedVersionFilter(ComponentType.ReadWrite<GameRandomSpawnerNode>());
 
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __factoryGroup = builder

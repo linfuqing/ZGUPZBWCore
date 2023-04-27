@@ -49,7 +49,10 @@ public enum GameActionFlag
     ActorLocation = 0x0100,
 
     [Tooltip("技能移动的时候忽略Y轴")]
-    MoveInAir = 0x0200
+    MoveInAir = 0x0200,
+
+    [Tooltip("技能移动被应用到施放者身上")]
+    MoveWithActor = 0x0400
 }
 
 [Serializable]

@@ -260,17 +260,12 @@ public struct GameSyncTime
 
     public GameSyncTime(ref SystemState systemState)
     {
-        group = systemState.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<FrameSyncReal>(),
-                    ComponentType.ReadOnly<GameRollbackFrameDelta>(), 
-                    ComponentType.ReadWrite<GameRollbackFrameOffset>(),
-                },
-                Options = EntityQueryOptions.IncludeSystems
-            });
+        using (var builder = new EntityQueryBuilder(Unity.Collections.Allocator.Temp))
+            group = builder
+                    .WithAll<FrameSyncReal, GameRollbackFrameDelta>()
+                    .WithAllRW<GameRollbackFrameOffset>()
+                    .WithOptions(EntityQueryOptions.IncludeSystems)
+                    .Build(ref systemState);
     }
 }
 

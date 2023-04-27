@@ -382,7 +382,7 @@ public partial struct GameDataItemSystem : ISystem
     [BurstCompile]
     private struct Change : IJob, IEntityCommandProducerJob
     {
-        [ReadOnly]
+        [ReadOnly, DeallocateOnJobCompletion]
         public NativeArray<int> result;
 
         public GameItemManager.Hierarchy hierarchy;
@@ -734,7 +734,7 @@ public partial struct GameDataItemSystem : ISystem
         addComponentCommander.AddJobHandleForProducer<Change>(jobHandle);
         removeComponentCommander.AddJobHandleForProducer<Change>(jobHandle);
 
-        state.Dependency = result.Dispose(jobHandle);
+        state.Dependency = jobHandle;// result.Dispose(jobHandle);
     }
 }
 
