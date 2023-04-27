@@ -7,7 +7,6 @@ using Unity.Collections;
 using Unity.Physics;
 using ZG;
 
-[assembly: RegisterGenericJobType(typeof(GameEntityPerform<GameEntityActionDataSystem.Handler, GameEntityActionDataSystem.Factory>))]
 [assembly: RegisterGenericJobType(typeof(GameEntityActionSystemCore.PerformEx<GameEntityActionDataSystem.Handler, GameEntityActionDataSystem.Factory>))]
 
 [BurstCompile, UpdateInGroup(typeof(GameEntityActionSystemGroup))]

@@ -540,7 +540,6 @@ public partial struct GameEntityEventSystem : ISystem
         [ReadOnly]
         public ComponentTypeHandle<GameNodeStatus> statusType;
 
-        [ReadOnly]
         public ComponentTypeHandle<GameEntityEventCommand> commandType;
 
         public ComponentTypeHandle<GameEntityCommandVersion> commandVersionType;
@@ -589,7 +588,11 @@ public partial struct GameEntityEventSystem : ISystem
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
+            {
                 trigger.Execute(i);
+
+                chunk.SetComponentEnabled(ref commandType, i, false);
+            }
         }
     }
 
@@ -599,6 +602,30 @@ public partial struct GameEntityEventSystem : ISystem
 #endif
 
     private EntityQuery __group;
+
+    private EntityTypeHandle __entityArrayType;
+
+    private ComponentTypeHandle<Disabled> __disabledType;
+
+    private ComponentTypeHandle<GameNodeStatus> __statusType;
+
+    private ComponentTypeHandle<GameEntityEventCommand> __commandType;
+
+    private ComponentTypeHandle<GameEntityCommandVersion> __commandVersionType;
+
+    private ComponentTypeHandle<GameEntityEventInfo> __eventInfoType;
+
+    private ComponentTypeHandle<GameEntityActorInfo> __actorInfoType;
+
+    private ComponentTypeHandle<GameEntityActorTime> __actorTimeType;
+
+    private ComponentTypeHandle<GameNodeDelay> __delayType;
+
+    private ComponentTypeHandle<GameNodeVelocity> __velocityType;
+
+    private BufferTypeHandle<GameNodePosition> __positionType;
+
+    private ComponentLookup<GameNodeStatus> __states;
 
     public void OnCreate(ref SystemState state)
     {
@@ -611,7 +638,7 @@ public partial struct GameEntityEventSystem : ISystem
             {
                 All = new ComponentType[]
                 {
-                    ComponentType.ReadOnly<GameEntityEventCommand>(),
+                    ComponentType.ReadWrite<GameEntityEventCommand>(),
                     ComponentType.ReadWrite<GameEntityCommandVersion>(),
                     ComponentType.ReadWrite<GameEntityEventInfo>(),
                     ComponentType.ReadWrite<GameNodeDelay>()
@@ -619,7 +646,19 @@ public partial struct GameEntityEventSystem : ISystem
                 Options = EntityQueryOptions.IncludeDisabledEntities
             });
 
-        __group.SetChangedVersionFilter(typeof(GameEntityEventCommand));
+        __entityArrayType = state.GetEntityTypeHandle();
+        __disabledType = state.GetComponentTypeHandle<Disabled>(true);
+        __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
+        __commandType = state.GetComponentTypeHandle<GameEntityEventCommand>();
+        __commandVersionType = state.GetComponentTypeHandle<GameEntityCommandVersion>();
+        __eventInfoType = state.GetComponentTypeHandle<GameEntityEventInfo>();
+        __actorInfoType = state.GetComponentTypeHandle<GameEntityActorInfo>();
+        __actorTimeType = state.GetComponentTypeHandle<GameEntityActorTime>();
+        __delayType = state.GetComponentTypeHandle<GameNodeDelay>();
+        __velocityType = state.GetComponentTypeHandle<GameNodeVelocity>();
+        __positionType = state.GetBufferTypeHandle<GameNodePosition>();
+        __states = state.GetComponentLookup<GameNodeStatus>();
+        //__group.SetChangedVersionFilter(typeof(GameEntityEventCommand));
     }
 
     public void OnDestroy(ref SystemState state)
@@ -633,18 +672,18 @@ public partial struct GameEntityEventSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         TriggerEx trigger;
-        trigger.entityArrayType = state.GetEntityTypeHandle();
-        trigger.disabledType = state.GetComponentTypeHandle<Disabled>(true);
-        trigger.statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
-        trigger.commandType = state.GetComponentTypeHandle<GameEntityEventCommand>(true);
-        trigger.commandVersionType = state.GetComponentTypeHandle<GameEntityCommandVersion>();
-        trigger.eventInfoType = state.GetComponentTypeHandle<GameEntityEventInfo>();
-        trigger.actorInfoType = state.GetComponentTypeHandle<GameEntityActorInfo>();
-        trigger.actorTimeType = state.GetComponentTypeHandle<GameEntityActorTime>();
-        trigger.delayType = state.GetComponentTypeHandle<GameNodeDelay>();
-        trigger.velocityType = state.GetComponentTypeHandle<GameNodeVelocity>();
-        trigger.positionType = state.GetBufferTypeHandle<GameNodePosition>();
-        trigger.states = state.GetComponentLookup<GameNodeStatus>();
+        trigger.entityArrayType = __entityArrayType.UpdateAsRef(ref state);
+        trigger.disabledType = __disabledType.UpdateAsRef(ref state);
+        trigger.statusType = __statusType.UpdateAsRef(ref state);
+        trigger.commandType = __commandType.UpdateAsRef(ref state);
+        trigger.commandVersionType = __commandVersionType.UpdateAsRef(ref state);
+        trigger.eventInfoType = __eventInfoType.UpdateAsRef(ref state);
+        trigger.actorInfoType = __actorInfoType.UpdateAsRef(ref state);
+        trigger.actorTimeType = __actorTimeType.UpdateAsRef(ref state);
+        trigger.delayType = __delayType.UpdateAsRef(ref state);
+        trigger.velocityType = __velocityType.UpdateAsRef(ref state);
+        trigger.positionType = __positionType.UpdateAsRef(ref state);
+        trigger.states = __states.UpdateAsRef(ref state);
 
 #if GAME_DEBUG_COMPARSION
         uint frameIndex = __frame.index;
@@ -653,7 +692,7 @@ public partial struct GameEntityEventSystem : ISystem
         trigger.entityIndexType = state.GetComponentTypeHandle<GameEntityIndex>(true);
 #endif
 
-        state.Dependency = trigger.ScheduleParallel(__group, state.Dependency);
+        state.Dependency = trigger.ScheduleParallelByRef(__group, state.Dependency);
     }
 }
 
@@ -662,9 +701,6 @@ public partial struct GameEntityActorInitSystem : ISystem
 {
     private struct MaskDirty
     {
-        [ReadOnly]
-        public ComponentLookup<GameNodeCommander> commanders;
-
         [ReadOnly]
         public NativeArray<Entity> entityArray;
 
@@ -677,28 +713,44 @@ public partial struct GameEntityActorInitSystem : ISystem
         [ReadOnly]
         public NativeArray<GameEntityActionCommand> commands;
 
-        [NativeDisableContainerSafetyRestriction]
-        public ComponentLookup<GameEntityActionCommand> commandMap;
+        public NativeArray<GameEntityActionCommander> commanders;
 
-        public void Execute(int index)
+        [NativeDisableContainerSafetyRestriction]
+        public ComponentLookup<GameEntityActionCommander> commanderMap;
+
+        public bool Execute(int index)
         {
             if (versions[index].value != commands[index].version)
-                return;
+                return false;
 
-            var parent = parents[index].entity;
-            if (!commanders.HasComponent(parent) || commanders[parent].entity != entityArray[index])
-                return;
+            GameEntityActionCommander commander;
 
-            commandMap[parent] = commandMap[parent];
+            if (index < parents.Length)
+            {
+                var parent = parents[index];
+                if (parent.authority < 1)
+                    return false;
+
+                if (commanderMap.HasComponent(parent.entity))
+                {
+                    commander.entity = entityArray[index];
+                    commanderMap[parent.entity] = commander;
+                    commanderMap.SetComponentEnabled(parent.entity, true);
+
+                    return false;
+                }
+            }
+
+            commander.entity = Entity.Null;
+            commanders[index] = commander;
+
+            return true;
         }
     }
 
     [BurstCompile]
     private struct MaskDirtyEx : IJobChunk
     {
-        [ReadOnly]
-        public ComponentLookup<GameNodeCommander> commanders;
-
         [ReadOnly]
         public EntityTypeHandle entityType;
 
@@ -708,29 +760,45 @@ public partial struct GameEntityActorInitSystem : ISystem
         [ReadOnly]
         public ComponentTypeHandle<GameEntityCommandVersion> versionType;
 
-        [ReadOnly]
         public ComponentTypeHandle<GameEntityActionCommand> commandType;
 
+        public ComponentTypeHandle<GameEntityActionCommander> commanderType;
+
         [NativeDisableContainerSafetyRestriction]
-        public ComponentLookup<GameEntityActionCommand> commands;
+        public ComponentLookup<GameEntityActionCommander> commanders;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
+            if (!chunk.Has(ref commanderType))
+                return;
+
             MaskDirty maskDirty;
-            maskDirty.commanders = commanders;
             maskDirty.entityArray = chunk.GetNativeArray(entityType);
             maskDirty.parents = chunk.GetNativeArray(ref parentType);
             maskDirty.versions = chunk.GetNativeArray(ref versionType);
             maskDirty.commands = chunk.GetNativeArray(ref commandType);
-            maskDirty.commandMap = commands;
+            maskDirty.commanders = chunk.GetNativeArray(ref commanderType);
+            maskDirty.commanderMap = commanders;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
-                maskDirty.Execute(i);
+            {
+                if (maskDirty.Execute(i))
+                    chunk.SetComponentEnabled(ref commanderType, i, true);
+
+                chunk.SetComponentEnabled(ref commandType, i, false);
+            }
         }
     }
 
     private EntityQuery __group;
+    private EntityTypeHandle __entityType;
+    private ComponentTypeHandle<GameNodeParent> __parentType;
+    private ComponentTypeHandle<GameEntityCommandVersion> __versionType;
+    private ComponentTypeHandle<GameEntityActionCommand> __commandType;
+    private ComponentTypeHandle<GameEntityActionCommander> __commanderType;
+    private ComponentLookup<GameEntityActionCommander> __commanders;
+
 
     public void OnCreate(ref SystemState state)
     {
@@ -739,14 +807,20 @@ public partial struct GameEntityActorInitSystem : ISystem
             {
                 All = new ComponentType[]
                 {
-                    ComponentType.ReadOnly<GameNodeParent>(),
-                    ComponentType.ReadOnly<GameEntityActionCommand>(),
-                    ComponentType.ReadWrite<GameEntityCommandVersion>(),
+                    ComponentType.ReadOnly<GameEntityCommandVersion>(),
+                    ComponentType.ReadWrite<GameEntityActionCommand>(),
                 },
                 Options = EntityQueryOptions.IncludeDisabledEntities
             });
 
         __group.SetChangedVersionFilter(typeof(GameEntityActionCommand));
+
+        __entityType = state.GetEntityTypeHandle();
+        __parentType = state.GetComponentTypeHandle<GameNodeParent>(true);
+        __versionType = state.GetComponentTypeHandle<GameEntityCommandVersion>(true);
+        __commandType = state.GetComponentTypeHandle<GameEntityActionCommand>();
+        __commanderType = state.GetComponentTypeHandle<GameEntityActionCommander>();
+        __commanders = state.GetComponentLookup<GameEntityActionCommander>();
     }
 
     public void OnDestroy(ref SystemState state)
@@ -758,14 +832,14 @@ public partial struct GameEntityActorInitSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         MaskDirtyEx maskDirty;
-        maskDirty.commanders = state.GetComponentLookup<GameNodeCommander>(true);
-        maskDirty.entityType = state.GetEntityTypeHandle();
-        maskDirty.parentType = state.GetComponentTypeHandle<GameNodeParent>(true);
-        maskDirty.versionType = state.GetComponentTypeHandle<GameEntityCommandVersion>(true);
-        maskDirty.commandType = state.GetComponentTypeHandle<GameEntityActionCommand>(true);
-        maskDirty.commands = state.GetComponentLookup<GameEntityActionCommand>();
+        maskDirty.entityType = __entityType.UpdateAsRef(ref state);
+        maskDirty.parentType = __parentType.UpdateAsRef(ref state);
+        maskDirty.versionType = __versionType.UpdateAsRef(ref state);
+        maskDirty.commandType = __commandType.UpdateAsRef(ref state);
+        maskDirty.commanderType = __commanderType.UpdateAsRef(ref state);
+        maskDirty.commanders = __commanders.UpdateAsRef(ref state);
 
-        state.Dependency = maskDirty.ScheduleParallel(__group, state.Dependency);
+        state.Dependency = maskDirty.ScheduleParallelByRef(__group, state.Dependency);
     }
 }
 
@@ -790,36 +864,6 @@ public partial struct GameEntityActorSystem : ISystem
         public SingletonAssetContainer<BlobAssetReference<Collider>>.Reader actionColliders;
 
         [ReadOnly]
-        public NativeArray<Entity> entityArray;
-        
-        [ReadOnly]
-        public NativeArray<Translation> translations;
-
-        [ReadOnly]
-        public NativeArray<GameNodeCommander> commanders;
-
-        [ReadOnly]
-        public NativeArray<GameNodeStatus> nodeStates;
-
-        [ReadOnly]
-        public NativeArray<GameNodeSurface> surfaces;
-
-        [ReadOnly]
-        public NativeArray<GameNodeCharacterData> characters;
-
-        [ReadOnly]
-        public NativeArray<GameEntityCamp> camps;
-
-        [ReadOnly]
-        public NativeArray<GameEntityActorData> actors;
-
-        [ReadOnly]
-        public NativeArray<GameEntityArchetype> archetypes;
-
-        [ReadOnly]
-        public NativeArray<GameEntityActionCommand> commands;
-
-        [ReadOnly]
         public ComponentLookup<Disabled> disabled;
 
         [ReadOnly]
@@ -841,10 +885,40 @@ public partial struct GameEntityActorSystem : ISystem
         public ComponentLookup<GameEntityActionCommand> commandMap;
 
         [ReadOnly]
-        public BufferAccessor<GameEntityItem> entityItems;
+        public NativeArray<Entity> entityArray;
+        
+        [ReadOnly]
+        public NativeArray<Translation> translations;
+
+        [ReadOnly]
+        public NativeArray<GameNodeStatus> states;
+
+        [ReadOnly]
+        public NativeArray<GameNodeSurface> surfaces;
+
+        [ReadOnly]
+        public NativeArray<GameNodeCharacterData> characters;
+
+        [ReadOnly]
+        public NativeArray<GameEntityCamp> camps;
+
+        [ReadOnly]
+        public NativeArray<GameEntityActorData> actors;
+
+        [ReadOnly]
+        public NativeArray<GameEntityArchetype> archetypes;
+
+        [ReadOnly]
+        public NativeArray<GameEntityActionCommand> commands;
+
+        [ReadOnly]
+        public NativeArray<GameEntityActionCommander> commanders;
 
         [ReadOnly]
         public BufferAccessor<GameEntityAction> entityActions;
+
+        [ReadOnly]
+        public BufferAccessor<GameEntityItem> entityItems;
 
         [ReadOnly]
         public BufferAccessor<GameEntityActorActionData> actorActions;
@@ -978,7 +1052,7 @@ public partial struct GameEntityActorSystem : ISystem
                 return;
             }
 
-            GameNodeStatus nodeStatus = nodeStates[index];
+            var nodeStatus = states[index];
             if ((nodeStatus.value & (GameNodeStatus.STOP | GameNodeStatus.OVER)) != 0)
             {
 #if GAME_DEBUG_COMPARSION
@@ -1002,314 +1076,315 @@ public partial struct GameEntityActorSystem : ISystem
                 //UnityEngine.Debug.Log($"Do: {entityArray[index].Index} : {command.index} : {x} : {y}");
 
                 var actorActionInfos = this.actorActionInfos[index];
-
-                var actorActionInfo = actorActionInfos[command.index];
-                if (actorActionInfo.coolDownTime < command.time)
+                if (command.index >= 0 && command.index < actorActionInfos.Length)
                 {
-                    if (index < entityActions.Length)
-                        GameEntityAction.Break(entityActions[index], ref actionStates);
-
-                    int actionIndex = actorActions[index][command.index].actionIndex;
-                    ref var actions = ref this.actions.Value;
-                    var action = actions.values[actionIndex];
-                    if (index < this.entityItems.Length)
+                    var actorActionInfo = actorActionInfos[command.index];
+                    if (actorActionInfo.coolDownTime < command.time)
                     {
-                        DynamicBuffer<GameEntityItem> entityItems = this.entityItems[index];
-                        ref var items = ref this.items.Value;
-                        int numItems = entityItems.Length, length = items.values.Length;
-                        GameEntityItem entityItem;
-                        for (int i = 0; i < numItems; ++i)
+                        if (index < entityActions.Length)
+                            GameEntityAction.Break(entityActions[index], ref actionStates);
+
+                        int actionIndex = actorActions[index][command.index].actionIndex;
+                        ref var actions = ref this.actions.Value;
+                        var action = actions.values[actionIndex];
+                        if (index < this.entityItems.Length)
                         {
-                            entityItem = entityItems[i];
+                            DynamicBuffer<GameEntityItem> entityItems = this.entityItems[index];
+                            ref var items = ref this.items.Value;
+                            int numItems = entityItems.Length, length = items.values.Length;
+                            GameEntityItem entityItem;
+                            for (int i = 0; i < numItems; ++i)
+                            {
+                                entityItem = entityItems[i];
 
-                            if (entityItem.index >= 0 && entityItem.index < length)
-                                action.info += items.values[entityItem.index];
+                                if (entityItem.index >= 0 && entityItem.index < length)
+                                    action.info += items.values[entityItem.index];
+                            }
                         }
-                    }
 
-                    Entity entity = entityArray[index];
-                    var actor = actors[index];
-                    if (actor.rangeScale > math.FLT_MIN_NORMAL)
-                    {
-                        action.info.scale = (action.info.scale > math.FLT_MIN_NORMAL ? action.info.scale : 1.0f) * actor.rangeScale;
+                        Entity entity = entityArray[index];
+                        var actor = actors[index];
+                        if (actor.rangeScale > math.FLT_MIN_NORMAL)
+                        {
+                            action.info.scale = (action.info.scale > math.FLT_MIN_NORMAL ? action.info.scale : 1.0f) * actor.rangeScale;
 
-                        action.info.radius *= actor.rangeScale;
-                    }
+                            action.info.radius *= actor.rangeScale;
+                        }
 
-                    if (actor.distanceScale > math.FLT_MIN_NORMAL)
-                        action.info.distance *= actor.distanceScale;
+                        if (actor.distanceScale > math.FLT_MIN_NORMAL)
+                            action.info.distance *= actor.distanceScale;
 
-                    action.instance.offset = math.select(action.instance.offset, action.instance.offset * actor.offsetScale, actor.offsetScale > math.FLT_MIN_NORMAL);
+                        action.instance.offset = math.select(action.instance.offset, action.instance.offset * actor.offsetScale, actor.offsetScale > math.FLT_MIN_NORMAL);
 
-                    if (command.entity != Entity.Null && (command.entity == entity || disabled.HasComponent(command.entity)))
-                        command.entity = Entity.Null;
+                        if (command.entity != Entity.Null && (command.entity == entity || disabled.HasComponent(command.entity)))
+                            command.entity = Entity.Null;
 
 #if GAME_DEBUG_COMPARSION
                     stream.Assert(entityName, command.entity == Entity.Null);
 #endif
 
-                    quaternion surfaceRotation = index < surfaces.Length ? surfaces[index].rotation : quaternion.identity;
+                        quaternion surfaceRotation = index < surfaces.Length ? surfaces[index].rotation : quaternion.identity;
 
-                    bool isTowardTarget = (action.instance.flag & GameActionFlag.ActorTowardTarget) == GameActionFlag.ActorTowardTarget;
-                    float3 up = math.mul(surfaceRotation, math.up()), source = translations[index].Value,
-                        offset,
-                        forward,
-                        distance,
-                        position;
-                    quaternion rotation;
-                    var actionCollider = action.colliderIndex == -1 ? BlobAssetReference<Collider>.Null : actionColliders[new SingletonAssetContainerHandle(actions.instanceID, action.colliderIndex)];
-                    if (math.lengthsq(command.distance) > math.FLT_MIN_NORMAL)
-                    {
-                        forward = command.forward;
-                        rotation = quaternion.LookRotationSafe(forward, up);
-
-                        offset = math.mul(rotation, action.instance.offset); //command.offset;//math.mul(rotation, action.instance.offset);
-                        position = source + offset;
-
-                        distance = command.distance;// - offset;
-                    }
-                    else
-                    {
-                        if ((isTowardTarget || (action.instance.flag & GameActionFlag.ActorTowardForce) == GameActionFlag.ActorTowardForce) &&
-                            math.lengthsq(command.forward) > math.FLT_MIN_NORMAL)
+                        bool isTowardTarget = (action.instance.flag & GameActionFlag.ActorTowardTarget) == GameActionFlag.ActorTowardTarget;
+                        float3 up = math.mul(surfaceRotation, math.up()), source = translations[index].Value,
+                            offset,
+                            forward,
+                            distance,
+                            position;
+                        quaternion rotation;
+                        var actionCollider = action.colliderIndex == -1 ? BlobAssetReference<Collider>.Null : actionColliders[new SingletonAssetContainerHandle(actions.instanceID, action.colliderIndex)];
+                        if (math.lengthsq(command.distance) > math.FLT_MIN_NORMAL)
                         {
                             forward = command.forward;
+                            rotation = quaternion.LookRotationSafe(forward, up);
 
-                            //这里会不同步
-                            //rotation = quaternion.LookRotationSafe(forward, up);
+                            offset = math.mul(rotation, action.instance.offset); //command.offset;//math.mul(rotation, action.instance.offset);
+                            position = source + offset;
+
+                            distance = command.distance;// - offset;
                         }
                         else
                         {
-                            if (index < angles.Length)
+                            if ((isTowardTarget || (action.instance.flag & GameActionFlag.ActorTowardForce) == GameActionFlag.ActorTowardForce) &&
+                                math.lengthsq(command.forward) > math.FLT_MIN_NORMAL)
                             {
-                                rotation = quaternion.RotateY(angles[index].value);
+                                forward = command.forward;
 
-                                rotation = math.mul(surfaceRotation, rotation);
-                            }
-                            else
-                                rotation = rotations[index].Value;
-
-                            forward = math.forward(rotation);
-                        }
-
-                        if (action.instance.trackType == GameActionRangeType.Source)
-                        {
-                            forward -= Math.ProjectSafe(forward, gravity);
-
-                            forward = math.normalizesafe(forward);
-                        }
-
-                        //为了同步,故意提取出来
-                        //rotation = quaternion.LookRotationSafe(forward, up);
-
-                        /*offset = math.mul(rotation, action.instance.offset);
-                        position = source + offset;*/
-
-                        if (command.entity != Entity.Null && translationMap.HasComponent(command.entity))
-                        {
-                            float3 destination = translationMap[command.entity].Value;
-                            RigidTransform transform = math.RigidTransform(rotationMap[command.entity].Value, destination);
-                            if (physicsMasses.HasComponent(command.entity))
-                                destination = math.transform(transform, physicsMasses[command.entity].CenterOfMass);
-
-                            if (actionCollider.IsCreated)
-                            {
-                                var collider = physicsColliders.HasComponent(command.entity) ? physicsColliders[command.entity].Value : BlobAssetReference<Collider>.Null;
-                                if (collider.IsCreated)
-                                {
-                                    PointDistanceInput pointDistanceInput = default;
-                                    pointDistanceInput.MaxDistance = math.distance(source, destination);
-                                    pointDistanceInput.Position = math.transform(math.inverse(transform), source);
-                                    pointDistanceInput.Filter = actionCollider.Value.Filter;
-                                    pointDistanceInput.Filter.CollidesWith = action.instance.damageMask;
-                                    if (collider.Value.CalculateDistance(pointDistanceInput, out DistanceHit closestHit))
-                                    {
-                                        destination = math.transform(transform, closestHit.Position);
-
-                                        /*distance = destination - source;
-
-                                        length = closestHit.Distance;*/
-
-                                        //UnityEngine.Debug.Log($"Distance : {distance} : {length}");
-                                    }
-                                }
-                            }
-
-                            if (isTowardTarget)
-                            {
-                                forward = math.normalizesafe(transform.pos - source, forward);
-
-                                if (action.instance.trackType == GameActionRangeType.Source)
-                                {
-                                    forward -= Math.ProjectSafe(forward, gravity);
-
-                                    forward = math.normalizesafe(forward);
-                                }
-
+                                //这里会不同步
                                 //rotation = quaternion.LookRotationSafe(forward, up);
                             }
-
-                            rotation = quaternion.LookRotationSafe(forward, up);
-
-                            offset = math.mul(rotation, action.instance.offset);
-                            position = source + offset;
-
-                            float3 targetPosition;
-                            bool isTrack = command.entity != Entity.Null &&
-                                    velocityMap.HasComponent(command.entity);
-                            if (isTrack)
+                            else
                             {
-                                float targetVelocity = velocityMap[command.entity].value;
-                                float3 targetDirection = math.forward(transform.rot/*rotationMap[command.entity].Value*/);
-
-                                targetPosition = destination;// + targetDirection * (targetVelocity * action.info.damageTime);
-
-                                /*offset = math.mul(rotation, action.instance.offset);
-                                position = source + offset;*/
-
-                                if ((action.instance.flag & GameActionFlag.UseGravity) == GameActionFlag.UseGravity)
+                                if (index < angles.Length)
                                 {
-                                    if (action.info.actionMoveSpeed > math.FLT_MIN_NORMAL &&
-                                           actor.accuracy > math.FLT_MIN_NORMAL &&
-                                           Math.CalculateParabolaTrajectory(
-                                               actor.accuracy,
-                                               math.length(gravity),
-                                               action.info.actionMoveSpeed,
-                                               targetVelocity,
-                                               targetDirection,
-                                               targetPosition,
-                                               position,
-                                               out var targetDistance))
-                                        targetPosition = position + targetDistance;
-                                    else
-                                    {
-                                        float3 targetForward = forward;
+                                    rotation = quaternion.RotateY(angles[index].value);
 
-                                        float2 angleAndTime = Math.CalculateParabolaAngleAndTime(
-                                           action.info.actionMoveSpeed,
-                                           math.length(gravity),
-                                           targetPosition - position,
-                                           ref targetForward);
-
-                                        if (angleAndTime.y > math.FLT_MIN_NORMAL)
-                                            targetPosition = position + targetForward * (action.info.actionMoveSpeed * angleAndTime.y);
-                                        else if(action.info.distance > math.FLT_MIN_NORMAL)
-                                        {
-                                            //LookRotationSafe防止direction==up
-                                            targetForward = math.mul(quaternion.LookRotationSafe(targetForward, up), Act.forward);
-
-                                            float offsetDistanceSq = math.lengthsq(Math.ProjectSafe(offset, targetForward)),
-                                            forwardLength = math.sqrt(action.info.distance * action.info.distance - offsetDistanceSq) + math.sqrt(offsetDistanceSq);
-
-                                            targetPosition = source + forwardLength * targetForward;
-                                        }
-
-                                        isTrack = false;
-                                    }
+                                    rotation = math.mul(surfaceRotation, rotation);
                                 }
                                 else
-                                {
-                                    if (action.info.actionMoveSpeed > math.FLT_MIN_NORMAL &&
-                                        Math.CalculateLinearTrajectory(
-                                            action.info.actionMoveSpeed,
-                                            position,
-                                            targetPosition,
-                                            targetDirection,
-                                            targetVelocity,
-                                            out var hitPoint))
-                                        targetPosition = hitPoint;
-                                    else
-                                        isTrack = false;
-                                }
+                                    rotation = rotations[index].Value;
+
+                                forward = math.forward(rotation);
                             }
-                            else
-                                targetPosition = destination;
 
-                            /*if (isTowardTarget)
+                            if (action.instance.trackType == GameActionRangeType.Source)
                             {
-                                forward = math.normalizesafe(targetPosition - source, forward);
+                                forward -= Math.ProjectSafe(forward, gravity);
 
-                                if (action.instance.trackType == GameActionRangeType.Source)
-                                {
-                                    forward -= Math.ProjectSafe(forward, gravity);
+                                forward = math.normalizesafe(forward);
+                            }
 
-                                    forward = math.normalizesafe(forward);
-                                }
+                            //为了同步,故意提取出来
+                            //rotation = quaternion.LookRotationSafe(forward, up);
 
-                                rotation = quaternion.LookRotationSafe(forward, up);
-                            }*/
-
-                            //这样会打不准
                             /*offset = math.mul(rotation, action.instance.offset);
                             position = source + offset;*/
 
-                            if (action.instance.direction.Equals(float3.zero))
+                            if (command.entity != Entity.Null && translationMap.HasComponent(command.entity))
                             {
-                                if (action.instance.trackType == GameActionRangeType.Source)
-                                    distance = forward * action.info.distance;
-                                else
+                                float3 destination = translationMap[command.entity].Value;
+                                RigidTransform transform = math.RigidTransform(rotationMap[command.entity].Value, destination);
+                                if (physicsMasses.HasComponent(command.entity))
+                                    destination = math.transform(transform, physicsMasses[command.entity].CenterOfMass);
+
+                                if (actionCollider.IsCreated)
                                 {
-                                    distance = targetPosition - position;
-
-                                    float length = math.length(distance);
-                                    if (action.info.distance > math.FLT_MIN_NORMAL && action.info.distance < length)
-                                        distance = action.info.distance / length * distance;
-                                }
-                            }
-                            else
-                                distance = math.mul(rotation, action.instance.direction) * action.info.distance;
-                        }
-                        else
-                        {
-                            rotation = quaternion.LookRotationSafe(forward, up);
-
-                            offset = math.mul(rotation, action.instance.offset);
-                            position = source + offset;
-
-                            if (action.instance.direction.Equals(float3.zero))
-                            {
-                                distance = forward * action.info.distance;
-                                if (action.instance.trackType != GameActionRangeType.Source)
-                                {
-                                    /*float distanceSq = action.info.distance * action.info.distance,
-                                        offsetDistanceSq = math.lengthsq(Math.ProjectSafe(offset, forward)),
-                                        forwardLength = math.sqrt(distanceSq - offsetDistanceSq) + math.sqrt(offsetDistanceSq);
-                                    distance = forwardLength * forward - offset;*/
-
-                                    //distance -= offset;
-
-                                    if ((action.instance.flag & GameActionFlag.UseGravity) == GameActionFlag.UseGravity)
+                                    var collider = physicsColliders.HasComponent(command.entity) ? physicsColliders[command.entity].Value : BlobAssetReference<Collider>.Null;
+                                    if (collider.IsCreated)
                                     {
-                                        float3 targetForward = math.normalizesafe(distance, forward);
-                                        float2 angleAndTime = Math.CalculateParabolaAngleAndTime(
-                                                       action.info.actionMoveSpeed,
-                                                       math.length(gravity),
-                                                       distance,
-                                                       ref targetForward);
-
-                                        if (angleAndTime.y > math.FLT_MIN_NORMAL)
-                                            distance = targetForward * (action.info.actionMoveSpeed * angleAndTime.y);
-                                        else
+                                        PointDistanceInput pointDistanceInput = default;
+                                        pointDistanceInput.MaxDistance = math.distance(source, destination);
+                                        pointDistanceInput.Position = math.transform(math.inverse(transform), source);
+                                        pointDistanceInput.Filter = actionCollider.Value.Filter;
+                                        pointDistanceInput.Filter.CollidesWith = action.instance.damageMask;
+                                        if (collider.Value.CalculateDistance(pointDistanceInput, out DistanceHit closestHit))
                                         {
-                                            //LookRotationSafe防止direction==up
-                                            targetForward = math.mul(quaternion.LookRotationSafe(forward, up), Act.forward);
+                                            destination = math.transform(transform, closestHit.Position);
 
-                                            distance = action.info.distance/*forwardLength*/ * targetForward;// - offset;
+                                            /*distance = destination - source;
+
+                                            length = closestHit.Distance;*/
+
+                                            //UnityEngine.Debug.Log($"Distance : {distance} : {length}");
                                         }
                                     }
                                 }
+
+                                if (isTowardTarget)
+                                {
+                                    forward = math.normalizesafe(transform.pos - source, forward);
+
+                                    if (action.instance.trackType == GameActionRangeType.Source)
+                                    {
+                                        forward -= Math.ProjectSafe(forward, gravity);
+
+                                        forward = math.normalizesafe(forward);
+                                    }
+
+                                    //rotation = quaternion.LookRotationSafe(forward, up);
+                                }
+
+                                rotation = quaternion.LookRotationSafe(forward, up);
+
+                                offset = math.mul(rotation, action.instance.offset);
+                                position = source + offset;
+
+                                float3 targetPosition;
+                                bool isTrack = command.entity != Entity.Null &&
+                                        velocityMap.HasComponent(command.entity);
+                                if (isTrack)
+                                {
+                                    float targetVelocity = velocityMap[command.entity].value;
+                                    float3 targetDirection = math.forward(transform.rot/*rotationMap[command.entity].Value*/);
+
+                                    targetPosition = destination;// + targetDirection * (targetVelocity * action.info.damageTime);
+
+                                    /*offset = math.mul(rotation, action.instance.offset);
+                                    position = source + offset;*/
+
+                                    if ((action.instance.flag & GameActionFlag.UseGravity) == GameActionFlag.UseGravity)
+                                    {
+                                        if (action.info.actionMoveSpeed > math.FLT_MIN_NORMAL &&
+                                               actor.accuracy > math.FLT_MIN_NORMAL &&
+                                               Math.CalculateParabolaTrajectory(
+                                                   actor.accuracy,
+                                                   math.length(gravity),
+                                                   action.info.actionMoveSpeed,
+                                                   targetVelocity,
+                                                   targetDirection,
+                                                   targetPosition,
+                                                   position,
+                                                   out var targetDistance))
+                                            targetPosition = position + targetDistance;
+                                        else
+                                        {
+                                            float3 targetForward = forward;
+
+                                            float2 angleAndTime = Math.CalculateParabolaAngleAndTime(
+                                               action.info.actionMoveSpeed,
+                                               math.length(gravity),
+                                               targetPosition - position,
+                                               ref targetForward);
+
+                                            if (angleAndTime.y > math.FLT_MIN_NORMAL)
+                                                targetPosition = position + targetForward * (action.info.actionMoveSpeed * angleAndTime.y);
+                                            else if (action.info.distance > math.FLT_MIN_NORMAL)
+                                            {
+                                                //LookRotationSafe防止direction==up
+                                                targetForward = math.mul(quaternion.LookRotationSafe(targetForward, up), Act.forward);
+
+                                                float offsetDistanceSq = math.lengthsq(Math.ProjectSafe(offset, targetForward)),
+                                                forwardLength = math.sqrt(action.info.distance * action.info.distance - offsetDistanceSq) + math.sqrt(offsetDistanceSq);
+
+                                                targetPosition = source + forwardLength * targetForward;
+                                            }
+
+                                            isTrack = false;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        if (action.info.actionMoveSpeed > math.FLT_MIN_NORMAL &&
+                                            Math.CalculateLinearTrajectory(
+                                                action.info.actionMoveSpeed,
+                                                position,
+                                                targetPosition,
+                                                targetDirection,
+                                                targetVelocity,
+                                                out var hitPoint))
+                                            targetPosition = hitPoint;
+                                        else
+                                            isTrack = false;
+                                    }
+                                }
+                                else
+                                    targetPosition = destination;
+
+                                /*if (isTowardTarget)
+                                {
+                                    forward = math.normalizesafe(targetPosition - source, forward);
+
+                                    if (action.instance.trackType == GameActionRangeType.Source)
+                                    {
+                                        forward -= Math.ProjectSafe(forward, gravity);
+
+                                        forward = math.normalizesafe(forward);
+                                    }
+
+                                    rotation = quaternion.LookRotationSafe(forward, up);
+                                }*/
+
+                                //这样会打不准
+                                /*offset = math.mul(rotation, action.instance.offset);
+                                position = source + offset;*/
+
+                                if (action.instance.direction.Equals(float3.zero))
+                                {
+                                    if (action.instance.trackType == GameActionRangeType.Source)
+                                        distance = forward * action.info.distance;
+                                    else
+                                    {
+                                        distance = targetPosition - position;
+
+                                        float length = math.length(distance);
+                                        if (action.info.distance > math.FLT_MIN_NORMAL && action.info.distance < length)
+                                            distance = action.info.distance / length * distance;
+                                    }
+                                }
+                                else
+                                    distance = math.mul(rotation, action.instance.direction) * action.info.distance;
                             }
                             else
-                                distance = math.mul(rotation, action.instance.direction) * action.info.distance;
-                        }
+                            {
+                                rotation = quaternion.LookRotationSafe(forward, up);
 
-                        if (math.lengthsq(distance) <= math.FLT_MIN_NORMAL)
-                        {
-                            //UnityEngine.Debug.LogWarning($"Reset Distance!");
+                                offset = math.mul(rotation, action.instance.offset);
+                                position = source + offset;
 
-                            distance = forward;
+                                if (action.instance.direction.Equals(float3.zero))
+                                {
+                                    distance = forward * action.info.distance;
+                                    if (action.instance.trackType != GameActionRangeType.Source)
+                                    {
+                                        /*float distanceSq = action.info.distance * action.info.distance,
+                                            offsetDistanceSq = math.lengthsq(Math.ProjectSafe(offset, forward)),
+                                            forwardLength = math.sqrt(distanceSq - offsetDistanceSq) + math.sqrt(offsetDistanceSq);
+                                        distance = forwardLength * forward - offset;*/
+
+                                        //distance -= offset;
+
+                                        if ((action.instance.flag & GameActionFlag.UseGravity) == GameActionFlag.UseGravity)
+                                        {
+                                            float3 targetForward = math.normalizesafe(distance, forward);
+                                            float2 angleAndTime = Math.CalculateParabolaAngleAndTime(
+                                                           action.info.actionMoveSpeed,
+                                                           math.length(gravity),
+                                                           distance,
+                                                           ref targetForward);
+
+                                            if (angleAndTime.y > math.FLT_MIN_NORMAL)
+                                                distance = targetForward * (action.info.actionMoveSpeed * angleAndTime.y);
+                                            else
+                                            {
+                                                //LookRotationSafe防止direction==up
+                                                targetForward = math.mul(quaternion.LookRotationSafe(forward, up), Act.forward);
+
+                                                distance = action.info.distance/*forwardLength*/ * targetForward;// - offset;
+                                            }
+                                        }
+                                    }
+                                }
+                                else
+                                    distance = math.mul(rotation, action.instance.direction) * action.info.distance;
+                            }
+
+                            if (math.lengthsq(distance) <= math.FLT_MIN_NORMAL)
+                            {
+                                //UnityEngine.Debug.LogWarning($"Reset Distance!");
+
+                                distance = forward;
+                            }
                         }
-                    }
 
 #if GAME_DEBUG_COMPARSION
                     //UnityEngine.Debug.Log($"Do: {frameIndex} : {entityIndices[index].value} : {entityArray[index].Index} : {command.index} : {position} : {translations[index].Value} : {action.instance.offset}");
@@ -1321,294 +1396,295 @@ public partial struct GameEntityActorSystem : ISystem
                     stream.Assert(distanceName, distance);
 #endif
 
-                    quaternion inverseSurfaceRotation = math.inverse(surfaceRotation);
-                    float3 surfaceForward = math.mul(inverseSurfaceRotation, forward);
-                    float surfaceForwardLength = math.lengthsq(surfaceForward.xz), surfaceAngle;
-                    if (surfaceForwardLength > math.FLT_MIN_NORMAL)
-                    {
-                        surfaceAngle = math.atan2(surfaceForward.x, action.info.distance < 0.0f ? -surfaceForward.z : surfaceForward.z);
+                        quaternion inverseSurfaceRotation = math.inverse(surfaceRotation);
+                        float3 surfaceForward = math.mul(inverseSurfaceRotation, forward);
+                        float surfaceForwardLength = math.lengthsq(surfaceForward.xz), surfaceAngle;
+                        if (surfaceForwardLength > math.FLT_MIN_NORMAL)
+                        {
+                            surfaceAngle = math.atan2(surfaceForward.x, action.info.distance < 0.0f ? -surfaceForward.z : surfaceForward.z);
 
 #if GAME_DEBUG_COMPARSION
                         stream.Assert(angleName, surfaceAngle);
 #endif
 
-                        if (index < angles.Length)
-                        {
-                            GameNodeAngle angle;
-                            angle.value = (half)surfaceAngle;
-
-                            angles[index] = angle;
-                        }
-
-                        if(index < characterAngles.Length)
-                        {
-                            GameNodeCharacterAngle angle;
-                            angle.value = (half)surfaceAngle;
-
-                            characterAngles[index] = angle;
-                        }
-
-                        if (index < rotations.Length)
-                        {
-                            Rotation result;
-                            //result.Value = quaternion.RotateY(surfaceAngle);
-                            result.Value = index < characters.Length && (characters[index].flag & GameNodeCharacterData.Flag.SurfaceUp) == GameNodeCharacterData.Flag.SurfaceUp ?
-                                math.mul(surfaceRotation, quaternion.RotateY(surfaceAngle)) :
-                                quaternion.RotateY(surfaceAngle);
-                            rotations[index] = result;
-                        }
-                    }
-                    else
-                        return;
-
-                    float3 direction = math.normalizesafe(distance, forward);
-                    if (math.any(math.abs(action.info.angleLimit) > math.FLT_MIN_NORMAL))
-                    {
-                        float3 surfaceDirection = math.mul(inverseSurfaceRotation, direction);
-                        float surfaceDirectionLength = math.lengthsq(surfaceDirection.xz);
-                        if (surfaceDirectionLength > math.FLT_MIN_NORMAL)
-                        {
-                            if (math.any(math.abs(action.info.angleLimit.xy) > math.FLT_MIN_NORMAL))
+                            if (index < angles.Length)
                             {
-                                /*quaternion horizontalRotation = Math.FromToRotation(surfaceForward.xz * math.rsqrt(surfaceForwardLength), surfaceDirection.xz * math.rsqrt(surfaceDirectionLength));
-                                horizontalRotation = Math.RotateTowards(quaternion.identity, horizontalRotation, action.info.angleLimit.x);
-                                surfaceDirection = math.mul(horizontalRotation, surfaceDirection);*/
-                                float horizontalAngle = math.atan2(surfaceDirection.x, surfaceDirection.z);
-                                quaternion horizontalRotation = quaternion.RotateY(math.clamp(horizontalAngle - surfaceAngle, action.info.angleLimit.x, action.info.angleLimit.y) + surfaceAngle);
-                                surfaceDirection = math.forward(horizontalRotation);
+                                GameNodeAngle angle;
+                                angle.value = (half)surfaceAngle;
+
+                                angles[index] = angle;
                             }
 
-                            if (math.any(math.abs(action.info.angleLimit.zw) > math.FLT_MIN_NORMAL))
-                            { 
-                                surfaceDirectionLength = math.sqrt(surfaceDirectionLength);
-                                float verticalAngle = math.atan2(surfaceDirection.y, surfaceDirectionLength);
-                                verticalAngle = math.clamp(verticalAngle, action.info.angleLimit.z, action.info.angleLimit.w);
-                                surfaceDirection.y = math.tan(verticalAngle) * surfaceDirectionLength;
-                                surfaceDirection = math.normalize(surfaceDirection);
-                            }
-                        }
-                        else if (math.any(math.abs(action.info.angleLimit.zw) > math.FLT_MIN_NORMAL))
-                        {
-                            float verticalAngle = math.clamp(math.PI * 0.5f * math.sign(surfaceDirection.y), action.info.angleLimit.z, action.info.angleLimit.w);
-                            surfaceDirection.y = math.tan(verticalAngle) * math.sqrt(surfaceForwardLength);
-                            surfaceDirection.xz = surfaceForward.xz;
-                            surfaceDirection = math.normalize(surfaceDirection);
-                        }
-
-                        direction = math.mul(surfaceRotation, surfaceDirection);
-                    }
-
-                    //因为Dreamer会导致卡死
-                    int nodeStatusValue = 0;// nodeStatus.value & (GameNodeStatus.DELAY | GameNodeStatus.OVER);
-
-                    GameNodeVelocityComponent velocityComponent;
-                    //velocityComponent.value = float3.zero;
-                    if (index < velocityComponents.Length)
-                    {
-                        var velocityComponents = this.velocityComponents[index];
-                        velocityComponents.Clear();
-
-                        float3 moveDirection = (action.instance.flag & GameActionFlag.ActorInAir) == GameActionFlag.ActorInAir ? 
-                            forward : math.normalizesafe(math.float3(forward.x, 0.0f, forward.z));
-                        if (math.abs(action.info.actorMoveSpeed) > math.FLT_MIN_NORMAL)
-                        {
-                            velocityComponent.mode = GameNodeVelocityComponent.Mode.Direct;
-
-                            velocityComponent.value = moveDirection * action.info.actorMoveSpeed;
-
-                            /*if ((action.instance.flag & GameActionFlag.MoveOnSurface) == GameActionFlag.MoveOnSurface)
-                                velocityComponent.value = math.mul(surfaceRotation, velocityComponent.value);*/
-
-                            velocityComponent.time = command.time;
-                            velocityComponent.time += action.info.actorMoveStartTime;
-                            --velocityComponent.time.count;
-
-                            velocityComponent.duration = action.info.actorMoveDuration;
-                            velocityComponents.Add(velocityComponent);
-                        }
-
-                        if (math.abs(action.info.actorJumpSpeed) > math.FLT_MIN_NORMAL)
-                        {
-                            velocityComponent.mode = GameNodeVelocityComponent.Mode.Indirect;
-
-                            float3 velocity = float3.zero;
-                            if (action.info.actorMomentum > math.FLT_MIN_NORMAL)
+                            if (index < characterAngles.Length)
                             {
-                                var characterVelocity = characterVelocities[index];
-                                characterVelocity.value -= Math.ProjectSafe(characterVelocity.value, gravity);
-                                velocity += Math.Project(characterVelocity.value * action.info.actorMomentum, forward);
+                                GameNodeCharacterAngle angle;
+                                angle.value = (half)surfaceAngle;
 
-                                characterVelocity.value = float3.zero;
-                                characterVelocities[index] = characterVelocity;
-
-                                physicsVelocities[index] = default;
+                                characterAngles[index] = angle;
                             }
 
-                            if (action.info.actorJumpSpeed > math.FLT_MIN_NORMAL)
+                            if (index < rotations.Length)
                             {
-                                nodeStatusValue |= GameNodeActorStatus.NODE_STATUS_ACT;
-
-                                if (index < actorStates.Length)
-                                {
-                                    GameNodeActorStatus status;
-                                    status.value = GameNodeActorStatus.Status.Jump;
-                                    status.time = command.time;
-                                    actorStates[index] = status;
-                                }
+                                Rotation result;
+                                //result.Value = quaternion.RotateY(surfaceAngle);
+                                result.Value = index < characters.Length && (characters[index].flag & GameNodeCharacterData.Flag.SurfaceUp) == GameNodeCharacterData.Flag.SurfaceUp ?
+                                    math.mul(surfaceRotation, quaternion.RotateY(surfaceAngle)) :
+                                    quaternion.RotateY(surfaceAngle);
+                                rotations[index] = result;
                             }
-
-                            velocity += math.normalizesafe(gravity) * -action.info.actorJumpSpeed;
-                            if ((action.instance.flag & GameActionFlag.ActorOnSurface) == GameActionFlag.ActorOnSurface)
-                                velocity = math.mul(surfaceRotation, velocity);
-
-                            //UnityEngine.Debug.Log($"{velocity}");
-
-                            velocityComponent.value = velocity;
-                            velocityComponent.time = command.time;
-                            velocityComponent.time += action.info.actorJumpStartTime;
-                            --velocityComponent.time.count;
-
-                            velocityComponent.duration = 0.0f;
-                            velocityComponents.Add(velocityComponent);
-                        }
-
-                        if (math.abs(action.info.actorMoveSpeedIndirect) > math.FLT_MIN_NORMAL)
-                        {
-                            velocityComponent.mode = GameNodeVelocityComponent.Mode.Indirect;
-
-                            float3 velocity = moveDirection * action.info.actorMoveSpeedIndirect;
-                            if ((action.instance.flag & GameActionFlag.ActorOnSurface) == GameActionFlag.ActorOnSurface)
-                                velocity = math.mul(surfaceRotation, velocity);
-
-                            //UnityEngine.Debug.Log($"{velocity}");
-
-                            velocityComponent.value = velocity;
-
-                            velocityComponent.time = command.time;
-                            velocityComponent.time += action.info.actorMoveStartTimeIndirect;
-                            --velocityComponent.time.count;
-
-                            velocityComponent.duration = action.info.actorMoveDurationIndirect;
-                            velocityComponents.Add(velocityComponent);
-                        }
-                    }
-
-                    if (index < velocities.Length)
-                    {
-                        GameNodeVelocity velocity;
-                        velocity.value = action.info.actorMoveStartTime + action.info.actorMoveDuration < action.info.artTime ?
-                            0.0f : action.info.actorMoveSpeed;
-
-                        if (action.info.actorMomentum > math.FLT_MIN_NORMAL)
-                            velocity.value = math.max(velocity.value, velocities[index].value);
-
-                        velocities[index] = velocity;
-                    }
-
-                    if (index < positions.Length)
-                        positions[index].Clear();
-
-                    if (nodeStatusValue != nodeStatus.value)
-                    {
-                        nodeStatus.value = nodeStatusValue;
-                        nodeStatusMap[entity] = nodeStatus;
-                    }
-
-                    var artTime = command.time;
-                    artTime += action.info.artTime;
-                    if (index < this.delay.Length)
-                    {
-                        //var delay = this.delay[index];
-                        GameNodeDelay delay;
-                        delay.time = command.time;
-                        if (action.info.delayDuration > math.FLT_MIN_NORMAL)
-                        {
-                            delay.startTime = (half)action.info.delayStartTime;
-                            delay.endTime = (half)action.info.delayDuration;
                         }
                         else
+                            return;
+
+                        float3 direction = math.normalizesafe(distance, forward);
+                        if (math.any(math.abs(action.info.angleLimit) > math.FLT_MIN_NORMAL))
                         {
-                            delay.startTime = half.zero;
-                            delay.endTime = (half)action.info.artTime;
+                            float3 surfaceDirection = math.mul(inverseSurfaceRotation, direction);
+                            float surfaceDirectionLength = math.lengthsq(surfaceDirection.xz);
+                            if (surfaceDirectionLength > math.FLT_MIN_NORMAL)
+                            {
+                                if (math.any(math.abs(action.info.angleLimit.xy) > math.FLT_MIN_NORMAL))
+                                {
+                                    /*quaternion horizontalRotation = Math.FromToRotation(surfaceForward.xz * math.rsqrt(surfaceForwardLength), surfaceDirection.xz * math.rsqrt(surfaceDirectionLength));
+                                    horizontalRotation = Math.RotateTowards(quaternion.identity, horizontalRotation, action.info.angleLimit.x);
+                                    surfaceDirection = math.mul(horizontalRotation, surfaceDirection);*/
+                                    float horizontalAngle = math.atan2(surfaceDirection.x, surfaceDirection.z);
+                                    quaternion horizontalRotation = quaternion.RotateY(math.clamp(horizontalAngle - surfaceAngle, action.info.angleLimit.x, action.info.angleLimit.y) + surfaceAngle);
+                                    surfaceDirection = math.forward(horizontalRotation);
+                                }
+
+                                if (math.any(math.abs(action.info.angleLimit.zw) > math.FLT_MIN_NORMAL))
+                                {
+                                    surfaceDirectionLength = math.sqrt(surfaceDirectionLength);
+                                    float verticalAngle = math.atan2(surfaceDirection.y, surfaceDirectionLength);
+                                    verticalAngle = math.clamp(verticalAngle, action.info.angleLimit.z, action.info.angleLimit.w);
+                                    surfaceDirection.y = math.tan(verticalAngle) * surfaceDirectionLength;
+                                    surfaceDirection = math.normalize(surfaceDirection);
+                                }
+                            }
+                            else if (math.any(math.abs(action.info.angleLimit.zw) > math.FLT_MIN_NORMAL))
+                            {
+                                float verticalAngle = math.clamp(math.PI * 0.5f * math.sign(surfaceDirection.y), action.info.angleLimit.z, action.info.angleLimit.w);
+                                surfaceDirection.y = math.tan(verticalAngle) * math.sqrt(surfaceForwardLength);
+                                surfaceDirection.xz = surfaceForward.xz;
+                                surfaceDirection = math.normalize(surfaceDirection);
+                            }
+
+                            direction = math.mul(surfaceRotation, surfaceDirection);
                         }
 
-                        this.delay[index] = delay;
-                    }
+                        //因为Dreamer会导致卡死
+                        int nodeStatusValue = 0;// nodeStatus.value & (GameNodeStatus.DELAY | GameNodeStatus.OVER);
 
-                    actorTime.value = command.time + action.info.performTime;
-                    actorTimes[index] = actorTime;
-
-                    var actorInfo = actorInfos[index];
-                    //distance += offset;
-                    int version = ++actorInfo.version;
-
-                    actorInfo.alertTime = command.time;
-
-                    actorInfos[index] = actorInfo;
-
-                    GameEntityActionInfo actionInfo;
-                    actionInfo.commandVersion = command.version;
-                    actionInfo.version = version;
-                    actionInfo.index = command.index;
-                    actionInfo.hit = action.info.hitSource;
-                    actionInfo.time = artTime;
-                    actionInfo.forward = forward;
-                    actionInfo.distance = distance;// command.distance;// distance + offset;
-                    //actionInfo.offset = offset;
-                    actionInfo.entity = command.entity;
-
-                    actionInfos[entity] = actionInfo;
-
-                    actorActionInfo.coolDownTime = command.time + action.info.coolDownTime;
-                    actorActionInfos[command.index] = actorActionInfo;
-
-                    //UnityEngine.Debug.Log($"{position} : {distance}");
-                    //if (action.collider.IsCreated)
-                    {
-                        //UnityEngine.Debug.LogError($"Actor {entity.Index} : {command.version}");
-
-                        GameEntityCommandActionCreate result;
-
-                        result.value.version = version;
-                        result.value.index = command.index;
-                        result.value.actionIndex = actionIndex;
-                        result.value.time = command.time;
-                        result.value.entity = entity;
-                        result.valueEx.camp = camps[index].value;
-                        result.valueEx.direction = direction;
-                        result.valueEx.offset = offset;
-                        result.valueEx.position = position;
-                        result.valueEx.targetPosition = position + distance;
-                        result.valueEx.target = command.entity;
-                        result.valueEx.info = action.info;
-                        result.valueEx.value = action.instance;
-                        result.valueEx.entityArchetype = archetypes[index].value;
-                        result.valueEx.collider = actionCollider;
-                        result.valueEx.origin.rot = quaternion.LookRotationSafe(
-                            action.instance.flag == GameActionFlag.MoveInAir ? direction : math.float3(direction.x, 0.0f, direction.z), 
-                            up);
-
-                        switch (action.instance.rangeType)
+                        GameNodeVelocityComponent velocityComponent;
+                        //velocityComponent.value = float3.zero;
+                        if (index < velocityComponents.Length)
                         {
-                            case GameActionRangeType.Destination:
-                                result.valueEx.origin.pos = result.valueEx.targetPosition;
-                                break;
-                            case GameActionRangeType.All:
-                                result.valueEx.origin.pos = (result.valueEx.position + result.valueEx.targetPosition) * 0.5f;
-                                break;
-                            default:
-                                result.valueEx.origin.pos = result.valueEx.position;
-                                break;
+                            var velocityComponents = this.velocityComponents[index];
+                            velocityComponents.Clear();
+
+                            float3 moveDirection = (action.instance.flag & GameActionFlag.ActorInAir) == GameActionFlag.ActorInAir ?
+                                forward : math.normalizesafe(math.float3(forward.x, 0.0f, forward.z));
+                            if (math.abs(action.info.actorMoveSpeed) > math.FLT_MIN_NORMAL)
+                            {
+                                velocityComponent.mode = GameNodeVelocityComponent.Mode.Direct;
+
+                                velocityComponent.value = moveDirection * action.info.actorMoveSpeed;
+
+                                /*if ((action.instance.flag & GameActionFlag.MoveOnSurface) == GameActionFlag.MoveOnSurface)
+                                    velocityComponent.value = math.mul(surfaceRotation, velocityComponent.value);*/
+
+                                velocityComponent.time = command.time;
+                                velocityComponent.time += action.info.actorMoveStartTime;
+                                --velocityComponent.time.count;
+
+                                velocityComponent.duration = action.info.actorMoveDuration;
+                                velocityComponents.Add(velocityComponent);
+                            }
+
+                            if (math.abs(action.info.actorJumpSpeed) > math.FLT_MIN_NORMAL)
+                            {
+                                velocityComponent.mode = GameNodeVelocityComponent.Mode.Indirect;
+
+                                float3 velocity = float3.zero;
+                                if (action.info.actorMomentum > math.FLT_MIN_NORMAL)
+                                {
+                                    var characterVelocity = characterVelocities[index];
+                                    characterVelocity.value -= Math.ProjectSafe(characterVelocity.value, gravity);
+                                    velocity += Math.Project(characterVelocity.value * action.info.actorMomentum, forward);
+
+                                    characterVelocity.value = float3.zero;
+                                    characterVelocities[index] = characterVelocity;
+
+                                    physicsVelocities[index] = default;
+                                }
+
+                                if (action.info.actorJumpSpeed > math.FLT_MIN_NORMAL)
+                                {
+                                    nodeStatusValue |= GameNodeActorStatus.NODE_STATUS_ACT;
+
+                                    if (index < actorStates.Length)
+                                    {
+                                        GameNodeActorStatus status;
+                                        status.value = GameNodeActorStatus.Status.Jump;
+                                        status.time = command.time;
+                                        actorStates[index] = status;
+                                    }
+                                }
+
+                                velocity += math.normalizesafe(gravity) * -action.info.actorJumpSpeed;
+                                if ((action.instance.flag & GameActionFlag.ActorOnSurface) == GameActionFlag.ActorOnSurface)
+                                    velocity = math.mul(surfaceRotation, velocity);
+
+                                //UnityEngine.Debug.Log($"{velocity}");
+
+                                velocityComponent.value = velocity;
+                                velocityComponent.time = command.time;
+                                velocityComponent.time += action.info.actorJumpStartTime;
+                                --velocityComponent.time.count;
+
+                                velocityComponent.duration = 0.0f;
+                                velocityComponents.Add(velocityComponent);
+                            }
+
+                            if (math.abs(action.info.actorMoveSpeedIndirect) > math.FLT_MIN_NORMAL)
+                            {
+                                velocityComponent.mode = GameNodeVelocityComponent.Mode.Indirect;
+
+                                float3 velocity = moveDirection * action.info.actorMoveSpeedIndirect;
+                                if ((action.instance.flag & GameActionFlag.ActorOnSurface) == GameActionFlag.ActorOnSurface)
+                                    velocity = math.mul(surfaceRotation, velocity);
+
+                                //UnityEngine.Debug.Log($"{velocity}");
+
+                                velocityComponent.value = velocity;
+
+                                velocityComponent.time = command.time;
+                                velocityComponent.time += action.info.actorMoveStartTimeIndirect;
+                                --velocityComponent.time.count;
+
+                                velocityComponent.duration = action.info.actorMoveDurationIndirect;
+                                velocityComponents.Add(velocityComponent);
+                            }
                         }
 
-                        entityManager.Enqueue(result);
-                        //Create(result, action);
+                        if (index < velocities.Length)
+                        {
+                            GameNodeVelocity velocity;
+                            velocity.value = action.info.actorMoveStartTime + action.info.actorMoveDuration < action.info.artTime ?
+                                0.0f : action.info.actorMoveSpeed;
+
+                            if (action.info.actorMomentum > math.FLT_MIN_NORMAL)
+                                velocity.value = math.max(velocity.value, velocities[index].value);
+
+                            velocities[index] = velocity;
+                        }
+
+                        if (index < positions.Length)
+                            positions[index].Clear();
+
+                        if (nodeStatusValue != nodeStatus.value)
+                        {
+                            nodeStatus.value = nodeStatusValue;
+                            nodeStatusMap[entity] = nodeStatus;
+                        }
+
+                        var artTime = command.time;
+                        artTime += action.info.artTime;
+                        if (index < this.delay.Length)
+                        {
+                            //var delay = this.delay[index];
+                            GameNodeDelay delay;
+                            delay.time = command.time;
+                            if (action.info.delayDuration > math.FLT_MIN_NORMAL)
+                            {
+                                delay.startTime = (half)action.info.delayStartTime;
+                                delay.endTime = (half)action.info.delayDuration;
+                            }
+                            else
+                            {
+                                delay.startTime = half.zero;
+                                delay.endTime = (half)action.info.artTime;
+                            }
+
+                            this.delay[index] = delay;
+                        }
+
+                        actorTime.value = command.time + action.info.performTime;
+                        actorTimes[index] = actorTime;
+
+                        var actorInfo = actorInfos[index];
+                        //distance += offset;
+                        int version = ++actorInfo.version;
+
+                        actorInfo.alertTime = command.time;
+
+                        actorInfos[index] = actorInfo;
+
+                        GameEntityActionInfo actionInfo;
+                        actionInfo.commandVersion = command.version;
+                        actionInfo.version = version;
+                        actionInfo.index = command.index;
+                        actionInfo.hit = action.info.hitSource;
+                        actionInfo.time = artTime;
+                        actionInfo.forward = forward;
+                        actionInfo.distance = distance;// command.distance;// distance + offset;
+                                                       //actionInfo.offset = offset;
+                        actionInfo.entity = command.entity;
+
+                        actionInfos[entity] = actionInfo;
+
+                        actorActionInfo.coolDownTime = command.time + action.info.coolDownTime;
+                        actorActionInfos[command.index] = actorActionInfo;
+
+                        //UnityEngine.Debug.Log($"{position} : {distance}");
+                        //if (action.collider.IsCreated)
+                        {
+                            //UnityEngine.Debug.LogError($"Actor {entity.Index} : {command.version}");
+
+                            GameEntityCommandActionCreate result;
+
+                            result.value.version = version;
+                            result.value.index = command.index;
+                            result.value.actionIndex = actionIndex;
+                            result.value.time = command.time;
+                            result.value.entity = entity;
+                            result.valueEx.camp = camps[index].value;
+                            result.valueEx.direction = direction;
+                            result.valueEx.offset = offset;
+                            result.valueEx.position = position;
+                            result.valueEx.targetPosition = position + distance;
+                            result.valueEx.target = command.entity;
+                            result.valueEx.info = action.info;
+                            result.valueEx.value = action.instance;
+                            result.valueEx.entityArchetype = archetypes[index].value;
+                            result.valueEx.collider = actionCollider;
+                            result.valueEx.origin.rot = quaternion.LookRotationSafe(
+                                action.instance.flag == GameActionFlag.MoveInAir ? direction : math.float3(direction.x, 0.0f, direction.z),
+                                up);
+
+                            switch (action.instance.rangeType)
+                            {
+                                case GameActionRangeType.Destination:
+                                    result.valueEx.origin.pos = result.valueEx.targetPosition;
+                                    break;
+                                case GameActionRangeType.All:
+                                    result.valueEx.origin.pos = (result.valueEx.position + result.valueEx.targetPosition) * 0.5f;
+                                    break;
+                                default:
+                                    result.valueEx.origin.pos = result.valueEx.position;
+                                    break;
+                            }
+
+                            entityManager.Enqueue(result);
+                            //Create(result, action);
+                        }
                     }
-                }
 #if GAME_DEBUG_COMPARSION
                 else
                     UnityEngine.Debug.Log($"Do Fail {frameIndex} : {entityIndices[index].value} : {entityArray[index].Index} : {actorActionInfo.coolDownTime}");
 #endif
+                }
             }
 #if GAME_DEBUG_COMPARSION
             else
@@ -1664,10 +1740,7 @@ public partial struct GameEntityActorSystem : ISystem
         public ComponentTypeHandle<Translation> translationType;
 
         [ReadOnly]
-        public ComponentTypeHandle<GameNodeCommander> commanderType;
-
-        [ReadOnly]
-        public ComponentTypeHandle<GameNodeStatus> nodeStatusType;
+        public ComponentTypeHandle<GameNodeStatus> statusType;
 
         [ReadOnly]
         public ComponentTypeHandle<GameNodeSurface> surfaceType;
@@ -1688,10 +1761,10 @@ public partial struct GameEntityActorSystem : ISystem
         public ComponentTypeHandle<GameEntityActionCommand> commandType;
 
         [ReadOnly]
-        public BufferTypeHandle<GameEntityItem> entityItemType;
+        public BufferTypeHandle<GameEntityAction> entityActionType;
 
         [ReadOnly]
-        public BufferTypeHandle<GameEntityAction> entityActionType;
+        public BufferTypeHandle<GameEntityItem> entityItemType;
 
         [ReadOnly]
         public BufferTypeHandle<GameEntityActorActionData> actorActionType;
@@ -1721,6 +1794,8 @@ public partial struct GameEntityActorSystem : ISystem
         public ComponentTypeHandle<GameEntityActorTime> actorTimeType;
 
         public ComponentTypeHandle<GameEntityActorInfo> actorInfoType;
+
+        public ComponentTypeHandle<GameEntityActionCommander> commanderType;
 
         public ComponentTypeHandle<GameEntityCommandVersion> commandVersionType;
 
@@ -1757,6 +1832,9 @@ public partial struct GameEntityActorSystem : ISystem
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
+            if (!chunk.Has(ref commandType))
+                return;
+
             Act act;
             act.isDisabled = chunk.Has(ref disabledType);
             act.gravity = gravity;
@@ -1772,16 +1850,16 @@ public partial struct GameEntityActorSystem : ISystem
             act.commandMap = commands;
             act.entityArray = chunk.GetNativeArray(entityArrayType);
             act.translations = chunk.GetNativeArray(ref translationType);
-            act.commanders = chunk.GetNativeArray(ref commanderType);
-            act.nodeStates = chunk.GetNativeArray(ref nodeStatusType);
+            act.states = chunk.GetNativeArray(ref statusType);
             act.surfaces = chunk.GetNativeArray(ref surfaceType);
             act.characters = chunk.GetNativeArray(ref characterType);
             act.camps = chunk.GetNativeArray(ref campType);
             act.actors = chunk.GetNativeArray(ref actorType);
             act.archetypes = chunk.GetNativeArray(ref archetypeType);
             act.commands = chunk.GetNativeArray(ref commandType);
-            act.entityItems = chunk.GetBufferAccessor(ref entityItemType);
+            act.commanders = chunk.GetNativeArray(ref commanderType);
             act.entityActions = chunk.GetBufferAccessor(ref entityActionType);
+            act.entityItems = chunk.GetBufferAccessor(ref entityItemType);
             act.actorActions = chunk.GetBufferAccessor(ref actorActionType);
             act.actorActionInfos = chunk.GetBufferAccessor(ref actorActionInfoType);
             act.velocityComponents = chunk.GetBufferAccessor(ref velocityComponentType);
@@ -1821,7 +1899,11 @@ public partial struct GameEntityActorSystem : ISystem
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
+            {
                 act.Execute(i);
+
+                chunk.SetComponentEnabled(ref commanderType, i, false);
+            }
         }
     }
     
@@ -1831,6 +1913,83 @@ public partial struct GameEntityActorSystem : ISystem
     private EntityQuery __actionSetGroup;
     private EntityQuery __actionInfoSetGroup;
 
+    private ComponentLookup<Disabled> __disabled;
+
+    private ComponentLookup<Translation> __translations;
+
+    private ComponentLookup<Rotation> __rotations;
+
+    private ComponentLookup<PhysicsMass> __physicsMasses;
+
+    private ComponentLookup<PhysicsCollider> __physicsColliders;
+
+    private ComponentLookup<GameNodeVelocity> __velocities;
+
+    private ComponentLookup<GameEntityActionCommand> __commands;
+
+    private EntityTypeHandle __entityArrayType;
+
+    private ComponentTypeHandle<Disabled> __disabledType;
+
+    private ComponentTypeHandle<Translation> __translationType;
+
+    private ComponentTypeHandle<GameNodeStatus> __statusType;
+
+    private ComponentTypeHandle<GameNodeSurface> __surfaceType;
+
+    private ComponentTypeHandle<GameNodeCharacterData> __characterType;
+
+    private ComponentTypeHandle<GameEntityCamp> __campType;
+
+    private ComponentTypeHandle<GameEntityActorData> __actorType;
+
+    private ComponentTypeHandle<GameEntityArchetype> __archetypeType;
+
+    private ComponentTypeHandle<GameEntityActionCommand> __commandType;
+
+    private BufferTypeHandle<GameEntityAction> __entityActionType;
+
+    private BufferTypeHandle<GameEntityItem> __entityItemType;
+
+    private BufferTypeHandle<GameEntityActorActionData> __actorActionType;
+
+    private BufferTypeHandle<GameEntityActorActionInfo> __actorActionInfoType;
+
+    private BufferTypeHandle<GameNodeVelocityComponent> __velocityComponentType;
+
+    private BufferTypeHandle<GameNodePosition> __positionType;
+
+    private ComponentTypeHandle<Rotation> __rotationType;
+
+    private ComponentTypeHandle<GameNodeDelay> __delayType;
+
+    private ComponentTypeHandle<GameNodeVelocity> __velocityType;
+
+    private ComponentTypeHandle<GameNodeAngle> __angleType;
+
+    private ComponentTypeHandle<GameNodeCharacterAngle> __characterAngleType;
+
+    private ComponentTypeHandle<GameNodeCharacterVelocity> __characterVelocityType;
+
+    private ComponentTypeHandle<PhysicsVelocity> __physicsVelocityType;
+
+    private ComponentTypeHandle<GameNodeActorStatus> __actorStatusType;
+
+    private ComponentTypeHandle<GameEntityActorTime> __actorTimeType;
+
+    private ComponentTypeHandle<GameEntityActorInfo> __actorInfoType;
+
+    private ComponentTypeHandle<GameEntityActionCommander> __commanderType;
+
+    private ComponentTypeHandle<GameEntityCommandVersion> __commandVersionType;
+
+    private ComponentLookup<GameEntityCommandVersion> __commandVersions;
+
+    private ComponentLookup<GameEntityActionInfo> __actionInfos;
+
+    private ComponentLookup<GameNodeStatus> __nodeStates;
+
+    private ComponentLookup<GameActionStatus> __actionStates;
 
 #if GAME_DEBUG_COMPARSION
     private GameRollbackFrame __frame;
@@ -1850,12 +2009,12 @@ public partial struct GameEntityActorSystem : ISystem
                     ComponentType.ReadOnly<GameEntityCamp>(),
                     ComponentType.ReadOnly<GameEntityActorData>(),
                     ComponentType.ReadOnly<GameEntityArchetype>(),
-                    ComponentType.ReadOnly<GameEntityActionCommand>(),
                     ComponentType.ReadOnly<GameEntityActorActionData>(),
-                    ComponentType.ReadWrite<GameEntityActorActionInfo>(),
+                    ComponentType.ReadWrite<GameEntityActionCommander>(),
                     ComponentType.ReadWrite<GameEntityCommandVersion>(),
-                    ComponentType.ReadWrite<GameEntityActorTime>(), 
+                    ComponentType.ReadWrite<GameEntityActorActionInfo>(),
                     ComponentType.ReadWrite<GameEntityActorInfo>(),
+                    ComponentType.ReadWrite<GameEntityActorTime>(),
                 },
                 None = new ComponentType[]
                 {
@@ -1865,7 +2024,7 @@ public partial struct GameEntityActorSystem : ISystem
                 Options = EntityQueryOptions.IncludeDisabledEntities
             });
 
-        __group.SetChangedVersionFilter(typeof(GameEntityActionCommand));
+        __group.SetChangedVersionFilter(typeof(GameEntityActionCommander));
 
         __physicsStepGroup = state.GetEntityQuery(typeof(Unity.Physics.PhysicsStep));
 
@@ -1876,6 +2035,46 @@ public partial struct GameEntityActorSystem : ISystem
         __actionSetGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameActionSetData>());
 
         __actionInfoSetGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameActionItemSetData>());
+
+        __disabled = state.GetComponentLookup<Disabled>(true);
+        __translations = state.GetComponentLookup<Translation>(true);
+        __rotations = state.GetComponentLookup<Rotation>(true);
+        __physicsMasses = state.GetComponentLookup<PhysicsMass>(true);
+        __physicsColliders = state.GetComponentLookup<PhysicsCollider>(true);
+        __velocities = state.GetComponentLookup<GameNodeVelocity>(true);
+        __commands = state.GetComponentLookup<GameEntityActionCommand>(true);
+        __entityArrayType = state.GetEntityTypeHandle();
+        __disabledType = state.GetComponentTypeHandle<Disabled>(true);
+        __translationType = state.GetComponentTypeHandle<Translation>(true);
+        __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
+        __surfaceType = state.GetComponentTypeHandle<GameNodeSurface>(true);
+        __characterType = state.GetComponentTypeHandle<GameNodeCharacterData>(true);
+        __campType = state.GetComponentTypeHandle<GameEntityCamp>(true);
+        __actorType = state.GetComponentTypeHandle<GameEntityActorData>(true);
+        __archetypeType = state.GetComponentTypeHandle<GameEntityArchetype>(true);
+        __commandType = state.GetComponentTypeHandle<GameEntityActionCommand>(true);
+        __entityActionType = state.GetBufferTypeHandle<GameEntityAction>(true);
+        __entityItemType = state.GetBufferTypeHandle<GameEntityItem>(true);
+        __actorActionType = state.GetBufferTypeHandle<GameEntityActorActionData>(true);
+        __actorActionInfoType = state.GetBufferTypeHandle<GameEntityActorActionInfo>();
+        __velocityComponentType = state.GetBufferTypeHandle<GameNodeVelocityComponent>();
+        __positionType = state.GetBufferTypeHandle<GameNodePosition>();
+        __rotationType = state.GetComponentTypeHandle<Rotation>();
+        __delayType = state.GetComponentTypeHandle<GameNodeDelay>();
+        __velocityType = state.GetComponentTypeHandle<GameNodeVelocity>();
+        __angleType = state.GetComponentTypeHandle<GameNodeAngle>();
+        __characterAngleType = state.GetComponentTypeHandle<GameNodeCharacterAngle>();
+        __characterVelocityType = state.GetComponentTypeHandle<GameNodeCharacterVelocity>();
+        __physicsVelocityType = state.GetComponentTypeHandle<PhysicsVelocity>();
+        __actorStatusType = state.GetComponentTypeHandle<GameNodeActorStatus>();
+        __actorTimeType = state.GetComponentTypeHandle<GameEntityActorTime>();
+        __actorInfoType = state.GetComponentTypeHandle<GameEntityActorInfo>();
+        __commanderType = state.GetComponentTypeHandle<GameEntityActionCommander>();
+        __commandVersionType = state.GetComponentTypeHandle<GameEntityCommandVersion>();
+        __commandVersions = state.GetComponentLookup<GameEntityCommandVersion>();
+        __actionInfos = state.GetComponentLookup<GameEntityActionInfo>();
+        __actionStates = state.GetComponentLookup<GameActionStatus>();
+        __nodeStates = state.GetComponentLookup<GameNodeStatus>();
 
         __endFrameBarrier = state.World.GetOrCreateSystemUnmanaged<GameEntityActionBeginFactorySystem>().pool;
 
@@ -1910,45 +2109,45 @@ public partial struct GameEntityActorSystem : ISystem
         act.actions =  __actionSetGroup.GetSingleton<GameActionSetData>().definition;
         act.items = __actionInfoSetGroup.GetSingleton<GameActionItemSetData>().definition;
         act.actionColliders = __actionColliders.reader;
-        act.disabled = state.GetComponentLookup<Disabled>(true);
-        act.translations = state.GetComponentLookup<Translation>(true);
-        act.rotations = state.GetComponentLookup<Rotation>(true);
-        act.physicsMasses = state.GetComponentLookup<PhysicsMass>(true);
-        act.physicsColliders = state.GetComponentLookup<PhysicsCollider>(true);
-        act.velocities = state.GetComponentLookup<GameNodeVelocity>(true);
-        act.commands = state.GetComponentLookup<GameEntityActionCommand>(true);
-        act.entityArrayType = state.GetEntityTypeHandle();
-        act.disabledType = state.GetComponentTypeHandle<Disabled>(true);
-        act.translationType = state.GetComponentTypeHandle<Translation>(true);
-        act.commanderType = state.GetComponentTypeHandle<GameNodeCommander>(true);
-        act.nodeStatusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
-        act.surfaceType = state.GetComponentTypeHandle<GameNodeSurface>(true);
-        act.characterType = state.GetComponentTypeHandle<GameNodeCharacterData>(true);
-        act.campType = state.GetComponentTypeHandle<GameEntityCamp>(true);
-        act.actorType = state.GetComponentTypeHandle<GameEntityActorData>(true);
-        act.archetypeType = state.GetComponentTypeHandle<GameEntityArchetype>(true);
-        act.commandType = state.GetComponentTypeHandle<GameEntityActionCommand>(true);
-        act.entityItemType = state.GetBufferTypeHandle<GameEntityItem>(true);
-        act.entityActionType = state.GetBufferTypeHandle<GameEntityAction>(true);
-        act.actorActionType = state.GetBufferTypeHandle<GameEntityActorActionData>(true);
-        act.actorActionInfoType = state.GetBufferTypeHandle<GameEntityActorActionInfo>();
-        act.velocityComponentType = state.GetBufferTypeHandle<GameNodeVelocityComponent>();
-        act.positionType = state.GetBufferTypeHandle<GameNodePosition>();
-        act.rotationType = state.GetComponentTypeHandle<Rotation>();
-        act.delayType = state.GetComponentTypeHandle<GameNodeDelay>();
-        act.velocityType = state.GetComponentTypeHandle<GameNodeVelocity>();
-        act.angleType = state.GetComponentTypeHandle<GameNodeAngle>();
-        act.characterAngleType = state.GetComponentTypeHandle<GameNodeCharacterAngle>();
-        act.characterVelocityType = state.GetComponentTypeHandle<GameNodeCharacterVelocity>();
-        act.physicsVelocityType = state.GetComponentTypeHandle<PhysicsVelocity>();
-        act.actorStatusType = state.GetComponentTypeHandle<GameNodeActorStatus>();
-        act.actorTimeType = state.GetComponentTypeHandle<GameEntityActorTime>();
-        act.actorInfoType = state.GetComponentTypeHandle<GameEntityActorInfo>();
-        act.commandVersionType = state.GetComponentTypeHandle<GameEntityCommandVersion>();
-        act.commandVersions = state.GetComponentLookup<GameEntityCommandVersion>();
-        act.actionInfos = state.GetComponentLookup<GameEntityActionInfo>();
-        act.actionStates = state.GetComponentLookup<GameActionStatus>();
-        act.nodeStates = state.GetComponentLookup<GameNodeStatus>();
+        act.disabled = __disabled.UpdateAsRef(ref state).UpdateAsRef(ref state);
+        act.translations = __translations.UpdateAsRef(ref state);
+        act.rotations = __rotations.UpdateAsRef(ref state);
+        act.physicsMasses = __physicsMasses.UpdateAsRef(ref state);
+        act.physicsColliders = __physicsColliders.UpdateAsRef(ref state);
+        act.velocities = __velocities.UpdateAsRef(ref state);
+        act.commands = __commands.UpdateAsRef(ref state);
+        act.entityArrayType = __entityArrayType.UpdateAsRef(ref state);
+        act.disabledType = __disabledType.UpdateAsRef(ref state);
+        act.translationType = __translationType.UpdateAsRef(ref state);
+        act.statusType = __statusType.UpdateAsRef(ref state);
+        act.surfaceType = __surfaceType.UpdateAsRef(ref state);
+        act.characterType = __characterType.UpdateAsRef(ref state);
+        act.campType = __campType.UpdateAsRef(ref state);
+        act.actorType = __actorType.UpdateAsRef(ref state);
+        act.archetypeType = __archetypeType.UpdateAsRef(ref state);
+        act.commandType = __commandType.UpdateAsRef(ref state);
+        act.entityActionType = __entityActionType.UpdateAsRef(ref state);
+        act.entityItemType = __entityItemType.UpdateAsRef(ref state);
+        act.actorActionType = __actorActionType.UpdateAsRef(ref state);
+        act.actorActionInfoType = __actorActionInfoType.UpdateAsRef(ref state);
+        act.velocityComponentType = __velocityComponentType.UpdateAsRef(ref state);
+        act.positionType = __positionType.UpdateAsRef(ref state);
+        act.rotationType = __rotationType.UpdateAsRef(ref state);
+        act.delayType = __delayType.UpdateAsRef(ref state);
+        act.velocityType = __velocityType.UpdateAsRef(ref state);
+        act.angleType = __angleType.UpdateAsRef(ref state);
+        act.characterAngleType = __characterAngleType.UpdateAsRef(ref state);
+        act.characterVelocityType = __characterVelocityType.UpdateAsRef(ref state);
+        act.physicsVelocityType = __physicsVelocityType.UpdateAsRef(ref state);
+        act.actorStatusType = __actorStatusType.UpdateAsRef(ref state);
+        act.actorTimeType = __actorTimeType.UpdateAsRef(ref state);
+        act.actorInfoType = __actorInfoType.UpdateAsRef(ref state);
+        act.commanderType = __commanderType.UpdateAsRef(ref state);
+        act.commandVersionType = __commandVersionType.UpdateAsRef(ref state);
+        act.commandVersions = __commandVersions.UpdateAsRef(ref state);
+        act.actionInfos = __actionInfos.UpdateAsRef(ref state);
+        act.actionStates = __actionStates.UpdateAsRef(ref state);
+        act.nodeStates = __nodeStates.UpdateAsRef(ref state);
         act.entityManager = entityMananger.parallelWriter;
 
 #if GAME_DEBUG_COMPARSION
@@ -1970,7 +2169,7 @@ public partial struct GameEntityActorSystem : ISystem
         act.entityIndexType = state.GetComponentTypeHandle<GameEntityIndex>(true);
 #endif
 
-        var jobHandle = act.ScheduleParallel(__group, state.Dependency);
+        var jobHandle = act.ScheduleParallelByRef(__group, state.Dependency);
 
 #if GAME_DEBUG_COMPARSION
         streamScheduler.End(jobHandle);
@@ -2033,6 +2232,8 @@ public partial struct GameEntityHitSystem : ISystem
                     if (actorInfo.alertTime < hit.time)
                     {
                         var instance = instances[index];
+
+                        commands.SetComponentEnabled(entity, true);
 
                         GameEntityBreakCommand command;
                         command.version = commandVersions[index].value;
@@ -2353,9 +2554,6 @@ public partial struct GameEntityBreakSystem : ISystem
         public ComponentTypeHandle<Disabled> disabledType;
 
         [ReadOnly]
-        public ComponentTypeHandle<GameEntityBreakCommand> commandType;
-
-        [ReadOnly]
         public ComponentTypeHandle<GameEntityEventInfo> eventInfoType;
 
         [ReadOnly]
@@ -2367,6 +2565,8 @@ public partial struct GameEntityBreakSystem : ISystem
         public BufferTypeHandle<GameNodeVelocityComponent> velocityComponentType;
 
         public BufferTypeHandle<GameNodePosition> positionType;
+
+        public ComponentTypeHandle<GameEntityBreakCommand> commandType;
 
         public ComponentTypeHandle<GameEntityCommandVersion> commandVersionType;
 
@@ -2435,11 +2635,47 @@ public partial struct GameEntityBreakSystem : ISystem
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
+            {
                 interrupt.Execute(i);
+
+                chunk.SetComponentEnabled(ref commandType, i, false);
+            }
         }
     }
     
     private EntityQuery __group;
+
+    private EntityTypeHandle __entityArrayType;
+
+    private ComponentTypeHandle<Disabled> __disabledType;
+
+    private ComponentTypeHandle<GameEntityEventInfo> __eventInfoType;
+
+    private ComponentTypeHandle<GameNodeStatus> __nodeStatusType;
+
+    private BufferTypeHandle<GameEntityAction> __entityActionType;
+
+    private BufferTypeHandle<GameNodeVelocityComponent> __velocityComponentType;
+
+    private BufferTypeHandle<GameNodePosition> __positionType;
+
+    private ComponentTypeHandle<GameEntityBreakCommand> __commandType;
+
+    private ComponentTypeHandle<GameEntityCommandVersion> __commandVersionType;
+
+    private ComponentTypeHandle<GameEntityActorInfo> __actorInfoType;
+
+    private ComponentTypeHandle<GameEntityActorTime> __actorTimeType;
+
+    private ComponentTypeHandle<GameNodeVelocity> __velocityType;
+
+    private ComponentTypeHandle<GameNodeDelay> __delayType;
+
+    private ComponentLookup<GameEntityBreakInfo> __breakInfos;
+
+    private ComponentLookup<GameNodeStatus> __entityStates;
+
+    private ComponentLookup<GameActionStatus> __actionStates;
 
     public void OnCreate(ref SystemState state)
     {
@@ -2448,17 +2684,35 @@ public partial struct GameEntityBreakSystem : ISystem
             {
                 All = new ComponentType[]
                 {
-                    ComponentType.ReadOnly<GameEntityBreakCommand>(),
                     ComponentType.ReadOnly<GameEntityEventInfo>(),
                     ComponentType.ReadOnly<GameEntityActorInfo>(),
                     ComponentType.ReadOnly<GameNodeStatus>(),
                     //ComponentType.ReadWrite<GameNodeDelay>(),
+                    ComponentType.ReadWrite<GameEntityBreakCommand>(),
                     ComponentType.ReadWrite<GameEntityCommandVersion>()
                 }, 
                 Options = EntityQueryOptions.IncludeDisabledEntities
             });
 
         __group.SetChangedVersionFilter(typeof(GameEntityBreakCommand));
+
+
+        __entityArrayType = state.GetEntityTypeHandle();
+        __disabledType = state.GetComponentTypeHandle<Disabled>(true);
+        __eventInfoType = state.GetComponentTypeHandle<GameEntityEventInfo>(true);
+        __nodeStatusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
+        __entityActionType = state.GetBufferTypeHandle<GameEntityAction>(true);
+        __velocityComponentType = state.GetBufferTypeHandle<GameNodeVelocityComponent>();
+        __positionType = state.GetBufferTypeHandle<GameNodePosition>();
+        __commandType = state.GetComponentTypeHandle<GameEntityBreakCommand>();
+        __commandVersionType = state.GetComponentTypeHandle<GameEntityCommandVersion>();
+        __actorInfoType = state.GetComponentTypeHandle<GameEntityActorInfo>();
+        __actorTimeType = state.GetComponentTypeHandle<GameEntityActorTime>();
+        __delayType = state.GetComponentTypeHandle<GameNodeDelay>();
+        __velocityType = state.GetComponentTypeHandle<GameNodeVelocity>();
+        __breakInfos = state.GetComponentLookup<GameEntityBreakInfo>();
+        __entityStates = state.GetComponentLookup<GameNodeStatus>();
+        __actionStates = state.GetComponentLookup<GameActionStatus>();
     }
 
     public void OnDestroy(ref SystemState state)
@@ -2471,22 +2725,22 @@ public partial struct GameEntityBreakSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         InterruptEx interrupt;
-        interrupt.entityArrayType = state.GetEntityTypeHandle();
-        interrupt.disabledType = state.GetComponentTypeHandle<Disabled>(true);
-        interrupt.commandType = state.GetComponentTypeHandle<GameEntityBreakCommand>(true);
-        interrupt.eventInfoType = state.GetComponentTypeHandle<GameEntityEventInfo>(true);
-        interrupt.nodeStatusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
-        interrupt.entityActionType = state.GetBufferTypeHandle<GameEntityAction>(true);
-        interrupt.velocityComponentType = state.GetBufferTypeHandle<GameNodeVelocityComponent>();
-        interrupt.positionType = state.GetBufferTypeHandle<GameNodePosition>();
-        interrupt.commandVersionType = state.GetComponentTypeHandle<GameEntityCommandVersion>();
-        interrupt.actorInfoType = state.GetComponentTypeHandle<GameEntityActorInfo>();
-        interrupt.actorTimeType = state.GetComponentTypeHandle<GameEntityActorTime>();
-        interrupt.delayType = state.GetComponentTypeHandle<GameNodeDelay>();
-        interrupt.velocityType = state.GetComponentTypeHandle<GameNodeVelocity>();
-        interrupt.breakInfos = state.GetComponentLookup<GameEntityBreakInfo>();
-        interrupt.entityStates = state.GetComponentLookup<GameNodeStatus>();
-        interrupt.actionStates = state.GetComponentLookup<GameActionStatus>();
+        interrupt.entityArrayType = __entityArrayType.UpdateAsRef(ref state);
+        interrupt.disabledType = __disabledType.UpdateAsRef(ref state);
+        interrupt.eventInfoType = __eventInfoType.UpdateAsRef(ref state);
+        interrupt.nodeStatusType = __nodeStatusType.UpdateAsRef(ref state);
+        interrupt.entityActionType = __entityActionType.UpdateAsRef(ref state);
+        interrupt.velocityComponentType = __velocityComponentType.UpdateAsRef(ref state);
+        interrupt.positionType = __positionType.UpdateAsRef(ref state);
+        interrupt.commandType = __commandType.UpdateAsRef(ref state);
+        interrupt.commandVersionType = __commandVersionType.UpdateAsRef(ref state);
+        interrupt.actorInfoType = __actorInfoType.UpdateAsRef(ref state);
+        interrupt.actorTimeType = __actorTimeType.UpdateAsRef(ref state);
+        interrupt.delayType = __delayType.UpdateAsRef(ref state);
+        interrupt.velocityType = __velocityType.UpdateAsRef(ref state);
+        interrupt.breakInfos = __breakInfos.UpdateAsRef(ref state);
+        interrupt.entityStates = __entityStates.UpdateAsRef(ref state);
+        interrupt.actionStates = __actionStates.UpdateAsRef(ref state);
 
 #if GAME_DEBUG_COMPARSION
         interrupt.frameIndex = SystemAPI.GetSingleton<GameSyncManager>().SyncTime.frameIndex;
@@ -2500,7 +2754,7 @@ public partial struct GameEntityBreakSystem : ISystem
         interrupt.entityIndexType = state.GetComponentTypeHandle<GameEntityIndex>(true);
 #endif
 
-        state.Dependency = interrupt.ScheduleParallel(__group, state.Dependency);
+        state.Dependency = interrupt.ScheduleParallelByRef(__group, state.Dependency);
 
 #if GAME_DEBUG_COMPARSION
         streamScheduler.End(state.Dependency);
@@ -2558,9 +2812,9 @@ public partial struct GameEntityStatusSystem : ISystem
             timeEventHandles.Enqueue(eventInfos[index].timeEventHandle);
             timeEventHandles.Enqueue(eventCommands[entity].handle);
 
-            eventCommands[entity] = default;
-            actionCommands[entity] = default;
-            breakCommands[entity] = default;
+            eventCommands.SetComponentEnabled(entity, false);
+            actionCommands.SetComponentEnabled(entity, false);
+            breakCommands.SetComponentEnabled(entity, false);
         }
     }
 
@@ -2964,7 +3218,7 @@ public partial struct GameEntityClearActionSystem : ISystem
 [BurstCompile, UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(GameSyncSystemGroup))]
 public partial struct GameEntityActionHitClearSystem : ISystem
 {
-    private struct ClearActorHits
+    /*private struct ClearActorHits
     {
         public NativeArray<GameEntityActorHit> instances;
 
@@ -2978,7 +3232,7 @@ public partial struct GameEntityActionHitClearSystem : ISystem
 
             instances[index] = instance;
         }
-    }
+    }*/
 
     [BurstCompile]
     private struct ClearActorHitsEx : IJobChunk
@@ -2987,20 +3241,30 @@ public partial struct GameEntityActionHitClearSystem : ISystem
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
-            ClearActorHits clearActorHits;
-            clearActorHits.instances = chunk.GetNativeArray(ref instanceType);
+            /*ClearActorHits clearActorHits;
+            clearActorHits.*/var instances = chunk.GetNativeArray(ref instanceType);
 
-            var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
-            while (iterator.NextEntityIndex(out int i))
-                clearActorHits.Execute(i);
+            if (useEnabledMask)
+            {
+                var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+                while (iterator.NextEntityIndex(out int i))
+                    //clearActorHits.Execute(i);
+                    instances[i] = default;
+            }
+            else
+                instances.MemClear();
         }
     }
 
     private EntityQuery __group;
 
+    private ComponentTypeHandle<GameEntityActorHit> __instanceType;
+
     public void OnCreate(ref SystemState state)
     {
         __group = state.GetEntityQuery(ComponentType.ReadWrite<GameEntityActorHit>());
+
+        __instanceType = state.GetComponentTypeHandle<GameEntityActorHit>();
     }
 
     public void OnDestroy(ref SystemState state)
@@ -3012,202 +3276,9 @@ public partial struct GameEntityActionHitClearSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         ClearActorHitsEx clearActorHits;
-        clearActorHits.instanceType = state.GetComponentTypeHandle<GameEntityActorHit>();
-        state.Dependency = clearActorHits.ScheduleParallel(__group, state.Dependency);
+        clearActorHits.instanceType = __instanceType.UpdateAsRef(ref state);
+        state.Dependency = clearActorHits.ScheduleParallelByRef(__group, state.Dependency);
     }
-}
-
-public abstract partial class GameEntityActionSystem<THandler, TFactory> : SystemBase 
-    where THandler : struct, IGameEntityActionHandler
-    where TFactory : struct, IGameEntityActionFactory<THandler>
-{
-    public JobHandle performJob
-    {
-        get;
-
-        private set;
-    }
-    
-    public EntityQuery group
-    {
-        get;
-
-        private set;
-    }
-
-    //public GameEntityActionEndEntityCommandSystem endFrameBarrier { get; private set; }
-
-    private GameUpdateTime __time;
-
-    private SharedPhysicsWorld __physicsWorld;
-
-    //private EntityCommandPool<EntityData<GameActionDisabled>> __entityManager;
-
-    private NativeQueue<Entity> __unstoppableEntities;
-    private NativeQueue<EntityData<Translation>> __locations;
-    //private NativeQueue<EntityData<float>> __directVelocities;
-    private NativeQueue<EntityData<GameNodeVelocityComponent>> __impacts;
-    private NativeQueue<EntityData<GameEntityBreakCommand>> __breakCommands;
-
-    public virtual IEnumerable<EntityQueryDesc> queries => null;
-
-    protected override void OnCreate()
-    {
-        base.OnCreate();
-
-        var source = queries;
-        var destination = source == null ? new List<EntityQueryDesc>(1) : new List<EntityQueryDesc>(source);
-        if (destination.Count < 1)
-            destination.Add(new EntityQueryDesc());
-
-        List<ComponentType> componentTypes = new List<ComponentType>();
-        foreach (EntityQueryDesc query in destination)
-        {
-            componentTypes.Clear();
-
-            componentTypes.Add(ComponentType.ReadOnly<GameActionData>());
-            componentTypes.Add(ComponentType.ReadOnly<GameActionDataEx>());
-            componentTypes.Add(ComponentType.ReadWrite<GameActionEntity>());
-
-            if (query.All != null)
-                componentTypes.AddRange(query.All);
-
-            query.All = componentTypes.ToArray();
-            
-            componentTypes.Clear();
-            //componentTypes.Add(typeof(GameActionDisabled));
-
-            if (query.None != null)
-                componentTypes.AddRange(query.None);
-
-            query.None = componentTypes.ToArray();
-        }
-
-        group = GetEntityQuery(new List<EntityQueryDesc>(destination).ToArray());
-
-        __time = new GameUpdateTime(ref this.GetState());
-
-        World world = World;
-        __physicsWorld = world.GetOrCreateSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
-
-        /*var endFrameBarrier = World.GetOrCreateSystem<GameEntityActionEndEntityCommandSystem>();
-        __entityManager = endFrameBarrier.CreateAddComponentDataCommander<GameActionDisabled>();
-        this.endFrameBarrier = endFrameBarrier;*/
-
-        __unstoppableEntities = new NativeQueue<Entity>(Allocator.Persistent);
-        __locations = new NativeQueue<EntityData<Translation>>(Allocator.Persistent);
-        //__directVelocities = new NativeQueue<EntityData<float>>(Allocator.Persistent);
-        __impacts = new NativeQueue<EntityData<GameNodeVelocityComponent>>(Allocator.Persistent);
-        __breakCommands = new NativeQueue<EntityData<GameEntityBreakCommand>>(Allocator.Persistent);
-    }
-
-    protected override void OnDestroy()
-    {
-        __unstoppableEntities.Dispose();
-        __locations.Dispose();
-        //__directVelocities.Dispose();
-        __impacts.Dispose();
-        __breakCommands.Dispose();
-
-        base.OnDestroy();
-    }
-
-    protected override void OnUpdate()
-    {
-        var group = this.group;
-        if (group.IsEmptyIgnoreFilter)
-            return;
-
-        var entityType = GetEntityTypeHandle();
-        var instanceType = GetComponentTypeHandle<GameActionData>(true);
-        var statusType = GetComponentTypeHandle<GameActionStatus>(true);
-
-        //var entityManager = __entityManager.Create();
-
-        ref var lookupJobManager = ref __physicsWorld.lookupJobManager;
-
-        var jobHandle = JobHandle.CombineDependencies(Dependency, lookupJobManager.readOnlyJobHandle);
-
-        GameEntityPerform<THandler, TFactory> perform;
-        perform.deltaTime = __time.delta;
-        perform.time = __time.RollbackTime.now;
-        perform.gravity = SystemAPI.HasSingleton<Unity.Physics.PhysicsStep>() ? SystemAPI.GetSingleton<Unity.Physics.PhysicsStep>().Gravity : Unity.Physics.PhysicsStep.Default.Gravity;
-        perform.collisionWorld = __physicsWorld.collisionWorld;
-        perform.disabled = GetComponentLookup<Disabled>(true);
-        perform.surfaces = GetComponentLookup<GameNodeSurface>(true);
-        perform.directs = GetComponentLookup<GameNodeDirect>(true);
-        perform.indirects = GetComponentLookup<GameNodeIndirect>(true);
-        perform.actorStates = GetComponentLookup<GameNodeActorStatus>(true);
-        perform.camps = GetComponentLookup<GameEntityCamp>(true);
-        perform.masses = GetComponentLookup<GameEntityActorMass>(true);
-        perform.infos = GetComponentLookup<GameEntityActorInfo>(true);
-        perform.commandVersions = GetComponentLookup<GameEntityCommandVersion>(true);
-        perform.entityType = entityType;
-        perform.instanceType = instanceType;
-        perform.instanceExType = GetComponentTypeHandle<GameActionDataEx>(true);
-        perform.statusType = statusType;
-        perform.translationType = GetComponentTypeHandle<Translation>();
-        perform.rotationType = GetComponentTypeHandle<Rotation>();
-        perform.physicsVelocityType = GetComponentTypeHandle<PhysicsVelocity>();
-        //perform.physicsGravityFactorType = GetComponentTypeHandle<PhysicsGravityFactor>();
-        perform.actionEntityType = GetBufferTypeHandle<GameActionEntity>();
-        perform.results = GetComponentLookup<GameActionStatus>();
-        perform.unstoppableEntities = __unstoppableEntities.AsParallelWriter();
-        perform.locations = __locations.AsParallelWriter();
-        //perform.directVelocities = __directVelocities.AsParallelWriter();
-        perform.impacts = __impacts.AsParallelWriter();
-        perform.breakCommands = __breakCommands.AsParallelWriter();
-        //perform.entityManager = entityManager.parallelWriter;
-        perform.factory = _Get(ref jobHandle);
-
-        JobHandle performJob = perform.ScheduleParallel(group, jobHandle);
-
-        //entityManager.AddJobHandleForProducer(performJob);
-
-        lookupJobManager.AddReadOnlyDependency(performJob);
-
-        this.performJob = performJob;
-
-        var translations = GetComponentLookup<Translation>();
-
-        GameEntityComputeHits computeHits;
-        computeHits.entityArrayType = entityType;
-        computeHits.instanceType = instanceType;
-        computeHits.statusType = statusType;
-        computeHits.entityType = GetBufferTypeHandle<GameActionEntity>(true);
-        computeHits.translations = translations;
-        computeHits.actorHits = GetComponentLookup<GameEntityActorHit>();
-        computeHits.hits = GetComponentLookup<GameEntityHit>();
-
-        var hitJob = computeHits.Schedule(group, performJob);
-
-        hitJob = __locations.MoveTo(translations, hitJob);
-
-        /*ApplyDirectVelocities applyDirectVelocities;
-        applyDirectVelocities.inputs = __directVelocities;
-        applyDirectVelocities.outputs = GetComponentLookup<GameNodeDirect>();
-        applyDirectVelocities.rotations = GetComponentLookup<Rotation>(true);
-        JobHandle directVelocityJob = applyDirectVelocities.Schedule(performJob);*/
-
-        GameEntityApplyUnstoppableEntities applyUnstoppableEntities;
-        applyUnstoppableEntities.entities = __unstoppableEntities;
-        applyUnstoppableEntities.flags = GetComponentLookup<GameNodeCharacterFlag>();
-        var flagJob = applyUnstoppableEntities.Schedule(performJob);
-
-        var impactJob = __impacts.MoveTo(GetBufferLookup<GameNodeVelocityComponent>(), performJob);
-
-        var breakCommandJob = __breakCommands.MoveTo(GetComponentLookup<GameEntityBreakCommand>(), performJob);
-
-        Dependency = JobHandle.CombineDependencies(
-            hitJob,
-            JobHandle.CombineDependencies(
-            //directVelocityJob, 
-            flagJob,
-            impactJob,
-            breakCommandJob));
-    }
-    
-    protected abstract TFactory _Get(ref JobHandle jobHandle);
 }
 
 #if DEBUG && !UNITY_STANDALONE_LINUX

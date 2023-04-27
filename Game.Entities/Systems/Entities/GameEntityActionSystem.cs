@@ -153,6 +153,7 @@ public struct GameEntityActionSystemCore
         private int __camp;
         private GameActionTargetType __hitType;
         private GameActionTargetType __damageType;
+        private float __dot;
         private float __distance;
         private float __interval;
         private float __value;
@@ -193,6 +194,7 @@ public struct GameEntityActionSystemCore
             float impactForce,
             float impactTime,
             float impactMaxSpeed,
+            float dot,
             float distance,
             float maxFraction,
             double time,
@@ -222,6 +224,7 @@ public struct GameEntityActionSystemCore
             __impactForce = impactForce;
             __impactTime = impactTime;
             __impactMaxSpeed = impactMaxSpeed;
+            __dot = dot;
             __distance = distance;
             __time = time;
             __direction = direction;
@@ -248,6 +251,11 @@ public struct GameEntityActionSystemCore
         public bool AddHit(TQueryResult hit)
         {
             var transform = __start.LerpTo(__end, hit.Fraction);
+
+            float3 position = __wrapper.GetPosition(hit);
+
+            if (!__IsHit(in position, in transform.value))
+                return false;
 
             var rigidbodies = __collisionWorld.Bodies;
             RigidBody rigidbody = rigidbodies[hit.RigidBodyIndex];
@@ -284,7 +292,7 @@ public struct GameEntityActionSystemCore
                 return true;
             }
 
-            __Apply(count, hit, transform, rigidbody.Entity, rigidbodies);
+            __Apply(count, position, transform, rigidbody.Entity, rigidbodies);
 
             return true;
         }
@@ -301,6 +309,11 @@ public struct GameEntityActionSystemCore
             var hit = closestHit;
 
             transform = __start.LerpTo(__end, hit.Fraction);
+
+            float3 position = __wrapper.GetPosition(hit);
+
+            if (!__IsHit(in position, in transform.value))
+                return false;
 
             var rigidbodies = __collisionWorld.Bodies;
             RigidBody rigidbody = rigidbodies[hit.RigidBodyIndex];
@@ -319,12 +332,17 @@ public struct GameEntityActionSystemCore
                     count = __actionEntities.Hit(rigidbody.Entity, transform.elapsedTime, __interval, __value);
             }
 
-            __Apply(count, hit, transform, rigidbody.Entity, rigidbodies);
+            __Apply(count, position, transform, rigidbody.Entity, rigidbodies);
 
             return true;
         }
 
-        private void __Apply(int count, in TQueryResult hit, in GameEntityTransform transform, in Entity entity, in NativeSlice<RigidBody> rigidbodies)
+        private void __Apply(
+            int count, 
+            in float3 position, 
+            in GameEntityTransform transform, 
+            in Entity entity, 
+            in NativeSlice<RigidBody> rigidbodies)
         {
             __handler.Hit(
                 __index,
@@ -335,7 +353,6 @@ public struct GameEntityActionSystemCore
                 transform.value,
                 __instance);
 
-            float3 position = __wrapper.GetPosition(hit);
             if (count > 0)
             {
                 float3 normal = __direction;// math.normalizesafe(position - transform.value.pos, __direction);// __wrapper.GetSurfaceNormal(hit);
@@ -403,6 +420,11 @@ public struct GameEntityActionSystemCore
 
                 NumHits += collector.NumHits;
             }
+        }
+
+        private bool __IsHit(in float3 position, in RigidTransform transform)
+        {
+            return !(__dot > math.FLT_MIN_NORMAL && __dot < math.dot(math.normalizesafe(position - transform.pos), math.forward(transform.rot)));
         }
     }
 
@@ -980,6 +1002,7 @@ public struct GameEntityActionSystemCore
                             instanceEx.info.impactForce,
                             instanceEx.info.impactTime,
                             instanceEx.info.impactMaxSpeed,
+                            instanceEx.info.dot,
                             instanceEx.info.radius,
                             1.0f,
                             time,
@@ -1022,6 +1045,7 @@ public struct GameEntityActionSystemCore
                             instanceEx.info.impactForce,
                             instanceEx.info.impactTime,
                             instanceEx.info.impactMaxSpeed,
+                            instanceEx.info.dot,
                             instanceEx.info.radius,
                             distance,
                             time,
@@ -1429,6 +1453,30 @@ public struct GameEntityActionSystemCore
     }*/
 
     [BurstCompile]
+    public struct ApplyTranslations : IJob
+    {
+        public NativeFactory<EntityData<Translation>> sources;
+
+        public ComponentLookup<Translation> destinations;
+
+        public void Execute()
+        {
+            EntityData<Translation> value;
+            var enumerator = sources.GetEnumerator();
+            while (enumerator.MoveNext())
+            {
+                value = enumerator.Current;
+                if (!destinations.HasComponent(value.entity))
+                    continue;
+
+                destinations[value.entity] = value.value;
+            }
+
+            sources.Clear();
+        }
+    }
+
+    [BurstCompile]
     private struct ApplyUnstoppableEntities : IJob
     {
         public NativeFactory<Entity> entities;
@@ -1456,39 +1504,15 @@ public struct GameEntityActionSystemCore
     }
 
     [BurstCompile]
-    public struct ApplyComponents<T> : IJob where T : unmanaged, IComponentData
+    public struct ApplyImpacts : IJob
     {
-        public NativeFactory<EntityData<T>> sources;
+        public NativeFactory<EntityData<GameNodeVelocityComponent>> sources;
 
-        public ComponentLookup<T> destinations;
+        public BufferLookup<GameNodeVelocityComponent> destinations;
 
         public void Execute()
         {
-            EntityData<T> value;
-            var enumerator = sources.GetEnumerator();
-            while (enumerator.MoveNext())
-            {
-                value = enumerator.Current;
-                if (!destinations.HasComponent(value.entity))
-                    continue;
-
-                destinations[value.entity] = value.value;
-            }
-
-            sources.Clear();
-        }
-    }
-
-    [BurstCompile]
-    public struct ApplyBuffers<T> : IJob where T : unmanaged, IBufferElementData
-    {
-        public NativeFactory<EntityData<T>> sources;
-
-        public BufferLookup<T> destinations;
-
-        public void Execute()
-        {
-            EntityData<T> value;
+            EntityData<GameNodeVelocityComponent> value;
             var enumerator = sources.GetEnumerator();
             while (enumerator.MoveNext())
             {
@@ -1497,6 +1521,32 @@ public struct GameEntityActionSystemCore
                     continue;
 
                 destinations[value.entity].Add(value.value);
+            }
+
+            sources.Clear();
+        }
+    }
+
+    [BurstCompile]
+    public struct ApplyBreakCommands : IJob
+    {
+        public NativeFactory<EntityData<GameEntityBreakCommand>> sources;
+
+        public ComponentLookup<GameEntityBreakCommand> destinations;
+
+        public void Execute()
+        {
+            EntityData<GameEntityBreakCommand> value;
+            var enumerator = sources.GetEnumerator();
+            while (enumerator.MoveNext())
+            {
+                value = enumerator.Current;
+                if (!destinations.HasComponent(value.entity))
+                    continue;
+
+                destinations[value.entity] = value.value;
+
+                destinations.SetComponentEnabled(value.entity, true);
             }
 
             sources.Clear();
@@ -1565,11 +1615,6 @@ public struct GameEntityActionSystemCore
 
     public GameEntityActionSystemCore(IEnumerable<EntityQueryDesc> queries, ref SystemState systemState)
     {
-        BurstUtility.InitializeJob<ApplyUnstoppableEntities>();
-        BurstUtility.InitializeJob<ApplyComponents<Translation>>();
-        BurstUtility.InitializeJob<ApplyComponents<GameEntityBreakCommand>>();
-        BurstUtility.InitializeJob<ApplyBuffers<GameNodeVelocityComponent>>();
-
         performJob = default;
 
         var source = queries;
@@ -1734,7 +1779,7 @@ public struct GameEntityActionSystemCore
 
         var hitJob = computeHits.Schedule(group, performJob);
 
-        ApplyComponents<Translation> applyLocations;
+        ApplyTranslations applyLocations;
         applyLocations.sources = locations;
         applyLocations.destinations = translations;
 
@@ -1751,12 +1796,12 @@ public struct GameEntityActionSystemCore
         applyUnstoppableEntities.flags = __characterflags.UpdateAsRef(ref systemState);
         var flagJob = applyUnstoppableEntities.Schedule(performJob);
 
-        ApplyBuffers<GameNodeVelocityComponent> applyImpacts;
+        ApplyImpacts applyImpacts;
         applyImpacts.sources = impacts;
         applyImpacts.destinations = __velocities.UpdateAsRef(ref systemState);
         var impactJob = applyImpacts.Schedule(performJob);
 
-        ApplyComponents<GameEntityBreakCommand> applyBreakCommands;
+        ApplyBreakCommands applyBreakCommands;
         applyBreakCommands.sources = commands;
         applyBreakCommands.destinations = __breakCommands.UpdateAsRef(ref systemState);
         var breakCommandJob = applyBreakCommands.Schedule(performJob);

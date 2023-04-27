@@ -266,7 +266,7 @@ public struct GameEntityCommandVersion : IComponentData
     public int value;
 }
 
-public struct GameEntityEventCommand : IComponentData
+public struct GameEntityEventCommand : IComponentData, IEnableableComponent
 {
     public int version;
     public float performTime;
@@ -275,7 +275,7 @@ public struct GameEntityEventCommand : IComponentData
     public TimeEventHandle handle;
 }
 
-public struct GameEntityActionCommand : IComponentData
+public struct GameEntityActionCommand : IComponentData, IEnableableComponent
 {
     public int version;
     public int index;
@@ -286,12 +286,17 @@ public struct GameEntityActionCommand : IComponentData
     //public float3 offset;
 }
 
-public struct GameEntityBreakCommand : IComponentData
+public struct GameEntityBreakCommand : IComponentData, IEnableableComponent
 {
     public int version;
     public float alertTime;
     public float delayTime;
     public GameDeadline time;
+}
+
+public struct GameEntityActionCommander : IComponentData, IEnableableComponent
+{
+    public Entity entity;
 }
 
 public struct GameEntityArchetype : IComponentData
@@ -316,6 +321,7 @@ public struct GameEntityArchetype : IComponentData
 [EntityComponent(typeof(GameEntityEventCommand))]
 [EntityComponent(typeof(GameEntityActionCommand))]
 [EntityComponent(typeof(GameEntityBreakCommand))]
+[EntityComponent(typeof(GameEntityActionCommander))]
 public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>, IEntitySystemStateComponent
 {
 #if UNITY_EDITOR
@@ -525,6 +531,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         //command.offset = offset;
 
         this.SetComponentData(command);
+        this.SetComponentEnabled<GameEntityActionCommand>(true);
 
         return command.version;
     }
@@ -548,8 +555,13 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         //command.offset = offset;
 
         commander.SetComponentData(entity, command);
-        commander.SetComponentData<GameEntityEventCommand>(entity, default);
-        commander.SetComponentData<GameEntityBreakCommand>(entity, default);
+        commander.SetComponentEnabled<GameEntityActionCommand>(entity, true);
+
+        //commander.SetComponentData<GameEntityEventCommand>(entity, default);
+        commander.SetComponentEnabled<GameEntityEventCommand>(entity, false);
+
+        //commander.SetComponentData<GameEntityBreakCommand>(entity, default);
+        commander.SetComponentEnabled<GameEntityBreakCommand>(entity, false);
 
         GameEntityCommandVersion commandVersion;
         commandVersion.value = command.version;
@@ -579,9 +591,11 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         command.time = time;
         command.handle = timeEventHandle;
 
-        commander.SetComponentData<GameEntityActionCommand>(entity, default);
         commander.SetComponentData(entity, command);
-        commander.SetComponentData<GameEntityBreakCommand>(entity, default);
+
+        commander.SetComponentEnabled<GameEntityEventCommand>(entity, true);
+        commander.SetComponentEnabled<GameEntityActionCommand>(entity, false);
+        commander.SetComponentEnabled<GameEntityBreakCommand>(entity, false);
 
         GameEntityCommandVersion commandVersion;
         commandVersion.value = command.version;
@@ -611,6 +625,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         command.handle = timeEventHandle;
 
         this.SetComponentData(command);
+        this.SetComponentEnabled<GameEntityEventCommand>(true);
 
         return command.version;
     }
@@ -624,6 +639,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         command.time = time;
 
         this.SetComponentData(command);
+        this.SetComponentEnabled<GameEntityBreakCommand>(true);
     }
 
     public int Break(EntityCommander commander, in GameDeadline time, float alertTime, float delayTime)
@@ -634,9 +650,12 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         command.delayTime = delayTime;
         command.time = time;
 
-        commander.SetComponentData<GameEntityActionCommand>(entity, default);
-        commander.SetComponentData<GameEntityEventCommand>(entity, default);
+        //commander.SetComponentData<GameEntityActionCommand>(entity, default);
+        //commander.SetComponentData<GameEntityEventCommand>(entity, default);
         commander.SetComponentData(entity, command);
+        commander.SetComponentEnabled<GameEntityBreakCommand>(entity, true);
+        commander.SetComponentEnabled<GameEntityActionCommand>(entity, false);
+        commander.SetComponentEnabled<GameEntityEventCommand>(entity, false);
 
         GameEntityCommandVersion commandVersion;
         commandVersion.value = command.version;

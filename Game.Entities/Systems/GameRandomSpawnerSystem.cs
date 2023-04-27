@@ -7,8 +7,13 @@ using Unity.Mathematics;
 using Unity.Transforms;
 using ZG;
 
-[UpdateInGroup(typeof(TimeSystemGroup)), UpdateAfter(typeof(GameSyncSystemGroup))]
-public partial class GameRandomSpawnerSystem : SystemBase
+public struct GameRandomSpawnerFactory : IComponentData
+{
+    public EntityCommandPool<GameSpawnData> pool;
+}
+
+[BurstCompile, UpdateInGroup(typeof(TimeSystemGroup)), UpdateAfter(typeof(GameSyncSystemGroup))]
+public partial struct GameRandomSpawnerSystem : ISystem
 {
     private struct Spawn
     {
@@ -71,12 +76,9 @@ public partial class GameRandomSpawnerSystem : SystemBase
         [ReadOnly]
         public BufferAccessor<GameRandomSpawnerAsset> assets;
         
-        [ReadOnly]
         public BufferAccessor<GameRandomSpawnerNode> nodes;
         
         public EntityCommandQueue<GameSpawnData>.ParallelWriter entityManager;
-
-        public NativeQueue<Entity>.ParallelWriter nodesToClear;
 
         public void Execute(int index)
         {
@@ -106,7 +108,7 @@ public partial class GameRandomSpawnerSystem : SystemBase
                 random.Next(ref assetHandler, groups.Reinterpret<RandomGroup>().AsNativeArray().Slice(slice.groupStartIndex, slice.groupCount));
             }
 
-            nodesToClear.Enqueue(entity);
+            nodes.Clear();
         }
     }
 
@@ -130,15 +132,12 @@ public partial class GameRandomSpawnerSystem : SystemBase
         [ReadOnly]
         public BufferTypeHandle<GameRandomSpawnerAsset> assetType;
         
-        [ReadOnly]
         public BufferTypeHandle<GameRandomSpawnerNode> nodeType;
 
         [NativeDisableParallelForRestriction]
         public ComponentLookup<GameEntityActionCommand> commands;
 
         public EntityCommandQueue<GameSpawnData>.ParallelWriter entityManager;
-
-        public NativeQueue<Entity>.ParallelWriter nodesToClear;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -153,99 +152,93 @@ public partial class GameRandomSpawnerSystem : SystemBase
             spawn.assets = chunk.GetBufferAccessor(ref assetType);
             spawn.nodes = chunk.GetBufferAccessor(ref nodeType);
             spawn.entityManager = entityManager;
-            spawn.nodesToClear = nodesToClear;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
+            {
                 spawn.Execute(i);
-        }
-    }
 
-    [BurstCompile]
-    private struct Clear : IJob
-    {
-        public NativeQueue<Entity> entities;
-        public BufferLookup<GameRandomSpawnerNode> nodes;
-
-        public void Execute()
-        {
-            while (entities.TryDequeue(out Entity entity))
-                nodes[entity].Clear();
+                chunk.SetComponentEnabled(ref nodeType, i, false);
+            }
         }
     }
 
     private EntityQuery __group;
+    private EntityQuery __factoryGroup;
     private GameSyncTime __time;
+
+    private EntityTypeHandle __entityType;
+
+    private ComponentTypeHandle<Translation> __translationType;
+
+    private BufferTypeHandle<GameRandomSpawnerSlice> __sliceType;
+
+    private BufferTypeHandle<GameRandomSpawnerGroup> __groupType;
+
+    private BufferTypeHandle<GameRandomSpawnerAsset> __assetType;
+
+    private BufferTypeHandle<GameRandomSpawnerNode> __nodeType;
+
+    private ComponentLookup<GameEntityActionCommand> __commands;
+
     private EntityCommandPool<GameSpawnData> __entityManager;
-    private NativeQueue<Entity> __nodesToClear;
 
-    public void Create<T>(T instance) where T : GameSpawnCommander
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        ///初始化完成之后才能进入帧
-        __entityManager = World.GetExistingSystemManaged<EndTimeSystemGroupEntityCommandSystem>().Create<GameSpawnData, T>(EntityCommandManager.QUEUE_PRESENT, instance);
-    }
-
-    public void Create<T>() where T : GameSpawnCommander, new()
-    {
-        ///初始化完成之后才能进入帧
-        __entityManager = World.GetExistingSystemManaged<EndTimeSystemGroupEntityCommandSystem>().GetOrCreate<GameSpawnData, T>(EntityCommandManager.QUEUE_PRESENT);
-    }
-
-    protected override void OnCreate()
-    {
-        base.OnCreate();
-
-        __group = GetEntityQuery(
-            ComponentType.ReadOnly<Translation>(),
-            ComponentType.ReadOnly<GameRandomSpawnerSlice>(),
-            ComponentType.ReadOnly<GameRandomSpawnerGroup>(),
-            ComponentType.ReadOnly<GameRandomSpawnerAsset>(),
-            ComponentType.ReadOnly<GameRandomSpawnerNode>());
+        using(var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<Translation, GameRandomSpawnerSlice, GameRandomSpawnerGroup, GameRandomSpawnerAsset>()
+                    .WithAllRW<GameRandomSpawnerNode>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
 
         __group.SetChangedVersionFilter(typeof(GameRandomSpawnerNode));
 
-        __time = new GameSyncTime(ref this.GetState());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __factoryGroup = builder
+                .WithAll<GameRandomSpawnerFactory>()
+                .Build(ref state);
 
-        __nodesToClear = new NativeQueue<Entity>(Allocator.Persistent);
+        __time = new GameSyncTime(ref state);
+
+        __entityType = state.GetEntityTypeHandle();
+        __translationType = state.GetComponentTypeHandle<Translation>(true);
+        __sliceType = state.GetBufferTypeHandle<GameRandomSpawnerSlice>(true);
+        __groupType = state.GetBufferTypeHandle<GameRandomSpawnerGroup>(true);
+        __assetType = state.GetBufferTypeHandle<GameRandomSpawnerAsset>(true);
+        __nodeType = state.GetBufferTypeHandle<GameRandomSpawnerNode>();
+        __commands = state.GetComponentLookup<GameEntityActionCommand>();
     }
 
-    protected override void OnDestroy()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        __nodesToClear.Dispose();
-
-        base.OnDestroy();
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
-        if (!__entityManager.isCreated)
+        if (__factoryGroup.IsEmpty)
             return;
 
-        var entityManager = __entityManager.Create();
+        var entityManager = __factoryGroup.GetSingleton<GameRandomSpawnerFactory>().pool.Create();
 
         SpawnEx spawn;
         spawn.time = __time.nextTime;
-        spawn.entityType = GetEntityTypeHandle();
-        spawn.translationType = GetComponentTypeHandle<Translation>(true);
-        spawn.sliceType = GetBufferTypeHandle<GameRandomSpawnerSlice>(true);
-        spawn.groupType = GetBufferTypeHandle<GameRandomSpawnerGroup>(true);
-        spawn.assetType = GetBufferTypeHandle<GameRandomSpawnerAsset>(true);
-        spawn.nodeType = GetBufferTypeHandle<GameRandomSpawnerNode>(true);
-        spawn.commands = GetComponentLookup<GameEntityActionCommand>();
+        spawn.entityType = __entityType.UpdateAsRef(ref state);
+        spawn.translationType = __translationType.UpdateAsRef(ref state);
+        spawn.sliceType = __sliceType.UpdateAsRef(ref state);
+        spawn.groupType = __groupType.UpdateAsRef(ref state);
+        spawn.assetType = __assetType.UpdateAsRef(ref state);
+        spawn.nodeType = __nodeType.UpdateAsRef(ref state);
+        spawn.commands = __commands.UpdateAsRef(ref state);
         spawn.entityManager = entityManager.parallelWriter;
-        spawn.nodesToClear = __nodesToClear.AsParallelWriter();
 
-        var jobHandle = Dependency;
-        jobHandle = spawn.ScheduleParallel(__group, jobHandle);
+        var jobHandle = spawn.ScheduleParallelByRef(__group, state.Dependency);
 
         entityManager.AddJobHandleForProducer<SpawnEx>(jobHandle);
 
-        //__endFrameBarrier.RemoveComponent<GameRandomSpawnerNode>(__group, inputDeps);
-
-        Clear clear;
-        clear.entities = __nodesToClear;
-        clear.nodes = GetBufferLookup<GameRandomSpawnerNode>();
-
-        Dependency = clear.Schedule(jobHandle);
+        state.Dependency = jobHandle;
     }
 }

@@ -2,6 +2,10 @@
     "name": "Game.Entities.Editor",
     "rootNamespace": "",
     "references": [
+        "GUID:e0cd26848372d4e5c891c569017e11f1",
+        "GUID:734d92eba21c94caba915361bd5ac177",
+        "GUID:beff58cf91ef5dc4f8939ec84aca2109",
+        "GUID:111b9f15fc71a104bb3dac19acd4ca86",
         "GUID:066ff3ec501668c49b0b5db9297457b7",
         "GUID:978865a30a1cf9348a87cf28452c0ee3"
     ],

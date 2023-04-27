@@ -7,6 +7,8 @@ using Unity.Burst;
 using Unity.Jobs;
 using ZG;
 
+[assembly:RegisterGenericJobType(typeof(RollbackEntryTest<GameRollbackEntryTester>))]
+
 /*public struct GameRollbackObject : IComponentData
 {
 }*/
@@ -148,7 +150,7 @@ public partial struct GameRollbackCommandSystem : ISystem
 
     public void OnCreate(ref SystemState state)
     {
-        BurstUtility.InitializeJobParalledForDefer<RollbackEntryTest<GameRollbackEntryTester>>();
+        //BurstUtility.InitializeJobParalledForDefer<RollbackEntryTest<GameRollbackEntryTester>>();
 
 /*#if GAME_DEBUG_COMPARSION
 #else

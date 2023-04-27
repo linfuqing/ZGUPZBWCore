@@ -837,6 +837,7 @@ public partial struct GameNavMeshSystem : ISystem
         positions.Add(position);
 
         versions[entity] = version;
+        versions.SetComponentEnabled(entity, true);
     }
 
     private EntityQuery __group;

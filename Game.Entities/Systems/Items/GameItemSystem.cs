@@ -233,6 +233,8 @@ public struct GameItemStructChangeFactory
 
             entityManager.CreateEntity(oldEntityArchetype, entityArray.GetSubArray(offset, length));
 
+            UnityEngine.Assertions.Assert.AreEqual(entityArray.Length, offset + length);
+
             entityHandles.lookupJobManager.CompleteReadWriteDependency();
 
             handleEntities.lookupJobManager.CompleteReadWriteDependency();
@@ -260,7 +262,7 @@ public struct GameItemStructChangeManager : IComponentData
     [BurstCompile]
     private struct Clear : IJob
     {
-        public NativeListLite<Entity> entities;
+        public NativeList<Entity> entities;
 
         public SharedHashMap<Entity, Entity>.Writer entityHandles;
 
@@ -276,8 +278,6 @@ public struct GameItemStructChangeManager : IComponentData
                 handleEntities.Remove(entityHandles[entity]);
                 entityHandles.Remove(entity);
             }
-
-            entities.Dispose();
         }
     }
 
@@ -338,12 +338,12 @@ public struct GameItemStructChangeManager : IComponentData
         var factory = this.factory;
         int entityCountToCreated = factory.Playback(ref state);
 
-        NativeListLite<Entity> entitiesToDestroy;
+        NativeList<Entity> entitiesToDestroy;
         if (__destroyEntityCommander.isEmpty)
             entitiesToDestroy = default;
         else
         {
-            entitiesToDestroy = new NativeListLite<Entity>(Allocator.TempJob);
+            entitiesToDestroy = new NativeList<Entity>(Allocator.TempJob);
 
             __destroyEntityCommander.MoveTo(new EntityCommandEntityContainer(entitiesToDestroy));
 
@@ -356,7 +356,7 @@ public struct GameItemStructChangeManager : IComponentData
         if (entityCountToCreated > 0)
             factory.Assign(ref state, assigner);
 
-        if (entitiesToDestroy.isCreated)
+        if (entitiesToDestroy.IsCreated)
         {
             var handleEntities = this.handleEntities;
             var entityHandles = this.entityHandles;
@@ -385,7 +385,7 @@ public struct GameItemStructChangeManager : IComponentData
             entityHandleJobManager.readWriteJobHandle = jobHandle;
             handleEntityJobManager.readWriteJobHandle = jobHandle;
 
-            state.Dependency = jobHandle;
+            state.Dependency = entitiesToDestroy.Dispose(jobHandle);
         }
     }
 
@@ -793,8 +793,8 @@ public partial struct GameItemSystem : ISystem
     private EntityQuery __identityTypeGroup;
     private EntityQuery __identityGroup;
 
-    private NativeListLite<GameItemCommand> __commandSources;
-    private NativeListLite<GameItemCommand> __commandDestinations;
+    private NativeList<GameItemCommand> __commandSources;
+    private NativeList<GameItemCommand> __commandDestinations;
 
     public EntityArchetype entityArchetype
     {
@@ -851,8 +851,8 @@ public partial struct GameItemSystem : ISystem
         /*__group = state.GetEntityQuery(ComponentType.ReadOnly<GameItemData>(), ComponentType.ReadOnly<GameItemType>());
         __group.SetChangedVersionFilter(typeof(GameItemType));*/
 
-        __commandSources = new NativeListLite<GameItemCommand>(Allocator.Persistent);
-        __commandDestinations = new NativeListLite<GameItemCommand>(Allocator.Persistent);
+        __commandSources = new NativeList<GameItemCommand>(Allocator.Persistent);
+        __commandDestinations = new NativeList<GameItemCommand>(Allocator.Persistent);
 
         manager = new GameItemManagerShared(ref __commandSources, ref __commandDestinations, Allocator.Persistent);
 

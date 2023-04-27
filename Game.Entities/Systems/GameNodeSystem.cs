@@ -59,25 +59,6 @@ public partial struct GameNodeInitSystemGroup : ISystem
 [BurstCompile, UpdateInGroup(typeof(GameNodeInitSystemGroup))]
 public partial struct GameNodeInitSystem : ISystem
 {
-    [BurstCompile]
-    private struct ClearCommanders : IJobChunk
-    {
-        public ComponentTypeHandle<GameNodeCommander> commanderType;
-
-        public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
-        {
-            if (useEnabledMask)
-            {
-                var commanders = chunk.GetNativeArray(ref commanderType);
-                var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
-                while (iterator.NextEntityIndex(out int i))
-                    commanders[i] = default;
-            }
-            else
-                chunk.GetNativeArray(ref commanderType).MemClear();
-        }
-    }
-
     private struct UpdateParents
     {
         [ReadOnly]
@@ -86,8 +67,19 @@ public partial struct GameNodeInitSystem : ISystem
         [ReadOnly]
         public NativeArray<GameNodeParent> parents;
 
-        [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameNodeCommander> commanders;
+        [ReadOnly]
+        public NativeArray<GameNodeDirection> directions;
+
+        [ReadOnly]
+        public NativeArray<GameNodeVersion> versions;
+
+        public BufferAccessor<GameNodePosition> positions;
+
+        [NativeDisableContainerSafetyRestriction]
+        public BufferLookup<GameNodePosition> positionMap;
+
+        [NativeDisableContainerSafetyRestriction]
+        public ComponentLookup<GameNodeDirection> directionMap;
 
         public void Execute(int index)
         {
@@ -95,13 +87,44 @@ public partial struct GameNodeInitSystem : ISystem
             if (parent.authority < 1)
                 return;
 
-            if (!commanders.HasComponent(parent.entity)/* || commanders[parent.entity].authority >= parent.authority*/)
-                return;
+            var version = versions[index];
+            if (directionMap.HasComponent(parent.entity))
+            {
+                bool isSet = false;
+                if ((version.type & GameNodeVersion.Type.Direction) == GameNodeVersion.Type.Direction &&
+                    index < directions.Length)
+                {
+                    var direction = directions[index];
+                    if (direction.version == version.value)
+                    {
+                        directionMap[parent.entity] = direction;
 
-            GameNodeCommander commander;
-            //commander.authority = parent.authority;
-            commander.entity = entityArray[index];
-            commanders[parent.entity] = commander;
+                        isSet = true;
+                    }
+                }
+
+                if (!isSet)
+                    directionMap[parent.entity] = default;
+            }
+
+            if (positionMap.HasBuffer(parent.entity))
+            {
+                var destinations = positionMap[parent.entity];
+                destinations.Clear();
+
+                if ((version.type & GameNodeVersion.Type.Position) == GameNodeVersion.Type.Position &&
+                    index < positions.Length)
+                {
+                    var sources = positions[index];
+                    foreach (var position in sources)
+                    {
+                        if (position.version != version.value)
+                            continue;
+
+                        destinations.Add(position);
+                    }
+                }
+            }
         }
     }
 
@@ -114,45 +137,72 @@ public partial struct GameNodeInitSystem : ISystem
         [ReadOnly]
         public ComponentTypeHandle<GameNodeParent> parentType;
 
-        [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameNodeCommander> commanders;
+        public ComponentTypeHandle<GameNodeVersion> versionType;
+
+        public ComponentTypeHandle<GameNodeDirection> directionType;
+
+        public BufferTypeHandle<GameNodePosition> positionType;
+
+        [NativeDisableContainerSafetyRestriction]
+        public BufferLookup<GameNodePosition> positions;
+
+        [NativeDisableContainerSafetyRestriction]
+        public ComponentLookup<GameNodeDirection> directions;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             UpdateParents updateParents;
             updateParents.entityArray = chunk.GetNativeArray(entityType);
             updateParents.parents = chunk.GetNativeArray(ref parentType);
-            updateParents.commanders = commanders;
+            updateParents.versions = chunk.GetNativeArray(ref versionType);
+            updateParents.directions = chunk.GetNativeArray(ref directionType);
+            updateParents.positions = chunk.GetBufferAccessor(ref positionType);
+            updateParents.positionMap = positions;
+            updateParents.directionMap = directions;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
+            {
                 updateParents.Execute(i);
+
+                chunk.SetComponentEnabled(ref versionType, i, false);
+            }
         }
     }
 
-    private EntityQuery __rootGroup;
-    private EntityQuery __childGroup;
+    private EntityQuery __group;
 
-    //private NativeQueue<LogInfo> __logInfos;
+    private EntityTypeHandle __entityType;
+
+    private ComponentTypeHandle<GameNodeParent> __parentType;
+
+    private ComponentTypeHandle<GameNodeVersion> __versionType;
+
+    private ComponentTypeHandle<GameNodeDirection> __directionType;
+
+    private BufferTypeHandle<GameNodePosition> __positionType;
+
+    private BufferLookup<GameNodePosition> __positions;
+
+    private ComponentLookup<GameNodeDirection> __directions;
+
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __rootGroup = state.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameNodeCommander>(),
-                },
-                None = new ComponentType[]
-                {
-                    typeof(GameNodeParent)
-                }, 
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                .WithAll<GameNodeParent>()
+                .WithAllRW<GameNodeVersion>()
+                .WithAnyRW<GameNodeDirection, GameNodePosition>()
+                .Build(ref state);
 
-        __childGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameNodeParent>());
-
-        state.RequireForUpdate(__rootGroup);
+        __entityType = state.GetEntityTypeHandle();
+        __parentType = state.GetComponentTypeHandle<GameNodeParent>(true);
+        __versionType = state.GetComponentTypeHandle<GameNodeVersion>();
+        __directionType = state.GetComponentTypeHandle<GameNodeDirection>();
+        __positionType = state.GetBufferTypeHandle<GameNodePosition>();
+        __positions = state.GetBufferLookup<GameNodePosition>();
+        __directions = state.GetComponentLookup<GameNodeDirection>();
     }
 
     public void OnDestroy(ref SystemState state)
@@ -163,22 +213,16 @@ public partial struct GameNodeInitSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        var jobHandle = state.Dependency;
+        UpdateParentsEx updateParents;
+        updateParents.entityType = __entityType.UpdateAsRef(ref state);
+        updateParents.parentType = __parentType.UpdateAsRef(ref state);
+        updateParents.versionType = __versionType.UpdateAsRef(ref state);
+        updateParents.directionType = __directionType.UpdateAsRef(ref state);
+        updateParents.positionType = __positionType.UpdateAsRef(ref state);
+        updateParents.positions = __positions.UpdateAsRef(ref state);
+        updateParents.directions = __directions.UpdateAsRef(ref state);
 
-        ClearCommanders clearCommanders;
-        clearCommanders.commanderType = state.GetComponentTypeHandle<GameNodeCommander>();
-        jobHandle = clearCommanders.ScheduleParallel(__rootGroup, jobHandle);
-
-        if (!__childGroup.IsEmptyIgnoreFilter)
-        {
-            UpdateParentsEx updateParents;
-            updateParents.entityType = state.GetEntityTypeHandle();
-            updateParents.parentType = state.GetComponentTypeHandle<GameNodeParent>(true);
-            updateParents.commanders = state.GetComponentLookup<GameNodeCommander>();
-            jobHandle = updateParents.ScheduleParallel(__childGroup, jobHandle);
-        }
-
-        state.Dependency = jobHandle;
+        state.Dependency = updateParents.ScheduleParallelByRef(__group, state.Dependency);
     }
 }
 
@@ -222,14 +266,9 @@ public partial struct GameNodeSystem : ISystem
         public GameDeadline time;
 
         [ReadOnly]
-        public ComponentLookup<GameNodeDirection> directionMap;
-
-        [ReadOnly]
         public BufferAccessor<GameNodeSpeedSection> speedSections;
         [ReadOnly]
         public NativeArray<Translation> translations;
-        [ReadOnly]
-        public NativeArray<GameNodeCommander> commanders;
         [ReadOnly]
         public NativeArray<GameNodeStaticThreshold> staticThresholds;
         [ReadOnly]
@@ -258,9 +297,6 @@ public partial struct GameNodeSystem : ISystem
         public NativeArray<GameNodeVelocity> velocities;
 
         public BufferAccessor<GameNodePosition> positions;
-
-        [NativeDisableContainerSafetyRestriction]
-        public BufferLookup<GameNodePosition> positionMap;
 
 #if GAME_DEBUG_COMPARSION
         //public NativeQueue<LogInfo>.ParallelWriter logInfos;
@@ -337,9 +373,8 @@ public partial struct GameNodeSystem : ISystem
                     forward = math.forward(quaternion.RotateY(angleValue)),
                     source = float3.zero,
                     destination = source;
-                Entity commander = index < commanders.Length ? commanders[index].entity : default;
                 GameNodePosition position;
-                var direction = directionMap.HasComponent(commander) ? directionMap[commander] : (index < directions.Length ? directions[index] : default);
+                var direction = index < directions.Length ? directions[index] : default;
                 var direct = isUpdate ? default : directs[index];
                 GameNodeDesiredVelocity desiredVelocity;
                 DynamicBuffer<GameNodePosition> positions = default;
@@ -384,12 +419,7 @@ public partial struct GameNodeSystem : ISystem
                 }
                 else
                 {
-                    if (positionMap.HasBuffer(commander))
-                    {
-                        positions = positionMap[commander];
-                        length = positions.Length;
-                    }
-                    else if (index < this.positions.Length)
+                    if (index < this.positions.Length)
                     {
                         positions = this.positions[index];
                         length = positions.Length;
@@ -770,8 +800,6 @@ public partial struct GameNodeSystem : ISystem
         [ReadOnly]
         public ComponentTypeHandle<Translation> translationType;
         [ReadOnly]
-        public ComponentTypeHandle<GameNodeCommander> commanderType;
-        [ReadOnly]
         public ComponentTypeHandle<GameNodeStaticThreshold> staticThresholdType;
         [ReadOnly]
         public ComponentTypeHandle<GameNodeStoppingDistance> stoppingDistanceType;
@@ -836,10 +864,8 @@ public partial struct GameNodeSystem : ISystem
             updateTransforms.isUpdate = isUpdate;
             updateTransforms.deltaTime = time.delta;
             updateTransforms.time = time;
-            updateTransforms.directionMap = directions;
             updateTransforms.speedSections = chunk.GetBufferAccessor(ref speedSectionType);
             updateTransforms.translations = chunk.GetNativeArray(ref translationType);
-            updateTransforms.commanders = chunk.GetNativeArray(ref commanderType);
             updateTransforms.staticThresholds = chunk.GetNativeArray(ref staticThresholdType);
             updateTransforms.stoppingDistances = chunk.GetNativeArray(ref stoppingDistanceType);
             updateTransforms.states = chunk.GetNativeArray(ref statusType);
@@ -854,7 +880,6 @@ public partial struct GameNodeSystem : ISystem
             updateTransforms.directs = chunk.GetNativeArray(ref directType);
             updateTransforms.velocities = chunk.GetNativeArray(ref velocityType);
             updateTransforms.positions = chunk.GetBufferAccessor(ref positionType);
-            updateTransforms.positionMap = positions;
 
 #if GAME_DEBUG_COMPARSION
             updateTransforms.frameIndex = frameIndex;
@@ -895,7 +920,6 @@ public partial struct GameNodeSystem : ISystem
 
     private BufferTypeHandle<GameNodeSpeedSection> __speedSectionType;
     private ComponentTypeHandle<Translation> __translationType;
-    private ComponentTypeHandle<GameNodeCommander> __commanderType;
     private ComponentTypeHandle<GameNodeStaticThreshold> __staticThresholdType;
     private ComponentTypeHandle<GameNodeStoppingDistance> __stoppingDistanceType;
     private ComponentTypeHandle<GameNodeStatus> __statusType;
@@ -937,7 +961,6 @@ public partial struct GameNodeSystem : ISystem
         __directions = state.GetComponentLookup<GameNodeDirection>(true);
         __speedSectionType = state.GetBufferTypeHandle<GameNodeSpeedSection>(true);
         __translationType = state.GetComponentTypeHandle<Translation>(true);
-        __commanderType = state.GetComponentTypeHandle<GameNodeCommander>(true);
         __staticThresholdType = state.GetComponentTypeHandle<GameNodeStaticThreshold>(true);
         __stoppingDistanceType = state.GetComponentTypeHandle<GameNodeStoppingDistance>(true);
         __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
@@ -976,7 +999,6 @@ public partial struct GameNodeSystem : ISystem
         updateTransforms.directions = __directions.UpdateAsRef(ref state);
         updateTransforms.speedSectionType = __speedSectionType.UpdateAsRef(ref state);
         updateTransforms.translationType = __translationType.UpdateAsRef(ref state);
-        updateTransforms.commanderType = __commanderType.UpdateAsRef(ref state);
         updateTransforms.staticThresholdType = __staticThresholdType.UpdateAsRef(ref state);
         updateTransforms.stoppingDistanceType = __stoppingDistanceType.UpdateAsRef(ref state);
         updateTransforms.statusType = __statusType.UpdateAsRef(ref state);
@@ -1020,7 +1042,7 @@ public partial struct GameNodeSystem : ISystem
         updateTransforms.entityIndexType = state.GetComponentTypeHandle<GameEntityIndex>(true);
 #endif
 
-        state.Dependency = updateTransforms.ScheduleParallel(__group, jobHandle);
+        state.Dependency = updateTransforms.ScheduleParallelByRef(__group, jobHandle);
 
 #if GAME_DEBUG_COMPARSION
         streamScheduler.End(state.Dependency);

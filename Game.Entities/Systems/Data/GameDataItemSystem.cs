@@ -7,6 +7,7 @@ using Unity.Mathematics;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using ZG;
+using System.Diagnostics;
 
 #region GameItemManager
 [assembly: RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameDataItemContainerSerializationSystem.Serializer>))]
@@ -81,6 +82,12 @@ public partial class GameItemContainerSystem : SystemBase
     UpdateAfter(typeof(GameItemRootEntitySystem))*/]
 public partial struct GameDataItemSystem : ISystem
 {
+    private enum Flag
+    {
+        Removed = 0x01, 
+        Changed = 0x02
+    }
+
     /*private struct Result
     {
         public Entity entity;
@@ -262,8 +269,10 @@ public partial struct GameDataItemSystem : ISystem
             if (entities.TryGetValue(GameItemStructChangeFactory.Convert(handle), out Entity entity))
             {
                 bool result = serializableEntities.TryAdd(entity, root);
+                if(!result)
+                    UnityEngine.Debug.LogError($"Fail To Serializable Item {entity} : {handle} To Root {root} : {hierarchy.GetRoot(handle)}");
 
-                UnityEngine.Assertions.Assert.IsTrue(result);
+                //UnityEngine.Assertions.Assert.IsTrue(result);
 
                 if (result && !serializables.HasComponent(entity))
                 {
@@ -341,7 +350,7 @@ public partial struct GameDataItemSystem : ISystem
     }
 
     [BurstCompile]
-    private struct Filter : IJobParalledForDeferBurstSchedulable
+    private struct Filter : IJobParallelForDefer
     {
         [ReadOnly]
         public NativeArray<Entity> entityArray;
@@ -390,7 +399,7 @@ public partial struct GameDataItemSystem : ISystem
         [ReadOnly]
         public ComponentLookup<EntityDataSerializable> serializables;
 
-        public NativeHashSet<GameItemHandle> handles;
+        public NativeHashMap<Entity, bool> entitiesToRemove;
 
         public SharedHashMap<Entity, Entity>.Writer serializableEntities;
 
@@ -423,13 +432,27 @@ public partial struct GameDataItemSystem : ISystem
 
         public void Execute(in GameItemHandle handle, in Entity rootEntity)
         {
-            if (!handles.Add(handle))
-            {
-                if (!handle.Equals(GameItemHandle.empty))
-                    UnityEngine.Debug.LogError($"Wrong Handle!!!");
-
+            if (handle.Equals(GameItemHandle.empty))
                 return;
+
+            bool isRemoved = rootEntity == Entity.Null;
+            
+            //bool isChanged = isRemoved == serializables.HasComponent(entity);
+            if (entities.TryGetValue(GameItemStructChangeFactory.Convert(handle), out Entity entity) &&
+                isRemoved ? serializableEntities.Remove(entity) : serializableEntities.TryAdd(entity, rootEntity))
+            {
+                if (entitiesToRemove.TryGetValue(entity, out bool handleToRemove) && handleToRemove == isRemoved)
+                {
+                    if (!handle.Equals(GameItemHandle.empty))
+                        UnityEngine.Debug.LogError($"Wrong Handle {handle}");
+
+                    return;
+                }
+
+                entitiesToRemove[entity] = isRemoved;
             }
+            else
+                return;
 
             if (!hierarchy.GetChildren(handle, out var enumerator, out var item))
                 return;
@@ -439,14 +462,11 @@ public partial struct GameDataItemSystem : ISystem
 
             Execute(item.siblingHandle, rootEntity);
 
-            bool isRemove = rootEntity == Entity.Null;
+            /*bool isRemove = rootEntity == Entity.Null;
             if (entities.TryGetValue(GameItemStructChangeFactory.Convert(handle), out Entity entity) &&
                 isRemove == serializables.HasComponent(entity) &&
                 (isRemove ? serializableEntities.Remove(entity) : serializableEntities.TryAdd(entity, rootEntity)))
             {
-                /*if (handle.index == 18)
-                    UnityEngine.Debug.Log("ddd");*/
-
                 EntityCommandStructChange command;
                 command.componentType = ComponentType.ReadOnly<EntityDataSerializable>();
                 command.entity = entity;
@@ -455,7 +475,7 @@ public partial struct GameDataItemSystem : ISystem
                     removeComponentCommander.Enqueue(command);
                 else
                     addComponentCommander.Enqueue(command);
-            }
+            }*/
         }
 
         public void Execute(int index)
@@ -499,21 +519,27 @@ public partial struct GameDataItemSystem : ISystem
             if (result[0] == 1)
                 return;
 
+            entitiesToRemove.Clear();
+
             int numCommands = commands.Length;
             for (int i = 0; i < numCommands; ++i)
                 Execute(i);
-        }
-    }
 
-    [BurstCompile]
-    private struct DisposeAll : IJob
-    {
-        [ReadOnly, DeallocateOnJobCompletion]
-        public NativeArray<int> result;
-
-        public void Execute()
-        {
-
+            bool isRemoved;
+            EntityCommandStructChange command;
+            command.componentType = ComponentType.ReadOnly<EntityDataSerializable>();
+            foreach (var entityToRemove in entitiesToRemove)
+            {
+                isRemoved = entityToRemove.Value;
+                command.entity = entityToRemove.Key;
+                if (serializables.HasComponent(command.entity) == isRemoved)
+                {
+                    if (isRemoved)
+                        removeComponentCommander.Enqueue(command);
+                    else
+                        addComponentCommander.Enqueue(command);
+                }
+            }
         }
     }
 
@@ -535,15 +561,10 @@ public partial struct GameDataItemSystem : ISystem
 
     private NativeCounter __hierarchyCount;
     private NativeList<Entity> __oldEntities;
-    private NativeHashSet<GameItemHandle> __handles;
+    private NativeHashMap<Entity, bool> __entitiesToRemove;
 
     public void OnCreate(ref SystemState state)
     {
-        BurstUtility.InitializeJob<Clear>();
-        BurstUtility.InitializeJobParalledForDefer<Filter>();
-        BurstUtility.InitializeJob<Change>();
-        BurstUtility.InitializeJob<DisposeAll>();
-
         state.SetAlwaysUpdateSystem(true);
 
         __structChangeManagerGroup = GameItemStructChangeManager.GetEntityQuery(ref state);
@@ -574,7 +595,7 @@ public partial struct GameDataItemSystem : ISystem
         __hierarchyCount = new NativeCounter(Allocator.Persistent);
         __oldEntities = new NativeList<Entity>(Allocator.Persistent);
 
-        __handles = new NativeHashSet<GameItemHandle>(1, Allocator.Persistent);
+        __entitiesToRemove = new NativeHashMap<Entity, bool>(1, Allocator.Persistent);
 
         serializableEntities = new SharedHashMap<Entity, Entity>(Allocator.Persistent);
     }
@@ -583,7 +604,7 @@ public partial struct GameDataItemSystem : ISystem
     {
         __hierarchyCount.Dispose();
         __oldEntities.Dispose();
-        __handles.Dispose();
+        __entitiesToRemove.Dispose();
 
         serializableEntities.Dispose();
     }
@@ -682,9 +703,7 @@ public partial struct GameDataItemSystem : ISystem
         filter.serializableEntities = serializableEntities.reader;
         filter.serializables = serializables;
         filter.entityManager = removeComponentParallelWriter;
-        jobHandle = filter.ScheduleParallel(oldEntities, InnerloopBatchCount, jobHandle);
-
-        __handles.Clear();
+        jobHandle = filter.ScheduleByRef(oldEntities, InnerloopBatchCount, jobHandle);
 
         Change change;
         change.result = result;
@@ -692,7 +711,7 @@ public partial struct GameDataItemSystem : ISystem
         change.entities = handleEntitiesReader;
         //change.rootEntities = __rootEntities.reader;
         change.serializables = serializables;
-        change.handles = __handles;
+        change.entitiesToRemove = __entitiesToRemove;
         change.serializableEntities = serializableEntities.writer;
         change.addComponentCommander = addComponentWriter;
         change.removeComponentCommander = removeComponentWriter;
@@ -715,10 +734,7 @@ public partial struct GameDataItemSystem : ISystem
         addComponentCommander.AddJobHandleForProducer<Change>(jobHandle);
         removeComponentCommander.AddJobHandleForProducer<Change>(jobHandle);
 
-        DisposeAll disposeAll;
-        disposeAll.result = result;
-
-        state.Dependency = disposeAll.Schedule(jobHandle);
+        state.Dependency = result.Dispose(jobHandle);
     }
 }
 

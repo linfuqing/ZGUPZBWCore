@@ -53,7 +53,10 @@ public partial struct GameStatusActorSystem : ISystem
                 }
 
                 if (spawners.HasBuffer(entity))
+                {
                     spawners[entity].Reinterpret<int>().Add(level.sliceIndex);
+                    spawners.SetBufferEnabled(entity, true);
+                }
             }
         }
     }

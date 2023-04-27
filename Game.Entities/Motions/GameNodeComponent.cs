@@ -14,11 +14,11 @@ public struct GameNodeParent : IComponentData
     public RigidTransform transform;
 }
 
-public struct GameNodeCommander : IComponentData
+/*public struct GameNodeCommander : IComponentData
 {
     //public int authority;
     public Entity entity;
-}
+}*/
 
 public struct GameNodeLookTarget : IComponentData
 {
@@ -332,7 +332,17 @@ public struct GameNodeStoppingDistance : IComponentData
     public float value;
 }
 
-public struct GameNodeVersion : IComponentData
+public struct GameNodeVersionCommand : IComponentData
+{
+    public int value;
+}
+
+/*public struct GameNodeCommander : IComponentData, IEnableableComponent
+{
+    public Entity entity;
+}*/
+
+public struct GameNodeVersion : IComponentData, IEnableableComponent
 {
     [Flags]
     public enum Type
@@ -345,14 +355,9 @@ public struct GameNodeVersion : IComponentData
     public int value;
 }
 
-public struct GameNodeVersionCommand : IComponentData
-{
-    public int value;
-}
-
 [RequireComponent(typeof(GameNodeStatusComponent))]
 //[EntityComponent(typeof(Translation))]
-[EntityComponent(typeof(GameNodeCommander))]
+//
 [EntityComponent(typeof(GameNodeDelay))]
 [EntityComponent(typeof(GameNodeAngle))]
 [EntityComponent(typeof(GameNodeSurface))]
@@ -369,8 +374,9 @@ public struct GameNodeVersionCommand : IComponentData
 [EntityComponent(typeof(GameNodePosition))]
 [EntityComponent(typeof(GameNodeStaticThreshold))]
 [EntityComponent(typeof(GameNodeStoppingDistance))]
-[EntityComponent(typeof(GameNodeVersion))]
 [EntityComponent(typeof(GameNodeVersionCommand))]
+//[EntityComponent(typeof(GameNodeCommander))]
+[EntityComponent(typeof(GameNodeVersion))]
 public class GameNodeComponent : EntityProxyComponent, IEntityComponent
 {
     private half __normalizedSpeed = (half)1.0f;
@@ -805,6 +811,8 @@ public class GameNodeComponent : EntityProxyComponent, IEntityComponent
         version.value = math.max(version.value, versionCommand.value) + 1;
         gameObjectEntity.SetComponentData(version);
 
+        gameObjectEntity.SetComponentEnabled<GameNodeVersion>(true);
+
         return version.value;
     }
 
@@ -819,6 +827,8 @@ public class GameNodeComponent : EntityProxyComponent, IEntityComponent
         version.type = type;
         version.value = versionCommand.value;
         commander.SetComponentData(entity, version);
+
+        commander.SetComponentEnabled<GameNodeVersion>(entity, true);
 
         return versionCommand.value;
     }

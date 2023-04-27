@@ -797,6 +797,7 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
                     //command.offset = float3.zero;
 
                     commands[entity] = command;
+                    commands.SetComponentEnabled(entity, true);
                 }
 
                 return instance.watcherPriority;
@@ -963,6 +964,8 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
                                         //command.offset = float3.zero;
                                         commands[entity] = command;
 
+                                        commands.SetComponentEnabled(entity, true);
+
                                         isHasPosition = false;
                                     }
                                     else
@@ -1031,6 +1034,8 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
                                             //command.offset = float3.zero;
                                             commands[entity] = command;
 
+                                            commands.SetComponentEnabled(entity, true);
+
                                             isHasPosition = false;
 
                                             break;
@@ -1094,6 +1099,7 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
                                         version.type = GameNodeVersion.Type.Direction;
                                         ++version.value;
                                         versions[entity] = version;
+                                        versions.SetComponentEnabled(entity, true);
 
                                         //direction.mode = isHasAngle && math.dot(value, surfaceForward) < 0.0f ? GameNodeDirection.Mode.Backward : GameNodeDirection.Mode.Forward;
                                         direction.version = version.value;
@@ -1134,6 +1140,7 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
                         version.type = GameNodeVersion.Type.Direction;
                         ++version.value;
                         versions[entity] = version;
+                        versions.SetComponentEnabled(entity, true);
 
                         direction.mode = GameNodeDirection.Mode.Forward;
                         direction.version = version.value;

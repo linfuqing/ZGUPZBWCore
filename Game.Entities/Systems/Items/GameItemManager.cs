@@ -1,4 +1,6 @@
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using Unity.Jobs;
 using Unity.Entities;
 using Unity.Collections;
@@ -341,6 +343,8 @@ public struct GameItemManager
             __fungibleItems = fungibleItems;
         }
 
+        public bool TryGetValue(int index, out Info item) => __infos.TryGetValue(index, out item);
+
         public bool TryGetValue(in Handle handle, out Info item) => __infos.TryGetValue(handle, out item);
 
         public bool Contains(
@@ -401,6 +405,29 @@ public struct GameItemManager
         }
     }
 
+    public struct Enumerator : IEnumerator<Info>
+    {
+        private NativePool<Info>.Enumerator __instance;
+
+        public Info Current => __instance.value;
+
+        public Enumerator(in GameItemManager manager)
+        {
+            __instance = manager.__infos.GetEnumerator();
+        }
+
+        public bool MoveNext() => __instance.MoveNext();
+
+        public void Reset() => __instance.Reset();
+
+        object IEnumerator.Current => Current;
+
+        void IDisposable.Dispose()
+        {
+
+        }
+    }
+
     [ReadOnly]
     private NativeList<Type> __types;
 
@@ -417,6 +444,8 @@ public struct GameItemManager
     private NativeParallelMultiHashMap<int, int> __fungibleItems;
 
     public bool isCreated => __types.IsCreated;
+
+    public int length => __infos.length;
 
     public AllocatorManager.AllocatorHandle allocator => __infos.allocator;
 
@@ -441,7 +470,7 @@ public struct GameItemManager
         return job.Schedule(__commands, innerloopBatchCount, inputDeps);
     }
 
-    public GameItemManager(Allocator allocator, ref NativeListLite<Command> commands)
+    public GameItemManager(Allocator allocator, ref NativeList<Command> commands)
     {
         __commands = commands;
 
@@ -543,6 +572,8 @@ public struct GameItemManager
 
         __negativefilters.Dispose();
     }
+
+    public Enumerator GetEnumerator() => new Enumerator(in this);
 
     public void Reset(Data[] datas)
     {
@@ -837,11 +868,12 @@ public struct GameItemManager
     {
         int capacity = __types[type].count;
 
-        Info item;
-        Handle handle;
-        handle.index = __infos.nextIndex;
+        var handle = __Create();
+        /*handle.index = __infos.nextIndex;
         __infos.TryGetValue(handle.index, out item);
-        handle.version = ++item.version;
+        handle.version = ++item.version;*/
+        Info item;
+        item.version = handle.version;
         item.type = type;
 
         if (count == 0)
@@ -962,9 +994,11 @@ public struct GameItemManager
         command.sourceSiblingHandle = Handle.empty;
         command.sourceHandle = Handle.empty;
 
-        __infos.TryGetValue(__infos.nextIndex, out temp);
-        child.handle.version = ++temp.version;
+        child.handle = __Create();
 
+        /*__infos.TryGetValue(__infos.nextIndex, out temp);
+        child.handle.version = ++temp.version;*/
+        temp.version = child.handle.version;
         temp.type = type;
 
         if (count > capacity)
@@ -986,7 +1020,7 @@ public struct GameItemManager
 
         child.index = parentChildIndex;
 
-        child.handle.index = __infos.Add(temp);
+        __infos.Insert(child.handle.index, temp);
 
         if (isFind)
             __children.SetValue(child, iterator);
@@ -1157,10 +1191,10 @@ public struct GameItemManager
         destination.sourceSiblingHandle = item.siblingHandle;
         destination.sourceHandle = handle;
 
-        __infos.TryGetValue(__infos.nextIndex, out var temp);
+        //__infos.TryGetValue(__infos.nextIndex, out var temp);
 
-        Handle result;
-        result.version = ++temp.version;
+        //Handle result = __Create();
+        //result.version = ++temp.version;
 
         source.commandType = CommandType.Remove;
         source.type = item.type;
@@ -1172,6 +1206,10 @@ public struct GameItemManager
         source.sourceHandle = handle;
 
         item.count -= count;
+
+        Handle result = __Create();
+        Info temp;
+        temp.version = result.version;
         temp.type = item.type;
         if (count > capacity)
         {
@@ -1197,7 +1235,7 @@ public struct GameItemManager
 
         temp.siblingHandle = Handle.empty;
 
-        result.index = __infos.Add(temp);
+        __infos.Insert(result.index, temp);
 
         source.destinationCount = item.count;
         source.destinationParentChildIndex = -1;
@@ -1314,8 +1352,8 @@ public struct GameItemManager
         destination.sourceSiblingHandle = item.siblingHandle;
         destination.sourceHandle = handle;
 
-        __infos.TryGetValue(__infos.nextIndex, out temp);
-        child.handle.version = ++temp.version;
+        /*__infos.TryGetValue(__infos.nextIndex, out temp);
+        child.handle.version = ++temp.version;*/
 
         source.commandType = CommandType.Remove;
         source.type = item.type;
@@ -1327,6 +1365,9 @@ public struct GameItemManager
         source.sourceHandle = handle;
 
         item.count -= count;
+
+        child.handle = __Create();
+        temp.version = child.handle.version;
         temp.type = item.type;
         if (count > capacity)
         {
@@ -1354,7 +1395,7 @@ public struct GameItemManager
 
         child.index = parentChildIndex;
 
-        child.handle.index = __infos.Add(temp);
+         __infos.Insert(child.handle.index, temp);
 
         if (isFind)
             __children.SetValue(child, iterator);
@@ -1701,21 +1742,6 @@ public struct GameItemManager
             return 0;
 
         int length = 0;
-        if (__children.TryGetFirstValue(handle.index, out var child, out var iterator))
-        {
-            do
-            {
-                length += Remove(child.handle, type, count - length, default(NativeArray<int>), siblings, children);
-                if (length >= count)
-                    return length;
-
-            } while (__children.TryGetNextValue(out child, ref iterator));
-        }
-
-        length += Remove(item.siblingHandle, type, count - length, default(NativeArray<int>), siblings, children);
-        if (length >= count)
-            return length;
-
         if (item.type == type)
         {
             bool result = !parentTypes.IsCreated || parentTypes.Length < 1;
@@ -1753,7 +1779,7 @@ public struct GameItemManager
                         __commands.Add(command);
                     }
 
-                    if (children.IsCreated && __children.TryGetFirstValue(handle.index, out child, out iterator))
+                    if (children.IsCreated && __children.TryGetFirstValue(handle.index, out var child, out var iterator))
                     {
                         Info temp;
 
@@ -1794,6 +1820,23 @@ public struct GameItemManager
 
                 length += Remove(handle, count);
             }
+        }
+        else
+        {
+            if (__children.TryGetFirstValue(handle.index, out var child, out var iterator))
+            {
+                do
+                {
+                    length += Remove(child.handle, type, count - length, default(NativeArray<int>), siblings, children);
+                    if (length >= count)
+                        return length;
+
+                } while (__children.TryGetNextValue(out child, ref iterator));
+            }
+
+            length += Remove(item.siblingHandle, type, count - length, default(NativeArray<int>), siblings, children);
+            /*if (length >= count)
+                return length;*/
         }
 
         return length;
@@ -1854,6 +1897,19 @@ public struct GameItemManager
         }
 
         return __infos.RemoveAt(handle.index);
+    }
+
+    private Handle __Create()
+    {
+        Handle handle;
+        handle.index = __infos.nextIndex;
+        __infos.TryGetValue(handle.index, out var item);
+        handle.version = ++item.version;
+
+        UnityEngine.Assertions.Assert.AreNotEqual(int.MaxValue, handle.index);
+        UnityEngine.Assertions.Assert.AreNotEqual(0, handle.version);
+
+        return handle;
     }
 
     private static bool __Filter(
@@ -2382,8 +2438,8 @@ public struct GameItemManagerShared : IDisposable
     public unsafe GameItemManager value => __data->value;
 
     public unsafe GameItemManagerShared(
-        ref NativeListLite<Command> commands,
-        ref NativeListLite<Command> oldCommands,
+        ref NativeList<Command> commands,
+        ref NativeList<Command> oldCommands,
         Allocator allocator)
     {
         __commands = commands;

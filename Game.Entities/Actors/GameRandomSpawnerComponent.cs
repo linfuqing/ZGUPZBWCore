@@ -27,7 +27,7 @@ public struct GameRandomSpawnerAsset : IBufferElementData
 }
 
 [Serializable]
-public struct GameRandomSpawnerNode : IBufferElementData
+public struct GameRandomSpawnerNode : IBufferElementData, IEnableableComponent
 {
     public int sliceIndex;
 }

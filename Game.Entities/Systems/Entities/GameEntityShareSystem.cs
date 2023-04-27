@@ -1578,6 +1578,30 @@ public partial struct GameEntitySharedActionSystem : ISystem
     }
 
     [BurstCompile]
+    public struct ApplyHits : IJob
+    {
+        public NativeFactory<EntityData<GameEntitySharedHit>> sources;
+
+        public BufferLookup<GameEntitySharedHit> destinations;
+
+        public void Execute()
+        {
+            EntityData<GameEntitySharedHit> value;
+            var enumerator = sources.GetEnumerator();
+            while (enumerator.MoveNext())
+            {
+                value = enumerator.Current;
+                if (!destinations.HasBuffer(value.entity))
+                    continue;
+
+                destinations[value.entity].Add(value.value);
+            }
+
+            sources.Clear();
+        }
+    }
+
+    [BurstCompile]
     private struct ClearHits : IJobChunk
     {
         public BufferTypeHandle<GameEntitySharedHit> hitType;
@@ -1658,8 +1682,6 @@ public partial struct GameEntitySharedActionSystem : ISystem
 
     public void OnCreate(ref SystemState state)
     {
-        BurstUtility.InitializeJob<GameEntityActionSystemCore.ApplyBuffers<GameEntitySharedHit>>();
-
         __hitGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameEntitySharedHit>());
 
         __hits = new NativeFactoryLite<EntityData<GameEntitySharedHit>>(Allocator.Persistent, true);
@@ -1731,7 +1753,7 @@ public partial struct GameEntitySharedActionSystem : ISystem
 
             entityManager.AddJobHandleForProducer<Factory>(performJob);
 
-            GameEntityActionSystemCore.ApplyBuffers<GameEntitySharedHit> applyHits;
+            ApplyHits applyHits;
             applyHits.sources = hits;
             applyHits.destinations = __hitResults.UpdateAsRef(ref state);
             jobHandle = applyHits.Schedule(JobHandle.CombineDependencies(jobHandle, performJob));
