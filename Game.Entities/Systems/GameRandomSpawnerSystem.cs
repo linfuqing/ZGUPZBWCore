@@ -25,7 +25,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
 
             //public double time;
 
-            public float3 position;
+            public RigidTransform transform;
 
             public Entity entity;
 
@@ -47,8 +47,8 @@ public partial struct GameRandomSpawnerSystem : ISystem
                     spawnData.transform.pos.x = horizontal * random.NextFloat();
                     spawnData.transform.pos.y = vertical;
                     spawnData.transform.pos.z = horizontal * random.NextFloat();
-                    spawnData.transform.rot = quaternion.LookRotationSafe(-math.normalize(spawnData.transform.pos), math.up());
-                    spawnData.transform.pos += position;
+                    spawnData.transform.rot = transform.rot;// quaternion.LookRotationSafe(-math.normalize(spawnData.transform.pos), math.up());
+                    spawnData.transform.pos += transform.pos;
 
                     entityManager.Enqueue(spawnData);
                 }
@@ -66,7 +66,10 @@ public partial struct GameRandomSpawnerSystem : ISystem
 
         [ReadOnly]
         public NativeArray<Translation> translations;
-        
+
+        [ReadOnly]
+        public NativeArray<Rotation> rotations;
+
         [ReadOnly]
         public BufferAccessor<GameRandomSpawnerSlice> slices;
 
@@ -91,7 +94,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
 
             AssetHandler assetHandler;
             //assetHandler.time = time;
-            assetHandler.position = translations[index].Value;
+            assetHandler.transform = math.RigidTransform(rotations[index].Value, translations[index].Value);
             assetHandler.entity = entity;
             assetHandler.random = random;
             assetHandler.assets = assets[index];
@@ -121,6 +124,9 @@ public partial struct GameRandomSpawnerSystem : ISystem
         public EntityTypeHandle entityType;
 
         [ReadOnly]
+        public ComponentTypeHandle<Rotation> rotationType;
+
+        [ReadOnly]
         public ComponentTypeHandle<Translation> translationType;
         
         [ReadOnly]
@@ -146,6 +152,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
             long hash = math.aslong(time);
             spawn.random = new Random((uint)((int)(hash >> 32) ^ ((int)hash) ^ unfilteredChunkIndex));
             spawn.entityArray = chunk.GetNativeArray(entityType);
+            spawn.rotations = chunk.GetNativeArray(ref rotationType);
             spawn.translations = chunk.GetNativeArray(ref translationType);
             spawn.slices = chunk.GetBufferAccessor(ref sliceType);
             spawn.groups = chunk.GetBufferAccessor(ref groupType);
@@ -168,6 +175,8 @@ public partial struct GameRandomSpawnerSystem : ISystem
     private GameSyncTime __time;
 
     private EntityTypeHandle __entityType;
+
+    private ComponentTypeHandle<Rotation> __rotationType;
 
     private ComponentTypeHandle<Translation> __translationType;
 
@@ -203,6 +212,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
         __time = new GameSyncTime(ref state);
 
         __entityType = state.GetEntityTypeHandle();
+        __rotationType = state.GetComponentTypeHandle<Rotation>(true);
         __translationType = state.GetComponentTypeHandle<Translation>(true);
         __sliceType = state.GetBufferTypeHandle<GameRandomSpawnerSlice>(true);
         __groupType = state.GetBufferTypeHandle<GameRandomSpawnerGroup>(true);
@@ -227,6 +237,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
         SpawnEx spawn;
         spawn.time = __time.nextTime;
         spawn.entityType = __entityType.UpdateAsRef(ref state);
+        spawn.rotationType = __rotationType.UpdateAsRef(ref state);
         spawn.translationType = __translationType.UpdateAsRef(ref state);
         spawn.sliceType = __sliceType.UpdateAsRef(ref state);
         spawn.groupType = __groupType.UpdateAsRef(ref state);
