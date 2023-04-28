@@ -489,7 +489,7 @@ public partial struct GameNodeCharacterSystem : ISystem
 
             var drag = drags[index];
 
-            float3 direct = directs[index].value + drag.velocity / deltaTime;
+            float3 direct = directs[index].value + drag.velocity * deltaTime;
             var indirect = indirects[index];
             bool isDirectZero = direct.Equals(float3.zero),
                 isIndirectZero = indirect.isZero;

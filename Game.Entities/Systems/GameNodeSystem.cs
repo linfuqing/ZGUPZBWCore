@@ -1282,7 +1282,7 @@ public partial struct GameNodeVelocityComponentSystem : ISystem
                         else
                         {
                             if (velocityComponent.mode == GameNodeVelocityComponent.Mode.Direct)
-                                drag.value += velocityComponent.value;
+                                drag.value += velocityComponent.value * velocityComponent.duration;
 
                             elapsedTime = velocityComponent.duration;
 
