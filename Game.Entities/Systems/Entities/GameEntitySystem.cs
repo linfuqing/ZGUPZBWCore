@@ -1247,6 +1247,7 @@ public partial struct GameEntityActorSystem : ISystem
                                         if (action.info.actionMoveSpeed > math.FLT_MIN_NORMAL &&
                                                actor.accuracy > math.FLT_MIN_NORMAL &&
                                                Math.CalculateParabolaTrajectory(
+                                                   (action.instance.flag & GameActionFlag.MoveWithActor) != GameActionFlag.MoveWithActor, 
                                                    actor.accuracy,
                                                    math.length(gravity),
                                                    action.info.actionMoveSpeed,
@@ -1261,10 +1262,11 @@ public partial struct GameEntityActorSystem : ISystem
                                             float3 targetForward = forward;
 
                                             float2 angleAndTime = Math.CalculateParabolaAngleAndTime(
-                                               action.info.actionMoveSpeed,
-                                               math.length(gravity),
-                                               targetPosition - position,
-                                               ref targetForward);
+                                                (action.instance.flag & GameActionFlag.MoveWithActor) != GameActionFlag.MoveWithActor,
+                                                action.info.actionMoveSpeed,
+                                                math.length(gravity),
+                                                targetPosition - position,
+                                                ref targetForward);
 
                                             if (angleAndTime.y > math.FLT_MIN_NORMAL)
                                                 targetPosition = position + targetForward * (action.info.actionMoveSpeed * angleAndTime.y);
@@ -1357,10 +1359,11 @@ public partial struct GameEntityActorSystem : ISystem
                                         {
                                             float3 targetForward = math.normalizesafe(distance, forward);
                                             float2 angleAndTime = Math.CalculateParabolaAngleAndTime(
-                                                           action.info.actionMoveSpeed,
-                                                           math.length(gravity),
-                                                           distance,
-                                                           ref targetForward);
+                                                (action.instance.flag & GameActionFlag.MoveWithActor) != GameActionFlag.MoveWithActor, 
+                                                action.info.actionMoveSpeed, 
+                                                math.length(gravity),
+                                                distance,
+                                                ref targetForward);
 
                                             if (angleAndTime.y > math.FLT_MIN_NORMAL)
                                                 distance = targetForward * (action.info.actionMoveSpeed * angleAndTime.y);
