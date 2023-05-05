@@ -5,26 +5,22 @@ using Unity.Mathematics;
 using Unity.Collections;
 using ZG;
 
-[Serializable]
 public struct GameSpawnerAsset
 {
     public int capacity;
     public float deadline;
 }
 
-[Serializable]
 public struct GameSpawnedInstanceData : IComponentData
 {
     public int assetIndex;
 }
 
-[Serializable]
 public struct GameSpawnedInstanceInfo : IComponentData
 {
     public double time;
 }
 
-[Serializable]
 public struct GameSpawnerAssetCounter : IBufferElementData
 {
     public int assetIndex;

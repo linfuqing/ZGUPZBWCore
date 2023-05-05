@@ -92,9 +92,10 @@ public partial struct GameRandomSpawnerSystem : ISystem
 
             Entity entity = entityArray[index];
 
+            var transform = math.RigidTransform(rotations[index].Value, translations[index].Value);
+
             AssetHandler assetHandler;
             //assetHandler.time = time;
-            assetHandler.transform = math.RigidTransform(rotations[index].Value, translations[index].Value);
             assetHandler.entity = entity;
             assetHandler.random = random;
             assetHandler.assets = assets[index];
@@ -108,6 +109,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
                 slice = slices[nodes[i].sliceIndex];
                 assetHandler.vertical = slice.vertical;
                 assetHandler.horizontal = slice.horizontal;
+                assetHandler.transform = math.mul(transform, slice.offset);
                 random.Next(ref assetHandler, groups.Reinterpret<RandomGroup>().AsNativeArray().Slice(slice.groupStartIndex, slice.groupCount));
             }
 

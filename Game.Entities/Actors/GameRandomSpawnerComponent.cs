@@ -1,10 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using Unity.Entities;
+using Unity.Mathematics;
 using UnityEngine;
 using ZG;
 
-[Serializable]
 public struct GameRandomSpawnerSlice : IBufferElementData
 {
     public int groupStartIndex;
@@ -12,21 +12,20 @@ public struct GameRandomSpawnerSlice : IBufferElementData
 
     public float vertical;
     public float horizontal;
+
+    public RigidTransform offset;
 }
 
-[Serializable]
 public struct GameRandomSpawnerGroup : IBufferElementData
 {
     public RandomGroup value;
 }
 
-[Serializable]
 public struct GameRandomSpawnerAsset : IBufferElementData
 {
     public int index;
 }
 
-[Serializable]
 public struct GameRandomSpawnerNode : IBufferElementData, IEnableableComponent
 {
     public int sliceIndex;
@@ -52,6 +51,9 @@ public class GameRandomSpawnerComponent : EntityProxyComponent, IEntityComponent
         public float vertical;
         [Tooltip("横向掉落范围")]
         public float horizontal;
+
+        public Vector3 position;
+        public Quaternion rotation;
 
         public RandomGroup[] groups;
     }
@@ -110,6 +112,7 @@ public class GameRandomSpawnerComponent : EntityProxyComponent, IEntityComponent
                 destinationSlice.groupCount = sourceSlice.groups.Length;
                 destinationSlice.vertical = sourceSlice.vertical;
                 destinationSlice.horizontal = sourceSlice.horizontal;
+                destinationSlice.offset = math.RigidTransform(sourceSlice.rotation == default ? Quaternion.identity :  sourceSlice.rotation, sourceSlice.position);
 
                 slices[i] = destinationSlice;
 
