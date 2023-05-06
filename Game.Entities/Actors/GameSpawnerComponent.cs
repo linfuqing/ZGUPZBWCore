@@ -70,7 +70,7 @@ public abstract class GameSpawnCommander : IEntityCommander<GameSpawnData>
             //instance.time = __time;
 
             var gameObjectEntity = new GameObjectEntityWrapper(entity, world);
-            gameObjectEntity.SetComponentData(instance);
+            gameObjectEntity.AddComponentData(instance);
             return gameObjectEntity;
         }
     }

@@ -96,11 +96,16 @@ public struct GameNodeSpeed : IComponentData
 [Serializable]
 public struct GameNodeSpeedSection : IBufferElementData
 {
+    [Tooltip("最小速度，大于这个速度这些数值才有效果")]
     public float minSpeed;
+    [Tooltip("旋转速度")]
     public float angularSpeed;
+    [Tooltip("掉头速度，填0表示不能掉头")]
     public float pivotAngularSpeed;
     //public float pivotSpeedScale;
+    [Tooltip("加速度")]
     public float acceleration;
+    [Tooltip("减速度")]
     public float deceleration;
 
     public static GameNodeSpeedSection Scele(in GameNodeSpeedSection x, float speed, float maxSpeed)
@@ -385,6 +390,7 @@ public class GameNodeComponent : EntityProxyComponent, IEntityComponent
     internal float _staticThreshold = 0.01f;
     [SerializeField]
     internal float _stoppingDistance = 0.2f;
+    [Tooltip("最大速度")]
     [SerializeField]
     internal float _speed = 0.2f;
     [SerializeField]
