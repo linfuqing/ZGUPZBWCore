@@ -143,13 +143,13 @@ public struct GameFootstepManager
         }
     }
 
-    private NativeArrayLite<JobHandle> __jobHandles;
+    private NativeArray<JobHandle> __jobHandles;
 
-    private NativeListLite<int> __tagCounts;
+    private NativeList<int> __tagCounts;
 
-    private NativeListLite<GameFootstepTag> __tagResults;
+    private NativeList<GameFootstepTag> __tagResults;
 
-    public bool isVail => __tagCounts.isCreated && __tagCounts.Length > 0;
+    public bool isVail => __tagCounts.IsCreated && __tagCounts.Length > 0;
 
     public JobHandle countJobHandle
     {
@@ -181,8 +181,8 @@ public struct GameFootstepManager
         BurstUtility.InitializeJob<InitTags>();
 
         __jobHandles = new NativeArrayLite<JobHandle>((int)JobHandleType.All, allocator);
-        __tagCounts = new NativeListLite<int>(allocator);
-        __tagResults = new NativeListLite<GameFootstepTag>(allocator);
+        __tagCounts = new NativeList<int>(allocator);
+        __tagResults = new NativeList<GameFootstepTag>(allocator);
     }
 
     public void Dispose()

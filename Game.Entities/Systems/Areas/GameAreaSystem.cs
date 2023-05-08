@@ -374,8 +374,8 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
 
     private GameAreaPrefabSystemCore __core;
 
-    private NativeMultiHashMapLite<int, int> __prefabIndices;
-    private NativeHashMapLite<int, bool> __areaIndices;
+    private NativeParallelMultiHashMap<int, int> __prefabIndices;
+    private NativeParallelHashMap<int, bool> __areaIndices;
 
     private EntityCommandPool<EntityData<GameAreaPrefab>> __addComponentCommanderPool;
     private EntityCommandPool<Entity> __removeComponentCommanderPool;
@@ -403,7 +403,6 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
     {
         BurstUtility.InitializeJob<BuildPrefabIndices>();
         BurstUtility.InitializeJob<ClearAreaIndices>();
-        BurstUtility.InitializeJobParalledForDefer<GameAreaInvokeCommands<Validator>>();
 
         __enumerableGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameAreaNeighborEnumerable>());
 
@@ -415,8 +414,8 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
 
         __core = new GameAreaPrefabSystemCore(ref state);
 
-        __prefabIndices = new NativeMultiHashMapLite<int, int>(1, Allocator.Persistent);
-        __areaIndices = new NativeHashMapLite<int, bool>(1, Allocator.Persistent);
+        __prefabIndices = new NativeParallelMultiHashMap<int, int>(1, Allocator.Persistent);
+        __areaIndices = new NativeParallelHashMap<int, bool>(1, Allocator.Persistent);
 
         World world = state.World;
 
@@ -460,7 +459,7 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
         __physicsWorld.lookupJobManager.AddReadOnlyDependency(state.Dependency);
     }
 
-    public void GetsNeighborEnumerableAndPrefabIndices(
+    public void GetNeighborEnumerableAndPrefabIndices(
         in BlobAssetReference<GameAreaPrefabDefinition> definition,
         ref SystemState systemState, 
         ref JobHandle jobHandle,

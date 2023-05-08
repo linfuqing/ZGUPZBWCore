@@ -1577,11 +1577,11 @@ public struct GameEntityActionSystemCore
 
     //private EntityCommandPool<EntityData<GameActionDisabled>> __entityManager;
 
-    private NativeFactoryLite<Entity> __unstoppableEntities;
-    private NativeFactoryLite<EntityData<Translation>> __locations;
+    private NativeFactory<Entity> __unstoppableEntities;
+    private NativeFactory<EntityData<Translation>> __locations;
     //private NativeQueue<EntityData<float>> __directVelocities;
-    private NativeFactoryLite<EntityData<GameNodeVelocityComponent>> __impacts;
-    private NativeFactoryLite<EntityData<GameEntityBreakCommand>> __commands;
+    private NativeFactory<EntityData<GameNodeVelocityComponent>> __impacts;
+    private NativeFactory<EntityData<GameEntityBreakCommand>> __commands;
 
     private EntityTypeHandle __entityType;
     private ComponentTypeHandle<GameActionData> __instanceType;
@@ -1654,11 +1654,11 @@ public struct GameEntityActionSystemCore
         World world = systemState.World;
         __physicsWorld = world.GetOrCreateSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
 
-        __unstoppableEntities = new NativeFactoryLite<Entity>(Allocator.Persistent, true);
-        __locations = new NativeFactoryLite<EntityData<Translation>>(Allocator.Persistent, true);
+        __unstoppableEntities = new NativeFactory<Entity>(Allocator.Persistent, true);
+        __locations = new NativeFactory<EntityData<Translation>>(Allocator.Persistent, true);
         //__directVelocities = new NativeQueue<EntityData<float>>(Allocator.Persistent);
-        __impacts = new NativeFactoryLite<EntityData<GameNodeVelocityComponent>>(Allocator.Persistent, true);
-        __commands = new NativeFactoryLite<EntityData<GameEntityBreakCommand>>(Allocator.Persistent, true);
+        __impacts = new NativeFactory<EntityData<GameNodeVelocityComponent>>(Allocator.Persistent, true);
+        __commands = new NativeFactory<EntityData<GameEntityBreakCommand>>(Allocator.Persistent, true);
 
         __entityType = systemState.GetEntityTypeHandle();
         __instanceType = systemState.GetComponentTypeHandle<GameActionData>(true);

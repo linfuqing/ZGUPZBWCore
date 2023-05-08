@@ -178,9 +178,9 @@ public struct GameAreaPrefabSystemCore
 
     private TimeManager<GameAreaInternalInstance> __timeManager;
 
-    private NativeHashMapLite<int, int> __areaIndices;
-    private NativeHashMapLite<int, double> __areaCreatedTimes;
-    private NativeFactoryLite<GameAreaInternalInstance> __instances;
+    private NativeParallelHashMap<int, int> __areaIndices;
+    private NativeParallelHashMap<int, double> __areaCreatedTimes;
+    private NativeFactory<GameAreaInternalInstance> __instances;
 
     public GameAreaPrefabSystemCore(ref SystemState systemState)
     {
@@ -216,11 +216,11 @@ public struct GameAreaPrefabSystemCore
 
         __timeManager = new TimeManager<GameAreaInternalInstance>(Allocator.Persistent);
 
-        __areaIndices = new NativeHashMapLite<int, int>(1, Allocator.Persistent);
+        __areaIndices = new NativeParallelHashMap<int, int>(1, Allocator.Persistent);
 
-        __areaCreatedTimes = new NativeHashMapLite<int, double>(1, Allocator.Persistent);
+        __areaCreatedTimes = new NativeParallelHashMap<int, double>(1, Allocator.Persistent);
 
-        __instances = new NativeFactoryLite<GameAreaInternalInstance>(Allocator.Persistent, true);
+        __instances = new NativeFactory<GameAreaInternalInstance>(Allocator.Persistent, true);
     }
 
     public void Dispose()
@@ -298,7 +298,7 @@ public struct GameAreaPrefabSystemCore
 
         GameAreaInit<TNeighborEnumerable> createAreas;
 
-        handler.GetsNeighborEnumerableAndPrefabIndices(definition, ref systemState, ref jobHandle, out createAreas.neighborEnumerable, out createAreas.prefabIndices);
+        handler.GetNeighborEnumerableAndPrefabIndices(definition, ref systemState, ref jobHandle, out createAreas.neighborEnumerable, out createAreas.prefabIndices);
 
         createAreas.time = time;
         createAreas.nodeType = nodeType;
@@ -343,7 +343,7 @@ public struct GameAreaPrefabSystemCore
         invokeCommands.instances = instancesParallelWriter;
         invokeCommands.entityManager = entityManager;
         invokeCommands.validator = handler.GetValidator(ref systemState, ref inputDeps);
-        entityManagerJob = __timeManager.ScheduleParallel(invokeCommands, innerloopBatchCount, inputDeps);
+        entityManagerJob = __timeManager.ScheduleParallel(ref invokeCommands, innerloopBatchCount, inputDeps);
 
         inputDeps = entityManagerJob;// _values.Clear(entityManagerJob);
 

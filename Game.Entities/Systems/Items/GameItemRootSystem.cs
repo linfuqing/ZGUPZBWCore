@@ -200,7 +200,7 @@ public partial struct GameItemRootStatusSystem : ISystem
     private EntityQuery __rootGroup;
     private EntityQuery __siblingGroup;
     private GameItemManagerShared __itemManager;
-    private NativeListLite<GameItemHandle> __handles;
+    private NativeList<GameItemHandle> __handles;
 
     public void OnCreate(ref SystemState state)
     {
@@ -237,7 +237,7 @@ public partial struct GameItemRootStatusSystem : ISystem
 
         __itemManager = state.World.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
 
-        __handles = new NativeListLite<GameItemHandle>(Allocator.Persistent);
+        __handles = new NativeList<GameItemHandle>(Allocator.Persistent);
     }
 
     public void OnDestroy(ref SystemState state)

@@ -230,7 +230,7 @@ public partial struct GameOwnerSystem : ISystem
             if (origins.TryGetValue(entity, out Entity origin) ? origin == owner : entity == Entity.Null)
                 return;
 
-            results.AddNoResizeEx(entity);
+            results.AddNoResize(entity);
         }
     }
 
@@ -359,7 +359,7 @@ public partial struct GameOwnerSystem : ISystem
     }
 
     private EntityQuery __group;
-    private NativeListLite<Entity> __entities;
+    private NativeList<Entity> __entities;
 
     public SharedHashMap<Entity, Entity> origins
     {
@@ -383,7 +383,7 @@ public partial struct GameOwnerSystem : ISystem
             });
         __group.SetChangedVersionFilter(typeof(GameOwner));
 
-        __entities = new NativeListLite<Entity>(Allocator.Persistent);
+        __entities = new NativeList<Entity>(Allocator.Persistent);
 
         origins = new SharedHashMap<Entity, Entity>(Allocator.Persistent);
     }
@@ -416,7 +416,7 @@ public partial struct GameOwnerSystem : ISystem
         var jobHandle = didChange.ScheduleParallel(__group, state.Dependency);
 
         Own own;
-        own.entityArray = entities.AsDeferredJobArrayEx();
+        own.entityArray = entities.AsDeferredJobArray();
         own.owners = state.GetComponentLookup<GameOwner>(true);
         own.camps = state.GetComponentLookup<GameCampDefault>(true);
         own.entityCamps = state.GetComponentLookup<GameEntityCamp>();

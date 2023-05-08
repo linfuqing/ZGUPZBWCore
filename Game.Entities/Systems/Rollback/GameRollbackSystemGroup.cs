@@ -100,7 +100,7 @@ public struct GameRollbackTime
     }
 }
 
-public struct GameRollbackManager : IComponentData
+public struct GameRollbackManager
 {
     private FrameSyncSystemGroup __frameSyncSystemGroup;
 
@@ -187,8 +187,8 @@ public struct GameRollbackManager : IComponentData
     public static readonly ComponentType[] ComponentTypes = new ComponentType[]
     {
         ComponentType.ReadOnly<GameRollbackFrameDelta>(),
-        ComponentType.ReadOnly<GameRollbackFrameOffset>(),
-        ComponentType.ReadOnly<GameRollbackManager>()
+        ComponentType.ReadOnly<GameRollbackFrameOffset>()//,
+        //ComponentType.ReadOnly<GameRollbackManager>()
     };
 
     public GameRollbackManager(ref SystemState systemState)
@@ -205,7 +205,7 @@ public struct GameRollbackManager : IComponentData
 
         __time = new GameRollbackTime(ref systemState);
 
-        entityManager.SetComponentData(systemHandle, this);
+        //entityManager.SetComponentData(systemHandle, this);
     }
 
     public void Update(ref WorldUnmanaged world, int rollbackFrameCount = 3)

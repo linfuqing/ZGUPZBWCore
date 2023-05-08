@@ -164,7 +164,7 @@ public partial struct GameAuraSystem : ISystem
         public CollisionWorld collisionWorld;
 
         [ReadOnly]
-        public NativeParallelHashMap<int, Item> items;
+        public NativeHashMap<int, Item> items;
 
         [ReadOnly]
         public NativeArray<Entity> entityArray;
@@ -226,7 +226,7 @@ public partial struct GameAuraSystem : ISystem
         public CollisionWorldContainer collisionWorld;
 
         [ReadOnly]
-        public NativeParallelHashMap<int, Item> items;
+        public NativeHashMap<int, Item> items;
 
         [ReadOnly]
         public EntityTypeHandle entityType;
@@ -290,12 +290,12 @@ public partial struct GameAuraSystem : ISystem
     private EntityQuery __originGroup;
     private EntityQuery __itemGroup;
     private SharedPhysicsWorld __physicsWorld;
-    private NativeHashMapLite<int, Item> __items;
-    private NativeFactoryLite<EntityData<GameAuraOrigin>> __origins;
+    private NativeHashMap<int, Item> __items;
+    private NativeFactory<EntityData<GameAuraOrigin>> __origins;
 
     public void Create(IEnumerable<KeyValuePair<int, Item>> items)
     {
-        __items = new NativeHashMapLite<int, Item>(1, Allocator.Persistent);
+        __items = new NativeHashMap<int, Item>(1, Allocator.Persistent);
         foreach(var item in items)
             __items.Add(item.Key, item.Value);
     }
@@ -314,12 +314,12 @@ public partial struct GameAuraSystem : ISystem
 
         __physicsWorld = state.World.GetOrCreateSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
 
-        __origins = new NativeFactoryLite<EntityData<GameAuraOrigin>>(Allocator.Persistent, true);
+        __origins = new NativeFactory<EntityData<GameAuraOrigin>>(Allocator.Persistent, true);
     }
 
     public void OnDestroy(ref SystemState state)
     {
-        if (__items.isCreated)
+        if (__items.IsCreated)
             __items.Dispose();
 
         __origins.Dispose();
@@ -328,7 +328,7 @@ public partial struct GameAuraSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        if (!__items.isCreated)
+        if (!__items.IsCreated)
             return;
 
         double time = state.WorldUnmanaged.Time.ElapsedTime;

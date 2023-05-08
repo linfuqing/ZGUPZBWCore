@@ -575,7 +575,7 @@ public partial struct GameFormulaFactorySystem : ISystem
             result.factory = entity;
             result.owner = owner;
 
-            results.AddNoResizeEx(result);
+            results.AddNoResize(result);
 
             return true;
         }
@@ -762,7 +762,7 @@ public partial struct GameFormulaFactorySystem : ISystem
 
                     result.formulaIndex = status.formulaIndex;
 
-                    completeResults.AddNoResizeEx(result);
+                    completeResults.AddNoResize(result);
                 }
 
                 if (modes[index].value != GameFormulaFactoryMode.Mode.Auto)
@@ -812,7 +812,7 @@ public partial struct GameFormulaFactorySystem : ISystem
                 result.owner = command.entity;
                 result.handle = handle;
                 result.formulaIndex = command.formulaIndex;
-                runningResults.AddNoResizeEx(result);
+                runningResults.AddNoResize(result);
 
                 status.value = GameFormulaFactoryStatus.Status.Running;
                 status.formulaIndex = command.formulaIndex;
@@ -1163,8 +1163,8 @@ public partial struct GameFormulaFactorySystem : ISystem
     private BufferLookup<GameItemSpawnHandleCommand> __itemSpawnHandleCommands;
     private BufferLookup<GameItemSpawnCommand> __itemSpawnCommands;
 
-    private NativeListLite<RunningResult> __runningResults;
-    private NativeListLite<CompletedResult> __completedResults;
+    private NativeList<RunningResult> __runningResults;
+    private NativeList<CompletedResult> __completedResults;
 
     private GameItemManagerShared __itemManager;
 
@@ -1240,8 +1240,8 @@ public partial struct GameFormulaFactorySystem : ISystem
         __itemSpawnHandleCommands = state.GetBufferLookup<GameItemSpawnHandleCommand>();
         __itemSpawnCommands = state.GetBufferLookup<GameItemSpawnCommand>();
 
-        __runningResults = new NativeListLite<RunningResult>(Allocator.Persistent);
-        __completedResults = new NativeListLite<CompletedResult>(Allocator.Persistent);
+        __runningResults = new NativeList<RunningResult>(Allocator.Persistent);
+        __completedResults = new NativeList<CompletedResult>(Allocator.Persistent);
 
         var world = state.World;
 

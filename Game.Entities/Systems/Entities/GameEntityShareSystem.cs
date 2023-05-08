@@ -1618,10 +1618,10 @@ public partial struct GameEntitySharedActionSystem : ISystem
 
     private EntityQuery __hitGroup;
 
-    private NativeArrayLite<ActionObject> __actionObjects;
-    private NativeArrayLite<ActionObjectRange> __actionObjectRanges;
-    private NativeArrayLite<Item> __items;
-    private NativeFactoryLite<EntityData<GameEntitySharedHit>> __hits;
+    private NativeArray<ActionObject> __actionObjects;
+    private NativeArray<ActionObjectRange> __actionObjectRanges;
+    private NativeArray<Item> __items;
+    private NativeFactory<EntityData<GameEntitySharedHit>> __hits;
     //private EntityCommandQueue<GameEntityActionSharedFactorySytem.Command> __entityManager;
     private EntityCommandPool<GameEntityActionSharedFactorySytem.Command> __endFrameBarrier;
     private GameEntityActionSystemCore __core;
@@ -1658,24 +1658,24 @@ public partial struct GameEntitySharedActionSystem : ISystem
         NativeArray<ActionObject> actionObjects, 
         NativeArray<ActionObjectRange> actionObjectRanges)
     {
-        if (__items.isCreated)
+        if (__items.IsCreated)
             __items.Dispose();
 
-        __items = new NativeArrayLite<Item>(items.Length, Allocator.Persistent);
+        __items = new NativeArray<Item>(items.Length, Allocator.Persistent);
 
         NativeArray<Item>.Copy(items, __items);
 
-        if (__actionObjects.isCreated)
+        if (__actionObjects.IsCreated)
             __actionObjects.Dispose();
 
-        __actionObjects = new NativeArrayLite<ActionObject>(actionObjects.Length, Allocator.Persistent);
+        __actionObjects = new NativeArray<ActionObject>(actionObjects.Length, Allocator.Persistent);
 
         NativeArray<ActionObject>.Copy(actionObjects, __actionObjects);
 
-        if (__actionObjectRanges.isCreated)
+        if (__actionObjectRanges.IsCreated)
             __actionObjectRanges.Dispose();
 
-        __actionObjectRanges = new NativeArrayLite<ActionObjectRange>(actionObjectRanges.Length, Allocator.Persistent);
+        __actionObjectRanges = new NativeArray<ActionObjectRange>(actionObjectRanges.Length, Allocator.Persistent);
 
         NativeArray<ActionObjectRange>.Copy(actionObjectRanges, __actionObjectRanges);
     }
@@ -1684,7 +1684,7 @@ public partial struct GameEntitySharedActionSystem : ISystem
     {
         __hitGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameEntitySharedHit>());
 
-        __hits = new NativeFactoryLite<EntityData<GameEntitySharedHit>>(Allocator.Persistent, true);
+        __hits = new NativeFactory<EntityData<GameEntitySharedHit>>(Allocator.Persistent, true);
 
         __endFrameBarrier = state.World.GetOrCreateSystemUnmanaged<GameEntityActionSharedFactorySytem>().pool;
 
@@ -1706,13 +1706,13 @@ public partial struct GameEntitySharedActionSystem : ISystem
 
     public void OnDestroy(ref SystemState state)
     {
-        if (__items.isCreated)
+        if (__items.IsCreated)
             __items.Dispose();
 
-        if (__actionObjects.isCreated)
+        if (__actionObjects.IsCreated)
             __actionObjects.Dispose();
 
-        if (__actionObjectRanges.isCreated)
+        if (__actionObjectRanges.IsCreated)
             __actionObjectRanges.Dispose();
         
         __hits.Dispose();
@@ -1723,7 +1723,7 @@ public partial struct GameEntitySharedActionSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        if (!__actionObjects.isCreated)
+        if (!__actionObjects.IsCreated)
             return;
 
         ClearHits clearHits;

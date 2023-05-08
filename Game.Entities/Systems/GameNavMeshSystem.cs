@@ -7,13 +7,13 @@ using Unity.Transforms;
 using UnityEngine.Experimental.AI;
 using ZG;
 
-[AutoCreateIn("Server"), UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(GameSyncSystemGroup)), UpdateAfter(typeof(StateMachineExecutorGroup))]
+[UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(GameSyncSystemGroup)), UpdateAfter(typeof(StateMachineExecutorGroup))]
 public partial class GameNavMeshSystemGroup : ComponentSystemGroup
 {
 
 }
 
-[AutoCreateIn("Server"), AlwaysSynchronizeSystem, UpdateInGroup(typeof(InitializationSystemGroup)), UpdateAfter(typeof(EntityObjectSystemGroup))]
+[AlwaysSynchronizeSystem, UpdateInGroup(typeof(InitializationSystemGroup)), UpdateAfter(typeof(EntityObjectSystemGroup))]
 public partial class GameNavMeshFactorySystem : SystemBase
 {
     private EntityQuery __groupToCreate;
@@ -154,7 +154,7 @@ public partial struct GameNavMeshStructChangeSystem : ISystem
     }
 }*/
 
-[BurstCompile, AutoCreateIn("Server"), UpdateInGroup(typeof(GameNavMeshSystemGroup))]
+[BurstCompile, UpdateInGroup(typeof(GameNavMeshSystemGroup))]
 public partial struct GameNavMeshSystem : ISystem
 {
     private struct Move

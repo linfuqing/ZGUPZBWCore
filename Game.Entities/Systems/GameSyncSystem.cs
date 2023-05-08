@@ -508,7 +508,9 @@ public partial class GameSyncSystemGroup : SystemBase
 
     public GameRollbackManager rollbackManager
     {
-        get => SystemAPI.GetSingleton<GameRollbackManager>();
+        get;
+
+        private set;
     }
 
     public RollbackContainerManager containerManager
@@ -562,6 +564,8 @@ public partial class GameSyncSystemGroup : SystemBase
         __manager = new GameSyncManager(ref this.GetState());
 
         EntityManager.AddComponent<GameAnimationElapsedTime>(SystemHandle);
+
+        rollbackManager = World.GetOrCreateSystemUnmanaged<GameRollbackSystemGroup>().manager;
 
         containerManager = World.GetOrCreateSystemManaged<GameRollbackManagedSystem>().containerManager;
     }

@@ -97,7 +97,7 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
         public ComponentLookup<GameLevel> entityLevels;
 
         [ReadOnly]
-        public NativeParallelHashMap<int, int> itemTypeIndices;
+        public NativeHashMap<int, int> itemTypeIndices;
 
         [ReadOnly]
         public NativeArray<Level> levels;
@@ -703,7 +703,7 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
         public NativeArray<GameEntityDefence> itemDefences;
 
         [ReadOnly]
-        public NativeParallelHashMap<int, int> itemTypeIndices;
+        public NativeHashMap<int, int> itemTypeIndices;
 
         //[ReadOnly]
         //public BufferLookup<GameEntityItem> entityItems;
@@ -799,18 +799,18 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
     
     private EntityCommandPool<GameSpawnData> __spawnCommander;
 
-    private NativeArrayLite<GameActionSpawn> __spawns;
-    private NativeArrayLite<ActionData> __actions;
-    private NativeArrayLite<ItemData> __items;
-    private NativeArrayLite<Level> __levels;
-    private NativeArrayLite<Property> __properties;
-    private NativeArrayLite<GameActionAttack> __actionAttacks;
-    private NativeArrayLite<GameActionAttack> __itemAttacks;
-    private NativeArrayLite<GameEntityDefence> __itemDefences;
-    private NativeHashMapLite<int, int> __itemTypeIndices;
+    private NativeArray<GameActionSpawn> __spawns;
+    private NativeArray<ActionData> __actions;
+    private NativeArray<ItemData> __items;
+    private NativeArray<Level> __levels;
+    private NativeArray<Property> __properties;
+    private NativeArray<GameActionAttack> __actionAttacks;
+    private NativeArray<GameActionAttack> __itemAttacks;
+    private NativeArray<GameEntityDefence> __itemDefences;
+    private NativeHashMap<int, int> __itemTypeIndices;
 
-    private NativeFactoryLite<BufferElementData<GameEntityHealthBuff>> __healthBuffs;
-    private NativeFactoryLite<BufferElementData<GameEntityTorpidityBuff>> __torpidityBuffs;
+    private NativeFactory<BufferElementData<GameEntityHealthBuff>> __healthBuffs;
+    private NativeFactory<BufferElementData<GameEntityTorpidityBuff>> __torpidityBuffs;
 
     private GameEntityActionSystemCore __core;
 
@@ -863,9 +863,9 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
         ActionData actionDestination;
         actionDestination.spawnStartIndex = 0;
 
-        __spawns = new NativeArrayLite<GameActionSpawn>(numSpawns, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-        __actions = new NativeArrayLite<ActionData>(numActions, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-        __actionAttacks = new NativeArrayLite<GameActionAttack>(numActions * __propertyCount, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+        __spawns = new NativeArray<GameActionSpawn>(numSpawns, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+        __actions = new NativeArray<ActionData>(numActions, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+        __actionAttacks = new NativeArray<GameActionAttack>(numActions * __propertyCount, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         foreach (Action actionSource in actions)
         {
             actionDestination.spawnCount = actionSource.spawns == null ? 0 : actionSource.spawns.Length;
@@ -887,13 +887,13 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
 
         num = 0;
         index = 0;
-        __items = new NativeArrayLite<ItemData>(numItems, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+        __items = new NativeArray<ItemData>(numItems, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
 
         count = numItems * __propertyCount;
-        __itemAttacks = new NativeArrayLite<GameActionAttack>(count, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-        __itemDefences = new NativeArrayLite<GameEntityDefence>(count, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+        __itemAttacks = new NativeArray<GameActionAttack>(count, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+        __itemDefences = new NativeArray<GameEntityDefence>(count, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
 
-        __itemTypeIndices = new NativeHashMapLite<int, int>(numItems, Allocator.Persistent);
+        __itemTypeIndices = new NativeHashMap<int, int>(numItems, Allocator.Persistent);
 
         int temp;
         ItemData itemDestination;
@@ -967,8 +967,8 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
     {
         BurstUtility.InitializeJob<Convert>();
 
-        __healthBuffs = new NativeFactoryLite<BufferElementData<GameEntityHealthBuff>>(Allocator.Persistent, true);
-        __torpidityBuffs = new NativeFactoryLite<BufferElementData<GameEntityTorpidityBuff>>(Allocator.Persistent, true);
+        __healthBuffs = new NativeFactory<BufferElementData<GameEntityHealthBuff>>(Allocator.Persistent, true);
+        __torpidityBuffs = new NativeFactory<BufferElementData<GameEntityTorpidityBuff>>(Allocator.Persistent, true);
 
         __core = new GameEntityActionSystemCore(queries, ref state);
 
@@ -977,31 +977,31 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
 
     public void OnDestroy(ref SystemState state)
     {
-        if (__spawns.isCreated)
+        if (__spawns.IsCreated)
             __spawns.Dispose();
 
-        if (__actions.isCreated)
+        if (__actions.IsCreated)
             __actions.Dispose();
 
-        if (__items.isCreated)
+        if (__items.IsCreated)
             __items.Dispose();
 
-        if (__levels.isCreated)
+        if (__levels.IsCreated)
             __levels.Dispose();
 
-        if (__properties.isCreated)
+        if (__properties.IsCreated)
             __properties.Dispose();
 
-        if (__actionAttacks.isCreated)
+        if (__actionAttacks.IsCreated)
             __actionAttacks.Dispose();
 
-        if (__itemAttacks.isCreated)
+        if (__itemAttacks.IsCreated)
             __itemAttacks.Dispose();
 
-        if (__itemDefences.isCreated)
+        if (__itemDefences.IsCreated)
             __itemDefences.Dispose();
 
-        if(__itemTypeIndices.isCreated)
+        if(__itemTypeIndices.IsCreated)
             __itemTypeIndices.Dispose();
 
         __healthBuffs.Dispose();

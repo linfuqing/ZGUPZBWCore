@@ -219,7 +219,7 @@ public partial class GameSpawnerTimeSystem : SystemBase
     }
 
     [BurstCompile]
-    private struct Die : IJobParalledForDeferBurstSchedulable
+    private struct Die : IJobParallelForDefer
     {
         [ReadOnly]
         public NativeArray<Entity> entities;
@@ -260,8 +260,6 @@ public partial class GameSpawnerTimeSystem : SystemBase
 
     protected override void OnCreate()
     {
-        BurstUtility.InitializeJobParalledForDefer<Die>();
-
         base.OnCreate();
 
         __groupToInit = GetEntityQuery(
@@ -344,7 +342,7 @@ public partial class GameSpawnerTimeSystem : SystemBase
         Die die;
         die.entities = __timeManager.values;
         die.states = GetComponentLookup<GameNodeStatus>();
-        jobHandle = __timeManager.ScheduleParallel(die, innerloopBatchCount, jobHandle);
+        jobHandle = __timeManager.ScheduleParallel(ref die, innerloopBatchCount, jobHandle);
 
         jobHandle = __timeManager.Flush(jobHandle);
 

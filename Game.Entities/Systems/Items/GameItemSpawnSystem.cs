@@ -181,7 +181,7 @@ public partial struct GameItemSpawnSystem : ISystem
         public GameItemManager itemManager;
 
         [ReadOnly]
-        public NativeParallelHashMap<Key, Value> values;
+        public NativeHashMap<Key, Value> values;
 
         //[ReadOnly]
         //public NativeArray<Entity> entityArray;
@@ -260,7 +260,7 @@ public partial struct GameItemSpawnSystem : ISystem
         public GameItemManager itemManager;
 
         [ReadOnly]
-        public NativeParallelHashMap<Key, Value> values;
+        public NativeHashMap<Key, Value> values;
 
         [ReadOnly]
         public NativeArray<Translation> translations;
@@ -328,7 +328,7 @@ public partial struct GameItemSpawnSystem : ISystem
         public GameItemManager itemManager;
 
         [ReadOnly]
-        public NativeParallelHashMap<Key, Value> values;
+        public NativeHashMap<Key, Value> values;
 
         //[ReadOnly]
         //public EntityTypeHandle entityType;
@@ -391,7 +391,7 @@ public partial struct GameItemSpawnSystem : ISystem
     }
 
     private EntityQuery __group;
-    private NativeHashMapLite<Key, Value> __values;
+    private NativeHashMap<Key, Value> __values;
     private EntityCommandPool<GameItemSpawnData> __entityManager;
     private GameItemManagerShared __itemManager;
 
@@ -421,7 +421,7 @@ public partial struct GameItemSpawnSystem : ISystem
 
         __group.SetChangedVersionFilter(typeof(GameItemSpawnCommandVersion));
 
-        __values = new NativeHashMapLite<Key, Value>(1, Allocator.Persistent);
+        __values = new NativeHashMap<Key, Value>(1, Allocator.Persistent);
 
         __itemManager = state.World.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
     }
@@ -434,7 +434,7 @@ public partial struct GameItemSpawnSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        if (__values.isEmpty)
+        if (__values.IsEmpty)
             return;
 
         double time = state.WorldUnmanaged.Time.ElapsedTime;

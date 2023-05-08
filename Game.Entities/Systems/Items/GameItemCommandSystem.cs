@@ -1680,7 +1680,7 @@ public partial class GameItemResultSystem : LookupSystem
             if (versions.TryGetValue(root.index, out var version) && version.value == root.version)
                 return;
 
-            entities.AddNoResizeEx(entityArray[index]);
+            entities.AddNoResize(entityArray[index]);
 
             counter.Add(hierarchy.CountOf(root));
         }
@@ -1929,7 +1929,7 @@ public partial class GameItemResultSystem : LookupSystem
                     itemMask.commandStartIndex = commandStartIndex;
                     itemMask.commandCount = commands.Length;
                     itemMask.handle = handle;
-                    itemMasks.AddNoResizeEx(itemMask);
+                    itemMasks.AddNoResize(itemMask);
 
                     EntityData<Result> result;
                     result.value.resultType = ResultType.Add;
@@ -1952,7 +1952,7 @@ public partial class GameItemResultSystem : LookupSystem
 
                     result.entity = entity;
 
-                    results.AddNoResizeEx(result);
+                    results.AddNoResize(result);
 
                     GameItemChild source;
                     ItemChild destination;
@@ -2420,7 +2420,7 @@ public partial class GameItemResultSystem : LookupSystem
         jobHandle = reset.ScheduleParallel(__group, JobHandle.CombineDependencies(temp, jobHandle));
 
         var roots = GetComponentLookup<GameItemRoot>(true);
-        var entities = __entities.AsDeferredJobArrayEx();
+        var entities = __entities.AsDeferredJobArray();
 
         Resize resize;
         resize.hierarchy = hierarchy;

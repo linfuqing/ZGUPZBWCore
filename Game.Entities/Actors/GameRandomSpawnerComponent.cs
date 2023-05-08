@@ -112,7 +112,7 @@ public class GameRandomSpawnerComponent : EntityProxyComponent, IEntityComponent
                 destinationSlice.groupCount = sourceSlice.groups.Length;
                 destinationSlice.vertical = sourceSlice.vertical;
                 destinationSlice.horizontal = sourceSlice.horizontal;
-                destinationSlice.offset = math.RigidTransform(sourceSlice.rotation == default ? Quaternion.identity :  sourceSlice.rotation, sourceSlice.position);
+                destinationSlice.offset = math.RigidTransform(sourceSlice.rotation.normalized, sourceSlice.position);
 
                 slices[i] = destinationSlice;
 

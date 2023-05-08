@@ -221,21 +221,22 @@ public partial struct GameDataDeadlineSystem : ISystem
     [BurstCompile]
     private struct Clear : IJob
     {
-        [ReadOnly, DeallocateOnJobCompletion]
-        public NativeArray<int> count;
+        [ReadOnly]
+        public NetworkRPCManager<int> networkManager;
+
         public NativeParallelHashSet<TriggerEntry> triggerEntries;
 
         public void Execute()
         {
             triggerEntries.Clear();
-            triggerEntries.Capacity = math.max(triggerEntries.Capacity, count[0]);
+            triggerEntries.Capacity = math.max(triggerEntries.Capacity, networkManager.CountOfIDNodes());
         }
     }
 
     private struct Trigger
     {
         [ReadOnly]
-        public NetworkRPCManager<int>.ReadOnly networkManager;
+        public NetworkRPCManager<int> networkManager;
 
         [ReadOnly]
         public NativeArray<NetworkIdentity> identities;
@@ -248,12 +249,18 @@ public partial struct GameDataDeadlineSystem : ISystem
         public void Execute(int index)
         {
             TriggerEntry triggerEntry;
-            if (!networkManager.TryGetNode(identities[index].id, out triggerEntry.node))
-                return;
-
             triggerEntry.camp = camps[index].value;
 
-            triggerEntries.Add(triggerEntry);
+            foreach (var node in networkManager.GetIDNodes(identities[index].id))
+            {
+                triggerEntry.node = node;
+                triggerEntries.Add(triggerEntry);
+            }
+
+            /*if (!networkManager.GetIDNodes(identities[index].id, out triggerEntry.node))
+                return;
+
+            triggerEntries.Add(triggerEntry);*/
         }
     }
 
@@ -261,7 +268,7 @@ public partial struct GameDataDeadlineSystem : ISystem
     private struct TriggerEx : IJobChunk
     {
         [ReadOnly]
-        public NetworkRPCManager<int>.ReadOnly networkManager;
+        public NetworkRPCManager<int> networkManager;
 
         [ReadOnly]
         public ComponentTypeHandle<NetworkIdentity> identityType;
@@ -292,7 +299,7 @@ public partial struct GameDataDeadlineSystem : ISystem
         public Random random;
 
         [ReadOnly]
-        public NetworkRPCManager<int>.ReadOnly networkManager;
+        public NetworkRPCManager<int> networkManager;
 
         [ReadOnly]
         public NativeParallelHashSet<TriggerEntry> triggerEntries;
@@ -348,7 +355,7 @@ public partial struct GameDataDeadlineSystem : ISystem
         public double elpasedTime;
 
         [ReadOnly]
-        public NetworkRPCManager<int>.ReadOnly networkManager;
+        public NetworkRPCManager<int> networkManager;
 
         [ReadOnly]
         public NativeParallelHashSet<TriggerEntry> triggerEntries;
@@ -457,17 +464,18 @@ public partial struct GameDataDeadlineSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        var triggerCount = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
-        var jobHandle = __triggerGroup.CalculateEntityCountAsync(triggerCount, state.Dependency);
+        var networkManager = __networkRPCController.manager;
+        ref var networkRPCJobManager = ref __networkRPCController.lookupJobManager;
+
+        var jobHandle = JobHandle.CombineDependencies(networkRPCJobManager.readOnlyJobHandle, state.Dependency);
 
         Clear clear;
-        clear.count = triggerCount;
+        clear.networkManager = networkManager;
         clear.triggerEntries = __triggerEntries;
         jobHandle = clear.ScheduleByRef(jobHandle);
 
         var identityType = __identityType.UpdateAsRef(ref state);
         var campType = __campType.UpdateAsRef(ref state);
-        var networkManager = __networkRPCController.manager.AsReadOnly();
 
         TriggerEx trigger;
         trigger.networkManager = networkManager;
@@ -475,15 +483,11 @@ public partial struct GameDataDeadlineSystem : ISystem
         trigger.campType = campType;
         trigger.triggerEntries = __triggerEntries.AsParallelWriter();
 
-        ref var networkRPCJobManager = ref __networkRPCController.lookupJobManager;
-
-        jobHandle = trigger.ScheduleParallelByRef(
-            __triggerGroup,
-            JobHandle.CombineDependencies(networkRPCJobManager.readOnlyJobHandle, jobHandle));
+        jobHandle = trigger.ScheduleParallelByRef(__triggerGroup, jobHandle);
 
         RefreshEx refresh;
         refresh.elpasedTime = state.WorldUnmanaged.Time.ElapsedTime;
-        refresh.networkManager = __networkRPCController.manager.AsReadOnly();
+        refresh.networkManager = networkManager;
         refresh.triggerEntries = __triggerEntries;
         refresh.identityType = identityType;
         refresh.campType = campType;

@@ -164,7 +164,7 @@ public partial class GameEffectSwitchSystem : SystemBase
             Callback callback;
             callback.result = value;
             callback.handle = instance.callbackHandle;
-            callbacks.AddNoResizeEx(callback);
+            callbacks.AddNoResize(callback);
         }
     }
 

@@ -34,7 +34,7 @@ public interface IGameAreaHandler<TNeighborEnumerable, TValidator>
     where TNeighborEnumerable : struct, IGameAreaNeighborEnumerable
     where TValidator : struct, IGameAreaValidator
 {
-    void GetsNeighborEnumerableAndPrefabIndices(
+    void GetNeighborEnumerableAndPrefabIndices(
         in BlobAssetReference<GameAreaPrefabDefinition> definition,
         ref SystemState systemState,
         ref JobHandle jobHandle,
@@ -314,7 +314,7 @@ public struct GameAreaTriggerCreateNodeEvents : IJob
 }
 
 [BurstCompile]
-public struct GameAreaInvokeCommands<T> : IJobParalledForDeferBurstSchedulable, IEntityCommandProducerJob where T : IGameAreaValidator
+public struct GameAreaInvokeCommands<T> : IJobParallelForDefer, IEntityCommandProducerJob where T : IGameAreaValidator
 {
     public struct RandomItemHandler : IRandomItemHandler
     {
@@ -407,8 +407,21 @@ public struct GameAreaInvokeCommands<T> : IJobParalledForDeferBurstSchedulable, 
                     instance.flag = command.flag & ~(/*GameAreaInternalInstance.Flag.NeedTime | */GameAreaInternalInstance.Flag.Random);
                     break;
                 default:
-                    instance.flag = command.flag;
-                    break;
+                    int i;
+                    for (i = 0; i < asset.groupCount; ++i)
+                    {
+                        if(randomGroups[i + asset.groupStartIndex].chance > math.FLT_MIN_NORMAL)
+                            break;
+                    }
+
+                    if (i < asset.groupCount)
+                    {
+                        instance.flag = command.flag;
+
+                        break;
+                    }
+
+                    return;
             }
         }
         else
@@ -423,7 +436,7 @@ public struct GameAreaInvokeCommands<T> : IJobParalledForDeferBurstSchedulable, 
                 sum += randomGroup.chance;
             }
 
-            if (sum > 0.0f)
+            if (sum > math.FLT_MIN_NORMAL)
             {
                 float chance = 0.0f, randomValue = random.NextFloat();
                 for (i = 0; i < asset.groupCount; ++i)

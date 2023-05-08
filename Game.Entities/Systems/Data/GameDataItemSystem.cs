@@ -699,7 +699,7 @@ public partial struct GameDataItemSystem : ISystem
         var removeComponentWriter = removeComponentCommander.writer;
 
         Filter filter;
-        filter.entityArray = oldEntities.AsDeferredJobArrayEx();
+        filter.entityArray = oldEntities.AsDeferredJobArray();
         filter.serializableEntities = serializableEntities.reader;
         filter.serializables = serializables;
         filter.entityManager = removeComponentParallelWriter;
@@ -1099,7 +1099,7 @@ public partial class GameDataItemContainerSerializationSystem : EntityDataSerial
     protected override Serializer _Get()
     {
         Serializer serializer;
-        serializer.typeGuids = __typeGuids.AsDeferredJobArrayEx();
+        serializer.typeGuids = __typeGuids.AsDeferredJobArray();
         return serializer;
     }
 }
@@ -1385,7 +1385,7 @@ public partial class GameDataItemContainerDeserializationSystem : EntityDataDese
 
     private NativeList<int> __types;
 
-    public NativeArray<int> types => __types.AsDeferredJobArrayEx();
+    public NativeArray<int> types => __types.AsDeferredJobArray();
 
 #region LookupJob
     public JobHandle readOnlyJobHandle

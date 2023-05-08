@@ -449,7 +449,7 @@ public struct GameItemManager
 
     public AllocatorManager.AllocatorHandle allocator => __infos.allocator;
 
-    public NativeArray<Command> commands => __commands.AsDeferredJobArrayEx();
+    public NativeArray<Command> commands => __commands.AsDeferredJobArray();
 
     public ReadOnlyInfos readOnlyInfos => new ReadOnlyInfos(__infos);
 

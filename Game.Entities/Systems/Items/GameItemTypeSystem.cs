@@ -132,7 +132,7 @@ public partial struct GameItemTypeChangeSystem : ISystem
             Result result;
             result.handle = handle;
             result.type = type;
-            results.AddNoResizeEx(result);
+            results.AddNoResize(result);
             //manager.CompareExchange(ref destinationHandle, ref sourceType, out _);
         }
     }
@@ -186,7 +186,7 @@ public partial struct GameItemTypeChangeSystem : ISystem
 
     private EntityQuery __group;
     private GameItemManagerShared __itemManager;
-    private NativeListLite<Result> __results;
+    private NativeList<Result> __results;
 
     public void OnCreate(ref SystemState state)
     {
@@ -198,7 +198,7 @@ public partial struct GameItemTypeChangeSystem : ISystem
 
         __itemManager = state.World.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
 
-        __results = new NativeListLite<Result>(Allocator.Persistent);
+        __results = new NativeList<Result>(Allocator.Persistent);
     }
 
     public void OnDestroy(ref SystemState state)
