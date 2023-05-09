@@ -163,7 +163,7 @@ public struct GameIdManager
 }
 
 [AutoCreateIn("Server")]
-public partial class GameIDSystem : ReadOnlyLookupSystem
+public partial class GameIDSystem : LookupSystem
 {
     public GameIdManager manager
     {
@@ -251,11 +251,11 @@ public partial class GameDataIdDeserializationSystem : EntityDataDeserialization
 
     protected override void OnUpdate()
     {
-        Dependency = JobHandle.CombineDependencies(Dependency, __idSystem.readOnlyJobHandle);
+        Dependency = JobHandle.CombineDependencies(Dependency, __idSystem.readWriteJobHandle);
 
         base.OnUpdate();
 
-        __idSystem.AddReadOnlyDependency(Dependency);
+        __idSystem.readWriteJobHandle = Dependency;
     }
 
     protected override GameIdManager.Deserializer _Create(ref JobHandle jobHandle) => __idSystem.manager.AsDeserializer(systemGroup.initializationSystem.guids);

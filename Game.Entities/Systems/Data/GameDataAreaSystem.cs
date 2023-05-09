@@ -5,7 +5,7 @@ using Unity.Collections;
 using Unity.Mathematics;
 using ZG;
 
-/*#region GameAreaManager
+#region GameAreaManager
 [assembly: RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameAreaManager.Serializer>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataContainerDeserialize<GameAreaManager.Deserializer>))]
 [assembly: EntityDataSerialize(typeof(GameAreaManager), typeof(GameDataAreaSerializationSystem))]
@@ -17,201 +17,101 @@ public struct GameAreaManager
     public struct Serializer : IEntityDataContainerSerializer
     {
         [ReadOnly]
-        private NativeParallelHashMap<Hash128, int> __ids;
-        [ReadOnly]
-        private NativeParallelHashMap<Hash128, int> __entityIndices;
+        private SharedHashMap<Hash128, int>.Reader __versions;
 
-        public Serializer(in GameIdManager manager, in NativeParallelHashMap<Hash128, int> entityIndices)
+        public Serializer(in SharedHashMap<Hash128, int>.Reader versions)
         {
-            __ids = manager.__ids;
-            __entityIndices = entityIndices;
+            __versions = versions;
         }
 
         public void Serialize(ref NativeBuffer.Writer writer)
         {
-            var keyValueArrays = __ids.GetKeyValueArrays(Allocator.Temp);
-
-            int length = keyValueArrays.Keys.Length, entityIndex;
-            var entityIndices = new NativeList<int>(length, Allocator.Temp);
-            for (int i = 0; i < length; ++i)
+            using (var versions = __versions.GetKeyValueArrays(Allocator.Temp))
             {
-                if (__entityIndices.TryGetValue(keyValueArrays.Keys[i], out entityIndex))
-                {
-                    entityIndices.Add(entityIndex);
-
-                    continue;
-                }
-
-                keyValueArrays.Keys[i] = keyValueArrays.Keys[--length];
-                keyValueArrays.Values[i--] = keyValueArrays.Values[length];
+                writer.Write(versions.Length);
+                writer.Write(versions.Keys);
+                writer.Write(versions.Values);
             }
-
-            writer.Write(length);
-            writer.Write(entityIndices.AsArray().Slice());
-            writer.Write(keyValueArrays.Values.Slice(0, length));
-
-            entityIndices.Dispose();
-
-            keyValueArrays.Dispose();
         }
     }
 
     public struct Deserializer : IEntityDataContainerDeserializer
     {
-        [ReadOnly]
-        private NativeArray<Hash128> __guids;
-        private NativeParallelHashMap<int, Hash128> __idsToGuids;
-        private NativeParallelHashMap<Hash128, int> __guidsToIds;
+        private SharedHashMap<Hash128, int>.Writer __versions;
 
-        public Deserializer(in GameIdManager manager, in NativeArray<Hash128> guids)
+        public Deserializer(SharedHashMap<Hash128, int>.Writer versions)
         {
-            __guids = guids;
-            __idsToGuids = manager.__guids;
-            __guidsToIds = manager.__ids;
+            __versions = versions;
         }
 
         public void Deserialize(in UnsafeBlock block)
         {
-            __idsToGuids.Clear();
-            __guidsToIds.Clear();
-
             var reader = block.reader;
             int length = reader.Read<int>();
+            __versions.capacity = math.max(__versions.capacity, length);
 
-            if (length > 0)
-            {
-                __idsToGuids.Capacity = math.max(__idsToGuids.Capacity, length);
-                __guidsToIds.Capacity = math.max(__guidsToIds.Capacity, length);
+            var keys = reader.ReadArray<Hash128>(length);
+            var values = reader.ReadArray<int>(length);
 
-                var keys = reader.ReadArray<int>(length);
-                var values = reader.ReadArray<int>(length);
-
-                int id;
-                Hash128 guid;
-                for (int i = 0; i < length; ++i)
-                {
-                    guid = __guids[keys[i]];
-                    id = values[i];
-
-                    if (__guidsToIds.ContainsKey(guid))
-                    {
-                        UnityEngine.Debug.LogError($"Missing {id} : {guid}");
-
-                        continue;
-                    }
-
-                    __guidsToIds[guid] = id;
-
-                    __idsToGuids.Add(id, guid);
-                }
-            }
+            for (int i = 0; i < length; ++i)
+                __versions.Add(keys[i], values[i]);
         }
     }
-
-    public NativeParallelHashSet<Hash128> __areaIndices;
-
-    public GameAreaManager(Allocator allocator)
-    {
-        __ids = new NativeParallelHashMap<Hash128, int>(1, allocator);
-    }
-
-    public void Dispose()
-    {
-        __ids.Dispose();
-        __guids.Dispose();
-    }
-
-    public Hash128 GetOrCreateGuid(int id)
-    {
-        Hash128 guid;
-        if (__guids.TryGetValue(id, out guid))
-            return guid;
-
-        do
-        {
-            guid = Guid.NewGuid().ToHash128();
-        } while (__ids.ContainsKey(guid));
-
-        __ids[guid] = id;
-
-        __guids[id] = guid;
-
-        return guid;
-    }
-
-    public bool TryGetGuid(int id, out Hash128 guid)
-    {
-        return __guids.TryGetValue(id, out guid);
-    }
-
-    public bool GetId(Hash128 guid, out int id)
-    {
-        return __ids.TryGetValue(guid, out id);
-    }
-
-    public Serializer AsSerializer(in NativeParallelHashMap<Hash128, int> entityIndices)
-    {
-        return new Serializer(this, entityIndices);
-    }
-
-    public Deserializer AsDeserializer(in NativeArray<Hash128> guids)
-    {
-        return new Deserializer(this, guids);
-    }
 }
-
 
 [DisableAutoCreation]
 public partial class GameDataAreaSerializationSystem : EntityDataSerializationContainerSystem<GameAreaManager.Serializer>
 {
-    private GameIDSystem __idSystem;
+    private SharedHashMap<Hash128, int> __versions;
 
     protected override void OnCreate()
     {
         base.OnCreate();
 
-        __idSystem = World.GetOrCreateSystemManaged<GameIDSystem>();
+        __versions = World.GetOrCreateSystemUnmanaged<GameAreaPrefabSystem>().versions;
     }
 
     protected override void OnUpdate()
     {
+        ref var lookupJobManager = ref __versions.lookupJobManager;
+
         var initializationSystem = systemGroup.initializationSystem;
-        Dependency = JobHandle.CombineDependencies(Dependency, __idSystem.readOnlyJobHandle, initializationSystem.readOnlyJobHandle);
+        Dependency = JobHandle.CombineDependencies(Dependency, lookupJobManager.readOnlyJobHandle, initializationSystem.readOnlyJobHandle);
 
         base.OnUpdate();
 
         var jobHandle = Dependency;
 
-        __idSystem.AddReadOnlyDependency(jobHandle);
+        lookupJobManager.AddReadOnlyDependency(jobHandle);
 
         initializationSystem.AddReadOnlyDependency(jobHandle);
     }
 
-    protected override GameAreaManager.Serializer _Get() => __idSystem.manager.AsSerializer(systemGroup.initializationSystem.entityIndices);
+    protected override GameAreaManager.Serializer _Get() => new GameAreaManager.Serializer(__versions.reader);
 }
 
 [DisableAutoCreation]
 public partial class GameDataAreaDeserializationSystem : EntityDataDeserializationContainerSystem<GameAreaManager.Deserializer>
 {
-    private GameIDSystem __idSystem;
+    private SharedHashMap<Hash128, int> __versions;
 
     protected override void OnCreate()
     {
         base.OnCreate();
 
-        __idSystem = World.GetOrCreateSystemManaged<GameIDSystem>();
+        __versions = World.GetOrCreateSystemUnmanaged<GameAreaPrefabSystem>().versions;
     }
 
     protected override void OnUpdate()
     {
-        Dependency = JobHandle.CombineDependencies(Dependency, __idSystem.readOnlyJobHandle);
+        ref var lookupJobManager = ref __versions.lookupJobManager;
+
+        Dependency = JobHandle.CombineDependencies(Dependency, lookupJobManager.readWriteJobHandle);
 
         base.OnUpdate();
 
-        __idSystem.AddReadOnlyDependency(Dependency);
+        lookupJobManager.readWriteJobHandle = Dependency;
     }
 
-    protected override GameIdManager.Deserializer _Create(ref JobHandle jobHandle) => __idSystem.manager.AsDeserializer(systemGroup.initializationSystem.guids);
+    protected override GameAreaManager.Deserializer _Create(ref JobHandle jobHandle) => new GameAreaManager.Deserializer(__versions.writer);
 }
-
-*/

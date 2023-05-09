@@ -37,14 +37,15 @@ public interface IGameAreaHandler<TNeighborEnumerable, TValidator>
     void GetNeighborEnumerableAndPrefabIndices(
         in BlobAssetReference<GameAreaPrefabDefinition> definition,
         ref SystemState systemState,
-        ref JobHandle jobHandle,
         out TNeighborEnumerable neighborEnumerable, 
         out NativeParallelMultiHashMap<int, int> prefabIndices);
 
-    TValidator GetValidator(ref SystemState systemState, ref JobHandle inputDeps);
+    void GetValidatorAndVersions(
+        ref SystemState systemState, 
+        out TValidator validator, 
+        out SharedHashMap<Hash128, int> versions);
 }
 
-[Serializable]
 public struct GameAreaInternalInstance
 {
     [Flags]
@@ -72,6 +73,8 @@ public struct GameAreaPrefabDefinition
     public struct Prefab
     {
         public int assetIndex;
+        public int version;
+        public Hash128 guid;
         public RigidTransform transform;
     }
 
@@ -88,6 +91,7 @@ public struct GameAreaPrefabData : IComponentData
 public struct GameAreaNeighborEnumerator : IGameAreaNeighborEnumerator
 {
     public double time;
+
     [ReadOnly]
     public NativeParallelMultiHashMap<int, int> prefabIndices;
     public NativeParallelHashMap<int, int>.ParallelWriter areaIndices;
@@ -355,6 +359,8 @@ public struct GameAreaInvokeCommands<T> : IJobParallelForDefer, IEntityCommandPr
 
     public NativeFactory<GameAreaInternalInstance>.ParallelWriter instances;
 
+    public SharedHashMap<Hash128, int>.ParallelWriter versions;
+
     public EntityCommandQueue<GameAreaCreateNodeCommand>.ParallelWriter entityManager;
 
     public T validator;
@@ -420,6 +426,8 @@ public struct GameAreaInvokeCommands<T> : IJobParallelForDefer, IEntityCommandPr
 
                         break;
                     }
+
+                    versions.TryAdd(prefab.guid, prefab.version);
 
                     return;
             }

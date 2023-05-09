@@ -2465,14 +2465,14 @@ public struct GameItemManagerShared : IDisposable
         __data = null;
     }
 
-    public JobHandle ScheduleParallelCommands<T>(ref T job, int innerloopBatchCount, in JobHandle inputDeps) where T : struct, IJobParalledForDeferBurstSchedulable
+    public JobHandle ScheduleParallelCommands<T>(ref T job, int innerloopBatchCount, in JobHandle inputDeps) where T : struct, IJobParallelForDefer
     {
-        return job.ScheduleParallel((NativeList<Command>)__commands, innerloopBatchCount, inputDeps);
+        return job.ScheduleByRef(__commands, innerloopBatchCount, inputDeps);
     }
 
-    public JobHandle ScheduleParallelOldCommands<T>(ref T job, int innerloopBatchCount, in JobHandle inputDeps) where T : struct, IJobParalledForDeferBurstSchedulable
+    public JobHandle ScheduleParallelOldCommands<T>(ref T job, int innerloopBatchCount, in JobHandle inputDeps) where T : struct, IJobParallelForDefer
     {
-        return job.ScheduleParallel((NativeList<Command>)__oldCommands, innerloopBatchCount, inputDeps);
+        return job.ScheduleByRef(__oldCommands, innerloopBatchCount, inputDeps);
     }
 }
 

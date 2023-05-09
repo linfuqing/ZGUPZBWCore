@@ -201,7 +201,7 @@ public struct GameCampManager
 }
 
 [AutoCreateIn("Server"), UpdateInGroup(typeof(GameDataSystemGroup))]
-public partial class GameCampSystem : ReadOnlyLookupSystem
+public partial class GameCampSystem : LookupSystem
 {
     private struct Serialize
     {
@@ -262,9 +262,9 @@ public partial class GameCampSystem : ReadOnlyLookupSystem
         private set;
     }
 
-    public GameCampManager GetManagerReadOnly()
+    public GameCampManager GetManagerReadWrite()
     {
-        _lookupJobManager.CompleteReadOnlyDependency();
+        _lookupJobManager.CompleteReadWriteDependency();
 
         return manager;
     }
@@ -361,11 +361,11 @@ public partial class GameDataCampDeserializationSystem : EntityDataDeserializati
 
     protected override void OnUpdate()
     {
-        Dependency = JobHandle.CombineDependencies(Dependency, __campSystem.readOnlyJobHandle);
+        Dependency = JobHandle.CombineDependencies(Dependency, __campSystem.readWriteJobHandle);
 
         base.OnUpdate();
 
-        __campSystem.AddReadOnlyDependency(Dependency);
+        __campSystem.readWriteJobHandle = Dependency;
     }
 
     protected override GameCampManager.Deserializer _Create(ref JobHandle jobHandle) => __campSystem.manager.deserializer;

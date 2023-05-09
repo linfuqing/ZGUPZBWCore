@@ -171,7 +171,7 @@ public struct GamePurchaseManager
 }
 
 [AutoCreateIn("Server")]
-public partial class GamePurchaseSystem : ReadOnlyLookupSystem
+public partial class GamePurchaseSystem : LookupSystem
 {
     public GamePurchaseManager manager
     {
@@ -255,11 +255,11 @@ public partial class GameDataPurchaseDeserializationSystem : EntityDataDeseriali
 
     protected override void OnUpdate()
     {
-        Dependency = JobHandle.CombineDependencies(Dependency, __purchaseSystem.readOnlyJobHandle);
+        Dependency = JobHandle.CombineDependencies(Dependency, __purchaseSystem.readWriteJobHandle);
 
         base.OnUpdate();
 
-        __purchaseSystem.AddReadOnlyDependency(Dependency);
+        __purchaseSystem.readWriteJobHandle = Dependency;
     }
 
     protected override GamePurchaseManager.Deserializer _Create(ref JobHandle jobHandle) => __purchaseSystem.manager.AsDeserializer();
