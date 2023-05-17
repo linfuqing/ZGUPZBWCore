@@ -1440,7 +1440,7 @@ public partial class GameItemResultSystem : LookupSystem
 
             if (results.IsCreated)
             {
-                this.results.AddRange(ZG.Unsafe.CollectionUtility.ToNativeArray(ref results));
+                this.results.AddRange(ZG.Unsafe.CollectionUtility.AsArray(ref results));
 
                 results.Dispose();
             }
