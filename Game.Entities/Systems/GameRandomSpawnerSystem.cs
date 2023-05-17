@@ -19,9 +19,9 @@ public partial struct GameRandomSpawnerSystem : ISystem
     {
         private struct AssetHandler : IRandomItemHandler
         {
-            public float vertical;
+            //public float vertical;
 
-            public float horizontal;
+            //public float horizontal;
 
             //public double time;
 
@@ -41,14 +41,17 @@ public partial struct GameRandomSpawnerSystem : ISystem
                 GameSpawnData spawnData;
                 //spawnData.time = time;
                 spawnData.entity = entity;
+                GameRandomSpawnerAsset asset;
                 for (int i = 0; i < count; ++i)
                 {
-                    spawnData.assetIndex = assets[startIndex + i].index;
-                    spawnData.transform.pos.x = horizontal * random.NextFloat();
-                    spawnData.transform.pos.y = vertical;
-                    spawnData.transform.pos.z = horizontal * random.NextFloat();
-                    spawnData.transform.rot = transform.rot;// quaternion.LookRotationSafe(-math.normalize(spawnData.transform.pos), math.up());
-                    spawnData.transform.pos += transform.pos;
+                    asset = assets[startIndex + i];
+                    spawnData.assetIndex = asset.index;
+                    spawnData.transform.pos.x = asset.horizontal * random.NextFloat();
+                    spawnData.transform.pos.y = asset.vertical;
+                    spawnData.transform.pos.z = asset.horizontal * random.NextFloat();
+                    spawnData.transform.pos += asset.offset.pos;
+                    spawnData.transform.rot = asset.offset.rot;// quaternion.LookRotationSafe(-math.normalize(spawnData.transform.pos), math.up());
+                    spawnData.transform = math.mul(transform, spawnData.transform);
 
                     entityManager.Enqueue(spawnData);
                 }
@@ -92,12 +95,11 @@ public partial struct GameRandomSpawnerSystem : ISystem
 
             Entity entity = entityArray[index];
 
-            var transform = math.RigidTransform(rotations[index].Value, translations[index].Value);
-
             AssetHandler assetHandler;
             //assetHandler.time = time;
             assetHandler.entity = entity;
             assetHandler.random = random;
+            assetHandler.transform = math.RigidTransform(rotations[index].Value, translations[index].Value);
             assetHandler.assets = assets[index];
             assetHandler.entityManager = entityManager;
             
@@ -107,9 +109,9 @@ public partial struct GameRandomSpawnerSystem : ISystem
             for (int i = 0; i < length; ++i)
             {
                 slice = slices[nodes[i].sliceIndex];
-                assetHandler.vertical = slice.vertical;
+                /*assetHandler.vertical = slice.vertical;
                 assetHandler.horizontal = slice.horizontal;
-                assetHandler.transform = math.mul(transform, slice.offset);
+                assetHandler.transform = math.mul(transform, slice.offset);*/
                 random.Next(ref assetHandler, groups.Reinterpret<RandomGroup>().AsNativeArray().Slice(slice.groupStartIndex, slice.groupCount));
             }
 
