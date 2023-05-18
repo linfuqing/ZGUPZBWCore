@@ -12,7 +12,10 @@ using ZG;
 [assembly: RegisterGenericJobType(typeof(GameItemComponentChange<GameItemTime, GameItemTimeInitSystem.Initializer>))]
 [assembly: RegisterGenericJobType(typeof(GameItemComponentApply<GameItemTime>))]
 
-[Serializable]
+#if DEBUG
+[assembly: RegisterEntityCommandProducerJob(typeof(GameItemComponentInit<GameItemTime, GameItemTimeInitSystem.Initializer>))]
+#endif
+
 public struct GameItemTime : IGameItemComponentData<GameItemTime>
 {
     public float value;
@@ -368,10 +371,6 @@ public struct GameItemTimeInitSystem : IGameItemInitializationSystem<GameItemTim
     {
         __core = new GameItemComponentInitSystemCore<GameItemTime>(ref state);
         __values = new UnsafeParallelHashMap<int, float>(1, Allocator.Persistent);
-
-#if DEBUG
-        EntityCommandUtility.RegisterProducerJobType<GameItemComponentInit<GameItemTime, Initializer>>();
-#endif
     }
 
     public void OnDestroy(ref SystemState state)

@@ -19,6 +19,13 @@ using ZG;
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(GameItemComponentDataSyncInit<GameOwner, GameItemOwner, GameItemOwnerSyncInitSystem.Converter, GameItemOwnerSyncInitSystem.Factory>))]
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(GameItemComponentDataSyncApply<GameOwner, GameItemOwner, GameItemOwnerSyncApplySystem.Converter, GameItemOwnerSyncApplySystem.Factory>))]
 
+#if DEBUG
+[assembly: RegisterEntityCommandProducerJob(typeof(GameItemComponentDataInit<GameItemObjectData, GameItemObjectInitSystem.Initializer, GameItemObjectInitSystem.Factory>))]
+[assembly: RegisterEntityCommandProducerJob(typeof(GameItemComponentInit<GameItemName, GameItemNameInitSystem.Initializer>))]
+[assembly: RegisterEntityCommandProducerJob(typeof(GameItemComponentDataInit<GameItemVariant, GameItemVariantInitSystem.Initializer, GameItemVariantInitSystem.Factory>))]
+[assembly: RegisterEntityCommandProducerJob(typeof(GameItemComponentDataInit<GameItemOwner, GameItemOwnerInitSystem.Initializer, GameItemOwnerInitSystem.Factory>))]
+#endif
+
 public struct GameItemObjectData : ICleanupComponentData
 {
     public int type;
@@ -99,10 +106,6 @@ public partial struct GameItemObjectInitSystem : ISystem
         __core = new GameItemComponentDataInitSystemCore<GameItemObjectData>(ref state);
 
         __values = new UnsafeParallelHashMap<int, int>(1, Allocator.Persistent);
-
-#if DEBUG
-        EntityCommandUtility.RegisterProducerJobType<GameItemComponentDataInit<GameItemObjectData, Initializer, Factory>>();
-#endif
     }
 
     public void OnDestroy(ref SystemState state)
@@ -155,10 +158,6 @@ public partial struct GameItemNameInitSystem : IGameItemInitializationSystem<Gam
         __initializer = state.World.GetOrCreateSystemUnmanaged<GameItemObjectInitSystem>().initializer;
 
         __core = new GameItemComponentInitSystemCore<GameItemName>(ref state);
-
-#if DEBUG
-        EntityCommandUtility.RegisterProducerJobType<GameItemComponentInit<GameItemName, Initializer>>();
-#endif
     }
 
     public void OnDestroy(ref SystemState state)
@@ -331,10 +330,6 @@ public partial struct GameItemVariantInitSystem : IGameItemInitializationSystem<
         __core = new GameItemComponentDataInitSystemCore<GameItemVariant>(ref state);
 
         __initializer = state.World.GetOrCreateSystemUnmanaged<GameItemObjectInitSystem>().initializer;
-
-#if DEBUG
-        EntityCommandUtility.RegisterProducerJobType<GameItemComponentDataInit<GameItemVariant, Initializer, Factory>>();
-#endif
     }
 
     public void OnDestroy(ref SystemState state)
@@ -507,10 +502,6 @@ public partial struct GameItemOwnerInitSystem : ISystem
         __initializer = state.World.GetOrCreateSystemUnmanaged<GameItemObjectInitSystem>().initializer;
 
         __rootEntities = state.World.GetOrCreateSystemManaged<GameItemRootEntitySystem>().entities;
-
-#if DEBUG
-        EntityCommandUtility.RegisterProducerJobType<GameItemComponentDataInit<GameItemOwner, Initializer, Factory>>();
-#endif
     }
 
     public void OnDestroy(ref SystemState state)

@@ -17,6 +17,10 @@ using ZG;
 
 [assembly: RegisterGenericJobType(typeof(EntityComponentContainerMoveComponentJob<GameAreaPrefab>))]
 
+#if DEBUG
+[assembly: RegisterEntityCommandProducerJob(typeof(GameAreaInvokeCommands<GameAreaPrefabSystem.Validator>))]
+#endif
+
 public struct GameAreaDefinition
 {
     public struct Type
@@ -487,13 +491,9 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
 
         __physicsWorld = world.GetExistingSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
         //__syncSystemGourp = world.GetOrCreateSystem<GameSyncSystemGroup>();
-
-#if DEBUG
-        EntityCommandUtility.RegisterProducerJobType<GameAreaInvokeCommands<Validator>>();
-#endif
     }
 
-    [BurstCompile]
+    //[BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
         __core.Dispose();

@@ -9,6 +9,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Transforms;
 using UnityEngine;
 using ZG;
+using ZG.Unsafe;
 using Unity.Jobs;
 
 [assembly: RegisterGenericJobType(typeof(GameEntityActionSharedFactorySytem.Apply<GameActionSharedObjectData>))]
@@ -97,10 +98,10 @@ public partial struct GameEntityActionSharedFactorySytem : ISystem
         if (__context.isEmpty)
             return;
 
-        NativeList<Entity> entities = default, entitiesWithParent = default, entitiesWithChild = default;
-        NativeParallelHashMap<Entity, GameActionSharedObjectData> instances = default;
-        NativeParallelHashMap<Entity, GameActionSharedObjectParent> parents = default;
-        NativeParallelMultiHashMap<Entity, Entity> childEntities = default;
+        UnsafeList<Entity> entities = default, entitiesWithParent = default, entitiesWithChild = default;
+        UnsafeParallelHashMap<Entity, GameActionSharedObjectData> instances = default;
+        UnsafeParallelHashMap<Entity, GameActionSharedObjectParent> parents = default;
+        UnsafeParallelMultiHashMap<Entity, Entity> childEntities = default;
         Entity entity;
         var entityManager = state.EntityManager;
         while (__context.TryDequeue(out var command))
@@ -110,7 +111,7 @@ public partial struct GameEntityActionSharedFactorySytem : ISystem
                 entity = entityManager.CreateEntity();
 
                 if (!entities.IsCreated)
-                    entities = new NativeList<Entity>(Allocator.Temp);
+                    entities = new UnsafeList<Entity>(1, state.WorldUpdateAllocator);
 
                 entities.Add(entity);
             }
@@ -123,7 +124,7 @@ public partial struct GameEntityActionSharedFactorySytem : ISystem
                 else if (entityManager.Exists(entity))
                 {
                     if (!entities.IsCreated)
-                        entities = new NativeList<Entity>(Allocator.Temp);
+                        entities = new UnsafeList<Entity>(1, state.WorldUpdateAllocator);
 
                     if (!entities.Contains(entity))
                         entities.Add(entity);
@@ -141,13 +142,13 @@ public partial struct GameEntityActionSharedFactorySytem : ISystem
                 {
                     isHasChildComponent = false;
 
-                    childEntities = new NativeParallelMultiHashMap<Entity, Entity>(1, Allocator.Temp);
+                    childEntities = new UnsafeParallelMultiHashMap<Entity, Entity>(1, state.WorldUpdateAllocator);
                 }
 
                 if (!isHasChildComponent && !entityManager.HasComponent<GameEntitySharedActionChild>(command.instance.parentEntity))
                 {
                     if (!entitiesWithChild.IsCreated)
-                        entitiesWithChild = new NativeList<Entity>(Allocator.Temp);
+                        entitiesWithChild = new UnsafeList<Entity>(1, state.WorldUpdateAllocator);
 
                     entitiesWithChild.Add(command.instance.parentEntity);
                 }
@@ -156,7 +157,7 @@ public partial struct GameEntityActionSharedFactorySytem : ISystem
             }
 
             if (!instances.IsCreated)
-                instances = new NativeParallelHashMap<Entity, GameActionSharedObjectData>(1, Allocator.Temp);
+                instances = new UnsafeParallelHashMap<Entity, GameActionSharedObjectData>(1, state.WorldUpdateAllocator);
 
             instances[entity] = command.instance;
 
@@ -165,14 +166,14 @@ public partial struct GameEntityActionSharedFactorySytem : ISystem
                 if (!entityManager.HasComponent<GameActionSharedObjectParent>(entity))
                 {
                     if (!entitiesWithParent.IsCreated)
-                        entitiesWithParent = new NativeList<Entity>(Allocator.Temp);
+                        entitiesWithParent = new UnsafeList<Entity>(1, state.WorldUpdateAllocator);
 
                     if (!entitiesWithParent.Contains(entity))
                         entitiesWithParent.Add(entity);
                 }
 
                 if (!parents.IsCreated)
-                    parents = new NativeParallelHashMap<Entity, GameActionSharedObjectParent>(1, Allocator.Temp);
+                    parents = new UnsafeParallelHashMap<Entity, GameActionSharedObjectParent>(1, state.WorldUpdateAllocator);
 
                 parents[entity] = command.parent;
             }
@@ -182,21 +183,21 @@ public partial struct GameEntityActionSharedFactorySytem : ISystem
         {
             entityManager.AddComponentBurstCompatible<GameActionSharedObjectData>(entities.AsArray());
 
-            entities.Dispose();
+            //entities.Dispose();
         }
 
         if (!entitiesWithParent.IsEmpty)
         {
             entityManager.AddComponentBurstCompatible<GameActionSharedObjectParent>(entitiesWithParent.AsArray());
 
-            entitiesWithParent.Dispose();
+            //entitiesWithParent.Dispose();
         }
 
         if(!entitiesWithChild.IsEmpty)
         {
             entityManager.AddComponentBurstCompatible<GameEntitySharedActionChild>(entitiesWithChild.AsArray());
 
-            entitiesWithChild.Dispose();
+            //entitiesWithChild.Dispose();
         }
 
         var inputDeps = state.Dependency;
@@ -210,11 +211,11 @@ public partial struct GameEntityActionSharedFactorySytem : ISystem
             apply.entityArray = keyValueArrays.Keys;
             apply.sources = keyValueArrays.Values;
             apply.destinations = state.GetComponentLookup<GameActionSharedObjectData>();
-            var jobHandle = apply.Schedule(keyValueArrays.Length, InnerloopBatchCount, inputDeps);
+            var jobHandle = apply.ScheduleByRef(keyValueArrays.Length, InnerloopBatchCount, inputDeps);
 
             result = result == null ? jobHandle : JobHandle.CombineDependencies(jobHandle, result.Value);
 
-            instances.Dispose();
+            //instances.Dispose();
         }
 
         if (!parents.IsEmpty)
@@ -225,11 +226,11 @@ public partial struct GameEntityActionSharedFactorySytem : ISystem
             apply.entityArray = keyValueArrays.Keys;
             apply.sources = keyValueArrays.Values;
             apply.destinations = state.GetComponentLookup<GameActionSharedObjectParent>();
-            var jobHandle = apply.Schedule(keyValueArrays.Length, InnerloopBatchCount, inputDeps);
+            var jobHandle = apply.ScheduleByRef(keyValueArrays.Length, InnerloopBatchCount, inputDeps);
 
             result = result == null ? jobHandle : JobHandle.CombineDependencies(jobHandle, result.Value);
 
-            parents.Dispose();
+            //parents.Dispose();
         }
 
         if (childEntities.IsCreated && !childEntities.IsEmpty)
@@ -241,11 +242,11 @@ public partial struct GameEntityActionSharedFactorySytem : ISystem
             apply.childEntities = keyValueArrays.Values;
             apply.children = state.GetBufferLookup<GameEntitySharedActionChild>();
 
-            var jobHandle = apply.Schedule(inputDeps);
+            var jobHandle = apply.ScheduleByRef(inputDeps);
 
             result = result == null ? jobHandle : JobHandle.CombineDependencies(jobHandle, result.Value);
 
-            childEntities.Dispose();
+            //childEntities.Dispose();
         }
 
         if (result != null)

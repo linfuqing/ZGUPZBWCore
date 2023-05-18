@@ -1,3 +1,4 @@
+using Unity.Jobs;
 using Unity.Burst;
 using Unity.Entities;
 using Unity.Collections;
@@ -5,9 +6,15 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using ZG;
 
-[assembly: Unity.Jobs.RegisterGenericJobType(typeof(GameItemComponentDataInit<GameItemLevel, GameItemLevelInitSystem.Initializer, GameItemLevelInitSystem.Factory>))]
-[assembly: Unity.Jobs.RegisterGenericJobType(typeof(GameItemComponentInit<GameItemExp, GameItemExpInitSystem.Initializer>))]
-[assembly: Unity.Jobs.RegisterGenericJobType(typeof(GameItemComponentInit<GameItemPower, GameItemPowerInitSystem.Initializer>))]
+[assembly: RegisterGenericJobType(typeof(GameItemComponentDataInit<GameItemLevel, GameItemLevelInitSystem.Initializer, GameItemLevelInitSystem.Factory>))]
+[assembly: RegisterGenericJobType(typeof(GameItemComponentInit<GameItemExp, GameItemExpInitSystem.Initializer>))]
+[assembly: RegisterGenericJobType(typeof(GameItemComponentInit<GameItemPower, GameItemPowerInitSystem.Initializer>))]
+
+#if DEBUG
+[assembly: RegisterEntityCommandProducerJob(typeof(GameItemComponentDataInit<GameItemLevel, GameItemLevelInitSystem.Initializer, GameItemLevelInitSystem.Factory>))]
+[assembly: RegisterEntityCommandProducerJob(typeof(GameItemComponentInit<GameItemExp, GameItemExpInitSystem.Initializer>))]
+[assembly: RegisterEntityCommandProducerJob(typeof(GameItemComponentInit<GameItemPower, GameItemPowerInitSystem.Initializer>))]
+#endif
 
 public struct GameItemLevel : ICleanupComponentData
 {
@@ -123,10 +130,6 @@ public partial struct GameItemLevelInitSystem : IGameItemInitializationSystem<Ga
         __values = new UnsafeParallelMultiHashMap<int, int>(1, Allocator.Persistent);
 
         __core = new GameItemComponentDataInitSystemCore<GameItemLevel>(ref state);
-
-#if DEBUG
-        EntityCommandUtility.RegisterProducerJobType<GameItemComponentDataInit<GameItemLevel, Initializer, Factory>>();
-#endif
     }
 
     public void OnDestroy(ref SystemState state)
@@ -188,10 +191,6 @@ public struct GameItemExpInitSystem : IGameItemInitializationSystem<GameItemExp,
         __core = new GameItemComponentInitSystemCore<GameItemExp>(ref state);
 
         __initializer = state.World.GetOrCreateSystemUnmanaged<GameItemLevelInitSystem>().initializer;
-
-#if DEBUG
-        EntityCommandUtility.RegisterProducerJobType<GameItemComponentInit<GameItemExp, Initializer>>();
-#endif
     }
 
     public void OnDestroy(ref SystemState state)
@@ -241,10 +240,6 @@ public struct GameItemPowerInitSystem : IGameItemInitializationSystem<GameItemPo
         __core = new GameItemComponentInitSystemCore<GameItemPower>(ref state);
 
         __initializer = state.World.GetOrCreateSystemUnmanaged<GameItemLevelInitSystem>().initializer;
-
-#if DEBUG
-        EntityCommandUtility.RegisterProducerJobType<GameItemComponentInit<GameItemPower, Initializer>>();
-#endif
     }
 
     public void OnDestroy(ref SystemState state)

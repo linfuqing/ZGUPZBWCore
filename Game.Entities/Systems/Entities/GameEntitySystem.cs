@@ -349,7 +349,7 @@ public partial struct GameEntityActionBeginFactorySystem : ISystem
                 }
             }
 
-            commands.Dispose();
+            //commands.Dispose();
         }
     }
 
@@ -375,7 +375,7 @@ public partial struct GameEntityActionBeginFactorySystem : ISystem
         if (__commander.isEmpty)
             return;
 
-        var commands = new UnsafeParallelMultiHashMap<EntityArchetype, GameEntityCommandActionCreate>(1, Allocator.TempJob);
+        var commands = new UnsafeParallelMultiHashMap<EntityArchetype, GameEntityCommandActionCreate>(1, state.WorldUpdateAllocator);
 
         while (__commander.TryDequeue(out var command))
             commands.Add(command.valueEx.entityArchetype, command);
@@ -410,7 +410,7 @@ public partial struct GameEntityActionBeginFactorySystem : ISystem
                 setValues.instances = state.GetComponentLookup<GameActionData>();
                 setValues.instancesEx = state.GetComponentLookup<GameActionDataEx>();
                 setValues.actions = state.GetBufferLookup<GameEntityAction>();
-                state.Dependency = setValues.Schedule(state.Dependency);
+                state.Dependency = setValues.ScheduleByRef(state.Dependency);
                 //TODO
                 //setValues.Execute();
             }
@@ -418,8 +418,6 @@ public partial struct GameEntityActionBeginFactorySystem : ISystem
             //keys.Dispose();
             //entityArray.Dispose();
         }
-        else
-            commands.Dispose();
     }
 }
 

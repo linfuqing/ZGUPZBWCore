@@ -13,6 +13,10 @@ using System.Collections.Generic;
 [assembly: RegisterGenericJobType(typeof(GameItemComponentChange<GameItemDurability, GameItemDurabilityInitSystem.Initializer>))]
 [assembly: RegisterGenericJobType(typeof(GameItemComponentApply<GameItemDurability>))]
 
+#if DEBUG
+[assembly: RegisterEntityCommandProducerJob(typeof(GameItemComponentInit<GameItemDurability, GameItemDurabilityInitSystem.Initializer>))]
+#endif
+
 [Serializable]
 public struct GameItemDurability : IGameItemComponentData<GameItemDurability>
 {
