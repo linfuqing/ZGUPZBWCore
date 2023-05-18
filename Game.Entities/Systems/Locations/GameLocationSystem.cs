@@ -7,7 +7,13 @@ using Unity.Mathematics;
 using Unity.Collections;
 using Unity.Transforms;
 using ZG;
-using Unity.Collections.LowLevel.Unsafe;
+
+public struct GameLocationCallbackData
+{
+    public int id;
+    public Entity location;
+    public Entity locator;
+}
 
 public struct GameLocator : IComponentData
 {
@@ -15,45 +21,37 @@ public struct GameLocator : IComponentData
 
 public struct GameLocation : IBufferElementData
 {
+    public int id;
+    public Entity locator;
+    public CallbackHandle<GameLocationCallbackData> exit;
+    public double time;
+}
+
+public struct GameLocationData : IBufferElementData
+{
+    public int id;
     public float radiusSq;
     public float3 position;
-    public CallbackHandle<Entity> enter;
-    public CallbackHandle<Entity> exit;
+    public CallbackHandle<GameLocationCallbackData> enter;
+    public CallbackHandle<GameLocationCallbackData> exit;
 }
 
 public partial class GameLocationSystem : SystemBase
 {
-    private struct CallbackKey : IEquatable<CallbackKey>
-    {
-        public Entity locator;
-        public Entity location;
-
-        public bool Equals(CallbackKey other)
-        {
-            return locator == other.locator && location == other.location;
-        }
-
-        public override int GetHashCode()
-        {
-            return locator.GetHashCode() ^ location.GetHashCode();
-        }
-    }
-
-    private struct CallbackValue
-    {
-        public Entity entity;
-        public CallbackHandle<Entity> handle;
-    }
-
     private struct Result
     {
-        public bool isNew;
-        public CallbackHandle<Entity> enter;
-        public CallbackKey key;
+        public int id;
+
+        public Entity location;
+        public Entity locator;
+
+        public CallbackHandle<GameLocationCallbackData> callback;
     }
 
     private struct Locate
     {
+        public double time;
+
         [ReadOnly]
         public NativeList<ArchetypeChunk> locators;
 
@@ -67,24 +65,31 @@ public partial class GameLocationSystem : SystemBase
         public NativeArray<Entity> entityArray;
 
         [ReadOnly]
+        public BufferAccessor<GameLocationData> instances;
+
         public BufferAccessor<GameLocation> locations;
 
         public NativeQueue<Result>.ParallelWriter results;
 
-        public NativeParallelHashMap<CallbackKey, CallbackHandle<Entity>>.ParallelWriter exits;
-
         public void Execute(int index)
         {
             Result result;
-            result.key.location = entityArray[index];
+            result.location = entityArray[index];
+
+            GameLocation location;
+            location.time = time;
 
             NativeArray<Translation> locatorTranslations;
             NativeArray<Entity> locatorEntities;
+            var instances = this.instances[index];
             var locations = this.locations[index];
-            float3 position;
-            int numLocations = locations.Length, numLocators, i;
-            foreach (var location in locations)
+            int numLocations = locations.Length, numLocators, locationIndex, i;
+            foreach (var instance in instances)
             {
+                result.id = instance.id;
+
+                location.id = instance.id;
+
                 foreach (var locatorChunk in locators)
                 {
                     locatorTranslations = locatorChunk.GetNativeArray(ref translationType);
@@ -94,25 +99,65 @@ public partial class GameLocationSystem : SystemBase
                     numLocators = locatorChunk.Count;
                     for (i = 0; i < numLocators; ++i)
                     {
-                        result.key.locator = locatorEntities[i];
+                        result.locator = locatorEntities[i];
 
-                        position = locatorTranslations[i].Value;
-
-                        if (location.radiusSq < math.distancesq(location.position, position))
+                        if (instance.radiusSq < math.distancesq(instance.position, locatorTranslations[i].Value))
                             continue;
 
-                        result.isNew = exits.TryAdd(result.key, location.exit);
-                        result.enter = location.enter;
-                        results.Enqueue(result);
+                        locationIndex = FindIndex(instance.id, locatorEntities[i], ref locations);
+                        if (locationIndex == -1)
+                        {
+                            location.locator = result.locator;
+                            location.exit = instance.exit;
+
+                            locations.Add(location);
+
+                            result.callback = instance.enter;
+                            results.Enqueue(result);
+                        }
+                        else
+                            locations.ElementAt(locationIndex).time = time;
                     }
                 }
             }
+
+            for(i = 0; i < numLocations; ++i)
+            {
+                ref var oldLocation = ref locations.ElementAt(i);
+                if (oldLocation.time < time)
+                {
+                    result.locator = oldLocation.locator;
+                    result.id = oldLocation.id;
+                    result.callback = oldLocation.exit;
+                    results.Enqueue(result);
+
+                    locations.RemoveAtSwapBack(i--);
+
+                    --numLocations;
+                }
+            }
+        }
+
+        public static int FindIndex(int id, in Entity locator, ref DynamicBuffer<GameLocation> locations)
+        {
+            int numLocations = locations.Length;
+            for(int i = 0; i < numLocations; ++i)
+            {
+                ref var location = ref locations.ElementAt(i);
+
+                if (location.id == id && location.locator == locator)
+                    return i;
+            }
+
+            return -1;
         }
     }
 
     [BurstCompile]
     private struct LocateEx : IJobChunk
     {
+        public double time;
+
         [ReadOnly]
         public NativeList<ArchetypeChunk> locators;
 
@@ -123,74 +168,27 @@ public partial class GameLocationSystem : SystemBase
         public ComponentTypeHandle<Translation> translationType;
 
         [ReadOnly]
+        public BufferTypeHandle<GameLocationData> instanceType;
+
         public BufferTypeHandle<GameLocation> locationType;
 
         public NativeQueue<Result>.ParallelWriter results;
 
-        public NativeParallelHashMap<CallbackKey, CallbackHandle<Entity>>.ParallelWriter exits;
-
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             Locate locate;
+            locate.time = time;
             locate.locators = locators;
             locate.translationType = translationType;
             locate.entityType = entityType;
             locate.entityArray = chunk.GetNativeArray(entityType);
+            locate.instances = chunk.GetBufferAccessor(ref instanceType);
             locate.locations = chunk.GetBufferAccessor(ref locationType);
             locate.results = results;
-            locate.exits = exits;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
                 locate.Execute(i);
-        }
-    }
-
-    [BurstCompile]
-    private struct Apply : IJob
-    {
-        public NativeParallelHashMap<CallbackKey, CallbackHandle<Entity>> exits;
-        public NativeQueue<Result> results;
-        public NativeList<CallbackValue> callbacks;
-
-        public void Execute()
-        {
-            callbacks.Clear();
-
-            UnsafeHashSet<CallbackKey> enterKeys = default;
-            CallbackValue callbackValue;
-            while (results.TryDequeue(out var result))
-            {
-                if(!enterKeys.IsCreated)
-                    enterKeys = new UnsafeHashSet<CallbackKey>(1, Allocator.Temp);
-
-                enterKeys.Add(result.key);
-
-                if (result.isNew)
-                {
-                    callbackValue.entity = result.key.locator;
-                    callbackValue.handle = result.enter;
-                    callbacks.Add(callbackValue);
-                }
-            }
-
-            if(enterKeys.IsCreated)
-            {
-                using (var exitKeys = exits.GetKeyArray(Allocator.Temp))
-                {
-                    foreach(var exitKey in exitKeys)
-                    {
-                        if(!enterKeys.Contains(exitKey))
-                        {
-                            callbackValue.entity = exitKey.locator;
-                            callbackValue.handle = exits[exitKey];
-                            callbacks.Add(callbackValue);
-
-                            exits.Remove(exitKey);
-                        }
-                    }
-                }
-            }
         }
     }
 
@@ -199,11 +197,10 @@ public partial class GameLocationSystem : SystemBase
 
     private EntityTypeHandle __entityType;
     private ComponentTypeHandle<Translation> __translationType;
+    private BufferTypeHandle<GameLocationData> __instanceType;
     private BufferTypeHandle<GameLocation> __locationType;
 
-    private NativeParallelHashMap<CallbackKey, CallbackHandle<Entity>> __exits;
     private NativeQueue<Result> __results;
-    private NativeList<CallbackValue> __callbacks;
 
     protected override void OnCreate()
     {
@@ -213,50 +210,48 @@ public partial class GameLocationSystem : SystemBase
             ComponentType.ReadOnly<Translation>(),
             ComponentType.ReadOnly<GameLocator>());
 
-        __locationGroup = GetEntityQuery(ComponentType.ReadOnly<GameLocation>());
+        __locationGroup = GetEntityQuery(ComponentType.ReadOnly<Translation>(), ComponentType.ReadOnly<GameLocationData>(), ComponentType.ReadWrite<GameLocation>());
 
         __entityType = GetEntityTypeHandle();
         __translationType = GetComponentTypeHandle<Translation>(true);
-        __locationType = GetBufferTypeHandle<GameLocation>(true);
+        __instanceType = GetBufferTypeHandle<GameLocationData>(true);
+        __locationType = GetBufferTypeHandle<GameLocation>();
 
-        __exits = new NativeParallelHashMap<CallbackKey, CallbackHandle<Entity>>(1, Allocator.Persistent);
         __results = new NativeQueue<Result>(Allocator.Persistent);
-        __callbacks = new NativeList<CallbackValue>(Allocator.Persistent);
     }
 
     protected override void OnDestroy()
     {
-        __exits.Dispose();
         __results.Dispose();
-        __callbacks.Dispose();
 
         base.OnDestroy();
     }
 
     protected override void OnUpdate()
     {
-        foreach(var callback in __callbacks.AsArray())
-            callback.handle.Invoke(callback.entity);
+        GameLocationCallbackData callbackData;
+        while (__results.TryDequeue(out var result))
+        {
+            callbackData.id = result.id;
+            callbackData.location = result.location;
+            callbackData.locator = result.locator;
+            result.callback.Invoke(callbackData);
+        }
 
         if (!__locatorGroup.IsEmptyIgnoreFilter && !__locationGroup.IsEmptyIgnoreFilter)
         {
             ref var state = ref this.GetState();
 
             LocateEx locate;
+            locate.time = SystemAPI.Time.ElapsedTime;
             locate.locators = __locatorGroup.ToArchetypeChunkListAsync(WorldUpdateAllocator, out var jobHandle);
             locate.entityType = __entityType.UpdateAsRef(ref state);
             locate.translationType = __translationType.UpdateAsRef(ref state);
+            locate.instanceType = __instanceType.UpdateAsRef(ref state);
             locate.locationType = __locationType.UpdateAsRef(ref state);
             locate.results = __results.AsParallelWriter();
-            locate.exits = __exits.AsParallelWriter();
 
-            jobHandle = locate.ScheduleParallel(__locationGroup, JobHandle.CombineDependencies(jobHandle, Dependency));
-
-            Apply apply;
-            apply.exits = __exits;
-            apply.results = __results;
-            apply.callbacks = __callbacks;
-            Dependency = apply.Schedule(jobHandle);
+            Dependency = locate.ScheduleParallel(__locationGroup, JobHandle.CombineDependencies(jobHandle, Dependency));
         }
     }
 }
