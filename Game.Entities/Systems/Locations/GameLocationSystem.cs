@@ -210,7 +210,7 @@ public partial class GameLocationSystem : SystemBase
             ComponentType.ReadOnly<Translation>(),
             ComponentType.ReadOnly<GameLocator>());
 
-        __locationGroup = GetEntityQuery(ComponentType.ReadOnly<Translation>(), ComponentType.ReadOnly<GameLocationData>(), ComponentType.ReadWrite<GameLocation>());
+        __locationGroup = GetEntityQuery(ComponentType.ReadOnly<GameLocationData>(), ComponentType.ReadWrite<GameLocation>());
 
         __entityType = GetEntityTypeHandle();
         __translationType = GetComponentTypeHandle<Translation>(true);

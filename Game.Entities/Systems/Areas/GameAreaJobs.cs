@@ -36,6 +36,7 @@ public interface IGameAreaHandler<TNeighborEnumerable, TValidator>
 {
     void GetNeighborEnumerableAndPrefabIndices(
         in BlobAssetReference<GameAreaPrefabDefinition> definition,
+        ref NativeParallelHashMap<int, int> areaIndices, 
         ref SystemState systemState,
         out TNeighborEnumerable neighborEnumerable, 
         out NativeParallelMultiHashMap<int, int> prefabIndices);

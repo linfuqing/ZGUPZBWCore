@@ -393,6 +393,20 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
     }
 
     [BurstCompile]
+    private struct ApplyAreaIndices : IJobParallelForDefer
+    {
+        [ReadOnly]
+        public NativeArray<Version> versions;
+
+        public NativeParallelHashMap<int, int>.ParallelWriter areaIndices;
+
+        public void Execute(int index)
+        {
+            areaIndices.TryAdd(versions[index].value, -1);
+        }
+    }
+
+    [BurstCompile]
     public struct ClearAreaIndices : IJob
     {
         [ReadOnly, DeallocateOnJobCompletion]
@@ -422,6 +436,8 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
     private ComponentTypeHandle<GameAreaNodePresentation> __presentationType;
 
     private GameAreaPrefabSystemCore __core;
+
+    private NativeList<Version> __versions;
 
     private NativeParallelMultiHashMap<int, int> __prefabIndices;
     private NativeParallelHashMap<int, bool> __areaIndices;
@@ -479,6 +495,8 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
 
         __core = new GameAreaPrefabSystemCore(ref state);
 
+        __versions = new NativeList<Version>(Allocator.Persistent);
+
         __prefabIndices = new NativeParallelMultiHashMap<int, int>(1, Allocator.Persistent);
         __areaIndices = new NativeParallelHashMap<int, bool>(1, Allocator.Persistent);
 
@@ -526,10 +544,13 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
 
     public void GetNeighborEnumerableAndPrefabIndices(
         in BlobAssetReference<GameAreaPrefabDefinition> definition,
+        ref NativeParallelHashMap<int, int> areaIndices, 
         ref SystemState systemState, 
         out GameAreaNeighborEnumerable neighborEnumerable,
         out NativeParallelMultiHashMap<int, int> prefabIndices)
     {
+        var jobHandle = systemState.Dependency;
+
         neighborEnumerable = __neighborEnumerable;
         prefabIndices = __prefabIndices;
         if (definition != __definition)
@@ -553,23 +574,30 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
 
             var writer = this.versions.writer;
 
-            var versions = new NativeList<Version>(writer.Count(), Allocator.TempJob);
+            __versions.Clear();
+            __versions.Capacity = math.max(__versions.Capacity, writer.Count());
 
             BuildPrefabVersions buildPrefabVersions;
             buildPrefabVersions.definition = definition;
             buildPrefabVersions.inputs = this.versions.reader;
-            buildPrefabVersions.outputs = versions.AsParallelWriter();
-            var jobHandle = buildPrefabVersions.ScheduleByRef(numPrefabs, InnerloopBatchCount, __inputDeps);
+            buildPrefabVersions.outputs = __versions.AsParallelWriter();
+            jobHandle = buildPrefabVersions.ScheduleByRef(numPrefabs, InnerloopBatchCount, __inputDeps);
 
             ApplyPrefabVersions applyPrefabVersions;
-            applyPrefabVersions.inputs = versions;
+            applyPrefabVersions.inputs = __versions;
             applyPrefabVersions.outputs = writer;
             jobHandle = applyPrefabVersions.ScheduleByRef(jobHandle);
 
-            jobHandle = versions.Dispose(jobHandle);
-
-            systemState.Dependency = JobHandle.CombineDependencies(systemState.Dependency, inputDeps, jobHandle);
+            jobHandle = JobHandle.CombineDependencies(systemState.Dependency, inputDeps, jobHandle);
         }
+
+        ApplyAreaIndices applyAreaIndices;
+        applyAreaIndices.versions = __versions.AsDeferredJobArray();
+        applyAreaIndices.areaIndices = areaIndices.AsParallelWriter();
+
+        jobHandle = applyAreaIndices.ScheduleByRef(__versions, InnerloopBatchCount, jobHandle);
+
+        systemState.Dependency = jobHandle;
     }
 
     public void GetValidatorAndVersions(
@@ -584,14 +612,14 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
         ClearAreaIndices clearAreaIndices;
         clearAreaIndices.entityCount = entityCount;
         clearAreaIndices.areaIndices = __areaIndices;
-        inputDeps = clearAreaIndices.Schedule(inputDeps);
+        inputDeps = clearAreaIndices.ScheduleByRef(inputDeps);
 
         BuildAreaIndicesEx buildAreaIndices;
         buildAreaIndices.neighborEnumerable = __neighborEnumerable;
         buildAreaIndices.presentationType = __presentationType.UpdateAsRef(ref systemState);
         buildAreaIndices.areaIndices = __areaIndices.AsParallelWriter();
 
-        inputDeps = buildAreaIndices.ScheduleParallel(__group, inputDeps);
+        inputDeps = buildAreaIndices.ScheduleParallelByRef(__group, inputDeps);
 
         systemState.Dependency = JobHandle.CombineDependencies(systemState.Dependency, inputDeps, __physicsWorld.lookupJobManager.readOnlyJobHandle);
 

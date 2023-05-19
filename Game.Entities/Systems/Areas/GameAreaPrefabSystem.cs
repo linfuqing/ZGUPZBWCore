@@ -259,66 +259,80 @@ public struct GameAreaPrefabSystemCore
         var instanceType = __instanceType.UpdateAsRef(ref systemState);
         var instancesParallelWriter = __instances.parallelWriter;
 
-        __areaIndices.Capacity = math.max(__areaIndices.Capacity, definition.Value.prefabs.Length);
-        var areaIndicesParallelWriter = __areaIndices.AsParallelWriter();
-
-        var areaCreatedTimesParallelWriter = __areaCreatedTimes.AsParallelWriter();
-
-        var inputDeps = systemState.Dependency;
-
-        var entityCount = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
-
-        var resizeCreatedTimesJob = __viewerGroup.CalculateEntityCountAsync(entityCount, inputDeps);
-
-        GameAreaResizeCreatedTimes resizeCreatedTimes;
-        resizeCreatedTimes.maxNeighborCount = maxNeighborCount;
-        resizeCreatedTimes.entityCount = entityCount;
-        resizeCreatedTimes.areaCreatedTimes = __areaCreatedTimes;
-
-        resizeCreatedTimesJob = resizeCreatedTimes.Schedule(resizeCreatedTimesJob);
-
-        var addComponentCommander = addComponentCommanderPool.Create();
-
-        GameAreaCollectInstanceAreaIndices collectInstanceAreaIndices;
-        collectInstanceAreaIndices.entityType = entityType;
-        collectInstanceAreaIndices.nodeType = nodeType;
-        collectInstanceAreaIndices.instanceType = instanceType;
-        collectInstanceAreaIndices.areaIndices = areaIndicesParallelWriter;
-        collectInstanceAreaIndices.entityManager = addComponentCommander.parallelWriter;
-        JobHandle jobHandle = collectInstanceAreaIndices.ScheduleParallelByRef(__instanceGroup, inputDeps);
-
-        addComponentCommander.AddJobHandleForProducer<GameAreaCollectInstanceAreaIndices>(jobHandle);
-
-        //int count = __viewerGroup.CalculateEntityCount() * (maxNeighborCount + 1);
-
-        jobHandle = JobHandle.CombineDependencies(jobHandle, resizeCreatedTimesJob);//areaCreatedTimes.Resize(count, inputDeps));
+        JobHandle inputDeps = systemState.Dependency, jobHandle = inputDeps;
 
         double time = systemState.WorldUnmanaged.Time.ElapsedTime;// this.now;
 
-        systemState.Dependency = jobHandle;
+        __areaIndices.Capacity = math.max(__areaIndices.Capacity, definition.Value.prefabs.Length);
+        var areaIndicesParallelWriter = __areaIndices.AsParallelWriter();
 
-        GameAreaInit<TNeighborEnumerable> createAreas;
+        if (!__instanceGroup.IsEmpty)
+        {
+            var addComponentCommander = addComponentCommanderPool.Create();
 
-        handler.GetNeighborEnumerableAndPrefabIndices(definition, ref systemState, out createAreas.neighborEnumerable, out createAreas.prefabIndices);
+            GameAreaCollectInstanceAreaIndices collectInstanceAreaIndices;
+            collectInstanceAreaIndices.entityType = entityType;
+            collectInstanceAreaIndices.nodeType = nodeType;
+            collectInstanceAreaIndices.instanceType = instanceType;
+            collectInstanceAreaIndices.areaIndices = areaIndicesParallelWriter;
+            collectInstanceAreaIndices.entityManager = addComponentCommander.parallelWriter;
+            jobHandle = collectInstanceAreaIndices.ScheduleParallelByRef(__instanceGroup, inputDeps);
 
-        createAreas.time = time;
-        createAreas.nodeType = nodeType;
-        createAreas.areaIndices = areaIndicesParallelWriter;
-        createAreas.areaCreatedTimes = areaCreatedTimesParallelWriter;
-        createAreas.instances = instancesParallelWriter;
-        jobHandle = createAreas.ScheduleParallelByRef(__viewerGroup, systemState.Dependency);
+            addComponentCommander.AddJobHandleForProducer<GameAreaCollectInstanceAreaIndices>(jobHandle);
+        }
 
-        var removeComponentCommander = removeComponentCommanderPool.Create();
+        if (!__viewerGroup.IsEmpty)
+        {
+            var areaCreatedTimesParallelWriter = __areaCreatedTimes.AsParallelWriter();
 
-        GameAreaRecreateNodes recreateNodes;
-        recreateNodes.entityType = entityType;
-        recreateNodes.instanceType = instanceType;
-        recreateNodes.areaIndices = __areaIndices;
-        recreateNodes.instances = instancesParallelWriter;
-        recreateNodes.entityManager = removeComponentCommander.parallelWriter;
-        jobHandle = recreateNodes.ScheduleParallelByRef(__destroiedActorGroup, jobHandle);
+            var entityCount = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
 
-        removeComponentCommander.AddJobHandleForProducer<GameAreaRecreateNodes>(jobHandle);
+            var resizeCreatedTimesJob = __viewerGroup.CalculateEntityCountAsync(entityCount, inputDeps);
+
+            GameAreaResizeCreatedTimes resizeCreatedTimes;
+            resizeCreatedTimes.maxNeighborCount = maxNeighborCount;
+            resizeCreatedTimes.entityCount = entityCount;
+            resizeCreatedTimes.areaCreatedTimes = __areaCreatedTimes;
+
+            resizeCreatedTimesJob = resizeCreatedTimes.Schedule(resizeCreatedTimesJob);
+
+            //int count = __viewerGroup.CalculateEntityCount() * (maxNeighborCount + 1);
+
+            jobHandle = JobHandle.CombineDependencies(jobHandle, resizeCreatedTimesJob);//areaCreatedTimes.Resize(count, inputDeps));
+
+            systemState.Dependency = jobHandle;
+
+            GameAreaInit<TNeighborEnumerable> createAreas;
+
+            handler.GetNeighborEnumerableAndPrefabIndices(
+                definition, 
+                ref __areaIndices, 
+                ref systemState, 
+                out createAreas.neighborEnumerable, 
+                out createAreas.prefabIndices);
+
+            createAreas.time = time;
+            createAreas.nodeType = nodeType;
+            createAreas.areaIndices = areaIndicesParallelWriter;
+            createAreas.areaCreatedTimes = areaCreatedTimesParallelWriter;
+            createAreas.instances = instancesParallelWriter;
+            jobHandle = createAreas.ScheduleParallelByRef(__viewerGroup, systemState.Dependency);
+        }
+
+        if (!__destroiedActorGroup.IsEmpty)
+        {
+            var removeComponentCommander = removeComponentCommanderPool.Create();
+
+            GameAreaRecreateNodes recreateNodes;
+            recreateNodes.entityType = entityType;
+            recreateNodes.instanceType = instanceType;
+            recreateNodes.areaIndices = __areaIndices;
+            recreateNodes.instances = instancesParallelWriter;
+            recreateNodes.entityManager = removeComponentCommander.parallelWriter;
+            jobHandle = recreateNodes.ScheduleParallelByRef(__destroiedActorGroup, jobHandle);
+
+            removeComponentCommander.AddJobHandleForProducer<GameAreaRecreateNodes>(jobHandle);
+        }
 
         var createEntityCommander = createEntityCommanderPool.Create();
         var entityManager = createEntityCommander.parallelWriter;
