@@ -234,6 +234,7 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
     {
         public Hash128 guid;
         public int value;
+        public int index;
     }
 
     public struct Validator : IGameAreaValidator
@@ -370,6 +371,7 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
             if (!inputs.TryGetValue(prefab.guid, out version.value) || version.value < prefab.version)
                 return;
 
+            version.index = index;
             version.guid = prefab.guid;
             outputs.AddNoResize(version);
         }
@@ -388,7 +390,7 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
             outputs.Clear();
 
             foreach (var version in inputs)
-                outputs.Add(version.guid, version.value);
+                outputs.Add(version.guid, version.index);
         }
     }
 
