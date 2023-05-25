@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using Unity.Entities;
 using ZG;
 
-[Serializable]
 public struct GameFormula : IBufferElementData
 {
     public int index;
@@ -11,26 +10,12 @@ public struct GameFormula : IBufferElementData
     public int count;
 }
 
-[Serializable]
-public struct GameFormulaVersion : IComponentData
-{
-    public int value;
-}
-
-[Serializable]
-public struct GameFormulaCommand : IComponentData
-{
-    public int version;
-}
-
-[Serializable]
-public struct GameFormulaCommandValue : IBufferElementData
+public struct GameFormulaCommand : IBufferElementData, IEnableableComponent
 {
     public int index;
     public int count;
 }
 
-[Serializable]
 public struct GameFormulaEvent : IBufferElementData
 {
     public int index;
@@ -38,37 +23,21 @@ public struct GameFormulaEvent : IBufferElementData
 }
 
 [EntityComponent(typeof(GameFormula))]
-[EntityComponent(typeof(GameFormulaVersion))]
 [EntityComponent(typeof(GameFormulaCommand))]
-[EntityComponent(typeof(GameFormulaCommandValue))]
 [EntityComponent(typeof(GameFormulaEvent))]
-public class GameFormulaComponent : EntityProxyComponent, IEntityComponent
+public class GameFormulaComponent : EntityProxyComponent
 {
-    public void Submit()
-    {
-        GameFormulaCommand command;
-        command.version = this.GetComponentData<GameFormulaVersion>().value;
-        this.SetComponentData(command);
-    }
-
-    public void Append(in GameFormulaCommandValue value)
+    public void Append(in GameFormulaCommand value)
     {
         this.AppendBuffer(value);
 
-        Submit();
+        this.SetComponentEnabled<GameFormulaCommand>(true);
     }
 
-    public void Append<T>(T values) where T : IReadOnlyCollection<GameFormulaCommandValue>
+    public void Append<T>(T values) where T : IReadOnlyCollection<GameFormulaCommand>
     {
-        this.AppendBuffer<GameFormulaCommandValue, T>(values);
+        this.AppendBuffer<GameFormulaCommand, T>(values);
 
-        Submit();
-    }
-
-    void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
-    {
-        GameFormulaVersion version;
-        version.value = 1;
-        assigner.SetComponentData(entity, version);
+        this.SetComponentEnabled<GameFormulaCommand>(true);
     }
 }

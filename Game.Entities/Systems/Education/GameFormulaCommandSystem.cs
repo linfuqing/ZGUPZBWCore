@@ -20,18 +20,18 @@ public struct GameFormulaCommandsDefinition
             int type, 
             in T formulaManager, 
             in DynamicBuffer<GameFormula> formulas, 
-            ref DynamicBuffer<GameFormulaCommandValue> formulaCommandValues, 
+            ref DynamicBuffer<GameFormulaCommand> formulaCommands, 
             ref Random random) where T : IGameFormulaManager
         {
-            GameFormulaCommandValue formulaCommandValue;
+            GameFormulaCommand formulaCommand;
             float count, chance = random.NextFloat();
             int numFormulas = formulas.Length;
             for(int i = 0; i < numFormulas; ++i)
             {
                 ref var formula = ref this.formulas[i];
 
-                formulaCommandValue.count = formulaManager.GetRemainingCount(type, formula.index, formulas);
-                if (formulaCommandValue.count < 1)
+                formulaCommand.count = formulaManager.GetRemainingCount(type, formula.index, formulas);
+                if (formulaCommand.count < 1)
                     continue;
 
                 if (formula.chance < chance)
@@ -41,13 +41,13 @@ public struct GameFormulaCommandsDefinition
                     continue;
                 }
 
-                count = math.min(formulaCommandValue.count, max * formula.chance);
+                count = math.min(formulaCommand.count, max * formula.chance);
                 count = random.NextFloat(math.clamp(min * formula.chance, 1.0f, count), count);
 
-                formulaCommandValue.count = (int)math.round(count);
-                formulaCommandValue.index = formula.index;
+                formulaCommand.count = (int)math.round(count);
+                formulaCommand.index = formula.index;
 
-                formulaCommandValues.Add(formulaCommandValue);
+                formulaCommands.Add(formulaCommand);
 
                 break;
             }

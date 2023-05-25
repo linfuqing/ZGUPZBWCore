@@ -56,7 +56,7 @@ public struct GameQuestData
     public GameQuestRewardData[] rewards;
 }
 
-[Serializable, EntityDataTypeName("GameMission")]
+[EntityDataTypeName("GameMission")]
 public struct GameQuest : IBufferElementData
 {
     public int index;
@@ -66,78 +66,41 @@ public struct GameQuest : IBufferElementData
     public GameQuestStatus status;
 }
 
-[Serializable]
-public struct GameQuestCommandCondition : IBufferElementData
+public struct GameQuestCommandCondition : IBufferElementData, IEnableableComponent
 {
     public GameQuestConditionType type;
     public int index;
     public int count;
 }
 
-[Serializable]
-public struct GameQuestCommandValue : IComponentData
+public struct GameQuestCommand : IBufferElementData, IEnableableComponent
 {
     public GameQuestStatus status;
     public int index;
-    public int version;
 }
 
-[Serializable]
-public struct GameQuestCommand : IComponentData
-{
-    public int version;
-}
-
-[Serializable]
-public struct GameQuestVersion : IComponentData
-{
-    public int value;
-}
-
-[EntityComponent(typeof(GameQuestVersion))]
 [EntityComponent(typeof(GameQuestCommand))]
-[EntityComponent(typeof(GameQuestCommandValue))]
 [EntityComponent(typeof(GameQuestCommandCondition))]
 [EntityComponent(typeof(GameQuest))]
-public class GameQuestComponent : EntityProxyComponent, IEntityComponent
+public class GameQuestComponent : EntityProxyComponent
 {
-    public int Submit()
-    {
-        GameQuestCommand command;
-        command.version = this.GetComponentData<GameQuestVersion>().value;
-        this.SetComponentData(command);
-
-        return command.version;
-    }
-
     public void Submit(int index, GameQuestStatus status)
     {
-        GameQuestCommandValue commandValue;
-        commandValue.status = status;
-        commandValue.index = index;
-        commandValue.version = Submit();
+        GameQuestCommand command;
+        command.status = status;
+        command.index = index;
 
-        this.SetComponentData(commandValue);
+        this.AppendBuffer(command);
+        this.SetComponentEnabled<GameQuestCommand>(true);
     }
 
     public void Append(in GameQuestCommandCondition value)
     {
         this.AppendBuffer(value);
-
-        Submit();
     }
 
     public void Append<T>(T values) where T : IReadOnlyCollection<GameQuestCommandCondition>
     {
         this.AppendBuffer<GameQuestCommandCondition, T>(values);
-
-        Submit();
-    }
-
-    void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
-    {
-        GameQuestVersion version;
-        version.value = 1;
-        assigner.SetComponentData(entity, version);
     }
 }
