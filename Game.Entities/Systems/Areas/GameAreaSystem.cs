@@ -575,9 +575,11 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
             versionJobManager.CompleteReadOnlyDependency();
 
             var writer = this.versions.writer;
+            int versionCount = writer.Count();
+            writer.capacity = math.max(writer.capacity, versionCount + numPrefabs);
 
             __versions.Clear();
-            __versions.Capacity = math.max(__versions.Capacity, writer.Count());
+            __versions.Capacity = math.max(__versions.Capacity, versionCount);
 
             BuildPrefabVersions buildPrefabVersions;
             buildPrefabVersions.definition = definition;
