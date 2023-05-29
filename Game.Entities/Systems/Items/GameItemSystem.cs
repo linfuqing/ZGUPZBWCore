@@ -419,7 +419,7 @@ public partial struct GameItemStructChangeSystem : ISystem
     }
 }
 
-[UpdateInGroup(typeof(PresentationSystemGroup))/*, UpdateBefore(typeof(EndFrameEntityCommandSystemGroup))*/]
+[UpdateInGroup(typeof(PresentationSystemGroup))/*, UpdateBefore(typeof(EndFrameEntityCommandSystemGroup))*/, UpdateAfter(typeof(TimeCallbackSystem))]
 public partial class GameItemSystemGroup : ComponentSystemGroup
 {
 

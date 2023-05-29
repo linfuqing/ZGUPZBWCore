@@ -243,7 +243,7 @@ public struct GameItemComponentChange<TValue, TInitializer> : IJob
 
                     result.index = i;
                     result.handle = command.destinationHandle;
-                    if (command.count == 0 || command.sourceHandle.Equals(Handle.empty))
+                    if (command.count == 0 || command.sourceHandle.Equals(Handle.Empty))
                     {
                         if (entities.TryGetValue(GameItemStructChangeFactory.Convert(command.destinationHandle), out Entity entity) && 
                             values.HasComponent(entity) && 

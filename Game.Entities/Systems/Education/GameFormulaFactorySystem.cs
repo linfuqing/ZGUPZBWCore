@@ -1042,9 +1042,9 @@ public partial struct GameFormulaFactorySystem : ISystem
 
                 do
                 {
-                    if (input.parentHandle.Equals(GameItemHandle.empty))
+                    if (input.parentHandle.Equals(GameItemHandle.Empty))
                     {
-                        output.handle = GameItemHandle.empty;
+                        output.handle = GameItemHandle.Empty;
                         outputs.Add(output);
 
                         if (commands.HasBuffer(input.entity))

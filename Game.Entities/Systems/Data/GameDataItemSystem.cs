@@ -432,7 +432,7 @@ public partial struct GameDataItemSystem : ISystem
 
         public void Execute(in GameItemHandle handle, in Entity rootEntity)
         {
-            if (handle.Equals(GameItemHandle.empty))
+            if (handle.Equals(GameItemHandle.Empty))
                 return;
 
             bool isRemoved = rootEntity == Entity.Null;
@@ -443,7 +443,7 @@ public partial struct GameDataItemSystem : ISystem
             {
                 if (entitiesToRemove.TryGetValue(entity, out bool handleToRemove) && handleToRemove == isRemoved)
                 {
-                    if (!handle.Equals(GameItemHandle.empty))
+                    if (!handle.Equals(GameItemHandle.Empty))
                         UnityEngine.Debug.LogError($"Wrong Handle {handle}");
 
                     return;
@@ -915,13 +915,13 @@ public struct GameDataItemDeserializer
             {
                 UnityEngine.Debug.LogError($"{entity}");
 
-                return GameItemHandle.empty;
+                return GameItemHandle.Empty;
             }
 
             return instances[entity].handle;
         }
 
-        return GameItemHandle.empty;
+        return GameItemHandle.Empty;
     }
 
     public GameItemHandle Deserialize(in GameDataItem item)

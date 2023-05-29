@@ -34,7 +34,7 @@ public partial class GameItemRootSystem : SystemBase
             for (int i = 0; i < length; ++i)
             {
                 command = commands[i];
-                if (!command.sourceParentHandle.Equals(GameItemHandle.empty))
+                if (!command.sourceParentHandle.Equals(GameItemHandle.Empty))
                     continue;
 
                 if (!rootEntities.TryGetValue(command.sourceHandle, out entity))
@@ -116,7 +116,7 @@ public partial struct GameItemRootStatusSystem : ISystem
         public void Execute(int index)
         {
             var handle = roots[index].handle;
-            if (!infos.TryGetValue(handle, out var item) || !item.parentHandle.Equals(GameItemHandle.empty))
+            if (!infos.TryGetValue(handle, out var item) || !item.parentHandle.Equals(GameItemHandle.Empty))
                 return;
 
             handles.Add(handle);
@@ -290,7 +290,7 @@ public partial struct GameItemRootStatusSystem : ISystem
     }
 }
 
-[AlwaysUpdateSystem, UpdateInGroup(typeof(GameItemInitSystemGroup), OrderFirst = true)/*, UpdateAfter(typeof(EntityObjectSystemGroup))*/]
+[UpdateInGroup(typeof(GameItemInitSystemGroup), OrderFirst = true)/*, UpdateAfter(typeof(EntityObjectSystemGroup))*/]
 public partial class GameItemRootEntitySystem : ReadOnlyLookupSystem
 {
     private struct Result
@@ -398,7 +398,7 @@ public partial class GameItemRootEntitySystem : ReadOnlyLookupSystem
                                 if (tempCommand.commandType == GameItemCommandType.Create && /*tempCommand.destinationHandle.Equals(command.sourceHandle)*/
                                     tempCommand.sourceHandle.Equals(command.sourceHandle) &&
                                     tempCommand.destinationHandle.Equals(command.destinationHandle) &&
-                                    tempCommand.destinationParentHandle.Equals(GameItemHandle.empty))
+                                    tempCommand.destinationParentHandle.Equals(GameItemHandle.Empty))
                                     break;
                             }
 
@@ -449,7 +449,7 @@ public partial class GameItemRootEntitySystem : ReadOnlyLookupSystem
                     var root = roots[entity];
                     if (root.handle.Equals(handle))
                     {
-                        root.handle = GameItemHandle.empty;
+                        root.handle = GameItemHandle.Empty;
                         roots[entity] = root;
 
                         if (states.HasComponent(entity))
@@ -457,7 +457,7 @@ public partial class GameItemRootEntitySystem : ReadOnlyLookupSystem
                             //UnityEngine.Debug.LogError($"Item {entity.Index} : {handle.index}");
 
                             GameNodeStatus status;
-                            status.value = (int)(infos.TryGetValue(handle, out var item) && !item.parentHandle.Equals(GameItemHandle.empty) ? GameItemStatus.Picked : GameItemStatus.Lose);
+                            status.value = (int)(infos.TryGetValue(handle, out var item) && !item.parentHandle.Equals(GameItemHandle.Empty) ? GameItemStatus.Picked : GameItemStatus.Lose);
 
                             states[entity] = status;
                         }

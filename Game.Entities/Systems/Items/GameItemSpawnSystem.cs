@@ -25,23 +25,15 @@ public abstract class GameItemSpawnCommander : IEntityCommander<GameItemSpawnDat
             get;
         }
 
-        public World world
-        {
-            get;
-        }
-
-        public Initializer(in GameItemHandle itemHandle, in Entity owner, World world)
+        public Initializer(in GameItemHandle itemHandle, in Entity owner)
         {
             __itemHandle = itemHandle;
 
             this.owner = owner;
-            this.world = world;
         }
 
-        public GameObjectEntityWrapper Invoke(Entity entity)
+        public void Invoke<T>(ref T gameObjectEntity) where T : IGameObjectEntity
         {
-            var gameObjectEntity = new GameObjectEntityWrapper(entity, world);
-
             /*GameLevel level;
             level.handle = __soul.levelIndex + 1;
             gameObjectEntity.SetComponentData(level);
@@ -65,8 +57,6 @@ public abstract class GameItemSpawnCommander : IEntityCommander<GameItemSpawnDat
             /*GameVariant variant;
             variant.value = __soul.variant;
             gameObjectEntity.SetComponentData(variant);*/
-
-            return gameObjectEntity;
         }
     }
 
@@ -86,7 +76,7 @@ public abstract class GameItemSpawnCommander : IEntityCommander<GameItemSpawnDat
             Create(
                 command.identityType,
                 command.transform,
-                new Initializer(command.itemHandle, command.owner, world));
+                new Initializer(command.itemHandle, command.owner));
         }
     }
 
@@ -242,7 +232,7 @@ public partial struct GameItemSpawnSystem : ISystem
                     default:
                         itemManager.Remove(command.handle, 0);
 
-                        result.itemHandle = GameItemHandle.empty;
+                        result.itemHandle = GameItemHandle.Empty;
                         for (j = 0; j < item.count; ++j)
                             results.Enqueue(result);
                         break;
@@ -309,7 +299,7 @@ public partial struct GameItemSpawnSystem : ISystem
                         results.Enqueue(result);
                         break;
                     default:
-                        result.itemHandle = GameItemHandle.empty;
+                        result.itemHandle = GameItemHandle.Empty;
                         for (j = 0; j < command.itemCount; ++j)
                             results.Enqueue(result);
                         break;

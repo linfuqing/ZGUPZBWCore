@@ -221,10 +221,10 @@ public partial class GameItemCommandSystem : LookupSystem
 
                         var handle = manager.Move(
                             command.handle,
-                            command.parentHandle.Equals(GameItemHandle.empty) ? item.parentHandle : command.parentHandle,
+                            command.parentHandle.Equals(GameItemHandle.Empty) ? item.parentHandle : command.parentHandle,
                             command.parentChildIndex, ref count);
 
-                        UnityEngine.Assertions.Assert.AreNotEqual(GameItemHandle.empty, handle);
+                        UnityEngine.Assertions.Assert.AreNotEqual(GameItemHandle.Empty, handle);
                     }
                     break;
             }
@@ -318,10 +318,10 @@ public partial class GameItemCommandSystem : LookupSystem
 
                         handle = manager.Move(
                             command.handle,
-                            command.parentHandle.Equals(GameItemHandle.empty) ? item.parentHandle : command.parentHandle,
+                            command.parentHandle.Equals(GameItemHandle.Empty) ? item.parentHandle : command.parentHandle,
                             command.parentChildIndex, ref count);
 
-                        UnityEngine.Assertions.Assert.AreNotEqual(GameItemHandle.empty, handle);
+                        UnityEngine.Assertions.Assert.AreNotEqual(GameItemHandle.Empty, handle);
                         break;
                 }*/
             }
@@ -595,7 +595,7 @@ public partial class GameItemResultSystem : LookupSystem
 
         public bool GetRoot(in GameItemHandle handle, out Entity entity)
         {
-            if (handle.Equals(GameItemHandle.empty))
+            if (handle.Equals(GameItemHandle.Empty))
             {
                 entity = Entity.Null;
 
@@ -605,7 +605,7 @@ public partial class GameItemResultSystem : LookupSystem
             if (rootEntities.TryGetValue(handle, out entity) && serializables.HasComponent(entity))
                 return true;
 
-            if(hierarchy.TryGetValue(handle, out var item) && !item.parentHandle.Equals(GameItemHandle.empty))
+            if(hierarchy.TryGetValue(handle, out var item) && !item.parentHandle.Equals(GameItemHandle.Empty))
             {
                 if (versions.TryGetValue(item.parentHandle.index, out var version))
                 {
@@ -877,7 +877,7 @@ public partial class GameItemResultSystem : LookupSystem
             int commandIndex, 
             in GameItemCommand command)
         {
-            int parentHandle = command.destinationParentHandle.Equals(GameItemHandle.empty) ? -1 : command.destinationParentHandle.index;
+            int parentHandle = command.destinationParentHandle.Equals(GameItemHandle.Empty) ? -1 : command.destinationParentHandle.index;
             if (Remove(
                 ref durabilityIndex, 
                 ref timeIndex, 
@@ -885,17 +885,17 @@ public partial class GameItemResultSystem : LookupSystem
                 command.sourceHandle.index, 
                 command.destinationParentChildIndex,
                 parentHandle,
-                command.destinationSiblingHandle.Equals(GameItemHandle.empty) ? -1 : command.destinationSiblingHandle.index,
+                command.destinationSiblingHandle.Equals(GameItemHandle.Empty) ? -1 : command.destinationSiblingHandle.index,
                 command.commandType != GameItemCommandType.Destroy && parentHandle != -1 && versions.ContainsKey(parentHandle), 
                 out var version))
             {
                 UnityEngine.Assertions.Assert.AreEqual(version.value, command.sourceHandle.version);
                 UnityEngine.Assertions.Assert.AreEqual(
                     version.parentHandle,
-                    command.sourceParentHandle.Equals(GameItemHandle.empty) ? -1 : command.sourceParentHandle.index);
+                    command.sourceParentHandle.Equals(GameItemHandle.Empty) ? -1 : command.sourceParentHandle.index);
                 UnityEngine.Assertions.Assert.AreEqual(
                     version.siblingHandle,
-                    command.sourceSiblingHandle.Equals(GameItemHandle.empty) ? -1 : command.sourceSiblingHandle.index);
+                    command.sourceSiblingHandle.Equals(GameItemHandle.Empty) ? -1 : command.sourceSiblingHandle.index);
 
                 return true;
             }
@@ -1112,16 +1112,16 @@ public partial class GameItemResultSystem : LookupSystem
                     return true;
             }
 
-            if (!command.destinationParentHandle.Equals(GameItemHandle.empty) && 
+            if (!command.destinationParentHandle.Equals(GameItemHandle.Empty) && 
                 versions.TryGetValue(command.destinationParentHandle.index, out var parentVersion) && 
                 versions.TryGetValue(command.destinationHandle.index, out var version))
             {
                 UnityEngine.Assertions.Assert.AreEqual(parentVersion.value, command.destinationParentHandle.version);
                 UnityEngine.Assertions.Assert.AreEqual(version.value, command.destinationHandle.version);
 
-                int sourceParentHandle = command.sourceParentHandle.Equals(GameItemHandle.empty) ? -1 : command.sourceParentHandle.index,
-                    sourceSiblingHandle = command.sourceSiblingHandle.Equals(GameItemHandle.empty) ? -1 : command.sourceSiblingHandle.index, 
-                    destinationSiblingHandle = command.destinationSiblingHandle.Equals(GameItemHandle.empty) ? -1 : command.destinationSiblingHandle.index;
+                int sourceParentHandle = command.sourceParentHandle.Equals(GameItemHandle.Empty) ? -1 : command.sourceParentHandle.index,
+                    sourceSiblingHandle = command.sourceSiblingHandle.Equals(GameItemHandle.Empty) ? -1 : command.sourceSiblingHandle.index, 
+                    destinationSiblingHandle = command.destinationSiblingHandle.Equals(GameItemHandle.Empty) ? -1 : command.destinationSiblingHandle.index;
 
                 if (command.destinationParentHandle.index != version.parentHandle)
                 {
@@ -1161,7 +1161,7 @@ public partial class GameItemResultSystem : LookupSystem
 
                 version.parentChildIndex = command.destinationParentChildIndex;
                 version.parentHandle = command.destinationParentHandle.index;
-                version.siblingHandle = command.destinationSiblingHandle.Equals(GameItemHandle.empty) ? -1 : command.destinationSiblingHandle.index;
+                version.siblingHandle = command.destinationSiblingHandle.Equals(GameItemHandle.Empty) ? -1 : command.destinationSiblingHandle.index;
 
                 version.type = command.type;
                 version.count += command.count;
@@ -1194,8 +1194,8 @@ public partial class GameItemResultSystem : LookupSystem
                     commandStartIndex, 
                     commandCount, 
                     command.sourceParentChildIndex,
-                    command.sourceParentHandle.Equals(GameItemHandle.empty) ? -1 : command.sourceParentHandle.index,
-                    command.sourceSiblingHandle.Equals(GameItemHandle.empty) ? -1 : command.sourceSiblingHandle.index,
+                    command.sourceParentHandle.Equals(GameItemHandle.Empty) ? -1 : command.sourceParentHandle.index,
+                    command.sourceSiblingHandle.Equals(GameItemHandle.Empty) ? -1 : command.sourceSiblingHandle.index,
                     entity,
                     command.destinationHandle,
                     ref results);
@@ -1246,7 +1246,7 @@ public partial class GameItemResultSystem : LookupSystem
                         UnityEngine.Assertions.Assert.AreEqual(version.value, command.destinationHandle.version);
                         UnityEngine.Assertions.Assert.AreEqual(
                             version.siblingHandle,
-                            command.sourceSiblingHandle.Equals(GameItemHandle.empty) ? -1 : command.sourceSiblingHandle.index);
+                            command.sourceSiblingHandle.Equals(GameItemHandle.Empty) ? -1 : command.sourceSiblingHandle.index);
 
                         if (version.siblingHandle != -1)
                             Remove(
@@ -1260,7 +1260,7 @@ public partial class GameItemResultSystem : LookupSystem
                                 false,
                                 out _);
 
-                        if (command.destinationSiblingHandle.Equals(GameItemHandle.empty))
+                        if (command.destinationSiblingHandle.Equals(GameItemHandle.Empty))
                             version.siblingHandle = -1;
                         else
                         {
@@ -1272,7 +1272,7 @@ public partial class GameItemResultSystem : LookupSystem
                                 commandCount,
                                 -1,
                                 -1,
-                                command.sourceSiblingHandle.Equals(GameItemHandle.empty) ? -1 : command.sourceSiblingHandle.index,
+                                command.sourceSiblingHandle.Equals(GameItemHandle.Empty) ? -1 : command.sourceSiblingHandle.index,
                                 version.entity, 
                                 command.destinationSiblingHandle, 
                                 ref results);
@@ -1287,7 +1287,7 @@ public partial class GameItemResultSystem : LookupSystem
                     if(command.sourceHandle.Equals(moveOrginHandle))
                         moveResult = false;
                     //else if (GetRoot(command.sourceParentHandle, out entity))
-                    else if (!command.sourceParentHandle.Equals(GameItemHandle.empty) && 
+                    else if (!command.sourceParentHandle.Equals(GameItemHandle.Empty) && 
                         versions.TryGetValue(command.sourceParentHandle.index, out version))
                     {
                         UnityEngine.Assertions.Assert.AreEqual(version.value, command.sourceParentHandle.version);
@@ -1312,9 +1312,9 @@ public partial class GameItemResultSystem : LookupSystem
                                 ref timeIndex,
                                 commandIndex,
                                 command.sourceParentChildIndex,
-                                command.sourceParentHandle.Equals(GameItemHandle.empty) ? -1 : command.sourceParentHandle.index,
+                                command.sourceParentHandle.Equals(GameItemHandle.Empty) ? -1 : command.sourceParentHandle.index,
                                 command.destinationParentChildIndex,
-                                command.destinationParentHandle.Equals(GameItemHandle.empty) ? -1 : command.destinationParentHandle.index,
+                                command.destinationParentHandle.Equals(GameItemHandle.Empty) ? -1 : command.destinationParentHandle.index,
                                 -1,
                                 command.type,
                                 command.sourceCount,
@@ -1367,10 +1367,10 @@ public partial class GameItemResultSystem : LookupSystem
                     UnityEngine.Assertions.Assert.AreEqual(version.value, command.sourceHandle.version);
                     UnityEngine.Assertions.Assert.AreEqual(
                         version.parentHandle,
-                        command.sourceParentHandle.Equals(GameItemHandle.empty) ? -1 : command.sourceParentHandle.index);
+                        command.sourceParentHandle.Equals(GameItemHandle.Empty) ? -1 : command.sourceParentHandle.index);
                     UnityEngine.Assertions.Assert.AreEqual(
                         version.siblingHandle,
-                        command.sourceSiblingHandle.Equals(GameItemHandle.empty) ? -1 : command.sourceSiblingHandle.index);
+                        command.sourceSiblingHandle.Equals(GameItemHandle.Empty) ? -1 : command.sourceSiblingHandle.index);
 
                     commandIndexToMask = commandIndex + commandStartIndex;
                     for (i = 0; i < numItemMasks; ++i)
@@ -1388,11 +1388,11 @@ public partial class GameItemResultSystem : LookupSystem
                             ref timeIndex,
                             commandIndex,
                             command.sourceParentChildIndex,
-                            command.sourceParentHandle.Equals(GameItemHandle.empty) ? -1 : command.sourceParentHandle.index,
-                            command.sourceSiblingHandle.Equals(GameItemHandle.empty) ? -1 : command.sourceSiblingHandle.index,
+                            command.sourceParentHandle.Equals(GameItemHandle.Empty) ? -1 : command.sourceParentHandle.index,
+                            command.sourceSiblingHandle.Equals(GameItemHandle.Empty) ? -1 : command.sourceSiblingHandle.index,
                             command.destinationParentChildIndex,
-                            command.destinationParentHandle.Equals(GameItemHandle.empty) ? -1 : command.destinationParentHandle.index,
-                            command.destinationSiblingHandle.Equals(GameItemHandle.empty) ? -1 : command.destinationSiblingHandle.index,
+                            command.destinationParentHandle.Equals(GameItemHandle.Empty) ? -1 : command.destinationParentHandle.index,
+                            command.destinationSiblingHandle.Equals(GameItemHandle.Empty) ? -1 : command.destinationSiblingHandle.index,
                             command.type,
                             command.count,
                             version.entity,
@@ -1435,7 +1435,7 @@ public partial class GameItemResultSystem : LookupSystem
                     startCommandIndex, 
                     commandCount, 
                     oldCommands[i], 
-                    GameItemHandle.empty, 
+                    GameItemHandle.Empty, 
                     ref results);
 
             if (results.IsCreated)
@@ -1550,10 +1550,10 @@ public partial class GameItemResultSystem : LookupSystem
                     -1,
                     entity,
                     item.siblingHandle,
-                    ref results) || !item.siblingHandle.Equals(GameItemHandle.empty) ? item.siblingHandle.index : -1;
+                    ref results) || !item.siblingHandle.Equals(GameItemHandle.Empty) ? item.siblingHandle.index : -1;
 
                 int parentHandle;
-                if (item.parentHandle.Equals(GameItemHandle.empty))
+                if (item.parentHandle.Equals(GameItemHandle.Empty))
                     parentHandle = -1;
                 else
                     parentHandle = item.parentHandle.index;
@@ -1671,7 +1671,7 @@ public partial class GameItemResultSystem : LookupSystem
         public void Execute(int index)
         {
             var root = roots[index].handle;
-            if (root.Equals(GameItemHandle.empty))
+            if (root.Equals(GameItemHandle.Empty))
                 return;
 
             if (!itemEntities.ContainsKey(GameItemStructChangeFactory.Convert(root)))
@@ -1917,8 +1917,8 @@ public partial class GameItemResultSystem : LookupSystem
                 version.type = item.type;
                 version.count = item.count;
                 version.parentChildIndex = item.parentChildIndex;
-                version.parentHandle = item.parentHandle.Equals(GameItemHandle.empty) ? -1 : item.parentHandle.index;
-                version.siblingHandle = item.siblingHandle.Equals(GameItemHandle.empty) ? -1 : item.siblingHandle.index;
+                version.parentHandle = item.parentHandle.Equals(GameItemHandle.Empty) ? -1 : item.parentHandle.index;
+                version.siblingHandle = item.siblingHandle.Equals(GameItemHandle.Empty) ? -1 : item.siblingHandle.index;
                 //version.durability = durability;
                 //version.time = time;
 
@@ -1939,8 +1939,8 @@ public partial class GameItemResultSystem : LookupSystem
                     result.value.sourceSiblingHandle = -1;
 
                     result.value.destinationParentChildIndex = item.parentChildIndex;
-                    result.value.destinationParentHandle = item.parentHandle.Equals(GameItemHandle.empty) ? -1 : item.parentHandle.index;
-                    result.value.destinationSiblingHandle = item.siblingHandle.Equals(GameItemHandle.empty) ? -1 : item.siblingHandle.index;
+                    result.value.destinationParentHandle = item.parentHandle.Equals(GameItemHandle.Empty) ? -1 : item.parentHandle.index;
+                    result.value.destinationSiblingHandle = item.siblingHandle.Equals(GameItemHandle.Empty) ? -1 : item.siblingHandle.index;
 
                     result.value.handle = handle.index;
 
@@ -2261,7 +2261,7 @@ public partial class GameItemResultSystem : LookupSystem
         command.handle.version = version.value;
 
         if (parentHandle == -1)
-            command.parentHandle = GameItemHandle.empty;
+            command.parentHandle = GameItemHandle.Empty;
         else
         {
             if (!__versions.TryGetValue(parentHandle, out version))

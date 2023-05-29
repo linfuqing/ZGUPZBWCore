@@ -46,7 +46,7 @@ public class GameItemEditorObject : ScriptableObject
         {
             if (!manager.GetChildren(handle, out var enumerator, out var item))
             {
-                if (!handle.Equals(GameItemHandle.empty))
+                if (!handle.Equals(GameItemHandle.Empty))
                     Debug.LogError($"Erorr Handle {handle}");
 
                 return null;

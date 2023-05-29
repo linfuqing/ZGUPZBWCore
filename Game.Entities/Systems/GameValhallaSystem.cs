@@ -16,40 +16,20 @@ using Random = Unity.Mathematics.Random;
 
 public abstract class GameValhallaCommander : IEntityCommander<GameValhallaCommand>
 {
-    public interface IInitializer : IEntityDataInitializer
-    {
-        Entity entity { get; }
-    }
-
-    private struct Initializer : IInitializer
+    private struct Initializer : IEntityDataInitializer
     {
         //private GameSoulData __soul;
         private GameItemHandle __itemHandle;
         private FixedString32Bytes __nickname;
 
-        public Entity entity { get; }
-
-        public World world
-        {
-            get;
-
-            private set;
-        }
-
-        public Initializer(in GameItemHandle itemHandle, in FixedString32Bytes nickname, Entity entity, World world)
+        public Initializer(in GameItemHandle itemHandle, in FixedString32Bytes nickname)
         {
             __itemHandle = itemHandle;
             __nickname = nickname;
-
-            this.entity = entity;
-
-            this.world = world;
         }
 
-        public GameObjectEntityWrapper Invoke(Entity entity)
+        public void Invoke<T>(ref T gameObjectEntity) where T : IGameObjectEntity
         {
-            var gameObjectEntity = new GameObjectEntityWrapper(entity, world);
-
             /*GameLevel level;
             level.handle = __soul.levelIndex + 1;
             gameObjectEntity.SetComponentData(level);
@@ -73,12 +53,10 @@ public abstract class GameValhallaCommander : IEntityCommander<GameValhallaComma
             /*GameVariant variant;
             variant.value = __soul.variant;
             gameObjectEntity.SetComponentData(variant);*/
-
-            return gameObjectEntity;
         }
     }
 
-    public abstract void Create<T>(int type, int variant, in RigidTransform transform, in T initializer) where T : IInitializer;
+    public abstract void Create<T>(int type, int variant, in RigidTransform transform, in Entity ownerEntity, in T initializer) where T : IEntityDataInitializer;
 
     public void Execute(
         EntityCommandPool<GameValhallaCommand>.Context context, 
@@ -86,7 +64,6 @@ public abstract class GameValhallaCommander : IEntityCommander<GameValhallaComma
         ref NativeParallelHashMap<ComponentType, JobHandle> dependency,
         in JobHandle inputDeps)
     {
-        World world = system.World;
         while (context.TryDequeue(out var command))
         {
             dependency.CompleteAll(inputDeps);
@@ -94,8 +71,9 @@ public abstract class GameValhallaCommander : IEntityCommander<GameValhallaComma
             Create(
                 command.type, 
                 command.variant, 
-                command.transform, 
-                new Initializer(command.itemHandle, command.nickname, command.entity, world));
+                command.transform,
+                command.entity, 
+                new Initializer(command.itemHandle, command.nickname));
         }
     }
 

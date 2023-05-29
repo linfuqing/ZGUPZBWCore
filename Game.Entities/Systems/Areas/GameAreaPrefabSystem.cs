@@ -12,25 +12,14 @@ public struct GameAreaCreateEntityInitializer : IEntityDataInitializer
     private int __areaIndex;
     private int __prefabIndex;
 
-    public World world
-    {
-        get;
-
-        private set;
-    }
-    
-    public GameAreaCreateEntityInitializer(int areaIndex, int prefabIndex, World world)
+    public GameAreaCreateEntityInitializer(int areaIndex, int prefabIndex)
     {
         __areaIndex = areaIndex;
         __prefabIndex = prefabIndex;
-
-        this.world = world;
     }
 
-    public GameObjectEntityWrapper Invoke(Entity entity)
+    public void Invoke<T>(ref T gameObjectEntity) where T : IGameObjectEntity
     {
-        var gameObjectEntity = new GameObjectEntityWrapper(entity, world);
-
         GameAreaNode node;
         node.areaIndex = __areaIndex;
         gameObjectEntity.AddComponentData(node);
@@ -41,8 +30,6 @@ public struct GameAreaCreateEntityInitializer : IEntityDataInitializer
             instance.prefabIndex = __prefabIndex;
             gameObjectEntity.AddComponentData(instance);
         }
-
-        return gameObjectEntity;
     }
 }
 
@@ -81,24 +68,14 @@ public abstract class GameAreaCreateEntityCommander : IEntityCommander<GameAreaC
         private int __areaIndex;
         private int __prefabIndex;
 
-        public World world
-        {
-            get;
-
-            private set;
-        }
-        
-        public Initializer(int areaIndex, int prefabIndex, World world)
+        public Initializer(int areaIndex, int prefabIndex)
         {
             __areaIndex = areaIndex;
             __prefabIndex = prefabIndex;
-            this.world = world;
         }
 
-        public GameObjectEntityWrapper Invoke(Entity entity)
+        public void Invoke<T>(ref T gameObjectEntity) where T : IGameObjectEntity
         {
-            var gameObjectEntity = new GameObjectEntityWrapper(entity, world);
-
             GameAreaNode node;
             node.areaIndex = __areaIndex;
             gameObjectEntity.AddComponentData(node);
@@ -110,8 +87,6 @@ public abstract class GameAreaCreateEntityCommander : IEntityCommander<GameAreaC
             GameAreaInstance instance;
             instance.prefabIndex = __prefabIndex;
             gameObjectEntity.AddComponentData(instance);
-
-            return gameObjectEntity;
         }
     }
 
@@ -141,7 +116,7 @@ public abstract class GameAreaCreateEntityCommander : IEntityCommander<GameAreaC
 
             dependency.CompleteAll(inputDeps);
 
-            Create(command.typeIndex, command.prefabIndex, command.transform, new Initializer(command.areaIndex, command.prefabIndex, world));
+            Create(command.typeIndex, command.prefabIndex, command.transform, new Initializer(command.areaIndex, command.prefabIndex));
 
             if(count > 0 && --count < 1)
             {

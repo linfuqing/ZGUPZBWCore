@@ -62,7 +62,7 @@ public struct GameItemHandle : IEquatable<Handle>
     public int index;
     public int version;
 
-    public static readonly Handle empty = default;
+    public static readonly Handle Empty = default;
 
     public bool Equals(Handle other)
     {
@@ -139,13 +139,13 @@ public struct GameItemManager
             if (__values.TryGetValue(handle, out var item))
             {
                 Handle result = GetRoot(item.parentHandle);
-                if (result.Equals(Handle.empty))
+                if (result.Equals(Handle.Empty))
                     return handle;
 
                 return result;
             }
 
-            return Handle.empty;
+            return Handle.Empty;
         }
 
         public bool TryGetValue(in Handle handle, out Info item) => __values.TryGetValue(handle, out item);
@@ -165,13 +165,13 @@ public struct GameItemManager
             if (__values.TryGetValue(handle, out var item))
             {
                 Handle result = GetRoot(item.parentHandle);
-                if (result.Equals(Handle.empty))
+                if (result.Equals(Handle.Empty))
                     return handle;
 
                 return result;
             }
 
-            return Handle.empty;
+            return Handle.Empty;
         }
 
         public bool TryGetValue(in Handle handle, out Info item) => __values.TryGetValue(handle, out item);
@@ -255,13 +255,13 @@ public struct GameItemManager
             if (__infos.TryGetValue(handle, out var item))
             {
                 Handle result = GetRoot(item.parentHandle);
-                if (result.Equals(Handle.empty))
+                if (result.Equals(Handle.Empty))
                     return handle;
 
                 return result;
             }
 
-            return Handle.empty;
+            return Handle.Empty;
         }
 
         public bool GetChildren(in Handle handle, out NativeParallelMultiHashMap<int, Child>.Enumerator enumerator, out Info item)
@@ -384,7 +384,7 @@ public struct GameItemManager
             if (type < 0 || type >= __types.Length)
             {
                 parentChildIndex = -1;
-                parentHandle = Handle.empty;
+                parentHandle = Handle.Empty;
 
                 return false;
             }
@@ -707,7 +707,7 @@ public struct GameItemManager
     public Handle GetChild(in Handle handle, int index)
     {
         if (!__Find(handle.index, index, __children, out _, out var child))
-            return Handle.empty;
+            return Handle.Empty;
 
         return child.handle;
     }
@@ -717,13 +717,13 @@ public struct GameItemManager
         if (TryGetValue(handle, out var item))
         {
             Handle result = GetRoot(item.parentHandle);
-            if (result.Equals(Handle.empty))
+            if (result.Equals(Handle.Empty))
                 return handle;
 
             return result;
         }
 
-        return Handle.empty;
+        return Handle.Empty;
     }
 
     public bool GetChildren(in Handle handle, out NativeParallelMultiHashMap<int, Child>.Enumerator enumerator, out Info item)
@@ -743,7 +743,7 @@ public struct GameItemManager
     public Handle Find(in Handle handle, int type)
     {
         if (!TryGetValue(handle, out var item))
-            return Handle.empty;
+            return Handle.Empty;
 
         if (item.type == type)
             return handle;
@@ -754,17 +754,17 @@ public struct GameItemManager
             do
             {
                 result = Find(child.handle, type);
-                if (!result.Equals(Handle.empty))
+                if (!result.Equals(Handle.Empty))
                     return result;
 
             } while (__children.TryGetNextValue(out child, ref iterator));
         }
 
         result = Find(item.siblingHandle, type);
-        if (!result.Equals(Handle.empty))
+        if (!result.Equals(Handle.Empty))
             return result;
 
-        return Handle.empty;
+        return Handle.Empty;
     }
 
     public bool Find(
@@ -779,7 +779,7 @@ public struct GameItemManager
         if (type < 0 || type >= __types.Length)
         {
             parentChildIndex = -1;
-            parentHandle = Handle.empty;
+            parentHandle = Handle.Empty;
 
             return false;
         }
@@ -847,9 +847,9 @@ public struct GameItemManager
             /*command.type = item.type;
             command.sourceCount = 0;
             command.sourceParentChildIndex = -1;
-            command.sourceParentHandle = Handle.empty;
-            command.sourceSiblingHandle = Handle.empty;
-            command.sourceHandle = Handle.empty;
+            command.sourceParentHandle = Handle.Empty;
+            command.sourceSiblingHandle = Handle.Empty;
+            command.sourceHandle = Handle.Empty;
             command.destinationCount = item.count;
             command.destinationParentChildIndex = item.parentChildIndex;
             command.destinationParentHandle = item.parentHandle;
@@ -891,9 +891,9 @@ public struct GameItemManager
         }
 
         item.parentChildIndex = -1;
-        item.parentHandle = Handle.empty;
+        item.parentHandle = Handle.Empty;
 
-        item.siblingHandle = Handle.empty;
+        item.siblingHandle = Handle.Empty;
 
         __infos.Insert(handle.index, item);
 
@@ -905,11 +905,11 @@ public struct GameItemManager
         command.destinationCount = item.count;
         command.sourceParentChildIndex = -1;
         command.destinationParentChildIndex = -1;
-        command.sourceParentHandle = Handle.empty;
-        command.destinationParentHandle = Handle.empty;
-        command.sourceSiblingHandle = Handle.empty;
-        command.destinationSiblingHandle = Handle.empty;
-        command.sourceHandle = Handle.empty;
+        command.sourceParentHandle = Handle.Empty;
+        command.destinationParentHandle = Handle.Empty;
+        command.sourceSiblingHandle = Handle.Empty;
+        command.destinationSiblingHandle = Handle.Empty;
+        command.sourceHandle = Handle.Empty;
         command.destinationHandle = handle;
 
         __commands.Add(command);
@@ -927,16 +927,16 @@ public struct GameItemManager
     public Handle Add(in Handle parentHandle, int parentChildIndex, int type, ref int count)
     {
         if (count < 1)
-            return Handle.empty;
+            return Handle.Empty;
 
         if (!TryGetValue(parentHandle, out var item))
-            return Handle.empty;
+            return Handle.Empty;
 
         if (__types[item.type].capacity <= parentChildIndex)
-            return Handle.empty;
+            return Handle.Empty;
 
         if (!__Filter(item.type, type, __positiveFilters, __negativefilters))
-            return Handle.empty;
+            return Handle.Empty;
 
         Command command;
 
@@ -946,7 +946,7 @@ public struct GameItemManager
         if (isFind && TryGetValue(child.handle, out var temp))
         {
             if (temp.type != type)
-                return Handle.empty;
+                return Handle.Empty;
 
             UnityEngine.Assertions.Assert.AreEqual(temp.parentChildIndex, parentChildIndex);
             UnityEngine.Assertions.Assert.AreEqual(temp.parentHandle, parentHandle);
@@ -990,9 +990,9 @@ public struct GameItemManager
         command.count = count;
         command.sourceCount = 0;
         command.sourceParentChildIndex = -1;
-        command.sourceParentHandle = Handle.empty;
-        command.sourceSiblingHandle = Handle.empty;
-        command.sourceHandle = Handle.empty;
+        command.sourceParentHandle = Handle.Empty;
+        command.sourceSiblingHandle = Handle.Empty;
+        command.sourceHandle = Handle.Empty;
 
         child.handle = __Create();
 
@@ -1016,7 +1016,7 @@ public struct GameItemManager
         temp.parentChildIndex = parentChildIndex;
         temp.parentHandle = parentHandle;
 
-        temp.siblingHandle = Handle.empty;
+        temp.siblingHandle = Handle.Empty;
 
         child.index = parentChildIndex;
 
@@ -1030,7 +1030,7 @@ public struct GameItemManager
         command.destinationCount = temp.count;
         command.destinationParentChildIndex = parentChildIndex;
         command.destinationParentHandle = parentHandle;
-        command.destinationSiblingHandle = Handle.empty;
+        command.destinationSiblingHandle = Handle.Empty;
         command.destinationHandle = child.handle;
 
         __commands.Add(command);
@@ -1098,7 +1098,7 @@ public struct GameItemManager
         command.sourceSiblingHandle = item.siblingHandle;
         command.sourceHandle = handle;
 
-        //item.parentHandle = Handle.empty;
+        //item.parentHandle = Handle.Empty;
         //item.parentChildIndex = -1;
 
         //UnityEngine.Debug.LogError($"AttachSibling {item.type} : {handle.index} -> {siblingHandle.index}");
@@ -1139,7 +1139,7 @@ public struct GameItemManager
         command.sourceSiblingHandle = item.siblingHandle;
         command.sourceHandle = handle;
 
-        item.parentHandle = Handle.empty;
+        item.parentHandle = Handle.Empty;
         item.parentChildIndex = -1;
 
         __infos[handle.index] = item;
@@ -1147,7 +1147,7 @@ public struct GameItemManager
 
         command.destinationCount = item.count;
         command.destinationParentChildIndex = -1;
-        command.destinationParentHandle = Handle.empty;
+        command.destinationParentHandle = Handle.Empty;
         command.destinationSiblingHandle = item.siblingHandle;
         command.destinationHandle = handle;*/
 
@@ -1159,10 +1159,10 @@ public struct GameItemManager
     public Handle DetachParent(in Handle handle, ref int count)
     {
         if (count < 1)
-            return Handle.empty;
+            return Handle.Empty;
 
         if (!TryGetValue(handle, out var item) && item.count < count)
-            return Handle.empty;
+            return Handle.Empty;
 
         if(item.count == count)
         {
@@ -1175,7 +1175,7 @@ public struct GameItemManager
                 return handle;
             }
 
-            return Handle.empty;
+            return Handle.Empty;
         }
 
         Command source, destination;
@@ -1231,15 +1231,15 @@ public struct GameItemManager
         __infos[handle.index] = item;
 
         temp.parentChildIndex = -1;
-        temp.parentHandle = Handle.empty;
+        temp.parentHandle = Handle.Empty;
 
-        temp.siblingHandle = Handle.empty;
+        temp.siblingHandle = Handle.Empty;
 
         __infos.Insert(result.index, temp);
 
         source.destinationCount = item.count;
         source.destinationParentChildIndex = -1;
-        source.destinationParentHandle = Handle.empty;
+        source.destinationParentHandle = Handle.Empty;
         source.destinationSiblingHandle = item.siblingHandle;
         source.destinationHandle = result;
 
@@ -1247,7 +1247,7 @@ public struct GameItemManager
 
         destination.destinationCount = temp.count;
         destination.destinationParentChildIndex = -1;
-        destination.destinationParentHandle = Handle.empty;
+        destination.destinationParentHandle = Handle.Empty;
         destination.destinationSiblingHandle = temp.siblingHandle;
         destination.destinationHandle = result;
 
@@ -1259,19 +1259,19 @@ public struct GameItemManager
     public Handle Move(in Handle handle, in Handle parentHandle, int parentChildIndex, ref int count)
     {
         if (count < 1)
-            return Handle.empty;
+            return Handle.Empty;
 
         if (!TryGetValue(handle, out var item) && item.count <= count)
-            return Handle.empty;
+            return Handle.Empty;
 
         if (!TryGetValue(parentHandle, out var parent))
-            return Handle.empty;
+            return Handle.Empty;
 
         if (__types[parent.type].capacity <= parentChildIndex)
-            return Handle.empty;
+            return Handle.Empty;
 
         if (!__Filter(parent.type, item.type, __positiveFilters, __negativefilters))
-            return Handle.empty;
+            return Handle.Empty;
 
         Command source, destination;
 
@@ -1281,7 +1281,7 @@ public struct GameItemManager
         if (isFind && TryGetValue(child.handle, out var temp))
         {
             if (temp.type != item.type)
-                return Handle.empty;
+                return Handle.Empty;
 
             UnityEngine.Assertions.Assert.AreEqual(temp.parentChildIndex, parentChildIndex);
             UnityEngine.Assertions.Assert.AreEqual(temp.parentHandle, parentHandle);
@@ -1391,7 +1391,7 @@ public struct GameItemManager
         temp.parentChildIndex = parentChildIndex;
         temp.parentHandle = parentHandle;
 
-        temp.siblingHandle = Handle.empty;
+        temp.siblingHandle = Handle.Empty;
 
         child.index = parentChildIndex;
 
@@ -1725,7 +1725,7 @@ public struct GameItemManager
             return count;
         }
 
-        __Delete(handle, Handle.empty, Handle.empty, Handle.empty, -1);
+        __Delete(handle, Handle.Empty, Handle.Empty, Handle.Empty, -1);
 
         return item.count;
     }
@@ -1767,7 +1767,7 @@ public struct GameItemManager
                         command.sourceSiblingHandle = item.siblingHandle;
                         command.sourceHandle = handle;
 
-                        item.siblingHandle = Handle.empty;
+                        item.siblingHandle = Handle.Empty;
                         __infos[handle.index] = item;
 
                         command.destinationCount = item.count;
@@ -1801,14 +1801,14 @@ public struct GameItemManager
                             command.sourceSiblingHandle = temp.siblingHandle;
                             command.sourceHandle = child.handle;
 
-                            temp.parentHandle = Handle.empty;
+                            temp.parentHandle = Handle.Empty;
                             temp.parentChildIndex = -1;
 
                             __infos[child.handle.index] = temp;
 
                             command.destinationCount = temp.count;
                             command.destinationParentChildIndex = -1;
-                            command.destinationParentHandle = Handle.empty;
+                            command.destinationParentHandle = Handle.Empty;
                             command.destinationSiblingHandle = temp.siblingHandle;
                             command.destinationHandle = child.handle;
 
@@ -1865,11 +1865,11 @@ public struct GameItemManager
         {
             do
             {
-                __Delete(child.handle, Handle.empty, Handle.empty, Handle.empty, -1);
+                __Delete(child.handle, Handle.Empty, Handle.Empty, Handle.Empty, -1);
             } while (__children.TryGetNextValue(out child, ref iterator));
         }
 
-        __Delete(item.siblingHandle, Handle.empty, Handle.empty, Handle.empty, -1);
+        __Delete(item.siblingHandle, Handle.Empty, Handle.Empty, Handle.Empty, -1);
 
         Command command;
         command.commandType = CommandType.Destroy;
@@ -1967,7 +1967,7 @@ public struct GameItemManager
         out Handle parentHandle)
     {
         parentChildIndex = -1;
-        parentHandle = Handle.empty;
+        parentHandle = Handle.Empty;
 
         var result = FindResult.None;
 
@@ -2086,7 +2086,7 @@ public struct GameItemManager
         out Handle parentHandle)
     {
         parentChildIndex = -1;
-        parentHandle = Handle.empty;
+        parentHandle = Handle.Empty;
 
         if (!items.TryGetValue(handle, out var item))
             return FindResult.None;
@@ -2270,7 +2270,7 @@ public struct GameItemManager
         command.sourceSiblingHandle = item.siblingHandle;
         command.sourceHandle = handle;
 
-        item.parentHandle = Handle.empty;
+        item.parentHandle = Handle.Empty;
         item.parentChildIndex = -1;
 
         items[handle.index] = item;
@@ -2278,7 +2278,7 @@ public struct GameItemManager
 
         command.destinationCount = item.count;
         command.destinationParentChildIndex = -1;
-        command.destinationParentHandle = Handle.empty;
+        command.destinationParentHandle = Handle.Empty;
         command.destinationSiblingHandle = item.siblingHandle;
         command.destinationHandle = handle;
 
