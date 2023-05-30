@@ -80,7 +80,7 @@ public struct GameTransformDestination<T> : IComponentData where T : struct, IGa
     public GameTransform<T> value;
 }*/
 
-[Serializable]
+//[Serializable]
 public struct GameTransformVelocity<TTransform, TVelocity> : IComponentData 
     where TTransform : struct, IGameTransform<TTransform>
     where TVelocity : struct, IGameTransformVelocity<TTransform>
@@ -88,7 +88,7 @@ public struct GameTransformVelocity<TTransform, TVelocity> : IComponentData
     public TVelocity value;
 }
 
-[Serializable]
+//[Serializable]
 public struct GameTransform : IGameTransform<GameTransform>
 {
     public RigidTransform value;

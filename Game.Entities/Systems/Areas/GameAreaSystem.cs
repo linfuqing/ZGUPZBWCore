@@ -15,7 +15,7 @@ using ZG;
 [assembly: RegisterGenericJobType(typeof(GameAreaInit<GameAreaNeighborEnumerable>))]
 [assembly: RegisterGenericJobType(typeof(GameAreaInvokeCommands<GameAreaPrefabSystem.Validator>))]
 
-[assembly: RegisterGenericJobType(typeof(EntityComponentContainerMoveComponentJob<GameAreaPrefab>))]
+[assembly: RegisterGenericJobType(typeof(EntityComponentContainerCopyComponentJob<GameAreaPrefab>))]
 
 #if DEBUG
 [assembly: RegisterEntityCommandProducerJob(typeof(GameAreaInvokeCommands<GameAreaPrefabSystem.Validator>))]
