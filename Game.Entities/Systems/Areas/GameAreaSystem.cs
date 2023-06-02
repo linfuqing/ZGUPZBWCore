@@ -390,7 +390,7 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
             outputs.Clear();
 
             foreach (var version in inputs)
-                outputs.Add(version.guid, version.index);
+                outputs.Add(version.guid, version.value);
         }
     }
 
@@ -404,7 +404,7 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
 
         public void Execute(int index)
         {
-            areaIndices.TryAdd(versions[index].value, -1);
+            areaIndices.TryAdd(versions[index].index, -1);
         }
     }
 

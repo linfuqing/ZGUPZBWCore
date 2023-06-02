@@ -13,51 +13,78 @@ public struct GameNodeCharacterData : IComponentData
     [Flags]
     public enum Flag
     {
+        [Tooltip("始终Y轴向上")]
         SurfaceUp = 0x01,
-        RotationAll = 0x02, 
-        CanSwim = 0x04, 
-        CanFly = 0x08, 
+        [Tooltip("根据地形旋转")]
+        RotationAll = 0x02,
+        [Tooltip("可以游泳")]
+        CanSwim = 0x04,
+        [Tooltip("可以飞行")]
+        CanFly = 0x08,
         //AirControl = 0x010, 
+        [Tooltip("只能飞行")]
         FlyOnly = 0x18
     }
 
     [Mask]
     public Flag flag;
 
+    [Tooltip("可攀爬区域")]
     public LayerMask climbMask;
 
+    [Tooltip("最大碰撞检测迭代次数")]
     public int maxIterations;
+    [Tooltip("最大移动速度")]
     public float maxMovementSpeed;
+    [Tooltip("碰撞检测距离")]
     public float contactTolerance;
+    [Tooltip("皮肤厚度")]
     public float skinWidth;
+    [Tooltip("头部离身体的长度，影响跨坡跳跃")]
     public float headLength;
+    [Tooltip("足部离地面的高度，影响跳还是坠落的判定，高于此高度则为坠落")]
     public float footHeight;
+    [Tooltip("静态斜率，一个COS值，坡度大于该值则会滑落")]
     public float staticSlope;
+    [Tooltip("脚步斜率，一个COS值，坡度大于该值则会不能行走，一般这个值要大于静态斜率")]
     public float stepSlope;
+    [Tooltip("脚步摩檫力，如果站立的地方没产生相应的摩檫力，则无法行走")]
     public float stepFraction;
+    [Tooltip("支撑摩檫力，如果站立的地方没产生相应的摩檫力，则滑落，摩檫力要先能支撑，才可行走")]
     public float supportFraction;
+    [Tooltip("大于0则开启跨坡跳跃，该值影响最大的坡高度，坡的高度大于这个值就不会跳跃")]
     [UnityEngine.Serialization.FormerlySerializedAs("stepDeep")]
     public float raycastLength;
 
+    [Tooltip("水面浮起的最小高度")]
     [UnityEngine.Serialization.FormerlySerializedAs("stepHeight")]
     public float waterMinHeight;
 
+    [Tooltip("水面浮起的最大高度")]
     [UnityEngine.Serialization.FormerlySerializedAs("waterHeight")]
     public float waterMaxHeight;
-    
+
+    [Tooltip("水面摩擦力，对速度的直接缩放")]
     public float waterDamping;
 
+    [Tooltip("攀爬摩擦力，对速度的直接缩放")]
     public float climbDamping;
 
+    [Tooltip("空气摩擦力，飞行时对速度的直接缩放")]
     public float airDamping;
 
+    [Tooltip("飞行速度")]
     public float airSpeed;
 
+    [Tooltip("转角速度")]
     public float angluarSpeed;
 
+    [Tooltip("重力加速度比率，比率越大受到重力影响越大")]
     public float gravityFactor;
 
+    [Tooltip("浮力")]
     public float buoyancy;
+    [Tooltip("抓地力，大于0开启攀爬")]
     public float suction;
 }
 
