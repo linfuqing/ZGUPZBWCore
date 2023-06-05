@@ -242,17 +242,23 @@ public struct GameEntityActorActionInfo : IBufferElementData
 [Serializable]
 public struct GameEntityActorData : IComponentData
 {
+    [Tooltip("精准度")]
     public float accuracy;
 
+    [Tooltip("打断时间")]
     public float delayTime;
 
+    [Tooltip("被打断之后过多久才能被再次打断")]
     public float alertTime;
 
+    [Tooltip("攻击碰撞体和范围的缩放")]
     [UnityEngine.Serialization.FormerlySerializedAs("radiusScale")]
     public float rangeScale;
 
+    [Tooltip("攻击距离的缩放")]
     public float distanceScale;
 
+    [Tooltip("攻击偏移的缩放")]
     public float3 offsetScale;
 }
 
