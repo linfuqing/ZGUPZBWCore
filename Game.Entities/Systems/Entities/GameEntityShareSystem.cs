@@ -490,7 +490,7 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
 
             var children = entityManager.HasComponent<GameEntitySharedActionChild>(instance.parentEntity) ?
                 entityManager.GetBuffer<GameEntitySharedActionChild>(instance.parentEntity) : default;
-            int childIndex = children.IsCreated ? NativeArrayExtensions.IndexOf<Entity, Entity>(children.Reinterpret<Entity>().AsNativeArray(), entity) : -1;
+            int childIndex = children.IsCreated ? children.Reinterpret<Entity>().AsNativeArray().IndexOf(entity) : -1;
             if (childIndex == -1)
             {
                 __endFrameBarrier.DestroyEntity(entity);
@@ -1135,7 +1135,7 @@ public partial struct GameEntitySharedActionSystem : ISystem
 
         public uint ComputeActionMask(in Entity target)
         {
-            uint actionMask = actionMasks.HasComponent(target) ? actionMasks[target].value : ~0u,
+            uint actionMask = actionMasks.HasComponent(target) ? actionMasks[target].value : 0u,
                 negativeActionMask = 0,
                 positiveActionMask = 0;
             if (entityItems.HasBuffer(target))

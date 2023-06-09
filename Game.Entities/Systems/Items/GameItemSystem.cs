@@ -313,15 +313,11 @@ public struct GameItemStructChangeManager : IComponentData
 
     public static EntityQuery GetEntityQuery(ref SystemState state)
     {
-        return state.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadWrite<GameItemStructChangeManager>()
-                }, 
-                Options = EntityQueryOptions.IncludeSystems
-            });
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            return builder
+                .WithAllRW<GameItemStructChangeManager>()
+                .WithOptions(EntityQueryOptions.IncludeSystems)
+                .Build(ref state);
     }
 
     public GameItemStructChangeManager(Allocator allocator)
@@ -380,7 +376,7 @@ public struct GameItemStructChangeManager : IComponentData
                 jobHandle = state.Dependency;
             }
 
-            jobHandle = clear.Schedule(jobHandle);
+            jobHandle = clear.ScheduleByRef(jobHandle);
 
             entityHandleJobManager.readWriteJobHandle = jobHandle;
             handleEntityJobManager.readWriteJobHandle = jobHandle;
@@ -684,7 +680,7 @@ public partial struct GameItemSystem : ISystem
                 {
                     identities = identityComponentChunks[i].GetNativeArray(ref identityComponentType);
                     numEntities = identities.Length;
-                    for(j = 0; j < numEntities; ++j)
+                    for (j = 0; j < numEntities; ++j)
                     {
                         if (identities[j].guid == result)
                             break;
@@ -773,7 +769,7 @@ public partial struct GameItemSystem : ISystem
                         }
                         break;
                     case GameItemCommandType.Destroy:
-                        if(!createCommander.Remove(command.sourceHandle))
+                        if (!createCommander.Remove(command.sourceHandle))
                             destroyCommander.Enqueue(entities[GameItemStructChangeFactory.Convert(command.sourceHandle)]);
 
                         //entities.Remove(command.sourceHandle);
@@ -792,6 +788,8 @@ public partial struct GameItemSystem : ISystem
     private EntityQuery __structChangeManagerGroup;
     private EntityQuery __identityTypeGroup;
     private EntityQuery __identityGroup;
+
+    private ComponentTypeHandle<EntityDataIdentity> __identityType;
 
     private NativeList<GameItemCommand> __commandSources;
     private NativeList<GameItemCommand> __commandDestinations;
@@ -835,6 +833,7 @@ public partial struct GameItemSystem : ISystem
         manager.Rebuild(datas);
     }
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         BurstUtility.InitializeJob<Command>();
@@ -848,6 +847,8 @@ public partial struct GameItemSystem : ISystem
         __identityTypeGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameItemIdentityType>());
         __identityGroup = state.GetEntityQuery(ComponentType.ReadOnly<EntityDataIdentity>());
 
+        __identityType = state.GetComponentTypeHandle<EntityDataIdentity>(true);
+
         /*__group = state.GetEntityQuery(ComponentType.ReadOnly<GameItemData>(), ComponentType.ReadOnly<GameItemType>());
         __group.SetChangedVersionFilter(typeof(GameItemType));*/
 
@@ -856,9 +857,14 @@ public partial struct GameItemSystem : ISystem
 
         manager = new GameItemManagerShared(ref __commandSources, ref __commandDestinations, Allocator.Persistent);
 
-        entityArchetype = state.EntityManager.CreateArchetype(ComponentType.ReadOnly<EntityDataIdentity>(), ComponentType.ReadOnly<GameItemData>());
+        var componentTypes = new NativeArray<ComponentType>(2, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+        componentTypes[0] = ComponentType.ReadOnly<EntityDataIdentity>();
+        componentTypes[1] = ComponentType.ReadOnly<GameItemData>();
+        entityArchetype = state.EntityManager.CreateArchetype(componentTypes);
+        componentTypes.Dispose();
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
         //entities.Dispose();
@@ -870,7 +876,7 @@ public partial struct GameItemSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        if (__identityGroup.IsEmpty || !__identityTypeGroup.HasSingleton<GameItemIdentityType>())
+        if (!__identityTypeGroup.HasSingleton<GameItemIdentityType>())
             return;
 
         var manager = this.manager;
@@ -891,7 +897,7 @@ public partial struct GameItemSystem : ISystem
         command.identityType = __identityTypeGroup.GetSingleton<GameItemIdentityType>().value;
         command.entityArchetype = entityArchetype;
         command.identityComponentChunks = __identityGroup.ToArchetypeChunkListAsync(state.WorldUpdateAllocator, out var identityJobHandle);
-        command.identityComponentType = state.GetComponentTypeHandle<EntityDataIdentity>(true);
+        command.identityComponentType = __identityType.UpdateAsRef(ref state);
         command.sources = __commandSources;
         command.destinations = __commandDestinations;
         command.entities = handleEntities.reader;
