@@ -7,7 +7,7 @@ using ZG;
 public enum GameEntityStatus
 {
     KnockedOut = GameNodeStatus.DELAY | GameNodeStatus.STOP,
-    Dead = GameNodeStatus.DELAY | GameNodeStatus.STOP | GameNodeStatus.OVER, 
+    Dead = GameNodeStatus.DELAY | GameNodeStatus.STOP | GameNodeStatus.OVER,
 
     Mask = GameNodeStatus.DELAY | GameNodeStatus.STOP | GameNodeStatus.OVER
 }
@@ -148,6 +148,11 @@ public struct GameActionDataEx : IComponentData
     public BlobAssetReference<Unity.Physics.Collider> collider;
 }
 
+public struct GameEntityCampDefault : IComponentData
+{
+    public int value;
+}
+
 public struct GameEntityCamp : IComponentData
 {
     public int value;
@@ -171,6 +176,7 @@ public struct GameEntityItem : IBufferElementData
     }
 }
 
+[EntityComponent(typeof(GameEntityCampDefault))]
 [EntityComponent(typeof(GameEntityCamp))]
 [EntityComponent(typeof(GameEntityItem))]
 public class GameEntityComponent : EntityProxyComponent, IEntityComponent
@@ -196,10 +202,7 @@ public class GameEntityComponent : EntityProxyComponent, IEntityComponent
     {
         get
         {
-            if (gameObjectEntity.isCreated)
-                _camp = this.GetComponentData<GameEntityCamp>().value;
-
-            return _camp;
+            return this.GetComponentData<GameEntityCamp>().value;
         }
 
         set
@@ -207,11 +210,9 @@ public class GameEntityComponent : EntityProxyComponent, IEntityComponent
             GameEntityCamp camp;
             camp.value = value;
             this.SetComponentData(camp);
-
-            _camp = value;
         }
     }
-    
+
     public int itemCount
     {
         get
@@ -285,6 +286,10 @@ public class GameEntityComponent : EntityProxyComponent, IEntityComponent
 
     void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
     {
+        GameEntityCampDefault campDefault;
+        campDefault.value = _camp;
+        assigner.SetComponentData(entity, campDefault);
+
         GameEntityCamp camp;
         camp.value = _camp;
         assigner.SetComponentData(entity, camp);

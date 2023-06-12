@@ -8,13 +8,6 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using ZG;
 
-[Serializable]
-public struct GameCampDefault : IComponentData
-{
-    public int value;
-}
-
-[Serializable]
 [EntityDataTypeName("GameOwer")]
 public struct GameOwner : IGameDataEntityCompoentData
 {
@@ -28,13 +21,12 @@ public struct GameOwner : IGameDataEntityCompoentData
     }
 }
 
-[Serializable]
-public struct GameFollower : IBufferElementData
+public struct GameFollower : ICleanupBufferElementData
 {
     public Entity entity;
 }
 
-[BurstCompile, AutoCreateIn("Server"), UpdateInGroup(typeof(GameStatusSystemGroup), OrderFirst = true)]
+/*[BurstCompile, AutoCreateIn("Server"), UpdateInGroup(typeof(GameStatusSystemGroup), OrderFirst = true)]
 public partial struct GameCampInitSystem : ISystem
 {
     [BurstCompile]
@@ -106,10 +98,101 @@ public partial struct GameCampInitSystem : ISystem
 
         state.Dependency = moveTo.Schedule(entityArray.Length, InnerloopBatchCount, state.Dependency);
     }
-}
+}*/
 
 [BurstCompile, AutoCreateIn("Server"), UpdateInGroup(typeof(GameStatusSystemGroup)), UpdateBefore(typeof(GameOwnerSystem))/*, UpdateAfter(typeof(GameCampInitSystem))*/]
 public partial struct GameOwnerStatusSystem : ISystem
+{
+    private struct UpdateStates
+    {
+        [ReadOnly]
+        public BufferAccessor<GameFollower> followers;
+
+        [NativeDisableContainerSafetyRestriction]
+        public ComponentLookup<GameOwner> owners;
+
+        public void Execute(int index)
+        {
+            GameOwner owner;
+            owner.entity = Entity.Null;
+
+            var followers = this.followers[index];
+            foreach (var follower in followers)
+            {
+                if (!owners.HasComponent(follower.entity))
+                    continue;
+
+                owners[follower.entity] = owner;
+            }
+        }
+    }
+
+    [BurstCompile]
+    private struct UpdateStateEx : IJobChunk
+    {
+        [ReadOnly]
+        public BufferTypeHandle<GameFollower> followerType;
+
+        [NativeDisableContainerSafetyRestriction]
+        public ComponentLookup<GameOwner> owners;
+
+        public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+        {
+            UpdateStates updateStates;
+            updateStates.followers = chunk.GetBufferAccessor(ref followerType);
+            updateStates.owners = owners;
+
+            var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+            while (iterator.NextEntityIndex(out int i))
+                updateStates.Execute(i);
+        }
+    }
+
+    private EntityQuery __group;
+
+    private ComponentLookup<GameOwner> __owners;
+
+    private BufferTypeHandle<GameFollower> __followerType;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameFollower>()
+                    .WithNone<GameOwner>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
+
+        __owners = state.GetComponentLookup<GameOwner>();
+        __followerType = state.GetBufferTypeHandle<GameFollower>(true);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        if (__group.IsEmpty)
+            return;
+
+        state.CompleteDependency();
+
+        UpdateStateEx updateState;
+        updateState.followerType = __followerType.UpdateAsRef(ref state);
+        updateState.owners = __owners.UpdateAsRef(ref state);
+        updateState.RunByRef(__group);
+
+        state.EntityManager.RemoveComponent<GameFollower>(__group);
+    }
+}
+
+[BurstCompile, AutoCreateIn("Server"), UpdateInGroup(typeof(GameStatusSystemGroup))]
+public partial struct GameOwnerSystem : ISystem
 {
     private struct UpdateStates
     {
@@ -122,8 +205,7 @@ public partial struct GameOwnerStatusSystem : ISystem
         [ReadOnly]
         public NativeArray<GameOwner> owners;
 
-        [NativeDisableContainerSafetyRestriction]
-        public ComponentLookup<GameOwner> ownerMap;
+        public BufferLookup<GameFollower> followers;
 
         public void Execute(int index)
         {
@@ -135,12 +217,14 @@ public partial struct GameOwnerStatusSystem : ISystem
             if (status == oldStatus)
                 return;
 
-            if (owners[index].entity == Entity.Null)
-                return;
-
-            GameOwner owner;
-            owner.entity = Entity.Null;
-            ownerMap[entityArray[index]] = owner;
+            var owner = owners[index].entity;
+            if (this.followers.HasBuffer(owner))
+            {
+                var followers = this.followers[owner];
+                int followerIndex = followers.Reinterpret<Entity>().AsNativeArray().IndexOf(entityArray[index]);
+                if (followerIndex != -1)
+                    followers.RemoveAtSwapBack(followerIndex);
+            }
         }
     }
 
@@ -156,8 +240,7 @@ public partial struct GameOwnerStatusSystem : ISystem
         [ReadOnly]
         public ComponentTypeHandle<GameOwner> ownerType;
 
-        [NativeDisableContainerSafetyRestriction]
-        public ComponentLookup<GameOwner> owners;
+        public BufferLookup<GameFollower> followers;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -166,7 +249,7 @@ public partial struct GameOwnerStatusSystem : ISystem
             updateStates.states = chunk.GetNativeArray(ref statusType);
             updateStates.oldStates = chunk.GetNativeArray(ref oldStatusType);
             updateStates.owners = chunk.GetNativeArray(ref ownerType);
-            updateStates.ownerMap = owners;
+            updateStates.followers = followers;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -174,60 +257,26 @@ public partial struct GameOwnerStatusSystem : ISystem
         }
     }
 
-    private EntityQuery __group;
-
-    public void OnCreate(ref SystemState state)
-    {
-        __group = state.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameNodeStatus>(),
-                    ComponentType.ReadOnly<GameNodeOldStatus>(),
-                    ComponentType.ReadOnly<GameOwner>(),
-                },
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
-        __group.SetChangedVersionFilter(new ComponentType[] { typeof(GameNodeStatus), typeof(GameNodeOldStatus) });
-    }
-
-    public void OnDestroy(ref SystemState state)
-    {
-
-    }
-
-    [BurstCompile]
-    public void OnUpdate(ref SystemState state)
-    {
-        UpdateStateEx updateState;
-        updateState.entityType = state.GetEntityTypeHandle();
-        updateState.statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
-        updateState.oldStatusType = state.GetComponentTypeHandle<GameNodeOldStatus>(true);
-        updateState.ownerType = state.GetComponentTypeHandle<GameOwner>(true);
-        updateState.owners = state.GetComponentLookup<GameOwner>();
-        state.Dependency = updateState.ScheduleParallel(__group, state.Dependency);
-    }
-}
-
-[BurstCompile, AutoCreateIn("Server"), UpdateInGroup(typeof(GameStatusSystemGroup))]
-public partial struct GameOwnerSystem : ISystem
-{
     private struct DidChange
     {
+        [ReadOnly]
+        public SharedHashMap<Entity, Entity>.Reader origins;
+        [ReadOnly]
+        public BufferLookup<GameFollower> followers;
         [ReadOnly]
         public NativeArray<Entity> entityArray;
         [ReadOnly]
         public NativeArray<GameOwner> owners;
-        [ReadOnly]
-        public SharedHashMap<Entity, Entity>.Reader origins;
 
         public NativeList<Entity>.ParallelWriter results;
 
         public void Execute(int index)
         {
             Entity entity = entityArray[index], owner = owners[index].entity;
-            if (origins.TryGetValue(entity, out Entity origin) ? origin == owner : entity == Entity.Null)
+            if (!followers.HasBuffer(owner))
+                owner = Entity.Null;
+
+            if (origins.TryGetValue(entity, out Entity origin) ? origin == owner : owner == Entity.Null)
                 return;
 
             results.AddNoResize(entity);
@@ -238,21 +287,26 @@ public partial struct GameOwnerSystem : ISystem
     private struct DidChangeEx : IJobChunk
     {
         [ReadOnly]
+        public SharedHashMap<Entity, Entity>.Reader origins;
+
+        [ReadOnly]
+        public BufferLookup<GameFollower> followers;
+
+        [ReadOnly]
         public EntityTypeHandle entityType;
 
         [ReadOnly]
         public ComponentTypeHandle<GameOwner> ownerType;
-        [ReadOnly]
-        public SharedHashMap<Entity, Entity>.Reader origins;
 
         public NativeList<Entity>.ParallelWriter results;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             DidChange didChange;
+            didChange.origins = origins;
+            didChange.followers = followers;
             didChange.entityArray = chunk.GetNativeArray(entityType);
             didChange.owners = chunk.GetNativeArray(ref ownerType);
-            didChange.origins = origins;
             didChange.results = results;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -271,7 +325,7 @@ public partial struct GameOwnerSystem : ISystem
         public ComponentLookup<GameOwner> owners;
 
         [ReadOnly]
-        public ComponentLookup<GameCampDefault> camps;
+        public ComponentLookup<GameEntityCampDefault> camps;
 
         public ComponentLookup<GameEntityCamp> entityCamps;
 
@@ -289,11 +343,11 @@ public partial struct GameOwnerSystem : ISystem
                 entityCamps[entity] = value;
             }
 
-            if(followers.HasBuffer(entity))
+            if (followers.HasBuffer(entity))
             {
                 var followers = this.followers[entity];
                 int numFollowers = followers.Length;
-                for(int i = 0; i < numFollowers; ++i)
+                for (int i = 0; i < numFollowers; ++i)
                     UpdateCamp(followers[i].entity, value);
             }
         }
@@ -323,21 +377,14 @@ public partial struct GameOwnerSystem : ISystem
 
             GameEntityCamp camp;
             var owner = owners[entity].entity;
-            if (owner == Entity.Null)
+            if (followers.HasBuffer(owner))
             {
-                origins.Remove(owner);
+                //UnityEngine.Debug.LogError($"{owner} Own {entity}");
 
-                camp.value = camps.HasComponent(entity) ? camps[entity].value : 0;
-            }
-            else
-            {
-                if (this.followers.HasBuffer(owner))
-                {
-                    var followers = this.followers[owner];
-                    GameFollower follower;
-                    follower.entity = entity;
-                    followers.Add(follower);
-                }
+                var followers = this.followers[owner];
+                GameFollower follower;
+                follower.entity = entity;
+                followers.Add(follower);
 
                 origins[entity] = owner;
 
@@ -345,6 +392,14 @@ public partial struct GameOwnerSystem : ISystem
                     return;
 
                 camp.value = entityCamps[owner].value;
+            }
+            else
+            {
+                //UnityEngine.Debug.LogError($"{entity} Own Self");
+
+                origins.Remove(entity);
+
+                camp.value = camps.HasComponent(entity) ? camps[entity].value : 0;
             }
 
             UpdateCamp(entity, camp);
@@ -358,7 +413,25 @@ public partial struct GameOwnerSystem : ISystem
         }
     }
 
-    private EntityQuery __group;
+    private EntityQuery __groupToUpdate;
+
+    private EntityQuery __groupToChange;
+
+    private EntityTypeHandle __entityType;
+
+    private ComponentTypeHandle<GameNodeStatus> __statusType;
+    private ComponentTypeHandle<GameNodeOldStatus> __oldStatusType;
+
+    private ComponentTypeHandle<GameOwner> __ownerType;
+
+    private ComponentLookup<GameOwner> __owners;
+
+    private ComponentLookup<GameEntityCampDefault> __camps;
+
+    private ComponentLookup<GameEntityCamp> __entityCamps;
+
+    private BufferLookup<GameFollower> __followers;
+
     private NativeList<Entity> __entities;
 
     public SharedHashMap<Entity, Entity> origins
@@ -368,26 +441,42 @@ public partial struct GameOwnerSystem : ISystem
         private set;
     }
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         BurstUtility.InitializeJob<Own>();
 
-        __group = state.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameOwner>()
-                },
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
-        __group.SetChangedVersionFilter(typeof(GameOwner));
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __groupToUpdate = builder
+                    .WithAll<GameNodeStatus, GameNodeOldStatus, GameOwner>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
+
+        __groupToUpdate.AddChangedVersionFilter(ComponentType.ReadOnly<GameNodeStatus>());
+        __groupToUpdate.AddChangedVersionFilter(ComponentType.ReadOnly<GameNodeOldStatus>());
+
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __groupToChange = builder
+                    .WithAll<GameOwner>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
+        __groupToChange.SetChangedVersionFilter(ComponentType.ReadOnly<GameOwner>());
+
+        __entityType = state.GetEntityTypeHandle();
+        __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
+        __oldStatusType = state.GetComponentTypeHandle<GameNodeOldStatus>(true);
+        __ownerType = state.GetComponentTypeHandle<GameOwner>(true);
+        __owners = state.GetComponentLookup<GameOwner>(true);
+        __camps = state.GetComponentLookup<GameEntityCampDefault>(true);
+        __entityCamps = state.GetComponentLookup<GameEntityCamp>();
+        __followers = state.GetBufferLookup<GameFollower>();
 
         __entities = new NativeList<Entity>(Allocator.Persistent);
 
         origins = new SharedHashMap<Entity, Entity>(Allocator.Persistent);
     }
 
+    //[BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
         __entities.Dispose();
@@ -397,10 +486,18 @@ public partial struct GameOwnerSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        NativeList<Entity> entities = __entities;
+        var followers = __followers.UpdateAsRef(ref state);
 
-        entities.Clear();
-        entities.Capacity = math.max(__entities.Capacity, __group.CalculateEntityCountWithoutFiltering());
+        UpdateStateEx updateState;
+        updateState.entityType = __entityType.UpdateAsRef(ref state);
+        updateState.statusType = __statusType.UpdateAsRef(ref state);
+        updateState.oldStatusType = __oldStatusType.UpdateAsRef(ref state);
+        updateState.ownerType = __ownerType.UpdateAsRef(ref state);
+        updateState.followers = followers;
+        var jobHandle = updateState.ScheduleByRef(__groupToUpdate, state.Dependency);
+
+        __entities.Clear();
+        __entities.Capacity = math.max(__entities.Capacity, __groupToChange.CalculateEntityCountWithoutFiltering());
 
         var origins = this.origins;
 
@@ -409,20 +506,21 @@ public partial struct GameOwnerSystem : ISystem
         lookupJobManager.CompleteReadWriteDependency();
 
         DidChangeEx didChange;
-        didChange.entityType = state.GetEntityTypeHandle();
-        didChange.ownerType = state.GetComponentTypeHandle<GameOwner>(true);
+        didChange.followers = followers;
+        didChange.entityType = __entityType.UpdateAsRef(ref state);
+        didChange.ownerType = __ownerType.UpdateAsRef(ref state);
         didChange.origins = origins.reader;
-        didChange.results = entities.AsParallelWriter();
-        var jobHandle = didChange.ScheduleParallel(__group, state.Dependency);
+        didChange.results = __entities.AsParallelWriter();
+        jobHandle = didChange.ScheduleParallelByRef(__groupToChange, jobHandle);
 
         Own own;
-        own.entityArray = entities.AsDeferredJobArray();
-        own.owners = state.GetComponentLookup<GameOwner>(true);
-        own.camps = state.GetComponentLookup<GameCampDefault>(true);
-        own.entityCamps = state.GetComponentLookup<GameEntityCamp>();
-        own.followers = state.GetBufferLookup<GameFollower>();
+        own.entityArray = __entities.AsDeferredJobArray();
+        own.owners = __owners.UpdateAsRef(ref state);
+        own.camps = __camps.UpdateAsRef(ref state);
+        own.entityCamps = __entityCamps.UpdateAsRef(ref state);
+        own.followers = followers;
         own.origins = origins.writer;
-        jobHandle = own.Schedule(jobHandle);
+        jobHandle = own.ScheduleByRef(jobHandle);
 
         lookupJobManager.readWriteJobHandle = jobHandle;
 
@@ -510,18 +608,25 @@ public partial struct GameOwnerCampSystem : ISystem
 
     private EntityQuery __group;
 
+    private EntityTypeHandle __entityType;
+
+    private BufferLookup<GameFollower> __followers;
+
+    private ComponentLookup<GameEntityCamp> __camps;
+
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameEntityCamp>()
-                },
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
-        __group.SetChangedVersionFilter(typeof(GameEntityCamp));
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameEntityCamp>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
+        __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameEntityCamp>());
+
+        __entityType = state.GetEntityTypeHandle();
+        __followers = state.GetBufferLookup<GameFollower>(true);
+        __camps = state.GetComponentLookup<GameEntityCamp>();
     }
 
     public void OnDestroy(ref SystemState state)
@@ -539,10 +644,10 @@ public partial struct GameOwnerCampSystem : ISystem
         Dependency = updateCamps.Schedule(JobHandle.CombineDependencies(jobHandle, Dependency));*/
 
         UpdateCampEx updateCamp;
-        updateCamp.entityType = state.GetEntityTypeHandle();
-        updateCamp.followers = state.GetBufferLookup<GameFollower>(true);
-        updateCamp.camps = state.GetComponentLookup<GameEntityCamp>();
+        updateCamp.entityType = __entityType.UpdateAsRef(ref state);
+        updateCamp.followers = __followers.UpdateAsRef(ref state);
+        updateCamp.camps = __camps.UpdateAsRef(ref state);
 
-        state.Dependency = updateCamp.Schedule(__group, state.Dependency);
+        state.Dependency = updateCamp.ScheduleByRef(__group, state.Dependency);
     }
 }
