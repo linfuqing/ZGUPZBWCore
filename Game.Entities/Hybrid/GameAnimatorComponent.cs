@@ -174,14 +174,8 @@ public struct GameAnimatorHitInfo : IBufferElementData
 
 public struct GameAnimatorBreakInfo : IBufferElementData
 {
-    [Flags]
-    public enum Flag
-    {
-        Delay = 0x01
-    }
-
-    public Flag flag;
     public int version;
+    public int delayIndex;
     public double time;
 }
 

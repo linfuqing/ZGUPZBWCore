@@ -1162,9 +1162,10 @@ public partial struct GameEntitySharedActionSystem : ISystem
             return actionMask;
         }
 
-        public  bool Create(
+        public bool Create(
             int index,
-            double time, 
+            double time,
+            in float3 targetPosition, 
             in Entity entity,
             in GameActionData data)
         {
@@ -1200,6 +1201,21 @@ public partial struct GameEntitySharedActionSystem : ISystem
                     {
                         command.instance.transform = RigidTransform.identity;
                         command.parent.value = data.entity;
+                    }
+                    else if ((actionObject.flag & GameEntitySharedActionObjectFlag.Destination) == GameEntitySharedActionObjectFlag.Destination)
+                    {
+                        if (!isSourceTransformed)
+                        {
+                            isSourceTransformed = true;
+
+                            sourceTransform = math.inverse(math.RigidTransform(
+                                rotations.HasComponent(data.entity) ? rotations[data.entity].Value : quaternion.identity,
+                                translations.HasComponent(data.entity) ? translations[data.entity].Value : float3.zero));
+                        }
+
+                        command.instance.transform.pos = targetPosition;
+                        command.instance.transform.rot = sourceTransform.rot;
+                        command.parent.value = Entity.Null;
                     }
                     else
                     {

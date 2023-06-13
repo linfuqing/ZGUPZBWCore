@@ -28,6 +28,7 @@ public struct GameEntityActionSystemCore
         private float __impactMaxSpeed;
         private float __elpasedTime;
         private double __time;
+        private float3 __up;
         private float3 __position;
         private float3 __direction;
         private Entity __entity;
@@ -57,16 +58,17 @@ public struct GameEntityActionSystemCore
             float distance,
             float elpasedTime,
             double time,
-            float3 position,
-            float3 direction,
-            Entity entity,
-            GameActionData instance,
-            NativeSlice<RigidBody> rigidBodies,
-            DynamicBuffer<GameActionEntity> actionEntities,
-            ComponentLookup<GameEntityCamp> camps,
-            ComponentLookup<GameEntityActorMass> masses,
-            NativeFactory<EntityData<GameNodeVelocityComponent>>.ParallelWriter impacts,
-            T handler)
+            in float3 up, 
+            in float3 position,
+            in float3 direction,
+            in Entity entity,
+            in GameActionData instance,
+            in NativeSlice<RigidBody> rigidBodies,
+            in ComponentLookup<GameEntityCamp> camps,
+            in ComponentLookup<GameEntityActorMass> masses,
+            ref DynamicBuffer<GameActionEntity> actionEntities,
+            ref NativeFactory<EntityData<GameNodeVelocityComponent>>.ParallelWriter impacts,
+            ref T handler)
         {
             //hitValue = 0.0f;
 
@@ -80,14 +82,16 @@ public struct GameEntityActionSystemCore
             __impactMaxSpeed = impactMaxSpeed;
             __elpasedTime = elpasedTime;
             __time = time;
+            __up = up;
+            __position = position;
             __position = position;
             __direction = direction;
             __entity = entity;
             __instance = instance;
             __rigidBodies = rigidBodies;
-            __actionEntities = actionEntities;
             __camps = camps;
             __masses = masses;
+            __actionEntities = actionEntities;
             __impacts = impacts;
             __handler = handler;
 
@@ -109,11 +113,11 @@ public struct GameEntityActionSystemCore
             if (!source.Predicate(__type, destination))
                 return false;
 
-            int count = __actionEntities.Hit(rigidbody.Entity, __elpasedTime, __interval, __value);
+            float3 normal = math.normalizesafe(hit.Position - __position, __direction);
+            int count = __actionEntities.Hit(rigidbody.Entity, normal, __elpasedTime, __interval, __value);
             if (count < 1)
                 return false;
 
-            float3 normal = math.normalizesafe(hit.Position - __position, __direction);
             __handler.Damage(
                 __index,
                 count,
@@ -132,6 +136,7 @@ public struct GameEntityActionSystemCore
                 impact.value.duration = __impactTime;
                 impact.value.time = __instance.time + __elpasedTime;
                 impact.value.value = normal * math.min(__impactForce * __masses[rigidbody.Entity].inverseValue, __impactMaxSpeed > math.FLT_MIN_NORMAL ? __impactMaxSpeed : float.MaxValue);
+                impact.value.value = Math.ProjectOnPlaneSafe(impact.value.value, __up);
                 impact.entity = rigidbody.Entity;
 
                 __impacts.Create().value = impact;
@@ -161,6 +166,7 @@ public struct GameEntityActionSystemCore
         private float __impactTime;
         private float __impactMaxSpeed;
         private double __time;
+        private float3 __up;
         private float3 __direction;
         private Entity __entity;
         private GameEntityTransform __start;
@@ -198,19 +204,20 @@ public struct GameEntityActionSystemCore
             float distance,
             float maxFraction,
             double time,
-            float3 direction,
-            Entity entity,
-            GameEntityTransform start,
-            GameEntityTransform end,
-            CollisionFilter collisionFilter,
-            CollisionWorld collisionWorld,
-            GameActionData instance,
-            DynamicBuffer<GameActionEntity> actionEntities,
-            ComponentLookup<GameEntityCamp> camps,
-            ComponentLookup<GameEntityActorMass> masses,
-            NativeFactory<EntityData<GameNodeVelocityComponent>>.ParallelWriter impacts,
-            TQueryResultWrapper wrapper,
-            THandler handler)
+            in float3 direction,
+            in float3 up,
+            in Entity entity,
+            in GameEntityTransform start,
+            in GameEntityTransform end,
+            in CollisionFilter collisionFilter,
+            in CollisionWorld collisionWorld,
+            in GameActionData instance,
+            in ComponentLookup<GameEntityCamp> camps,
+            in ComponentLookup<GameEntityActorMass> masses,
+            ref DynamicBuffer<GameActionEntity> actionEntities,
+            ref NativeFactory<EntityData<GameNodeVelocityComponent>>.ParallelWriter impacts,
+            ref TQueryResultWrapper wrapper,
+            ref THandler handler)
         {
             //hitValue = 0.0f;
 
@@ -227,6 +234,7 @@ public struct GameEntityActionSystemCore
             __dot = dot;
             __distance = distance;
             __time = time;
+            __up = up;
             __direction = direction;
             __entity = entity;
             __start = start;
@@ -234,9 +242,9 @@ public struct GameEntityActionSystemCore
             __collisionFilter = collisionFilter;
             __collisionWorld = collisionWorld;
             __instance = instance;
-            __actionEntities = actionEntities;
             __camps = camps;
             __masses = masses;
+            __actionEntities = actionEntities;
             __impacts = impacts;
             __wrapper = wrapper;
             __handler = handler;
@@ -259,6 +267,7 @@ public struct GameEntityActionSystemCore
 
             var rigidbodies = __collisionWorld.Bodies;
             RigidBody rigidbody = rigidbodies[hit.RigidBodyIndex];
+            float3 normal = __direction;// math.normalizesafe(position - transform.value.pos, __direction);// __wrapper.GetSurfaceNormal(hit);
             int count = 0;
             if (__camps.HasComponent(rigidbody.Entity))
             {
@@ -278,7 +287,7 @@ public struct GameEntityActionSystemCore
                 if (!__isClosestHitOnly &&
                     source.Predicate(__damageType, destination) &&
                     CollisionFilter.IsCollisionEnabled(__collisionFilter, rigidbody.Collider.Value.GetLeafFilter(hit.ColliderKey)))
-                    count = __actionEntities.Hit(rigidbody.Entity, transform.elapsedTime, __interval, __value);
+                    count = __actionEntities.Hit(rigidbody.Entity, normal, transform.elapsedTime, __interval, __value);
             }
 
             closestHit = hit;
@@ -292,7 +301,7 @@ public struct GameEntityActionSystemCore
                 return true;
             }
 
-            __Apply(count, position, transform, rigidbody.Entity, rigidbodies);
+            __Apply(count, normal, position, transform, rigidbody.Entity, rigidbodies);
 
             return true;
         }
@@ -315,6 +324,7 @@ public struct GameEntityActionSystemCore
             if (!__IsHit(in position, in transform.value))
                 return false;
 
+            float3 normal = __direction;// math.normalizesafe(position - transform.value.pos, __direction);// __wrapper.GetSurfaceNormal(hit);
             var rigidbodies = __collisionWorld.Bodies;
             RigidBody rigidbody = rigidbodies[hit.RigidBodyIndex];
             int count = 0;
@@ -329,16 +339,17 @@ public struct GameEntityActionSystemCore
                 destination.camp = __camps[rigidbody.Entity].value;
                 destination.entity = rigidbody.Entity;
                 if (source.Predicate(__damageType, destination))
-                    count = __actionEntities.Hit(rigidbody.Entity, transform.elapsedTime, __interval, __value);
+                    count = __actionEntities.Hit(rigidbody.Entity, normal, transform.elapsedTime, __interval, __value);
             }
 
-            __Apply(count, position, transform, rigidbody.Entity, rigidbodies);
+            __Apply(count, normal, position, transform, rigidbody.Entity, rigidbodies);
 
             return true;
         }
 
         private void __Apply(
             int count, 
+            in float3 normal, 
             in float3 position, 
             in GameEntityTransform transform, 
             in Entity entity, 
@@ -355,7 +366,6 @@ public struct GameEntityActionSystemCore
 
             if (count > 0)
             {
-                float3 normal = __direction;// math.normalizesafe(position - transform.value.pos, __direction);// __wrapper.GetSurfaceNormal(hit);
                 __handler.Damage(
                     __index,
                     count,
@@ -374,6 +384,7 @@ public struct GameEntityActionSystemCore
                     impact.value.duration = __impactTime;
                     impact.value.time = __instance.time + transform.elapsedTime;
                     impact.value.value = normal * math.min(__impactForce * __masses[entity].inverseValue, __impactMaxSpeed > math.FLT_MIN_NORMAL ? __impactMaxSpeed : float.MaxValue);
+                    impact.value.value = Math.ProjectOnPlaneSafe(impact.value.value, __up);
                     impact.entity = entity;
 
                     __impacts.Create().value = impact;
@@ -405,16 +416,17 @@ public struct GameEntityActionSystemCore
                     __distance,
                     transform.elapsedTime,
                     __time,
+                    __up, 
                     position,
                     __direction,
                     __entity,
                     __instance,
                     rigidbodies,
-                    __actionEntities,
                     __camps,
                     __masses,
-                    __impacts,
-                    __handler);
+                    ref __actionEntities,
+                    ref __impacts,
+                    ref __handler);
 
                 __collisionWorld.CalculateDistance(pointDistanceInput, ref collector);
 
@@ -524,16 +536,17 @@ public struct GameEntityActionSystemCore
 
             double time = now;
             Entity entity = entityArray[index];
-            GameActionData instance = instances[index];
+            var instance = instances[index];
+            var instanceEx = instancesEx[index];
             if ((value & GameActionStatus.Status.Created) != GameActionStatus.Status.Created &&
                 handler.Create(
                         index,
                         time,
+                        instanceEx.targetPosition, 
                         entity,
                         instance))
                 value |= GameActionStatus.Status.Created | GameActionStatus.Status.Managed;
 
-            GameActionDataEx instanceEx = instancesEx[index];
             //float actorMoveDistance = 0.0f;
             double oldTime = time - deltaTime,
                 actorMoveStartTime = instance.time + instanceEx.info.actorMoveStartTime,
@@ -686,6 +699,7 @@ public struct GameEntityActionSystemCore
                     }
                 }
 
+                var up = -gravity;
                 bool hasMove = isMove;
                 if (hasMove)
                 {
@@ -759,8 +773,8 @@ public struct GameEntityActionSystemCore
                                     }
 
                                     result.rot = quaternion.LookRotationSafe(
-                                        instanceEx.value.flag == GameActionFlag.MoveInAir ? distance : math.float3(distance.x, 0.0f, distance.z),
-                                        math.up());
+                                        instanceEx.value.flag == GameActionFlag.MoveInAir ? distance : Math.ProjectOnPlaneSafe(distance, up),
+                                        up);
 
                                     isRotationDirty = true;
                                 }
@@ -991,6 +1005,7 @@ public struct GameEntityActionSystemCore
 
                         //UnityEngine.Debug.LogError($"dd {index} : {entity.Index} : {instance.actionIndex} : {time}");
 
+                        ColliderCastHitWrapper wrapper;
                         var castCollector = new CastCollector<ColliderCastHit, ColliderCastHitWrapper, THandler>(
                             (instanceEx.value.flag & GameActionFlag.DestroyOnHit) == GameActionFlag.DestroyOnHit,
                             index,
@@ -1006,6 +1021,7 @@ public struct GameEntityActionSystemCore
                             instanceEx.info.radius,
                             1.0f,
                             time,
+                            (instanceEx.value.flag & GameActionFlag.TargetInAir) == GameActionFlag.TargetInAir ? up : float3.zero, 
                             math.normalizesafe(end.value.pos - start.value.pos, instanceEx.direction),
                             entity,
                             start,
@@ -1013,12 +1029,12 @@ public struct GameEntityActionSystemCore
                             collisionFilter,
                             collisionWorld,
                             instance,
-                            actionEntities,
                             camps,
                             masses,
-                            impacts,
-                            default,
-                            handler);
+                            ref actionEntities,
+                            ref impacts,
+                            ref wrapper,
+                            ref handler);
                         collisionWorld.CastCollider(colliderCastInput, ref castCollector);
                         isDestroy = castCollector.Apply(out result);
                     }
@@ -1034,6 +1050,7 @@ public struct GameEntityActionSystemCore
                         colliderDistanceInput.Transform = transform;
                         colliderDistanceInput.Collider = collider;
 
+                        DistanceHitWrapper wrapper;
                         var castCollector = new CastCollector<DistanceHit, DistanceHitWrapper, THandler>(
                             (instanceEx.value.flag & GameActionFlag.DestroyOnHit) == GameActionFlag.DestroyOnHit,
                             index,
@@ -1049,6 +1066,7 @@ public struct GameEntityActionSystemCore
                             instanceEx.info.radius,
                             distance,
                             time,
+                            (instanceEx.value.flag & GameActionFlag.TargetInAir) == GameActionFlag.TargetInAir ? up : float3.zero, 
                             instanceEx.direction,
                             entity,
                             result,
@@ -1056,12 +1074,12 @@ public struct GameEntityActionSystemCore
                             collisionFilter,
                             collisionWorld,
                             instance,
-                            actionEntities,
                             camps,
                             masses,
-                            impacts,
-                            default,
-                            handler);
+                            ref actionEntities,
+                            ref impacts,
+                            ref wrapper,
+                            ref handler);
                         collisionWorld.CalculateDistance(colliderDistanceInput, ref castCollector);
                         isDestroy = castCollector.Apply(out result);
                     }
@@ -1115,6 +1133,7 @@ public struct GameEntityActionSystemCore
                     EntityData<GameEntityBreakCommand> breakCommand;
                     breakCommand.entity = instance.entity;
                     breakCommand.value.version = commandVersions[instance.entity].value;
+                    breakCommand.value.delayIndex = -1;
                     breakCommand.value.delayTime = 0.0f;
                     breakCommand.value.alertTime = 0.0f;
                     breakCommand.value.time = now;
@@ -1373,6 +1392,7 @@ public struct GameEntityActionSystemCore
                         time = instance.time;
                         time += entity.elaspedTime;
                         hit.time = GameDeadline.Max(hit.time, time);
+                        hit.normal += entity.normal;
                         hits[entity.target] = hit;
 
                         //log += "-hit: " + hit.value + ", time: " + hit.time + ", elapsedTime: " + (instance.time + entity.elaspedTime);

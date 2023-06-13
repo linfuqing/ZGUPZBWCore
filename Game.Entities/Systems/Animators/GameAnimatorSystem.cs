@@ -37,7 +37,7 @@ public partial struct GameAnimatorTimeSystem : ISystem
             delayInfos.ResizeUninitialized(length);
 
             bool isContains;
-            if(length < 1)
+            if (length < 1)
                 isContains = destinations[index].Equals(source);
             else
             {
@@ -115,7 +115,7 @@ public partial struct GameAnimatorTimeSystem : ISystem
                 statusInfo.time = time;
                 statusInfos.Add(statusInfo);
 
-                if(status.value == GameNodeDesiredStatus.Status.Pivoting)
+                if (status.value == GameNodeDesiredStatus.Status.Pivoting)
                 {
                     if (index < transformKeyframes.Length)
                     {
@@ -304,10 +304,12 @@ public partial struct GameAnimatorTimeSystem : ISystem
 
             GameAnimatorBreakInfo result;
             result.version = breakInfo.version;
-            result.flag = 0;
+            //result.flag = 0;
 
-            if (actorInfo.alertTime > commandTime)
-                result.flag |= GameAnimatorBreakInfo.Flag.Delay;
+            /*if (actorTimes[index].value > commandTime)
+                result.flag |= GameAnimatorBreakInfo.Flag.Delay;*/
+
+            result.delayIndex = breakInfo.delayIndex;
 
             result.time = commandTime;
             infos.Add(result);
@@ -325,6 +327,8 @@ public partial struct GameAnimatorTimeSystem : ISystem
         public ComponentTypeHandle<GameEntityBreakInfo> breakInfoType;
         [ReadOnly]
         public ComponentTypeHandle<GameEntityActorInfo> actorInfoType;
+        //[ReadOnly]
+        //public ComponentTypeHandle<GameEntityActorTime> actorTimeType;
         public BufferTypeHandle<GameAnimatorBreakInfo> infoType;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
@@ -334,6 +338,7 @@ public partial struct GameAnimatorTimeSystem : ISystem
             @break.timeToLives = chunk.GetNativeArray(ref timeToLiveType);
             @break.breakInfos = chunk.GetNativeArray(ref breakInfoType);
             @break.actorInfos = chunk.GetNativeArray(ref actorInfoType);
+            //@break.actorTimes = chunk.GetNativeArray(ref actorTimeType);
             @break.infos = chunk.GetBufferAccessor(ref infoType);
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -447,7 +452,7 @@ public partial struct GameAnimatorTimeSystem : ISystem
     private ComponentTypeHandle<GameNodeDelay> __nodeDelayType;
     private ComponentTypeHandle<GameAnimatorDelay> __animatorDelayType;
     private BufferTypeHandle<GameAnimatorDelayInfo> __delayInfoType;
-        
+
     private ComponentTypeHandle<GameNodeDesiredStatus> __nodeDesiredStatusType;
     private ComponentTypeHandle<GameAnimatorDesiredStatus> __animatorDesiredStatusType;
     private BufferTypeHandle<GameAnimatorDesiredStatusInfo> __animatorDesiredStatusInfoType;
@@ -457,53 +462,57 @@ public partial struct GameAnimatorTimeSystem : ISystem
     private ComponentTypeHandle<GameNodeActorStatus> __nodeActorStatusType;
     private ComponentTypeHandle<GameAnimatorActorStatus> __animatorActorStatusType;
     private BufferTypeHandle<GameAnimatorActorStatusInfo> __animatorActorStatusInfoType;
-        
+
     private ComponentTypeHandle<GameAnimatorActorTimeToLive> __animatorActorTimeToLiveType;
     private ComponentTypeHandle<GameEntityBreakInfo> __breakInfoType;
     private ComponentTypeHandle<GameEntityActorInfo> __actorInfoType;
+    //private ComponentTypeHandle<GameEntityActorTime> __actorTimeType;
     private BufferTypeHandle<GameAnimatorBreakInfo> __animatorBreakInfoType;
 
     private ComponentTypeHandle<GameEntityActionInfo> __actionInfoType;
     private BufferTypeHandle<GameAnimatorDoInfo> __animatorInfoType;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         __animationElapsedTimeGroup = GameAnimationElapsedTime.GetEntityQuery(ref state);
 
-        __groupToDelay = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameNodeDelay>(),
-            ComponentType.ReadOnly<GameAnimatorDelay>(), 
-            ComponentType.ReadWrite<GameAnimatorDelayInfo>(),
-            ComponentType.Exclude<GameNodeParent>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __groupToDelay = builder
+                    .WithAll<GameNodeDelay, GameAnimatorDelay>()
+                    .WithAllRW<GameAnimatorDelayInfo>()
+                    .WithNone<GameNodeParent>()
+                    .Build(ref state);
 
-        __groupToDesiredChange = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameNodeDesiredStatus>(),
-            ComponentType.ReadOnly<GameAnimatorDesiredStatus>(),
-            ComponentType.ReadWrite<GameAnimatorDesiredStatusInfo>(),
-            ComponentType.Exclude<GameNodeParent>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __groupToDesiredChange = builder
+                .WithAll<GameNodeDesiredStatus, GameAnimatorDesiredStatus>()
+                .WithAllRW<GameAnimatorDesiredStatusInfo>()
+                .WithNone<GameNodeParent>()
+                .Build(ref state);
 
-        __groupToActorChange = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameNodeActorStatus>(),
-            ComponentType.ReadOnly<GameAnimatorActorStatus>(),
-            ComponentType.ReadWrite<GameAnimatorActorStatusInfo>(),
-            ComponentType.Exclude<GameNodeParent>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __groupToActorChange = builder
+                .WithAll<GameNodeActorStatus, GameAnimatorActorStatus>()
+                .WithAllRW<GameAnimatorActorStatusInfo>()
+                .WithNone<GameNodeParent>()
+                .Build(ref state);
 
-        __groupToBreak = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameAnimatorActorTimeToLive>(),
-            ComponentType.ReadOnly<GameNodeDelay>(),
-            ComponentType.ReadOnly<GameEntityBreakInfo>(),
-            ComponentType.ReadOnly<GameEntityActorInfo>(),
-            ComponentType.ReadWrite<GameAnimatorBreakInfo>(),
-            ComponentType.Exclude<GameNodeParent>());
-        __groupToBreak.SetChangedVersionFilter(typeof(GameEntityBreakInfo));
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __groupToBreak = builder
+                .WithAll<GameAnimatorActorTimeToLive, GameNodeDelay, GameEntityBreakInfo, GameEntityActorInfo>()
+                .WithAllRW<GameAnimatorBreakInfo>()
+                .WithNone<GameNodeParent>()
+                .Build(ref state);
+        __groupToBreak.SetChangedVersionFilter(ComponentType.ReadOnly<GameEntityBreakInfo>());
 
-        __groupToDo = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameAnimatorActorTimeToLive>(),
-            ComponentType.ReadOnly<GameEntityActionInfo>(),
-            ComponentType.ReadOnly<GameEntityActorInfo>(),
-            ComponentType.ReadWrite<GameAnimatorDoInfo>(),
-            ComponentType.Exclude<GameNodeParent>());
-        __groupToDo.SetChangedVersionFilter(typeof(GameEntityActionInfo));
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __groupToDo = builder
+                .WithAll<GameAnimatorActorTimeToLive, GameEntityActionInfo, GameEntityActorInfo>()
+                .WithAllRW<GameAnimatorDoInfo>()
+                .WithNone<GameNodeParent>()
+                .Build(ref state);
+        __groupToDo.SetChangedVersionFilter(ComponentType.ReadOnly<GameEntityActionInfo>());
 
         __nodeDelayType = state.GetComponentTypeHandle<GameNodeDelay>(true);
         __animatorDelayType = state.GetComponentTypeHandle<GameAnimatorDelay>(true);
@@ -522,12 +531,14 @@ public partial struct GameAnimatorTimeSystem : ISystem
         __animatorActorTimeToLiveType = state.GetComponentTypeHandle<GameAnimatorActorTimeToLive>(true);
         __breakInfoType = state.GetComponentTypeHandle<GameEntityBreakInfo>(true);
         __actorInfoType = state.GetComponentTypeHandle<GameEntityActorInfo>(true);
+        //__actorTimeType = state.GetComponentTypeHandle<GameEntityActorTime>(true);
         __animatorBreakInfoType = state.GetBufferTypeHandle<GameAnimatorBreakInfo>();
 
         __actionInfoType = state.GetComponentTypeHandle<GameEntityActionInfo>(true);
         __animatorInfoType = state.GetBufferTypeHandle<GameAnimatorDoInfo>();
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 
@@ -546,7 +557,7 @@ public partial struct GameAnimatorTimeSystem : ISystem
             delay.destinationType = __animatorDelayType.UpdateAsRef(ref state);
             delay.delayInfoType = __delayInfoType.UpdateAsRef(ref state);
 
-            JobHandle jobHandle = delay.ScheduleParallel(__groupToDelay, inputDeps);
+            JobHandle jobHandle = delay.ScheduleParallelByRef(__groupToDelay, inputDeps);
 
             result = result == null ? jobHandle : JobHandle.CombineDependencies(result.Value, jobHandle);
         }
@@ -560,7 +571,7 @@ public partial struct GameAnimatorTimeSystem : ISystem
             desiredChange.transformKeyframeType = __transformKeyframeType.UpdateAsRef(ref state);
             desiredChange.animationKeyframeType = __animationKeyframeType.UpdateAsRef(ref state);
 
-            var jobHandle = desiredChange.ScheduleParallel(__groupToDesiredChange, inputDeps);
+            var jobHandle = desiredChange.ScheduleParallelByRef(__groupToDesiredChange, inputDeps);
 
             result = result == null ? jobHandle : JobHandle.CombineDependencies(result.Value, jobHandle);
         }
@@ -572,7 +583,7 @@ public partial struct GameAnimatorTimeSystem : ISystem
             actorChange.destinationType = __animatorActorStatusType.UpdateAsRef(ref state);
             actorChange.statusInfoType = __animatorActorStatusInfoType.UpdateAsRef(ref state);
 
-            var jobHandle = actorChange.ScheduleParallel(__groupToActorChange, inputDeps);
+            var jobHandle = actorChange.ScheduleParallelByRef(__groupToActorChange, inputDeps);
 
             result = result == null ? jobHandle : JobHandle.CombineDependencies(result.Value, jobHandle);
         }
@@ -587,9 +598,10 @@ public partial struct GameAnimatorTimeSystem : ISystem
             @break.timeToLiveType = animatorActorTimeToLiveType;
             @break.breakInfoType = __breakInfoType.UpdateAsRef(ref state);
             @break.actorInfoType = actorInfoType;
+            //@break.actorTimeType = __actorTimeType.UpdateAsRef(ref state);
             @break.infoType = __animatorBreakInfoType.UpdateAsRef(ref state);
 
-            var jobHandle = @break.ScheduleParallel(__groupToBreak, inputDeps);
+            var jobHandle = @break.ScheduleParallelByRef(__groupToBreak, inputDeps);
 
             result = result == null ? jobHandle : JobHandle.CombineDependencies(result.Value, jobHandle);
         }
@@ -600,10 +612,10 @@ public partial struct GameAnimatorTimeSystem : ISystem
             @do.time = time;
             @do.timeToLiveType = animatorActorTimeToLiveType;
             @do.actionInfoType = __actionInfoType.UpdateAsRef(ref state);
-            @do.actorInfoType = actorInfoType.UpdateAsRef(ref state);
+            @do.actorInfoType = actorInfoType;
             @do.infoType = __animatorInfoType.UpdateAsRef(ref state);
 
-            var jobHandle = @do.ScheduleParallel(__groupToDo, inputDeps);
+            var jobHandle = @do.ScheduleParallelByRef(__groupToDo, inputDeps);
 
             result = result == null ? jobHandle : JobHandle.CombineDependencies(result.Value, jobHandle);
         }
@@ -1046,7 +1058,7 @@ public partial struct GameAnimatorSystem : ISystem
                         /*if (animator.GetInteger(GameAnimatorFlag.triggerHashMoveStatus) != statusInfo.value)
                             Debug.Log(animator.transform.root.name + " : " + (GameNodeActorStatus.Status)statusInfo.value + " : " + animator.GetBool(GameAnimatorFlag.triggerHashBusy) + time);*/
 
-                        if(statusInfo.value == (int)GameNodeDesiredStatus.Status.Pivoting)
+                        if (statusInfo.value == (int)GameNodeDesiredStatus.Status.Pivoting)
                         {
                             /*if(index < velocities.Length)
                             {
@@ -1064,7 +1076,7 @@ public partial struct GameAnimatorSystem : ISystem
                             }*/
                         }
 
-                        if(index < this.paramterCommands.Length)
+                        if (index < this.paramterCommands.Length)
                         {
                             if (!paramterCommands.IsCreated)
                                 paramterCommands = this.paramterCommands[index];
@@ -1234,7 +1246,7 @@ public partial struct GameAnimatorSystem : ISystem
                 }
             }
 
-            if(parameter.moveID != 0 && 
+            if (parameter.moveID != 0 &&
                 (transformInfo.dirtyFlag & GameAnimatorTransformInfo.DirtyFlag.Forward) == GameAnimatorTransformInfo.DirtyFlag.Forward)
             {
                 if (index < this.paramterCommands.Length)
@@ -1493,7 +1505,7 @@ public partial class GameAnimatorApplySystem : SystemBase
 
     protected override void OnUpdate()
     {
-        while(__context.TryDequeue(out var result))
+        while (__context.TryDequeue(out var result))
             result.Apply();
     }
 }

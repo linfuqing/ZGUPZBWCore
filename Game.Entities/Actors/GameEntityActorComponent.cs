@@ -64,6 +64,7 @@ public struct GameActionEntity : IBufferElementData
     public float hit;
     public float delta;
     public float elaspedTime;
+    public float3 normal;
     public Entity target;
 
     public override string ToString()
@@ -76,10 +77,11 @@ public struct GameEntityHit : IComponentData, IEquatable<GameEntityHit>
 {
     public float value;
     public GameDeadline time;
+    public float3 normal;
 
     public bool Equals(GameEntityHit other)
     {
-        return value == other.value && time == other.time;
+        return value == other.value && time == other.time && normal.Equals(other.normal);
     }
 
     public override int GetHashCode()
@@ -190,6 +192,8 @@ public struct GameEntityBreakInfo : IComponentData, IEquatable<GameEntityBreakIn
 {
     public int version;
 
+    public int delayIndex;
+
     public double commandTime;
     
     public TimeEventHandle timeEventHandle;
@@ -262,6 +266,32 @@ public struct GameEntityActorData : IComponentData
     public float3 offsetScale;
 }
 
+[Serializable]
+public struct GameEntityActorDelay : IBufferElementData
+{
+    [Flags]
+    public enum Flag
+    {
+        [Tooltip("打断后是否强制转向")]
+        ForceToTurn = 0x01, 
+    }
+
+    [Mask]
+    public Flag flag;
+    [Tooltip("要触发该状态受到消韧的最小值")]
+    public int minHit;
+    [Tooltip("打断时间")]
+    public float delayTime;
+    [Tooltip("被打断之后过多久才能被再次打断")]
+    public float alertTime;
+    [Tooltip("固定击退（失衡）速度")]
+    public float speed;
+    [Tooltip("失衡时间")]
+    public float duration;
+    [Tooltip("失衡开始时间")]
+    public float startTime;
+}
+
 public struct GameEntityActorMass : IComponentData
 {
     public float inverseValue;
@@ -295,6 +325,7 @@ public struct GameEntityActionCommand : IComponentData, IEnableableComponent
 public struct GameEntityBreakCommand : IComponentData, IEnableableComponent
 {
     public int version;
+    public int delayIndex;
     public float alertTime;
     public float delayTime;
     public GameDeadline time;
@@ -315,6 +346,7 @@ public struct GameEntityArchetype : IComponentData
 [EntityComponent(typeof(GameEntityAction))]
 [EntityComponent(typeof(GameEntityHit))]
 [EntityComponent(typeof(GameEntityActorHit))]
+[EntityComponent(typeof(GameEntityActorDelay))]
 [EntityComponent(typeof(GameEntityActorTime))]
 [EntityComponent(typeof(GameEntityActionInfo))]
 [EntityComponent(typeof(GameEntityEventInfo))]
@@ -369,7 +401,10 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
 
     [SerializeField]
     internal int[] _actionIndices;
-    
+
+    [SerializeField]
+    internal GameEntityActorDelay[] _delay;
+
     private GameEntityComponentEx __entityComponent;
 
     private TimeEventSystem __timeEventSystem;
@@ -640,6 +675,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
     {
         GameEntityBreakCommand command;
         command.version = commandVersion;
+        command.delayIndex = -1;
         command.alertTime = alertTime;
         command.delayTime = delayTime;
         command.time = time;
@@ -652,6 +688,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
     {
         GameEntityBreakCommand command;
         command.version = this.commandVersion;
+        command.delayIndex = -1;
         command.alertTime = alertTime;
         command.delayTime = delayTime;
         command.time = time;
@@ -702,6 +739,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
 
         GameEntityBreakInfo breakInfo;
         breakInfo.version = 0;
+        breakInfo.delayIndex = -1;
         breakInfo.commandTime = 0.0;
         breakInfo.timeEventHandle = TimeEventHandle.Null;
         assigner.SetComponentData(entity, breakInfo);
@@ -751,5 +789,8 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         actionInfo.entity = Entity.Null;
 
         assigner.SetComponentData(entity, actionInfo);
+
+        if(_delay != null)
+            assigner.SetBuffer(true, entity, _delay);
     }
 }

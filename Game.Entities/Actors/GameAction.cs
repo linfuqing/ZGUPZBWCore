@@ -52,7 +52,10 @@ public enum GameActionFlag
     MoveInAir = 0x0200,
 
     [Tooltip("技能移动被应用到施放者身上")]
-    MoveWithActor = 0x0400
+    MoveWithActor = 0x0400,
+
+    [Tooltip("目标被击退时忽略Y轴")]
+    TargetInAir = 0x0800,
 }
 
 [Serializable]

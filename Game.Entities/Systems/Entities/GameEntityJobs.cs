@@ -15,7 +15,8 @@ public interface IGameEntityActionHandler
 {
     bool Create(
         int index,
-        double time, 
+        double time,
+        in float3 targetPosition,
         in Entity entity,
         in GameActionData instance);
 
@@ -82,6 +83,7 @@ public static class GameEntityUtility
     public static int Hit(
         this ref DynamicBuffer<GameActionEntity> actionEntities,
         in Entity entity,
+        float3 normal, 
         float elaspedTime,
         float interval,
         float value)
@@ -126,6 +128,7 @@ public static class GameEntityUtility
         actionEntity.hit = value;
         actionEntity.delta = value;
         actionEntity.elaspedTime = elaspedTime;
+        actionEntity.normal = normal;
         actionEntity.target = entity;
 
         actionEntities.Add(actionEntity);

@@ -198,14 +198,11 @@ public struct GameAnimationElapsedTime : IComponentData
 
     public static EntityQuery GetEntityQuery(ref SystemState state)
     {
-        return state.GetEntityQuery(new EntityQueryDesc()
-        {
-            All = new ComponentType[]
-            {
-                ComponentType.ReadOnly<GameAnimationElapsedTime>()
-            },
-            Options = EntityQueryOptions.IncludeSystems
-        });
+        using (var builder = new EntityQueryBuilder(Unity.Collections.Allocator.Temp))
+            return builder
+                .WithAll<GameAnimationElapsedTime>()
+                .WithOptions(EntityQueryOptions.IncludeSystems)
+                .Build(ref state);
     }
 }
 
