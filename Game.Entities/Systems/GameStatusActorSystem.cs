@@ -5,7 +5,7 @@ using Unity.Entities;
 using Unity.Collections;
 using ZG;
 
-[BurstCompile, AutoCreateIn("Server"), UpdateInGroup(typeof(GameNodeStatusSystem))/*, UpdateBefore(typeof(GameRandomActorSystem))*/]
+[BurstCompile, AutoCreateIn("Server"), UpdateInGroup(typeof(GameStatusSystemGroup))/*, UpdateBefore(typeof(GameRandomActorSystem))*/]
 public partial struct GameStatusActorSystem : ISystem
 {
     private struct Act
