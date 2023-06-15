@@ -82,6 +82,9 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
         public GameItemManager.Hierarchy hierarchy;
 
         [ReadOnly]
+        public ComponentLookup<GameNodeStatus> nodeStates;
+
+        [ReadOnly]
         public ComponentLookup<GameItemRoot> itemRoots;
 
         [ReadOnly]
@@ -528,7 +531,10 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
                 healthBuffs.Create().value = healthBuff;
             }
 
-            if (torpor != 0 && buff.value.torpidityTime > math.FLT_MIN_NORMAL)
+            if (torpor != 0 && 
+                buff.value.torpidityTime > math.FLT_MIN_NORMAL && 
+                nodeStates.HasComponent(target) && 
+                (nodeStates[target].value & (int)GameEntityStatus.KnockedOut) != (int)GameEntityStatus.KnockedOut)
             {
                 BufferElementData<GameEntityTorpidityBuff> torpidityBuff;
 
@@ -609,7 +615,6 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
             return false;
         }
 
-
         public bool __CalculateProperties(
             bool isSibling,
             in GameItemHandle handle,
@@ -663,6 +668,9 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
 
         [ReadOnly]
         public GameItemManager.Hierarchy hierarchy;
+
+        [ReadOnly]
+        public ComponentLookup<GameNodeStatus> nodeStates;
 
         [ReadOnly]
         public ComponentLookup<GameItemRoot> itemRoots;
@@ -731,6 +739,7 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
             handler.propertyCount = propertyCount;
             handler.hitCount = hitCount;
             handler.hierarchy = hierarchy;
+            handler.nodeStates = nodeStates;
             handler.itemRoots = itemRoots;
             handler.entityVariants = entityVariants;
             handler.entityExps = entityExps;
@@ -1025,6 +1034,7 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
         factory.propertyCount = __propertyCount;
         factory.hitCount = __hitCount;
         factory.hierarchy = __itemManager.hierarchy;
+        factory.nodeStates = state.GetComponentLookup<GameNodeStatus>(true);
         factory.itemRoots = state.GetComponentLookup<GameItemRoot>(true);
         factory.entityVariants = state.GetComponentLookup<GameVariant>(true);
         factory.entityExps = state.GetComponentLookup<GameExp>(true);

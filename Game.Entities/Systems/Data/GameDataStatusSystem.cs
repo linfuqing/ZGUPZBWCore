@@ -12,7 +12,6 @@ using ZG;
 [assembly: EntityDataDeserialize(typeof(GameStatus), (int)GameDataConstans.Version)]
 #endregion
 
-[System.Serializable]
 public struct GameStatus : IComponentData
 {
     public int value;
@@ -81,7 +80,8 @@ public partial class GameDataStatusSystem : SystemBase
                 },
                 None = new ComponentType[]
                 {
-                    typeof(EntityDataSerializable)
+                    typeof(EntityDataSerializable), 
+                    typeof(GameNonSerialized)
                 }, 
                 Options = EntityQueryOptions.IncludeDisabledEntities
             });
