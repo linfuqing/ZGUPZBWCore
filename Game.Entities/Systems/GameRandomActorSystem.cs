@@ -7,18 +7,20 @@ using Unity.Mathematics;
 using Unity.Transforms;
 using ZG;
 
-[AutoCreateIn("Server"), UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(StateMachineSchedulerGroup))/*, UpdateAfter(typeof(GameNodeEventSystem))*/]
-public partial class GameRandomActorSystem : SystemBase
+[AutoCreateIn("Server"), 
+    UpdateInGroup(typeof(GameEntityActorSystemGroup), OrderFirst = true), 
+    UpdateBefore(typeof(GameEntityActorInitSystem))
+    /*, UpdateBefore(typeof(StateMachineSchedulerGroup))*/]
+public partial struct GameRandomActorSystem : ISystem
 {
     private struct Act
     {
         private struct ActionHandler : IRandomItemHandler
         {
+            public int index;
             public int version;
 
             public GameTime time;
-
-            public Entity entity;
 
             public Random random;
 
@@ -28,7 +30,7 @@ public partial class GameRandomActorSystem : SystemBase
             public DynamicBuffer<GameRandomActorAction> actions;
 
             [NativeDisableParallelForRestriction]
-            public ComponentLookup<GameEntityActionCommand> commands;
+            public NativeArray<GameEntityActionCommand> commands;
 
             public RandomResult Set(int startIndex, int count)
             {
@@ -41,7 +43,7 @@ public partial class GameRandomActorSystem : SystemBase
                 command.distance = float3.zero;
                 //command.offset = float3.zero;
 
-                commands[entity] = command;
+                commands[index] = command;
 
                 return RandomResult.Success;
             }
@@ -51,9 +53,6 @@ public partial class GameRandomActorSystem : SystemBase
 
         public Random random;
 
-        [ReadOnly]
-        public NativeArray<Entity> entityArray;
-        
         [ReadOnly]
         public NativeArray<Rotation> rotations;
 
@@ -69,35 +68,27 @@ public partial class GameRandomActorSystem : SystemBase
         [ReadOnly]
         public BufferAccessor<GameRandomActorAction> actions;
         
-        [ReadOnly]
         public BufferAccessor<GameRandomActorNode> nodes;
 
-        [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameEntityActionCommand> commands;
+        public NativeArray<GameEntityActionCommand> commands;
 
-        public NativeQueue<Entity>.ParallelWriter nodesToClear;
-
-        public void Execute(int index)
+        public bool Execute(int index)
         {
             var nodes = this.nodes[index];
             int length = nodes.Length;
             if (length < 1)
-                return;
-
-            int version = versions[index].value;
-            Entity entity = entityArray[index];
-            if (version == commands[entity].version)
-                return;
+                return false;
 
             ActionHandler actionHandler;
-            actionHandler.version = version;
+            actionHandler.index = index;
+            actionHandler.version = versions[index].value;
             actionHandler.time = time;
-            actionHandler.entity = entity;
             actionHandler.random = random;
             actionHandler.rotation = rotations[index].Value;
             actionHandler.actions = actions[index];
             actionHandler.commands = commands;
 
+            bool result = false;
             var groups = this.groups[index];
             var slices = this.slices[index];
             GameRandomActorSlice slice;
@@ -105,10 +96,17 @@ public partial class GameRandomActorSystem : SystemBase
             {
                 slice = slices[nodes[i].sliceIndex];
 
-                random.Next(ref actionHandler, groups.Reinterpret<RandomGroup>().AsNativeArray().Slice(slice.groupStartIndex, slice.groupCount));
+                if (RandomResult.Success == random.Next(ref actionHandler, groups.Reinterpret<RandomGroup>().AsNativeArray().Slice(slice.groupStartIndex, slice.groupCount)))
+                {
+                    result = true;
+
+                    break;
+                }
             }
 
-            nodesToClear.Enqueue(entity);
+            nodes.Clear();
+
+            return result;
         }
     }
 
@@ -116,9 +114,6 @@ public partial class GameRandomActorSystem : SystemBase
     private struct ActEx : IJobChunk
     {
         public GameTime time;
-        
-        [ReadOnly]
-        public EntityTypeHandle entityType;
         
         [ReadOnly]
         public ComponentTypeHandle<Rotation> rotationType;
@@ -135,13 +130,9 @@ public partial class GameRandomActorSystem : SystemBase
         [ReadOnly]
         public BufferTypeHandle<GameRandomActorAction> actionType;
 
-        [ReadOnly]
         public BufferTypeHandle<GameRandomActorNode> nodeType;
 
-        [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameEntityActionCommand> commands;
-
-        public NativeQueue<Entity>.ParallelWriter nodesToClear;
+        public ComponentTypeHandle<GameEntityActionCommand> commandType;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -149,83 +140,83 @@ public partial class GameRandomActorSystem : SystemBase
             act.time = time;
             long hash = math.aslong(time);
             act.random = new Random((uint)((int)(hash >> 32) ^ ((int)hash) ^ unfilteredChunkIndex));
-            act.entityArray = chunk.GetNativeArray(entityType);
             act.rotations = chunk.GetNativeArray(ref rotationType);
             act.versions = chunk.GetNativeArray(ref versionType);
             act.slices = chunk.GetBufferAccessor(ref sliceType);
             act.groups = chunk.GetBufferAccessor(ref groupType);
             act.actions = chunk.GetBufferAccessor(ref actionType);
             act.nodes = chunk.GetBufferAccessor(ref nodeType);
-            act.commands = commands;
-            act.nodesToClear = nodesToClear;
+            act.commands = chunk.GetNativeArray(ref commandType);
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
-                act.Execute(i);
-        }
-    }
-
-    [BurstCompile]
-    private struct Clear : IJob
-    {
-        public NativeQueue<Entity> entities;
-        public BufferLookup<GameRandomActorNode> nodes;
-
-        public void Execute()
-        {
-            while (entities.TryDequeue(out Entity entity))
-                nodes[entity].Clear();
+            {
+                if (act.Execute(i))
+                {
+                    chunk.SetComponentEnabled(ref nodeType, i, false);
+                    chunk.SetComponentEnabled(ref commandType, i, true);
+                }
+            }
         }
     }
 
     private EntityQuery __group;
     private GameSyncTime __time;
-    private NativeQueue<Entity> __nodesToClear;
-    
-    protected override void OnCreate()
+
+    private ComponentTypeHandle<Rotation> __rotationType;
+
+    private ComponentTypeHandle<GameEntityCommandVersion> __versionType;
+
+    private BufferTypeHandle<GameRandomActorSlice> __sliceType;
+
+    private BufferTypeHandle<GameRandomActorGroup> __groupType;
+
+    private BufferTypeHandle<GameRandomActorAction> __actionType;
+
+    private BufferTypeHandle<GameRandomActorNode> __nodeType;
+
+    private ComponentTypeHandle<GameEntityActionCommand> __commandType;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                .WithAll<Rotation, GameEntityCommandVersion, GameRandomActorSlice, GameRandomActorGroup, GameRandomActorAction>()
+                .WithAllRW<GameRandomActorNode>()
+                .Build(ref state);
 
-        __group = GetEntityQuery(
-            ComponentType.ReadOnly<Rotation>(),
-            ComponentType.ReadOnly<GameEntityCommandVersion>(),
-            ComponentType.ReadOnly<GameRandomActorSlice>(),
-            ComponentType.ReadOnly<GameRandomActorGroup>(),
-            ComponentType.ReadOnly<GameRandomActorAction>(),
-            ComponentType.ReadOnly<GameRandomActorNode>());
+        __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameRandomActorNode>());
 
-        __time = new GameSyncTime(ref this.GetState());
+        __time = new GameSyncTime(ref state);
 
-        __nodesToClear = new NativeQueue<Entity>(Allocator.Persistent);
+        __rotationType = state.GetComponentTypeHandle<Rotation>(true);
+        __versionType = state.GetComponentTypeHandle<GameEntityCommandVersion>(true);
+        __sliceType = state.GetBufferTypeHandle<GameRandomActorSlice>(true);
+        __groupType = state.GetBufferTypeHandle<GameRandomActorGroup>(true);
+        __actionType = state.GetBufferTypeHandle<GameRandomActorAction>(true);
+        __nodeType = state.GetBufferTypeHandle<GameRandomActorNode>();
+        __commandType = state.GetComponentTypeHandle<GameEntityActionCommand>();
     }
 
-    protected override void OnDestroy()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        __nodesToClear.Dispose();
-
-        base.OnDestroy();
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
         ActEx act;
         act.time = __time.nextTime;
-        act.entityType = GetEntityTypeHandle();
-        act.rotationType = GetComponentTypeHandle<Rotation>(true);
-        act.versionType = GetComponentTypeHandle<GameEntityCommandVersion>(true);
-        act.sliceType = GetBufferTypeHandle<GameRandomActorSlice>(true);
-        act.groupType = GetBufferTypeHandle<GameRandomActorGroup>(true);
-        act.actionType = GetBufferTypeHandle<GameRandomActorAction>(true);
-        act.nodeType = GetBufferTypeHandle<GameRandomActorNode>(true);
-        act.commands = GetComponentLookup<GameEntityActionCommand>();
-        act.nodesToClear = __nodesToClear.AsParallelWriter();
+        act.rotationType = __rotationType.UpdateAsRef(ref state);
+        act.versionType = __versionType.UpdateAsRef(ref state);
+        act.sliceType = __sliceType.UpdateAsRef(ref state);
+        act.groupType = __groupType.UpdateAsRef(ref state);
+        act.actionType = __actionType.UpdateAsRef(ref state);
+        act.nodeType = __nodeType.UpdateAsRef(ref state);
+        act.commandType = __commandType.UpdateAsRef(ref state);
 
-        var jobHandle = act.ScheduleParallel(__group, Dependency);
-
-        Clear clear;
-        clear.entities = __nodesToClear;
-        clear.nodes = GetBufferLookup<GameRandomActorNode>();
-
-        Dependency = clear.Schedule(jobHandle);
+        state.Dependency = act.ScheduleParallelByRef(__group, state.Dependency);
     }
 }

@@ -6,6 +6,7 @@ using ZG;
 [Flags]
 public enum GameStatusActorFlag
 {
+    Normal = 0x01, 
     Action = 0x02
 }
 

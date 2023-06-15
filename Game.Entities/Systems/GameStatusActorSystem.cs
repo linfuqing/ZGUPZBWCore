@@ -5,14 +5,11 @@ using Unity.Entities;
 using Unity.Collections;
 using ZG;
 
-[BurstCompile, AutoCreateIn("Server"), UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(GameRandomActorSystem))]
+[BurstCompile, AutoCreateIn("Server"), UpdateInGroup(typeof(GameNodeStatusSystem))/*, UpdateBefore(typeof(GameRandomActorSystem))*/]
 public partial struct GameStatusActorSystem : ISystem
 {
     private struct Act
     {
-        [ReadOnly]
-        public NativeArray<Entity> entityArray;
-
         [ReadOnly]
         public NativeArray<GameNodeStatus> states;
 
@@ -22,21 +19,23 @@ public partial struct GameStatusActorSystem : ISystem
         [ReadOnly]
         public BufferAccessor<GameStatusActorLevel> levels;
 
-        [NativeDisableParallelForRestriction]
-        public BufferLookup<GameRandomActorNode> actors;
+        public BufferAccessor<GameRandomActorNode> actors;
 
-        [NativeDisableParallelForRestriction]
-        public BufferLookup<GameRandomSpawnerNode> spawners;
+        public BufferAccessor<GameRandomSpawnerNode> spawners;
         
-        public void Execute(int index)
+        public GameStatusActorFlag Execute(int index)
         {
             var status = states[index].value;
             if (status == oldStates[index].value)
-                return;
+                return 0;
 
+            GameStatusActorFlag flag = 0;
+            var spawners = index < this.spawners.Length ? this.spawners[index] : default;
+            var actors = index < this.actors.Length ? this.actors[index] :default;
             var levels = this.levels[index];
             GameStatusActorLevel level;
-            Entity entity = entityArray[index];
+            GameRandomActorNode actor;
+            GameRandomSpawnerNode spawner;
             int length = levels.Length;
             for (int i = 0; i < length; ++i)
             {
@@ -46,27 +45,33 @@ public partial struct GameStatusActorSystem : ISystem
 
                 if ((level.flag & GameStatusActorFlag.Action) == GameStatusActorFlag.Action)
                 {
-                    if (actors.HasBuffer(entity))
-                        actors[entity].Reinterpret<int>().Add(level.sliceIndex);
+                    if (actors.IsCreated)
+                    {
+                        flag |= GameStatusActorFlag.Action;
+
+                        actor.sliceIndex = level.sliceIndex;
+                        actors.Add(actor);
+                    }
 
                     continue;
                 }
 
-                if (spawners.HasBuffer(entity))
+                if (spawners.IsCreated)
                 {
-                    spawners[entity].Reinterpret<int>().Add(level.sliceIndex);
-                    spawners.SetBufferEnabled(entity, true);
+                    flag |= GameStatusActorFlag.Normal;
+
+                    spawner.sliceIndex = level.sliceIndex;
+                    spawners.Add(spawner);
                 }
             }
+
+            return flag;
         }
     }
 
     [BurstCompile]
     private struct ActEx : IJobChunk
     {
-        [ReadOnly]
-        public EntityTypeHandle entityType;
-
         [ReadOnly]
         public ComponentTypeHandle<GameNodeStatus> statusType;
 
@@ -76,45 +81,65 @@ public partial struct GameStatusActorSystem : ISystem
         [ReadOnly]
         public BufferTypeHandle<GameStatusActorLevel> levelType;
         
-        [NativeDisableParallelForRestriction]
-        public BufferLookup<GameRandomActorNode> actors;
+        public BufferTypeHandle<GameRandomActorNode> actorType;
 
-        [NativeDisableParallelForRestriction]
-        public BufferLookup<GameRandomSpawnerNode> spawners;
+        public BufferTypeHandle<GameRandomSpawnerNode> spawnerType;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             Act act;
-            act.entityArray = chunk.GetNativeArray(entityType);
             act.states = chunk.GetNativeArray(ref statusType);
             act.oldStates = chunk.GetNativeArray(ref oldStatusType);
             act.levels = chunk.GetBufferAccessor(ref levelType);
-            act.actors = actors;
-            act.spawners = spawners;
+            act.actors = chunk.GetBufferAccessor(ref actorType);
+            act.spawners = chunk.GetBufferAccessor(ref spawnerType);
 
+            GameStatusActorFlag flag;
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
-                act.Execute(i);
+            {
+                flag = act.Execute(i);
+
+                if((flag & GameStatusActorFlag.Normal) == GameStatusActorFlag.Normal)
+                    chunk.SetComponentEnabled(ref spawnerType, i, true);
+
+                if ((flag & GameStatusActorFlag.Action) == GameStatusActorFlag.Action)
+                    chunk.SetComponentEnabled(ref actorType, i, true);
+            }
         }
     }
 
     private EntityQuery __group;
 
+    private ComponentTypeHandle<GameNodeStatus> __statusType;
+
+    private ComponentTypeHandle<GameNodeOldStatus> __oldStatusType;
+
+    private BufferTypeHandle<GameStatusActorLevel> __levelType;
+
+    private BufferTypeHandle<GameRandomActorNode> __actorType;
+
+    private BufferTypeHandle<GameRandomSpawnerNode> __spawnerType;
+
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameNodeStatus>(),
-            ComponentType.ReadOnly<GameNodeOldStatus>(), 
-            ComponentType.ReadOnly<GameStatusActorLevel>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameNodeStatus, GameNodeOldStatus, GameStatusActorLevel>()
+                    .Build(ref state);
 
-        __group.SetChangedVersionFilter(
-            new ComponentType[]
-            {
-                typeof(GameNodeStatus),
-                typeof(GameNodeOldStatus)
-            });
+        __group.AddChangedVersionFilter(ComponentType.ReadOnly<GameNodeStatus>());
+        __group.AddChangedVersionFilter(ComponentType.ReadOnly<GameNodeOldStatus>());
+
+        __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
+        __oldStatusType = state.GetComponentTypeHandle<GameNodeOldStatus>(true);
+        __levelType = state.GetBufferTypeHandle<GameStatusActorLevel>(true);
+        __actorType = state.GetBufferTypeHandle<GameRandomActorNode>();
+        __spawnerType = state.GetBufferTypeHandle<GameRandomSpawnerNode>();
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 
@@ -124,13 +149,12 @@ public partial struct GameStatusActorSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         ActEx act;
-        act.entityType = state.GetEntityTypeHandle();
-        act.statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
-        act.oldStatusType = state.GetComponentTypeHandle<GameNodeOldStatus>(true);
-        act.levelType = state.GetBufferTypeHandle<GameStatusActorLevel>(true);
-        act.actors = state.GetBufferLookup<GameRandomActorNode>();
-        act.spawners = state.GetBufferLookup<GameRandomSpawnerNode>();
+        act.statusType = __statusType.UpdateAsRef(ref state);
+        act.oldStatusType = __oldStatusType.UpdateAsRef(ref state);
+        act.levelType = __levelType.UpdateAsRef(ref state);
+        act.actorType = __actorType.UpdateAsRef(ref state);
+        act.spawnerType = __spawnerType.UpdateAsRef(ref state);
 
-        state.Dependency = act.ScheduleParallel(__group, state.Dependency);
+        state.Dependency = act.ScheduleParallelByRef(__group, state.Dependency);
     }
 }

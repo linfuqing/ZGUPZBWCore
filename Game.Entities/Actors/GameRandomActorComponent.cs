@@ -4,27 +4,23 @@ using Unity.Entities;
 using UnityEngine;
 using ZG;
 
-[Serializable]
 public struct GameRandomActorSlice : IBufferElementData
 {
     public int groupStartIndex;
     public int groupCount;
 }
 
-[Serializable]
 public struct GameRandomActorGroup : IBufferElementData
 {
     public RandomGroup value;
 }
 
-[Serializable]
 public struct GameRandomActorAction : IBufferElementData
 {
     public int index;
 }
 
-[Serializable]
-public struct GameRandomActorNode : IBufferElementData
+public struct GameRandomActorNode : IBufferElementData, IEnableableComponent
 {
     public int sliceIndex;
 }

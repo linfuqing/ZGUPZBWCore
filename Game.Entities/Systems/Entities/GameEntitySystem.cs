@@ -45,7 +45,8 @@ public partial struct GameEntityActionSystemGroup : ISystem
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(GameRollbackSystemGroup)),
+[BurstCompile, 
+    UpdateInGroup(typeof(GameRollbackSystemGroup)),
     UpdateBefore(typeof(GameNodeSystem)),
     UpdateBefore(typeof(GameEntityActionBeginEntityCommandSystemGroup)),
     UpdateAfter(typeof(GameNodeInitSystemGroup))]
