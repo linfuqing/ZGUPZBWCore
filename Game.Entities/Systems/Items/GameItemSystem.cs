@@ -831,6 +831,8 @@ public partial struct GameItemSystem : ISystem
         var manager = this.manager;
         manager.lookupJobManager.CompleteReadWriteDependency();
         manager.Rebuild(datas);
+
+        __seed = DateTime.UtcNow.Ticks;
     }
 
     [BurstCompile]
@@ -839,8 +841,6 @@ public partial struct GameItemSystem : ISystem
         BurstUtility.InitializeJob<Command>();
 
         //state.SetAlwaysUpdateSystem(true);
-
-        __seed = DateTime.UtcNow.Ticks;
 
         __structChangeManagerGroup = GameItemStructChangeManager.GetEntityQuery(ref state);
 

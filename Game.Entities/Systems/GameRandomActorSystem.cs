@@ -7,7 +7,7 @@ using Unity.Mathematics;
 using Unity.Transforms;
 using ZG;
 
-[AutoCreateIn("Server"), 
+[BurstCompile, AutoCreateIn("Server"), 
     UpdateInGroup(typeof(GameEntityActorSystemGroup), OrderFirst = true), 
     UpdateBefore(typeof(GameEntityActorInitSystem))
     /*, UpdateBefore(typeof(StateMachineSchedulerGroup))*/]
@@ -208,7 +208,7 @@ public partial struct GameRandomActorSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         ActEx act;
-        act.time = __time.nextTime;
+        act.time = __time.time;// __time.nextTime;
         act.rotationType = __rotationType.UpdateAsRef(ref state);
         act.versionType = __versionType.UpdateAsRef(ref state);
         act.sliceType = __sliceType.UpdateAsRef(ref state);
