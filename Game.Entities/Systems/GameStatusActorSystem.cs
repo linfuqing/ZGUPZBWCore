@@ -127,6 +127,7 @@ public partial struct GameStatusActorSystem : ISystem
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __group = builder
                     .WithAll<GameNodeStatus, GameNodeOldStatus, GameStatusActorLevel>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
 
         __group.AddChangedVersionFilter(ComponentType.ReadOnly<GameNodeStatus>());
