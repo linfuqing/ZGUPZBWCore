@@ -16,8 +16,8 @@ public interface IGameEntityActionHandler
     bool Create(
         int index,
         double time,
-        in float3 targetPosition,
         in Entity entity,
+        in Entity target,
         in GameActionData instance);
 
     bool Init(

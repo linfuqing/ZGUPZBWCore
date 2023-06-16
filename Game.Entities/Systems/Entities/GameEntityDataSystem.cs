@@ -354,8 +354,8 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
         public bool Create(
             int index,
             double time,
-            in float3 targetPosition, 
             in Entity entity,
+            in Entity target,
             in GameActionData data)
         {
             return false;

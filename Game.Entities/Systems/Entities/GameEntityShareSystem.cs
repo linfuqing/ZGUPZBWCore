@@ -1165,8 +1165,8 @@ public partial struct GameEntitySharedActionSystem : ISystem
         public bool Create(
             int index,
             double time,
-            in float3 targetPosition, 
             in Entity entity,
+            in Entity target,
             in GameActionData data)
         {
             if (!Check(data.index, data.version, (float)(time - data.time), data.entity))
@@ -1180,12 +1180,12 @@ public partial struct GameEntitySharedActionSystem : ISystem
                 translations.HasComponent(data.entity) ? translations[data.entity].Value : float3.zero);*/
             command.instance.parentEntity = entity;
 
-            bool result = false, isSourceTransformed = false;
+            bool result = false, isSourceTransformed = false, isDestinationTransformed = false;
             var actionType = actionTypes.HasComponent(data.entity) ? actionTypes[data.entity].value : 0;
             int actionObjectIndex;
             ActionObject actionObject;
             ActionObjectRange actionObjectRange = actionObjectRanges[data.actionIndex];
-            RigidTransform sourceTransform = RigidTransform.identity;
+            RigidTransform sourceTransform = RigidTransform.identity, destaintionTransform = RigidTransform.identity;
             for (int i = 0; i < actionObjectRange.count; ++i)
             {
                 actionObjectIndex = actionObjectRange.startIndex + i;
@@ -1204,17 +1204,16 @@ public partial struct GameEntitySharedActionSystem : ISystem
                     }
                     else if ((actionObject.flag & GameEntitySharedActionObjectFlag.Destination) == GameEntitySharedActionObjectFlag.Destination)
                     {
-                        if (!isSourceTransformed)
+                        if(!isDestinationTransformed)
                         {
-                            isSourceTransformed = true;
+                            isDestinationTransformed = true;
 
-                            sourceTransform = math.inverse(math.RigidTransform(
-                                rotations.HasComponent(data.entity) ? rotations[data.entity].Value : quaternion.identity,
-                                translations.HasComponent(data.entity) ? translations[data.entity].Value : float3.zero));
+                            destaintionTransform = math.inverse(math.RigidTransform(
+                                rotations.HasComponent(target) ? rotations[target].Value : quaternion.identity,
+                                translations.HasComponent(target) ? translations[target].Value : float3.zero));
                         }
 
-                        command.instance.transform.pos = targetPosition;
-                        command.instance.transform.rot = sourceTransform.rot;
+                        command.instance.transform = destaintionTransform;
                         command.parent.value = Entity.Null;
                     }
                     else

@@ -1675,7 +1675,7 @@ public partial struct GameEntityActorSystem : ISystem
                             result.valueEx.entityArchetype = archetypes[index].value;
                             result.valueEx.collider = actionCollider;
                             result.valueEx.origin.rot = quaternion.LookRotationSafe(
-                                action.instance.flag == GameActionFlag.MoveInAir ? direction : Math.ProjectOnPlaneSafe(direction, up),
+                                (action.instance.flag & GameActionFlag.MoveInAir) == GameActionFlag.MoveInAir ? Math.ProjectOnPlaneSafe(direction, up) : direction,
                                 up);
 
                             switch (action.instance.rangeType)

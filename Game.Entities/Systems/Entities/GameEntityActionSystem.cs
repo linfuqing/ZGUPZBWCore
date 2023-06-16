@@ -542,8 +542,8 @@ public struct GameEntityActionSystemCore
                 handler.Create(
                         index,
                         time,
-                        instanceEx.targetPosition, 
                         entity,
+                        instanceEx.target,
                         instance))
                 value |= GameActionStatus.Status.Created | GameActionStatus.Status.Managed;
 
@@ -773,7 +773,7 @@ public struct GameEntityActionSystemCore
                                     }
 
                                     result.rot = quaternion.LookRotationSafe(
-                                        instanceEx.value.flag == GameActionFlag.MoveInAir ? distance : Math.ProjectOnPlaneSafe(distance, up),
+                                        (instanceEx.value.flag & GameActionFlag.MoveInAir) == GameActionFlag.MoveInAir ? Math.ProjectOnPlaneSafe(distance, up) : distance,
                                         up);
 
                                     isRotationDirty = true;
