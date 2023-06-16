@@ -1208,9 +1208,9 @@ public partial struct GameEntitySharedActionSystem : ISystem
                         {
                             isDestinationTransformed = true;
 
-                            destaintionTransform = math.inverse(math.RigidTransform(
+                            destaintionTransform = math.RigidTransform(
                                 rotations.HasComponent(target) ? rotations[target].Value : quaternion.identity,
-                                translations.HasComponent(target) ? translations[target].Value : float3.zero));
+                                translations.HasComponent(target) ? translations[target].Value : float3.zero);
                         }
 
                         command.instance.transform = destaintionTransform;
@@ -1222,9 +1222,9 @@ public partial struct GameEntitySharedActionSystem : ISystem
                         {
                             isSourceTransformed = true;
 
-                            sourceTransform = math.inverse(math.RigidTransform(
+                            sourceTransform = math.RigidTransform(
                                 rotations.HasComponent(data.entity) ? rotations[data.entity].Value : quaternion.identity,
-                                translations.HasComponent(data.entity) ? translations[data.entity].Value : float3.zero));
+                                translations.HasComponent(data.entity) ? translations[data.entity].Value : float3.zero);
                         }
 
                         command.instance.transform = sourceTransform;
