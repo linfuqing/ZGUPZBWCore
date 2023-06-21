@@ -1133,10 +1133,11 @@ public struct GameEntityActionSystemCore
                     EntityData<GameEntityBreakCommand> breakCommand;
                     breakCommand.entity = instance.entity;
                     breakCommand.value.version = commandVersions[instance.entity].value;
-                    breakCommand.value.delayIndex = -1;
+                    breakCommand.value.hit = 0;
                     breakCommand.value.delayTime = 0.0f;
                     breakCommand.value.alertTime = 0.0f;
                     breakCommand.value.time = now;
+                    breakCommand.value.normal = float3.zero;
                     breakCommands.Create().value = breakCommand;
                 }
             }
