@@ -2238,29 +2238,29 @@ public partial struct GameEntityHitSystem : ISystem
                 //判定当前技能的霸体
                 if (actorInfo.alertTime < hit.time)
                 {
+                    Entity entity = entityArray[index];
+
                     var actionInfo = actionInfos[index];
                     if (actionInfo.version != actorInfo.version || actionInfo.time < hit.time || actionInfo.hit < hit.value)
                     {
                         var instance = instances[index];
 
-                        Entity entity = entityArray[index];
-
                         commands.SetComponentEnabled(entity, true);
 
                         GameEntityBreakCommand command;
                         command.version = commandVersions[index].value;
-                        command.hit = hit.value;
+                        command.hit = hit.value - actionInfo.hit;
                         command.alertTime = instance.alertTime;
                         command.delayTime = instance.delayTime;
                         command.time = hit.time;
                         command.normal = hit.normal;
 
                         commands[entity] = command;
-
-                        hit.value = 0.0f;
-                        hit.normal = float3.zero;
-                        outputs[entity] = hit;
                     }
+
+                    hit.value = 0.0f;
+                    hit.normal = float3.zero;
+                    outputs[entity] = hit;
                 }
             }
         }
