@@ -1303,18 +1303,13 @@ public partial struct GameFormulaFactorySystem : ISystem
         {
             var counter = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
 
-            inputDeps = __groupToComplete.CalculateEntityCountAsync(counter, inputDeps);
-
-            if (itemJobHandle == null)
-                jobHandle = inputDeps;
-            else
-                jobHandle = JobHandle.CombineDependencies(jobHandle, inputDeps);
+            jobHandle = __groupToComplete.CalculateEntityCountAsync(counter, jobHandle);
 
             Resize resize;
             resize.count = counter;
             resize.completedResults = __completedResults;
             resize.runningResults = __runningResults;
-            jobHandle = resize.Schedule(jobHandle);
+            jobHandle = resize.ScheduleByRef(jobHandle);
 
             var monies = __moneies.UpdateAsRef(ref state); 
             var itemRoots = __itemRoots.UpdateAsRef(ref state);
