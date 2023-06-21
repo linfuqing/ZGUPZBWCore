@@ -1208,7 +1208,7 @@ public partial struct GameFormulaFactorySystem : ISystem
         __itemTimeScaleType = state.GetComponentTypeHandle<GameFormulaFactoryItemTimeScale>();
         __timeType = state.GetComponentTypeHandle<GameFormulaFactoryTime>();
 
-        __commandType = state.GetComponentTypeHandle<GameFormulaFactoryCommand>(true);
+        __commandType = state.GetComponentTypeHandle<GameFormulaFactoryCommand>();
 
         __timeScales = state.GetComponentLookup<GameFormulaFactoryTimeScale>();
 
