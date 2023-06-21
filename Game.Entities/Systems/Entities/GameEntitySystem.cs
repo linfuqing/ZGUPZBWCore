@@ -2206,8 +2206,6 @@ public partial struct GameEntityHitSystem : ISystem
         [ReadOnly]
         public NativeArray<Entity> entityArray;
         [ReadOnly]
-        public NativeArray<GameNodeSurface> surfaces;
-        [ReadOnly]
         public NativeArray<GameEntityHit> inputs;
         [ReadOnly]
         public NativeArray<GameEntityActorHit> actorHits;
@@ -2219,12 +2217,6 @@ public partial struct GameEntityHitSystem : ISystem
         public NativeArray<GameEntityActionInfo> actionInfos;
         [ReadOnly]
         public NativeArray<GameEntityCommandVersion> commandVersions;
-        [ReadOnly]
-        public BufferAccessor<GameEntityActorDelay> actorDelay;
-
-        public BufferAccessor<GameNodeVelocityComponent> velocityComponents;
-
-        public NativeArray<GameNodeAngle> angles;
 
         [NativeDisableParallelForRestriction]
         public ComponentLookup<GameEntityBreakCommand> commands;
@@ -2251,60 +2243,17 @@ public partial struct GameEntityHitSystem : ISystem
                     {
                         var instance = instances[index];
 
-                        int delayIndex;
-                        if (index < this.actorDelay.Length)
-                        {
-                            var actorDelay = this.actorDelay[index];
-                            GameEntityActorDelay targetDeley;
-                            delayIndex = actorDelay.Length;
-                            for (int i = 0; i < delayIndex; ++i)
-                            {
-                                targetDeley = actorDelay[i];
-                                if (targetDeley.minHit < hit.value)
-                                {
-                                    var normal = math.normalizesafe(hit.normal);
-                                    if ((targetDeley.flag & GameEntityActorDelay.Flag.ForceToTurn) == GameEntityActorDelay.Flag.ForceToTurn)
-                                    {
-                                        var forward = -math.rotate(math.inverse(surfaces[index].rotation), normal);
-
-                                        GameNodeAngle angle;
-                                        angle.value = (half)math.atan2(forward.x, forward.z);
-                                        this.angles[index] = angle;
-                                    }
-
-                                    instance.alertTime = targetDeley.alertTime;
-                                    instance.delayTime = targetDeley.delayTime;
-
-                                    if (targetDeley.speed > math.FLT_MIN_NORMAL)
-                                    {
-                                        GameNodeVelocityComponent velocityComponent;
-                                        velocityComponent.mode = GameNodeVelocityComponent.Mode.Direct;
-                                        velocityComponent.duration = targetDeley.duration;
-                                        velocityComponent.time = hit.time + targetDeley.startTime;
-                                        velocityComponent.value = normal * targetDeley.speed;
-
-                                        velocityComponents[index].Add(velocityComponent);
-                                    }
-
-                                    delayIndex = i;
-
-                                    break;
-                                }
-                            }
-                        }
-                        else
-                            delayIndex = 0;
-
                         Entity entity = entityArray[index];
 
                         commands.SetComponentEnabled(entity, true);
 
                         GameEntityBreakCommand command;
                         command.version = commandVersions[index].value;
-                        command.delayIndex = delayIndex;
+                        command.hit = hit.value;
                         command.alertTime = instance.alertTime;
                         command.delayTime = instance.delayTime;
                         command.time = hit.time;
+                        command.normal = hit.normal;
 
                         commands[entity] = command;
 
@@ -2323,8 +2272,6 @@ public partial struct GameEntityHitSystem : ISystem
         [ReadOnly]
         public EntityTypeHandle entityType;
         [ReadOnly]
-        public ComponentTypeHandle<GameNodeSurface> surfaceType;
-        [ReadOnly]
         public ComponentTypeHandle<GameEntityHit> hitType;
         [ReadOnly]
         public ComponentTypeHandle<GameEntityActorHit> actorHitType;
@@ -2336,13 +2283,6 @@ public partial struct GameEntityHitSystem : ISystem
         public ComponentTypeHandle<GameEntityActionInfo> actionInfoType;
         [ReadOnly]
         public ComponentTypeHandle<GameEntityCommandVersion> commandVersionType;
-
-        [ReadOnly]
-        public BufferTypeHandle<GameEntityActorDelay> actorDelayType;
-
-        public BufferTypeHandle<GameNodeVelocityComponent> velocityComponentType;
-
-        public ComponentTypeHandle<GameNodeAngle> angleType;
 
         [NativeDisableParallelForRestriction]
         public ComponentLookup<GameEntityBreakCommand> commands;
@@ -2357,16 +2297,12 @@ public partial struct GameEntityHitSystem : ISystem
         {
             ComputeHits computeHits;
             computeHits.entityArray = chunk.GetNativeArray(entityType);
-            computeHits.surfaces = chunk.GetNativeArray(ref surfaceType);
             computeHits.inputs = chunk.GetNativeArray(ref hitType);
             computeHits.actorHits = chunk.GetNativeArray(ref actorHitType);
             computeHits.instances = chunk.GetNativeArray(ref instanceType);
             computeHits.actorInfos = chunk.GetNativeArray(ref actorInfoType);
             computeHits.actionInfos = chunk.GetNativeArray(ref actionInfoType);
             computeHits.commandVersions = chunk.GetNativeArray(ref commandVersionType);
-            computeHits.actorDelay = chunk.GetBufferAccessor(ref actorDelayType);
-            computeHits.velocityComponents = chunk.GetBufferAccessor(ref velocityComponentType);
-            computeHits.angles = chunk.GetNativeArray(ref angleType);
             computeHits.commands = commands;
             computeHits.outputs = hits;
             //computeHits.entityManager = entityManager;
@@ -2382,18 +2318,12 @@ public partial struct GameEntityHitSystem : ISystem
 
     private EntityTypeHandle __entityType;
 
-    private ComponentTypeHandle<GameNodeSurface> __surfaceType;
     private ComponentTypeHandle<GameEntityHit> __hitType;
     private ComponentTypeHandle<GameEntityActorHit> __actorHitType;
     private ComponentTypeHandle<GameEntityActorData> __instanceType;
     private ComponentTypeHandle<GameEntityActorInfo> __actorInfoType;
     private ComponentTypeHandle<GameEntityActionInfo> __actionInfoType;
     private ComponentTypeHandle<GameEntityCommandVersion> __commandVersionType;
-
-    private BufferTypeHandle<GameEntityActorDelay> __actorDelayType;
-    private BufferTypeHandle<GameNodeVelocityComponent> __velocityComponentType;
-
-    private ComponentTypeHandle<GameNodeAngle> __angleType;
 
     private ComponentLookup<GameEntityBreakCommand> __commands;
     private ComponentLookup<GameEntityHit> __hits;
@@ -2409,16 +2339,12 @@ public partial struct GameEntityHitSystem : ISystem
         __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameEntityHit>());
 
         __entityType = state.GetEntityTypeHandle();
-        __surfaceType = state.GetComponentTypeHandle<GameNodeSurface>(true);
         __hitType = state.GetComponentTypeHandle<GameEntityHit>(true);
         __actorHitType = state.GetComponentTypeHandle<GameEntityActorHit>(true);
         __instanceType = state.GetComponentTypeHandle<GameEntityActorData>(true);
         __actorInfoType = state.GetComponentTypeHandle<GameEntityActorInfo>(true);
         __actionInfoType = state.GetComponentTypeHandle<GameEntityActionInfo>(true);
         __commandVersionType = state.GetComponentTypeHandle<GameEntityCommandVersion>(true);
-        __actorDelayType = state.GetBufferTypeHandle<GameEntityActorDelay>(true);
-        __velocityComponentType = state.GetBufferTypeHandle<GameNodeVelocityComponent>();
-        __angleType = state.GetComponentTypeHandle<GameNodeAngle>();
         __commands = state.GetComponentLookup<GameEntityBreakCommand>();
         __hits = state.GetComponentLookup<GameEntityHit>();
     }
@@ -2434,16 +2360,12 @@ public partial struct GameEntityHitSystem : ISystem
     {
         ComputeHitsEx computeHits;
         computeHits.entityType = __entityType.UpdateAsRef(ref state);
-        computeHits.surfaceType = __surfaceType.UpdateAsRef(ref state);
         computeHits.hitType = __hitType.UpdateAsRef(ref state);
         computeHits.actorHitType = __actorHitType.UpdateAsRef(ref state);
         computeHits.instanceType = __instanceType.UpdateAsRef(ref state);
         computeHits.actorInfoType = __actorInfoType.UpdateAsRef(ref state);
         computeHits.actionInfoType = __actionInfoType.UpdateAsRef(ref state);
         computeHits.commandVersionType = __commandVersionType.UpdateAsRef(ref state);
-        computeHits.actorDelayType = __actorDelayType.UpdateAsRef(ref state);
-        computeHits.velocityComponentType = __velocityComponentType.UpdateAsRef(ref state);
-        computeHits.angleType = __angleType.UpdateAsRef(ref state);
         computeHits.commands = __commands.UpdateAsRef(ref state);
         computeHits.hits = __hits.UpdateAsRef(ref state);
         state.Dependency = computeHits.ScheduleParallelByRef(__group, state.Dependency);
@@ -2473,6 +2395,12 @@ public partial struct GameEntityBreakSystem : ISystem
         public NativeArray<GameNodeStatus> nodeStates;
 
         [ReadOnly]
+        public NativeArray<GameNodeSurface> surfaces;
+
+        [ReadOnly]
+        public BufferAccessor<GameEntityActorDelay> actorDelay;
+
+        [ReadOnly]
         public BufferAccessor<GameEntityAction> entityActions;
 
         public BufferAccessor<GameNodeVelocityComponent> velocityComponents;
@@ -2488,6 +2416,8 @@ public partial struct GameEntityBreakSystem : ISystem
         public NativeArray<GameNodeDelay> delay;
 
         public NativeArray<GameNodeVelocity> velocities;
+
+        public NativeArray<GameNodeAngle> angles;
 
         [WriteOnly, NativeDisableParallelForRestriction]
         public ComponentLookup<GameEntityBreakInfo> breakInfos;
@@ -2529,7 +2459,7 @@ public partial struct GameEntityBreakSystem : ISystem
                 return;
 
             bool isAlert = command.delayTime > math.FLT_MIN_NORMAL;
-            GameEntityActorInfo actorInfo = actorInfos[index];
+            var actorInfo = actorInfos[index];
 
 #if GAME_DEBUG_COMPARSION
             stream.Begin(entityIndices[index].value);
@@ -2545,6 +2475,69 @@ public partial struct GameEntityBreakSystem : ISystem
                     GameEntityAction.Break(entityActions[index], ref actionStates);
 
                 ++actorInfo.version;
+
+                if (index < this.velocityComponents.Length)
+                {
+                    var velocityComponents = this.velocityComponents[index];
+                    int numVelocityComponents = velocityComponents.Length;
+                    for (int i = 0; i < numVelocityComponents; ++i)
+                    {
+                        ref var velocityComponent = ref velocityComponents.ElementAt(i);
+                        if (velocityComponent.mode == GameNodeVelocityComponent.Mode.Direct)
+                        {
+                            velocityComponents.RemoveAt(i--);
+
+                            --numVelocityComponents;
+                        }
+                    }
+                }
+
+                int delayIndex = -1;
+                if (isAlert)
+                {
+                    if (index < this.actorDelay.Length)
+                    {
+                        var actorDelay = this.actorDelay[index];
+                        GameEntityActorDelay targetDeley;
+                        delayIndex = actorDelay.Length;
+                        for (int i = 0; i < delayIndex; ++i)
+                        {
+                            targetDeley = actorDelay[i];
+                            if (targetDeley.minHit < command.hit)
+                            {
+                                var normal = math.normalizesafe(command.normal);
+                                if ((targetDeley.flag & GameEntityActorDelay.Flag.ForceToTurn) == GameEntityActorDelay.Flag.ForceToTurn)
+                                {
+                                    var forward = -math.rotate(math.inverse(surfaces[index].rotation), normal);
+
+                                    GameNodeAngle angle;
+                                    angle.value = (half)math.atan2(forward.x, forward.z);
+                                    this.angles[index] = angle;
+                                }
+
+                                command.alertTime = targetDeley.alertTime;
+                                command.delayTime = targetDeley.delayTime;
+
+                                if (targetDeley.speed > math.FLT_MIN_NORMAL)
+                                {
+                                    GameNodeVelocityComponent velocityComponent;
+                                    velocityComponent.mode = GameNodeVelocityComponent.Mode.Direct;
+                                    velocityComponent.duration = targetDeley.duration;
+                                    velocityComponent.time = command.time + targetDeley.startTime;
+                                    velocityComponent.value = normal * targetDeley.speed;
+
+                                    velocityComponents[index].Add(velocityComponent);
+                                }
+
+                                delayIndex = i;
+
+                                break;
+                            }
+                        }
+                    }
+                    else
+                        delayIndex = 0;
+                }
 
                 actorInfo.alertTime = command.time + (isAlert ? command.alertTime : 0.0f);
                 //actorInfo.castingTime = command.time;
@@ -2582,25 +2575,10 @@ public partial struct GameEntityBreakSystem : ISystem
                         positions[index].Clear();
                 }
 
-                if (index < this.velocityComponents.Length)
-                {
-                    var velocityComponents = this.velocityComponents[index];
-                    int numVelocityComponents = velocityComponents.Length;
-                    for (int i = 0; i < numVelocityComponents; ++i)
-                    {
-                        if (velocityComponents[i].mode == GameNodeVelocityComponent.Mode.Direct)
-                        {
-                            velocityComponents.RemoveAt(i--);
-
-                            --numVelocityComponents;
-                        }
-                    }
-                }
-
                 Entity entity = entityArray[index];
                 GameEntityBreakInfo breakInfo;
                 breakInfo.version = actorInfo.version;
-                breakInfo.delayIndex = command.delayIndex;
+                breakInfo.delayIndex = delayIndex;
                 breakInfo.commandTime = command.time;
                 breakInfo.timeEventHandle = TimeEventHandle.Null;
                 if (index < eventInfos.Length)
@@ -2641,13 +2619,19 @@ public partial struct GameEntityBreakSystem : ISystem
         public ComponentTypeHandle<Disabled> disabledType;
 
         [ReadOnly]
-        public ComponentTypeHandle<GameEntityEventInfo> eventInfoType;
-
-        [ReadOnly]
         public ComponentTypeHandle<GameNodeStatus> nodeStatusType;
 
         [ReadOnly]
+        public ComponentTypeHandle<GameNodeSurface> surfaceType;
+
+        [ReadOnly]
+        public ComponentTypeHandle<GameEntityEventInfo> eventInfoType;
+
+        [ReadOnly]
         public BufferTypeHandle<GameEntityAction> entityActionType;
+
+        [ReadOnly]
+        public BufferTypeHandle<GameEntityActorDelay> actorDelayType;
 
         public BufferTypeHandle<GameNodeVelocityComponent> velocityComponentType;
 
@@ -2664,6 +2648,8 @@ public partial struct GameEntityBreakSystem : ISystem
         public ComponentTypeHandle<GameNodeVelocity> velocityType;
 
         public ComponentTypeHandle<GameNodeDelay> delayType;
+
+        public ComponentTypeHandle<GameNodeAngle> angleType;
 
         [WriteOnly, NativeDisableParallelForRestriction]
         public ComponentLookup<GameEntityBreakInfo> breakInfos;
@@ -2695,8 +2681,9 @@ public partial struct GameEntityBreakSystem : ISystem
             interrupt.actionStates = actionStates;
             interrupt.entityArray = chunk.GetNativeArray(entityArrayType);
             interrupt.commands = chunk.GetNativeArray(ref commandType);
-            interrupt.eventInfos = chunk.GetNativeArray(ref eventInfoType);
             interrupt.nodeStates = chunk.GetNativeArray(ref nodeStatusType);
+            interrupt.surfaces = chunk.GetNativeArray(ref surfaceType);
+            interrupt.eventInfos = chunk.GetNativeArray(ref eventInfoType);
             interrupt.entityActions = chunk.GetBufferAccessor(ref entityActionType);
             interrupt.velocityComponents = chunk.GetBufferAccessor(ref velocityComponentType);
             interrupt.positions = chunk.GetBufferAccessor(ref positionType);
@@ -2704,6 +2691,8 @@ public partial struct GameEntityBreakSystem : ISystem
             interrupt.actorInfos = chunk.GetNativeArray(ref actorInfoType);
             interrupt.actorTimes = chunk.GetNativeArray(ref actorTimeType);
             interrupt.velocities = chunk.GetNativeArray(ref velocityType);
+            interrupt.actorDelay = chunk.GetBufferAccessor(ref actorDelayType);
+            interrupt.angles = chunk.GetNativeArray(ref angleType);
             interrupt.delay = chunk.GetNativeArray(ref delayType);
             interrupt.breakInfos = breakInfos;
             interrupt.nodeStatusMap = entityStates;
@@ -2736,11 +2725,15 @@ public partial struct GameEntityBreakSystem : ISystem
 
     private ComponentTypeHandle<Disabled> __disabledType;
 
-    private ComponentTypeHandle<GameEntityEventInfo> __eventInfoType;
-
     private ComponentTypeHandle<GameNodeStatus> __nodeStatusType;
 
+    private ComponentTypeHandle<GameNodeSurface> __surfaceType;
+
+    private ComponentTypeHandle<GameEntityEventInfo> __eventInfoType;
+
     private BufferTypeHandle<GameEntityAction> __entityActionType;
+
+    private BufferTypeHandle<GameEntityActorDelay> __actorDelayType;
 
     private BufferTypeHandle<GameNodeVelocityComponent> __velocityComponentType;
 
@@ -2757,6 +2750,8 @@ public partial struct GameEntityBreakSystem : ISystem
     private ComponentTypeHandle<GameNodeVelocity> __velocityType;
 
     private ComponentTypeHandle<GameNodeDelay> __delayType;
+
+    private ComponentTypeHandle<GameNodeAngle> __angleType;
 
     private ComponentLookup<GameEntityBreakInfo> __breakInfos;
 
@@ -2778,9 +2773,11 @@ public partial struct GameEntityBreakSystem : ISystem
 
         __entityArrayType = state.GetEntityTypeHandle();
         __disabledType = state.GetComponentTypeHandle<Disabled>(true);
-        __eventInfoType = state.GetComponentTypeHandle<GameEntityEventInfo>(true);
         __nodeStatusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
+        __surfaceType = state.GetComponentTypeHandle<GameNodeSurface>(true);
+        __eventInfoType = state.GetComponentTypeHandle<GameEntityEventInfo>(true);
         __entityActionType = state.GetBufferTypeHandle<GameEntityAction>(true);
+        __actorDelayType = state.GetBufferTypeHandle<GameEntityActorDelay>(true);
         __velocityComponentType = state.GetBufferTypeHandle<GameNodeVelocityComponent>();
         __positionType = state.GetBufferTypeHandle<GameNodePosition>();
         __commandType = state.GetComponentTypeHandle<GameEntityBreakCommand>();
@@ -2788,12 +2785,14 @@ public partial struct GameEntityBreakSystem : ISystem
         __actorInfoType = state.GetComponentTypeHandle<GameEntityActorInfo>();
         __actorTimeType = state.GetComponentTypeHandle<GameEntityActorTime>();
         __delayType = state.GetComponentTypeHandle<GameNodeDelay>();
+        __angleType = state.GetComponentTypeHandle<GameNodeAngle>();
         __velocityType = state.GetComponentTypeHandle<GameNodeVelocity>();
         __breakInfos = state.GetComponentLookup<GameEntityBreakInfo>();
         __entityStates = state.GetComponentLookup<GameNodeStatus>();
         __actionStates = state.GetComponentLookup<GameActionStatus>();
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
     }
@@ -2805,10 +2804,12 @@ public partial struct GameEntityBreakSystem : ISystem
     {
         InterruptEx interrupt;
         interrupt.entityArrayType = __entityArrayType.UpdateAsRef(ref state);
-        interrupt.disabledType = __disabledType.UpdateAsRef(ref state);
-        interrupt.eventInfoType = __eventInfoType.UpdateAsRef(ref state);
+        interrupt.disabledType = __disabledType.UpdateAsRef(ref state); 
         interrupt.nodeStatusType = __nodeStatusType.UpdateAsRef(ref state);
+        interrupt.surfaceType = __surfaceType.UpdateAsRef(ref state);
+        interrupt.eventInfoType = __eventInfoType.UpdateAsRef(ref state);
         interrupt.entityActionType = __entityActionType.UpdateAsRef(ref state);
+        interrupt.actorDelayType = __actorDelayType.UpdateAsRef(ref state);
         interrupt.velocityComponentType = __velocityComponentType.UpdateAsRef(ref state);
         interrupt.positionType = __positionType.UpdateAsRef(ref state);
         interrupt.commandType = __commandType.UpdateAsRef(ref state);
@@ -2816,6 +2817,7 @@ public partial struct GameEntityBreakSystem : ISystem
         interrupt.actorInfoType = __actorInfoType.UpdateAsRef(ref state);
         interrupt.actorTimeType = __actorTimeType.UpdateAsRef(ref state);
         interrupt.delayType = __delayType.UpdateAsRef(ref state);
+        interrupt.angleType = __angleType.UpdateAsRef(ref state);
         interrupt.velocityType = __velocityType.UpdateAsRef(ref state);
         interrupt.breakInfos = __breakInfos.UpdateAsRef(ref state);
         interrupt.entityStates = __entityStates.UpdateAsRef(ref state);

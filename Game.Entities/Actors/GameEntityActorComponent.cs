@@ -325,10 +325,11 @@ public struct GameEntityActionCommand : IComponentData, IEnableableComponent
 public struct GameEntityBreakCommand : IComponentData, IEnableableComponent
 {
     public int version;
-    public int delayIndex;
+    public float hit;
     public float alertTime;
     public float delayTime;
     public GameDeadline time;
+    public float3 normal;
 }
 
 public struct GameEntityActionCommander : IComponentData, IEnableableComponent
@@ -675,10 +676,11 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
     {
         GameEntityBreakCommand command;
         command.version = commandVersion;
-        command.delayIndex = -1;
+        command.hit = 0;
         command.alertTime = alertTime;
         command.delayTime = delayTime;
         command.time = time;
+        command.normal = float3.zero;
 
         this.SetComponentData(command);
         this.SetComponentEnabled<GameEntityBreakCommand>(true);
@@ -688,10 +690,11 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
     {
         GameEntityBreakCommand command;
         command.version = this.commandVersion;
-        command.delayIndex = -1;
+        command.hit = 0;
         command.alertTime = alertTime;
         command.delayTime = delayTime;
         command.time = time;
+        command.normal = float3.zero;
 
         //commander.SetComponentData<GameEntityActionCommand>(entity, default);
         //commander.SetComponentData<GameEntityEventCommand>(entity, default);
