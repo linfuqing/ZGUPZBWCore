@@ -8,7 +8,6 @@ using ZG;
 [EntityComponent(typeof(GameFormulaFactoryTime))]
 [EntityComponent(typeof(GameFormulaFactoryTimeScale))]
 [EntityComponent(typeof(GameFormulaFactoryItemTimeScale))]
-[EntityComponent(typeof(GameFormulaFactoryVersion))]
 [EntityComponent(typeof(GameFormulaFactoryCommand))]
 [EntityComponent(typeof(GameFormulaFactoryStorage))]
 public class GameFormulaFactoryComponent : EntityProxyComponent, IEntityComponent
@@ -43,14 +42,6 @@ public class GameFormulaFactoryComponent : EntityProxyComponent, IEntityComponen
         get
         {
             return this.GetComponentData<GameFormulaFactoryStatus>();
-        }
-    }
-
-    public int version
-    {
-        get
-        {
-            return this.GetComponentData<GameFormulaFactoryVersion>().value;
         }
     }
 
@@ -110,9 +101,9 @@ public class GameFormulaFactoryComponent : EntityProxyComponent, IEntityComponen
         GameFormulaFactoryCommand command;
         command.entity = entity;
         command.formulaIndex = formulaIndex;
-        command.version = version;
 
         this.SetComponentData(command);
+        this.SetComponentEnabled<GameFormulaFactoryCommand>(true);
     }
 
     void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
@@ -141,9 +132,5 @@ public class GameFormulaFactoryComponent : EntityProxyComponent, IEntityComponen
             timeScale.value = _timeScale;
             assigner.SetComponentData(entity, timeScale);
         }
-
-        GameFormulaFactoryVersion version;
-        version.value = 1;
-        assigner.SetComponentData(entity, version);
     }
 }

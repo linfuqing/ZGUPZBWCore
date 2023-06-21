@@ -531,7 +531,7 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
                 healthBuffs.Create().value = healthBuff;
             }
 
-            if (torpor != 0 && 
+            if (math.abs(torpor) > math.FLT_MIN_NORMAL && 
                 buff.value.torpidityTime > math.FLT_MIN_NORMAL && 
                 nodeStates.HasComponent(target) && 
                 (nodeStates[target].value & (int)GameEntityStatus.KnockedOut) != (int)GameEntityStatus.KnockedOut)

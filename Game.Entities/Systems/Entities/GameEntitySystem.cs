@@ -2241,15 +2241,13 @@ public partial struct GameEntityHitSystem : ISystem
             if (hit.value > math.FLT_MIN_NORMAL && actorHits[index].destinationHit > math.FLT_MIN_NORMAL)
             {
                 var actorInfo = actorInfos[index];
-                var actionInfo = actionInfos[index];
 
                 //UnityEngine.Debug.Log("Hit: " + entityArray[index].ToString() + ":" + hit.value + ":" + actionInfo.hit + ":" + hit.time + ":" + actionInfo.time + (actorInfo.version != actionInfo.version));
                 //判定当前技能的霸体
-                if (actorInfo.version != actionInfo.version || actionInfo.time < hit.time || actionInfo.hit < hit.value)
+                if (actorInfo.alertTime < hit.time)
                 {
-                    Entity entity = entityArray[index];
-
-                    if (actorInfo.alertTime < hit.time)
+                    var actionInfo = actionInfos[index];
+                    if (actionInfo.version != actorInfo.version || actionInfo.time < hit.time || actionInfo.hit < hit.value)
                     {
                         var instance = instances[index];
 
@@ -2297,6 +2295,8 @@ public partial struct GameEntityHitSystem : ISystem
                         else
                             delayIndex = 0;
 
+                        Entity entity = entityArray[index];
+
                         commands.SetComponentEnabled(entity, true);
 
                         GameEntityBreakCommand command;
@@ -2308,23 +2308,10 @@ public partial struct GameEntityHitSystem : ISystem
 
                         commands[entity] = command;
 
-                        /*if (commands.HasComponent(entity))
-                            commands[entity] = command;
-                        else
-                        {
-                            EntityCommandStructChange result;
-                            result.componentType = ComponentType.ReadWrite<GameEntityBreakCommand>();
-                            result.entity = entity;
-
-                            entityManager.Enqueue(result);
-
-                            results.SetComponentData(entity, command);
-                        }*/
+                        hit.value = 0.0f;
+                        hit.normal = float3.zero;
+                        outputs[entity] = hit;
                     }
-
-                    hit.value = 0.0f;
-                    hit.normal = float3.zero;
-                    outputs[entity] = hit;
                 }
             }
         }
