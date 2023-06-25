@@ -280,6 +280,8 @@ public struct GameEntityActorDelay : IBufferElementData
     public Flag flag;
     [Tooltip("要触发该状态受到消韧的最小值")]
     public int minHit;
+    [Tooltip("触发该状态后“被削韧值”覆写为该值，可把该值填成负数使其成为霸体")]
+    public int hitOverride;
     [Tooltip("打断时间")]
     public float delayTime;
     [Tooltip("被打断之后过多久才能被再次打断")]

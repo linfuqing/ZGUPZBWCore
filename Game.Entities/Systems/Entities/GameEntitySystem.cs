@@ -2218,8 +2218,7 @@ public partial struct GameEntityHitSystem : ISystem
         [ReadOnly]
         public NativeArray<GameEntityCommandVersion> commandVersions;
 
-        [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameEntityBreakCommand> commands;
+        public NativeArray<GameEntityBreakCommand> commands;
 
         [NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameEntityHit> outputs;
@@ -2227,7 +2226,7 @@ public partial struct GameEntityHitSystem : ISystem
         //public EntityCommandQueue<EntityCommandStructChange>.ParallelWriter entityManager;
         //public EntityComponentAssigner.ComponentDataParallelWriter<GameEntityBreakCommand> results;
 
-        public void Execute(int index)
+        public bool Execute(int index)
         {
             var hit = inputs[index];
             if (hit.value > math.FLT_MIN_NORMAL && actorHits[index].destinationHit > math.FLT_MIN_NORMAL)
@@ -2235,34 +2234,40 @@ public partial struct GameEntityHitSystem : ISystem
                 var actorInfo = actorInfos[index];
 
                 //UnityEngine.Debug.Log("Hit: " + entityArray[index].ToString() + ":" + hit.value + ":" + actionInfo.hit + ":" + hit.time + ":" + actionInfo.time + (actorInfo.version != actionInfo.version));
-                //判定当前技能的霸体
                 if (actorInfo.alertTime < hit.time)
                 {
-                    Entity entity = entityArray[index];
-
+                    //判定当前技能的霸体
                     var actionInfo = actionInfos[index];
                     if (actionInfo.version != actorInfo.version || actionInfo.time < hit.time || actionInfo.hit < hit.value)
                     {
+                        //UnityEngine.Debug.LogError($"{entity} : {hit.value} : {actionInfo.hit} : {hit.time}");
+
                         var instance = instances[index];
 
-                        commands.SetComponentEnabled(entity, true);
+                        //commands.SetComponentEnabled(entity, true);
 
                         GameEntityBreakCommand command;
                         command.version = commandVersions[index].value;
-                        command.hit = hit.value - actionInfo.hit;
+                        command.hit = math.max(hit.value - actionInfo.hit, 0.0f);
                         command.alertTime = instance.alertTime;
                         command.delayTime = instance.delayTime;
                         command.time = hit.time;
                         command.normal = hit.normal;
 
-                        commands[entity] = command;
-                    }
+                        commands[index] = command;
 
-                    hit.value = 0.0f;
-                    hit.normal = float3.zero;
-                    outputs[entity] = hit;
+                        return true;
+                    }
+                    else
+                    {
+                        hit.value = 0.0f;
+                        hit.normal = float3.zero;
+                        outputs[entityArray[index]] = hit;
+                    }
                 }
             }
+
+            return false;
         }
     }
 
@@ -2284,8 +2289,7 @@ public partial struct GameEntityHitSystem : ISystem
         [ReadOnly]
         public ComponentTypeHandle<GameEntityCommandVersion> commandVersionType;
 
-        [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameEntityBreakCommand> commands;
+        public ComponentTypeHandle<GameEntityBreakCommand> commandType;
 
         [NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameEntityHit> hits;
@@ -2303,14 +2307,17 @@ public partial struct GameEntityHitSystem : ISystem
             computeHits.actorInfos = chunk.GetNativeArray(ref actorInfoType);
             computeHits.actionInfos = chunk.GetNativeArray(ref actionInfoType);
             computeHits.commandVersions = chunk.GetNativeArray(ref commandVersionType);
-            computeHits.commands = commands;
+            computeHits.commands = chunk.GetNativeArray(ref commandType);
             computeHits.outputs = hits;
             //computeHits.entityManager = entityManager;
             //computeHits.results = results;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
-                computeHits.Execute(i);
+            {
+                if (computeHits.Execute(i))
+                    chunk.SetComponentEnabled(ref commandType, i, true);
+            }
         }
     }
 
@@ -2325,7 +2332,8 @@ public partial struct GameEntityHitSystem : ISystem
     private ComponentTypeHandle<GameEntityActionInfo> __actionInfoType;
     private ComponentTypeHandle<GameEntityCommandVersion> __commandVersionType;
 
-    private ComponentLookup<GameEntityBreakCommand> __commands;
+    private ComponentTypeHandle<GameEntityBreakCommand> __commandType;
+
     private ComponentLookup<GameEntityHit> __hits;
 
     [BurstCompile]
@@ -2345,7 +2353,7 @@ public partial struct GameEntityHitSystem : ISystem
         __actorInfoType = state.GetComponentTypeHandle<GameEntityActorInfo>(true);
         __actionInfoType = state.GetComponentTypeHandle<GameEntityActionInfo>(true);
         __commandVersionType = state.GetComponentTypeHandle<GameEntityCommandVersion>(true);
-        __commands = state.GetComponentLookup<GameEntityBreakCommand>();
+        __commandType = state.GetComponentTypeHandle<GameEntityBreakCommand>();
         __hits = state.GetComponentLookup<GameEntityHit>();
     }
 
@@ -2366,7 +2374,7 @@ public partial struct GameEntityHitSystem : ISystem
         computeHits.actorInfoType = __actorInfoType.UpdateAsRef(ref state);
         computeHits.actionInfoType = __actionInfoType.UpdateAsRef(ref state);
         computeHits.commandVersionType = __commandVersionType.UpdateAsRef(ref state);
-        computeHits.commands = __commands.UpdateAsRef(ref state);
+        computeHits.commandType = __commandType.UpdateAsRef(ref state);
         computeHits.hits = __hits.UpdateAsRef(ref state);
         state.Dependency = computeHits.ScheduleParallelByRef(__group, state.Dependency);
     }
@@ -2412,6 +2420,8 @@ public partial struct GameEntityBreakSystem : ISystem
         public NativeArray<GameEntityActorInfo> actorInfos;
 
         public NativeArray<GameEntityActorTime> actorTimes;
+
+        public NativeArray<GameEntityHit> hits;
 
         public NativeArray<GameNodeDelay> delay;
 
@@ -2495,6 +2505,10 @@ public partial struct GameEntityBreakSystem : ISystem
                 int delayIndex = -1;
                 if (isAlert)
                 {
+                    var hit = index < hits.Length ? hits[index] : default;
+                    hit.value = 0.0f;
+                    hit.normal = float3.zero;
+
                     if (index < this.actorDelay.Length)
                     {
                         var actorDelay = this.actorDelay[index];
@@ -2514,6 +2528,8 @@ public partial struct GameEntityBreakSystem : ISystem
                                     angle.value = (half)math.atan2(forward.x, forward.z);
                                     this.angles[index] = angle;
                                 }
+
+                                hit.value = targetDeley.hitOverride;
 
                                 command.alertTime = targetDeley.alertTime;
                                 command.delayTime = targetDeley.delayTime;
@@ -2537,6 +2553,9 @@ public partial struct GameEntityBreakSystem : ISystem
                     }
                     else
                         delayIndex = 0;
+
+                    if(index < hits.Length)
+                        hits[index] = hit;
                 }
 
                 actorInfo.alertTime = command.time + (isAlert ? command.alertTime : 0.0f);
@@ -2645,6 +2664,8 @@ public partial struct GameEntityBreakSystem : ISystem
 
         public ComponentTypeHandle<GameEntityActorTime> actorTimeType;
 
+        public ComponentTypeHandle<GameEntityHit> hitType;
+
         public ComponentTypeHandle<GameNodeVelocity> velocityType;
 
         public ComponentTypeHandle<GameNodeDelay> delayType;
@@ -2690,6 +2711,7 @@ public partial struct GameEntityBreakSystem : ISystem
             interrupt.commandVersions = chunk.GetNativeArray(ref commandVersionType);
             interrupt.actorInfos = chunk.GetNativeArray(ref actorInfoType);
             interrupt.actorTimes = chunk.GetNativeArray(ref actorTimeType);
+            interrupt.hits = chunk.GetNativeArray(ref hitType);
             interrupt.velocities = chunk.GetNativeArray(ref velocityType);
             interrupt.actorDelay = chunk.GetBufferAccessor(ref actorDelayType);
             interrupt.angles = chunk.GetNativeArray(ref angleType);
@@ -2747,6 +2769,8 @@ public partial struct GameEntityBreakSystem : ISystem
 
     private ComponentTypeHandle<GameEntityActorTime> __actorTimeType;
 
+    private ComponentTypeHandle<GameEntityHit> __hitType;
+
     private ComponentTypeHandle<GameNodeVelocity> __velocityType;
 
     private ComponentTypeHandle<GameNodeDelay> __delayType;
@@ -2784,6 +2808,7 @@ public partial struct GameEntityBreakSystem : ISystem
         __commandVersionType = state.GetComponentTypeHandle<GameEntityCommandVersion>();
         __actorInfoType = state.GetComponentTypeHandle<GameEntityActorInfo>();
         __actorTimeType = state.GetComponentTypeHandle<GameEntityActorTime>();
+        __hitType = state.GetComponentTypeHandle<GameEntityHit>();
         __delayType = state.GetComponentTypeHandle<GameNodeDelay>();
         __angleType = state.GetComponentTypeHandle<GameNodeAngle>();
         __velocityType = state.GetComponentTypeHandle<GameNodeVelocity>();
@@ -2816,6 +2841,7 @@ public partial struct GameEntityBreakSystem : ISystem
         interrupt.commandVersionType = __commandVersionType.UpdateAsRef(ref state);
         interrupt.actorInfoType = __actorInfoType.UpdateAsRef(ref state);
         interrupt.actorTimeType = __actorTimeType.UpdateAsRef(ref state);
+        interrupt.hitType = __hitType.UpdateAsRef(ref state);
         interrupt.delayType = __delayType.UpdateAsRef(ref state);
         interrupt.angleType = __angleType.UpdateAsRef(ref state);
         interrupt.velocityType = __velocityType.UpdateAsRef(ref state);
