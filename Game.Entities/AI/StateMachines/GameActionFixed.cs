@@ -194,6 +194,10 @@ public partial class GameActionFixedExecutorSystem :
 
         public Random random;
 
+        public ArchetypeChunk chunk;
+
+        public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
+
         [ReadOnly]
         public BufferAccessor<GameActionFixedFrame> frames;
 
@@ -206,8 +210,8 @@ public partial class GameActionFixedExecutorSystem :
         [ReadOnly]
         public NativeArray<GameActionFixedStageIndex> stageIndices;
 
-        [ReadOnly]
-        public NativeArray<Entity> entityArray;
+        //[ReadOnly]
+        //public NativeArray<Entity> entityArray;
 
         [ReadOnly]
         public NativeArray<Translation> translations;
@@ -221,7 +225,7 @@ public partial class GameActionFixedExecutorSystem :
 
         public NativeArray<GameNavMeshAgentTarget> targets;
 
-        public EntityAddDataQueue.ParallelWriter entityManager;
+        //public EntityAddDataQueue.ParallelWriter entityManager;
 
         public int Execute(bool isEntry, int index)
         {
@@ -291,9 +295,13 @@ public partial class GameActionFixedExecutorSystem :
                 target.position = frame.position;
 
                 if (index < targets.Length)
+                {
                     targets[index] = target;
-                else
-                    entityManager.AddComponentData(entityArray[index], target);
+
+                    chunk.SetComponentEnabled(ref targetType, index, true);
+                }
+                /*else
+                    entityManager.AddComponentData(entityArray[index], target);*/
 
                 info.status = GameActionFixedInfo.Status.Moving;
             }
@@ -308,8 +316,8 @@ public partial class GameActionFixedExecutorSystem :
     {
         public double time;
 
-        [ReadOnly]
-        public EntityTypeHandle entityType;
+        //[ReadOnly]
+        //public EntityTypeHandle entityType;
 
         [ReadOnly]
         public BufferTypeHandle<GameActionFixedFrame> frameType;
@@ -333,7 +341,7 @@ public partial class GameActionFixedExecutorSystem :
 
         public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
 
-        public EntityAddDataQueue.ParallelWriter entityManager;
+        //public EntityAddDataQueue.ParallelWriter entityManager;
 
         public bool Create(
             int index, 
@@ -343,7 +351,9 @@ public partial class GameActionFixedExecutorSystem :
             executor.time = time;
             long hash = math.aslong(time);
             executor.random = new Random((uint)hash ^ (uint)(hash >> 32) ^ (uint)index);
-            executor.entityArray = chunk.GetNativeArray(entityType);
+            executor.chunk = chunk;
+            executor.targetType = targetType;
+            //executor.entityArray = chunk.GetNativeArray(entityType);
             executor.frames = chunk.GetBufferAccessor(ref frameType);
             executor.nextFrames = chunk.GetBufferAccessor(ref nextFrameType);
             executor.stages = chunk.GetBufferAccessor(ref stageType);
@@ -353,15 +363,15 @@ public partial class GameActionFixedExecutorSystem :
             executor.infos = chunk.GetNativeArray(ref infoType);
             executor.rotations = chunk.GetNativeArray(ref rotationType);
             executor.targets = chunk.GetNativeArray(ref targetType);
-            executor.entityManager = entityManager;
+            //executor.entityManager = entityManager;
 
             return true;
         }
     }
 
     private GameSyncTime __time;
-    private EntityAddDataPool __endFrameBarrier;
-    private EntityAddDataQueue __entityManager;
+    //private EntityAddDataPool __endFrameBarrier;
+    //private EntityAddDataQueue __entityManager;
 
     public override IEnumerable<EntityQueryDesc> runEntityArchetypeQueries => __runEntityArchetypeQueries;
 
@@ -371,24 +381,24 @@ public partial class GameActionFixedExecutorSystem :
 
         __time = new GameSyncTime(ref this.GetState());
 
-        var world = World;
-        __endFrameBarrier = world.GetOrCreateSystemUnmanaged<GameActionStructChangeSystem>().addDataCommander;
+       // var world = World;
+        //__endFrameBarrier = world.GetOrCreateSystemUnmanaged<GameActionStructChangeSystem>().addDataCommander;
     }
 
     protected override void OnUpdate()
     {
-        __entityManager = __endFrameBarrier.Create();
+        //__entityManager = __endFrameBarrier.Create();
 
         base.OnUpdate();
 
-        __entityManager.AddJobHandleForProducer<GameActionFixedExecutorSystem>(Dependency);
+        //__entityManager.AddJobHandleForProducer<GameActionFixedExecutorSystem>(Dependency);
     }
 
     protected override ExecutorFactory _GetRun(ref JobHandle inputDeps)
     {
         ExecutorFactory executorFactory;
         executorFactory.time = __time.nextTime;
-        executorFactory.entityType = GetEntityTypeHandle();
+        //executorFactory.entityType = GetEntityTypeHandle();
         executorFactory.frameType = GetBufferTypeHandle<GameActionFixedFrame>(true);
         executorFactory.nextFrameType = GetBufferTypeHandle<GameActionFixedNextFrame>(true);
         executorFactory.stageType = GetBufferTypeHandle<GameActionFixedStage>(true);
@@ -398,7 +408,7 @@ public partial class GameActionFixedExecutorSystem :
         executorFactory.infoType = GetComponentTypeHandle<GameActionFixedInfo>();
         executorFactory.rotationType = GetComponentTypeHandle<Rotation>();
         executorFactory.targetType = GetComponentTypeHandle<GameNavMeshAgentTarget>();
-        executorFactory.entityManager = __entityManager.AsComponentParallelWriter<GameNavMeshAgentTarget>(runGroup.CalculateEntityCount());
+        //executorFactory.entityManager = __entityManager.AsComponentParallelWriter<GameNavMeshAgentTarget>(runGroup.CalculateEntityCount());
 
         return executorFactory;
     }

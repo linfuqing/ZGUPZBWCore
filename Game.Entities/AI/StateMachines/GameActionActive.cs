@@ -440,15 +440,17 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
 
         public bool isHasPositions;
 
-        [ReadOnly]
-        public NativeArray<Entity> entityArray;
+        public ArchetypeChunk chunk;
+
+        public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
+
+        //[ReadOnly]
+        //public NativeArray<Entity> entityArray;
 
         [ReadOnly]
         public NativeArray<GameActionActiveInfo> infos;
         
         public NativeArray<GameNavMeshAgentTarget> targets;
-
-        public EntityAddDataQueue.ParallelWriter entityManager;
 
         public bool Execute(
             int runningStatus,
@@ -464,9 +466,11 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
                 target.destinationAreaMask = -1;
                 target.position = infos[index].position;
                 if (index < targets.Length)
+                {
                     targets[index] = target;
-                else
-                    entityManager.AddComponentData(entityArray[index], target);
+
+                    chunk.SetComponentEnabled(ref targetType, index, true);
+                }
             }
 
             /*if (versions.Exists(entity))
@@ -526,8 +530,8 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
     {
         //public double time;
 
-        [ReadOnly]
-        public EntityTypeHandle entityType;
+        //[ReadOnly]
+        //public EntityTypeHandle entityType;
 
         [ReadOnly]
         public BufferTypeHandle<GameNodePosition> positionType;
@@ -537,8 +541,6 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
 
         public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
 
-        public EntityAddDataQueue.ParallelWriter entityManager;
-
         public bool Create(
             int index, 
             in ArchetypeChunk chunk,
@@ -546,10 +548,11 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
         {
             //escaper.time = time;
             escaper.isHasPositions = chunk.Has(ref positionType);
-            escaper.entityArray = chunk.GetNativeArray(entityType);
+            escaper.chunk = chunk;
+            escaper.targetType = targetType;
+            //escaper.entityArray = chunk.GetNativeArray(entityType);
             escaper.infos = chunk.GetNativeArray(ref infoType);
             escaper.targets = chunk.GetNativeArray(ref targetType);
-            escaper.entityManager = entityManager;
             return true;
         }
     }
@@ -560,6 +563,10 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
         public GameTime time;
 
         public Random random;
+
+        public ArchetypeChunk chunk;
+
+        public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
 
         [ReadOnly]
         public BlobAssetReference<GameActionSetDefinition> actions;
@@ -662,8 +669,8 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
         [NativeDisableParallelForRestriction]
         public ComponentLookup<GameNodeVersion> versions;
 
-        public EntityAddDataQueue.ParallelWriter addComponentCommander;
-        public EntityCommandQueue<EntityCommandStructChange>.ParallelWriter removeComponentCommander;
+        //public EntityAddDataQueue.ParallelWriter addComponentCommander;
+        //public EntityCommandQueue<EntityCommandStructChange>.ParallelWriter removeComponentCommander;
 
         public static unsafe bool IsDo(
             float collisionTolerance,
@@ -1056,9 +1063,13 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
                                         target.destinationAreaMask = -1;
                                         target.position = source + forward * distance;
                                         if (index < targets.Length)
+                                        {
                                             targets[index] = target;
-                                        else// if (!isDelay)
-                                            addComponentCommander.AddComponentData(entity, target);
+
+                                            chunk.SetComponentEnabled(ref targetType, index, true);
+                                        }
+                                        /*else// if (!isDelay)
+                                            addComponentCommander.AddComponentData(entity, target);*/
                                     }
                                 }
                                 else
@@ -1110,10 +1121,11 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
 
                                         if (index < targets.Length)
                                         {
-                                            EntityCommandStructChange targetCommand;
+                                            chunk.SetComponentEnabled(ref targetType, index, false);
+                                            /*EntityCommandStructChange targetCommand;
                                             targetCommand.entity = entity;
                                             targetCommand.componentType = ComponentType.ReadWrite<GameNavMeshAgentTarget>();
-                                            removeComponentCommander.Enqueue(targetCommand);
+                                            removeComponentCommander.Enqueue(targetCommand);*/
                                         }
                                     }
 
@@ -1152,10 +1164,11 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
 
                         if (index < targets.Length)
                         {
-                            EntityCommandStructChange targetCommand;
+                            chunk.SetComponentEnabled(ref targetType, index, false);
+                            /*EntityCommandStructChange targetCommand;
                             targetCommand.entity = entity;
                             targetCommand.componentType = ComponentType.ReadWrite<GameNavMeshAgentTarget>();
-                            removeComponentCommander.Enqueue(targetCommand);
+                            removeComponentCommander.Enqueue(targetCommand);*/
                         }
                     }
 
@@ -1273,8 +1286,8 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
         [NativeDisableParallelForRestriction]
         public ComponentLookup<GameNodeVersion> versions;
 
-        public EntityAddDataQueue.ParallelWriter addComponentCommander;
-        public EntityCommandQueue<EntityCommandStructChange>.ParallelWriter removeComponentCommander;
+        //public EntityAddDataQueue.ParallelWriter addComponentCommander;
+        //public EntityCommandQueue<EntityCommandStructChange>.ParallelWriter removeComponentCommander;
 
         public bool Create(
             int index, 
@@ -1285,6 +1298,8 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
             executor.collisionTolerance = collisionTolerance;
             executor.time = time;
             executor.random = new Random((uint)(hash ^ hash >> 32) ^ (uint)index);
+            executor.chunk = chunk;
+            executor.targetType = targetType;
             executor.actions = actions;
             executor.actionColliders = actionColliders;
             executor.disabled = disabled;
@@ -1320,8 +1335,8 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
             executor.infos = chunk.GetNativeArray(ref infoType);
             executor.commands = commands;
             executor.versions = versions;
-            executor.addComponentCommander = addComponentCommander;
-            executor.removeComponentCommander = removeComponentCommander;
+            //executor.addComponentCommander = addComponentCommander;
+            //executor.removeComponentCommander = removeComponentCommander;
 
             return true;
         }
@@ -1330,10 +1345,10 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
     public float collisionTolerance = 0.1f;
 
     private GameSyncTime __time;
-    private EntityAddDataPool __addComponentPool;
-    private EntityAddDataQueue.ParallelWriter __addComponentCommander;
-    private EntityCommandPool<EntityCommandStructChange> __removeComponentPool;
-    private EntityCommandQueue<EntityCommandStructChange>.ParallelWriter __removeComponentCommander;
+    //private EntityAddDataPool __addComponentPool;
+    //private EntityAddDataQueue.ParallelWriter __addComponentCommander;
+    //private EntityCommandPool<EntityCommandStructChange> __removeComponentPool;
+    //private EntityCommandQueue<EntityCommandStructChange>.ParallelWriter __removeComponentCommander;
     private SingletonAssetContainer<BlobAssetReference<Collider>> __actionColliders;
 
     public override IEnumerable<EntityQueryDesc> runEntityArchetypeQueries => __runEntityArchetypeQueries;
@@ -1344,12 +1359,12 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
 
         __time = new GameSyncTime(ref this.GetState());
 
-        World world = World;
+        //World world = World;
 
-        ref var endFrameBarrier = ref world.GetOrCreateSystemUnmanaged<GameActionStructChangeSystem>();
+        //ref var endFrameBarrier = ref world.GetOrCreateSystemUnmanaged<GameActionStructChangeSystem>();
 
-        __addComponentPool = endFrameBarrier.addDataCommander;
-        __removeComponentPool = endFrameBarrier.manager.removeComponentPool;
+        //__addComponentPool = endFrameBarrier.addDataCommander;
+        //__removeComponentPool = endFrameBarrier.manager.removeComponentPool;
 
         __actionColliders = SingletonAssetContainer<BlobAssetReference<Collider>>.instance;
     }
@@ -1359,18 +1374,18 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
         if (!SystemAPI.HasSingleton<GameActionSetData>())
             return;
 
-        var addComponentQueue = __addComponentPool.Create();
-        var removeComponentQueue = __removeComponentPool.Create();
+        //var addComponentQueue = __addComponentPool.Create();
+        //var removeComponentQueue = __removeComponentPool.Create();
 
-        __addComponentCommander = addComponentQueue.AsComponentParallelWriter<GameNavMeshAgentTarget>(exitGroup.CalculateEntityCount() + runGroup.CalculateEntityCount());
-        __removeComponentCommander = removeComponentQueue.parallelWriter;
+        //__addComponentCommander = addComponentQueue.AsComponentParallelWriter<GameNavMeshAgentTarget>(exitGroup.CalculateEntityCount() + runGroup.CalculateEntityCount());
+        //__removeComponentCommander = removeComponentQueue.parallelWriter;
 
         base.OnUpdate();
 
         var jobHandle = Dependency;
 
-        addComponentQueue.AddJobHandleForProducer<GameActionActiveExecutorSystem>(jobHandle);
-        removeComponentQueue.AddJobHandleForProducer<GameActionActiveExecutorSystem>(jobHandle);
+        //addComponentQueue.AddJobHandleForProducer<GameActionActiveExecutorSystem>(jobHandle);
+        //removeComponentQueue.AddJobHandleForProducer<GameActionActiveExecutorSystem>(jobHandle);
 
         __actionColliders.AddDependency(this.GetState().GetSystemID(), jobHandle);
     }
@@ -1379,11 +1394,11 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
     {
         EscaperFactory escaperFactory;
         //escaperFactory.time = __syncSystemGroup.nextTime;
-        escaperFactory.entityType = GetEntityTypeHandle();
+        //escaperFactory.entityType = GetEntityTypeHandle();
         escaperFactory.positionType = GetBufferTypeHandle<GameNodePosition>(true);
         escaperFactory.infoType = GetComponentTypeHandle<GameActionActiveInfo>(true);
         escaperFactory.targetType = GetComponentTypeHandle<GameNavMeshAgentTarget>();
-        escaperFactory.entityManager = __addComponentCommander;
+        //escaperFactory.entityManager = __addComponentCommander;
         return escaperFactory;
     }
 
@@ -1428,8 +1443,8 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
         executorFactory.infoType = GetComponentTypeHandle<GameActionActiveInfo>();
         executorFactory.commands = GetComponentLookup<GameEntityActionCommand>();
         executorFactory.versions = GetComponentLookup<GameNodeVersion>();
-        executorFactory.addComponentCommander = __addComponentCommander;
-        executorFactory.removeComponentCommander = __removeComponentCommander;
+        //executorFactory.addComponentCommander = __addComponentCommander;
+        //executorFactory.removeComponentCommander = __removeComponentCommander;
         return executorFactory;
     }
     

@@ -4,13 +4,11 @@ using Unity.Mathematics;
 using UnityEngine.Experimental.AI;
 using ZG;
 
-[Serializable]
 public struct GameNavMeshAgentQuery : ICleanupComponentData
 {
     public NativeFactoryObject<NavMeshQuery> value;
 }
 
-[Serializable]
 public struct GameNavMeshAgentQueryData : IComponentData
 {
     public int pathNodePoolSize;
@@ -26,15 +24,13 @@ public struct GameNavMeshAgentData : IComponentData
     //public float3 extends;
 }
 
-[Serializable]
-public struct GameNavMeshAgentTarget : IComponentData
+public struct GameNavMeshAgentTarget : IComponentData, IEnableableComponent
 {
     public int sourceAreaMask;
     public int destinationAreaMask;
     public float3 position;
 }
 
-[Serializable]
 public struct GameNavMeshAgentPathStatus : IComponentData
 {
     public PathQueryStatus pathResult;
@@ -53,7 +49,6 @@ public struct GameNavMeshAgentPathStatus : IComponentData
     }
 }
 
-[Serializable]
 public struct GameNavMeshAgentExtends : IBufferElementData
 {
     public float3 value;
@@ -66,12 +61,12 @@ public struct GameNavMeshAgentExtends : IBufferElementData
     }
 }
 
-[Serializable]
 public struct GameNavMeshAgentWayPoint : IBufferElementData
 {
     public NavMeshWayPoint value;
 }
 
+[EntityComponent(typeof(GameNavMeshAgentTarget))]
 [EntityComponent(typeof(GameNavMeshAgentQueryData))]
 [EntityComponent(typeof(GameNavMeshAgentPathStatus))]
 [EntityComponent(typeof(GameNavMeshAgentExtends))]
@@ -92,12 +87,14 @@ public class GameNavMeshAgentComponent : ZG.ComponentDataProxy<GameNavMeshAgentD
 
     public void ResetTarget()
     {
-        this.RemoveComponent<GameNavMeshAgentTarget>();
+        this.SetComponentEnabled<GameNavMeshAgentTarget>(false);
     }
 
     public override void Init(in Entity entity, EntityComponentAssigner assigner)
     {
         base.Init(entity, assigner);
+
+        assigner.SetComponentEnabled<GameNavMeshAgentTarget>(entity, false);
 
         GameNavMeshAgentQueryData instance;
         instance.pathNodePoolSize = _pathNodePoolSize;

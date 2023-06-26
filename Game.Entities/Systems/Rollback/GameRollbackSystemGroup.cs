@@ -52,18 +52,18 @@ public struct GameRollbackFrame
 
 public struct GameRollbackTime
 {
-    public readonly EntityQuery group;
+    public readonly EntityQuery Group;
 
     public int frameOffset
     {
-        get => group.GetSingleton<GameRollbackFrameOffset>().value;
+        get => Group.GetSingleton<GameRollbackFrameOffset>().value;
 
 
         set
         {
             GameRollbackFrameOffset offset;
             offset.value = value;
-            group.SetSingleton(offset);
+            Group.SetSingleton(offset);
         }
     }
 
@@ -71,7 +71,7 @@ public struct GameRollbackTime
     {
         get
         {
-            return (uint)(frameOffset + group.GetSingleton<RollbackFrame>().index);
+            return (uint)(frameOffset + Group.GetSingleton<RollbackFrame>().index);
         }
     }
 
@@ -79,7 +79,7 @@ public struct GameRollbackTime
     {
         get
         {
-            return group.GetSingleton<GameRollbackFrameDelta>().value;
+            return Group.GetSingleton<GameRollbackFrameDelta>().value;
         }
     }
 
@@ -87,16 +87,11 @@ public struct GameRollbackTime
 
     public GameRollbackTime(ref SystemState systemState)
     {
-        group = systemState.GetEntityQuery(new EntityQueryDesc()
-        {
-            All = new ComponentType[]
-            {
-                ComponentType.ReadOnly<RollbackFrame>(),
-                ComponentType.ReadOnly<GameRollbackFrameOffset>(),
-                ComponentType.ReadOnly<GameRollbackFrameDelta>()
-            },
-            Options = EntityQueryOptions.IncludeSystems
-        });
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            Group = builder
+                .WithAll<RollbackFrame, GameRollbackFrameOffset, GameRollbackFrameDelta>()
+                .WithOptions(EntityQueryOptions.IncludeSystems)
+                .Build(ref systemState);
     }
 }
 

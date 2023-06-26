@@ -160,11 +160,15 @@ public partial class GameActionFollowExecutorSystem : GameActionFollowSchedulerS
 
         public double time;
 
+        public ArchetypeChunk chunk;
+
+        public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
+
         [ReadOnly]
         public ComponentLookup<Translation> translationMap;
 
-        [ReadOnly]
-        public NativeArray<Entity> entityArray;
+        //[ReadOnly]
+        //public NativeArray<Entity> entityArray;
 
         [ReadOnly]
         public NativeArray<Translation> translations;
@@ -177,7 +181,7 @@ public partial class GameActionFollowExecutorSystem : GameActionFollowSchedulerS
         
         public NativeArray<GameNavMeshAgentTarget> targets;
 
-        public EntityAddDataQueue.ParallelWriter entityManager;
+        //public EntityAddDataQueue.ParallelWriter entityManager;
 
         public int Execute(bool isEntry, int index)
         {
@@ -197,9 +201,13 @@ public partial class GameActionFollowExecutorSystem : GameActionFollowSchedulerS
                 target.destinationAreaMask = -1;
                 target.position = temp;
                 if (index < targets.Length)
+                {
                     targets[index] = target;
-                else
-                    entityManager.AddComponentData(entityArray[index], target);
+
+                    chunk.SetComponentEnabled(ref targetType, index, true);
+                }
+                /*else
+                    entityManager.AddComponentData(entityArray[index], target);*/
             }
 
             /*if (index < this.positions.Length)
@@ -256,8 +264,8 @@ public partial class GameActionFollowExecutorSystem : GameActionFollowSchedulerS
         public ComponentLookup<Translation> translations;
         [ReadOnly]
         public BufferTypeHandle<GameNodePosition> positionType;
-        [ReadOnly]
-        public EntityTypeHandle entityType;
+        //[ReadOnly]
+        //public EntityTypeHandle entityType;
         [ReadOnly]
         public ComponentTypeHandle<Translation> translationType;
         [ReadOnly]
@@ -267,7 +275,7 @@ public partial class GameActionFollowExecutorSystem : GameActionFollowSchedulerS
 
         public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
 
-        public EntityAddDataQueue.ParallelWriter entityManager;
+        //public EntityAddDataQueue.ParallelWriter entityManager;
 
         public bool Create(
             int index, 
@@ -276,21 +284,23 @@ public partial class GameActionFollowExecutorSystem : GameActionFollowSchedulerS
         {
             executor.isHasPositions = chunk.Has(ref positionType);
             executor.time = time;
+            executor.chunk = chunk;
+            executor.targetType = targetType;
             executor.translationMap = translations;
-            executor.entityArray = chunk.GetNativeArray(entityType);
+            //executor.entityArray = chunk.GetNativeArray(entityType);
             executor.translations = chunk.GetNativeArray(ref translationType);
             executor.instances = chunk.GetNativeArray(ref instanceType);
             executor.actorMasters = chunk.GetNativeArray(ref actorMasterType);
             executor.targets = chunk.GetNativeArray(ref targetType);
-            executor.entityManager = entityManager;
+            //executor.entityManager = entityManager;
 
             return true;
         }
     }
 
     private GameSyncTime __time;
-    private EntityAddDataPool __endFrameBarrier;
-    private EntityAddDataQueue __entityManager;
+    //private EntityAddDataPool __endFrameBarrier;
+    //private EntityAddDataQueue __entityManager;
 
     public override IEnumerable<EntityQueryDesc> runEntityArchetypeQueries => __runEntityArchetypeQueries;
 
@@ -300,17 +310,17 @@ public partial class GameActionFollowExecutorSystem : GameActionFollowSchedulerS
 
         __time = new GameSyncTime(ref this.GetState());
 
-        var world = World;
-        __endFrameBarrier = world.GetOrCreateSystemUnmanaged<GameActionStructChangeSystem>().addDataCommander;
+        //var world = World;
+        //__endFrameBarrier = world.GetOrCreateSystemUnmanaged<GameActionStructChangeSystem>().addDataCommander;
     }
 
     protected override void OnUpdate()
     {
-        __entityManager = __endFrameBarrier.Create();
+        //__entityManager = __endFrameBarrier.Create();
 
         base.OnUpdate();
 
-        __entityManager.AddJobHandleForProducer<GameActionFollowExecutorSystem>(Dependency);
+        //__entityManager.AddJobHandleForProducer<GameActionFollowExecutorSystem>(Dependency);
     }
 
     protected override ExecutorFactory _GetRun(ref JobHandle inputDeps)
@@ -319,12 +329,12 @@ public partial class GameActionFollowExecutorSystem : GameActionFollowSchedulerS
         executorFactory.time = __time.nextTime;
         executorFactory.translations = GetComponentLookup<Translation>(true);
         executorFactory.positionType = GetBufferTypeHandle<GameNodePosition>(true);
-        executorFactory.entityType = GetEntityTypeHandle();
+        //executorFactory.entityType = GetEntityTypeHandle();
         executorFactory.translationType = GetComponentTypeHandle<Translation>(true);
         executorFactory.instanceType = GetComponentTypeHandle<GameActionFollowData>(true);
         executorFactory.actorMasterType = GetComponentTypeHandle<GameActorMaster>(true);
         executorFactory.targetType = GetComponentTypeHandle<GameNavMeshAgentTarget>();
-        executorFactory.entityManager = __entityManager.AsComponentParallelWriter<GameNavMeshAgentTarget>(runGroup.CalculateEntityCount());
+        //executorFactory.entityManager = __entityManager.AsComponentParallelWriter<GameNavMeshAgentTarget>(runGroup.CalculateEntityCount());
 
         return executorFactory;
     }

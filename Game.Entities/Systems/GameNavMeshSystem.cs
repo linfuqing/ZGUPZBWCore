@@ -171,16 +171,12 @@ public partial struct GameNavMeshSystem : ISystem
         [NativeDisableParallelForRestriction]
         public ComponentLookup<GameNodeVersion> versions;
 
-        public EntityCommandQueue<EntityCommandStructChange>.ParallelWriter entityManager;
-
         public void Execute(int index)
         {
             Entity entity = entityArray[index];
 
             var positions = this.positions[index];
             SetPosition(index, entity, targets[index].position, ref positions, ref directions, ref versions);
-
-            RemoveTarget(entityManager, entity);
         }
     }
 
@@ -215,8 +211,6 @@ public partial struct GameNavMeshSystem : ISystem
 
         [NativeDisableParallelForRestriction]
         public ComponentLookup<GameNodeVersion> versions;
-
-        public EntityCommandQueue<EntityCommandStructChange>.ParallelWriter entityManager;
 
         public static bool Locate(
             int agentTypeID, 
@@ -306,14 +300,14 @@ public partial struct GameNavMeshSystem : ISystem
             return result;
         }
 
-        public void Execute(int index)
+        public bool Execute(int index)
         {
             var extends = this.extends[index];
             var positions = this.positions[index];
             var wayPoints = this.wayPoints[index];
             int numWayPoints = wayPoints.Length;
 
-            bool isRepath, isVailTarget;
+            bool isRepath, isVailTarget, result = false;
             Entity entity = entityArray[index];
             var translation = translations[index].Value;
             var instance = instances[index];
@@ -361,7 +355,7 @@ public partial struct GameNavMeshSystem : ISystem
                         status.pathResult |= PathQueryStatus.PartialResult;
                     }
                     else
-                        RemoveTarget(entityManager, entity);
+                        result = true;
 
                     status.frameIndex = frameIndex;
                     status.translation = translation;
@@ -369,7 +363,7 @@ public partial struct GameNavMeshSystem : ISystem
 
                     //UnityEngine.Debug.Log($"{instance.agentTypeID} Target Fail.");
 
-                    return;
+                    return result;
                 }
             }
 
@@ -379,7 +373,7 @@ public partial struct GameNavMeshSystem : ISystem
                 if (numWayPoints > status.wayPointIndex)
                 {
                     if (frameIndex == status.frameIndex)
-                        return;
+                        return result;
 
                     NavMeshLocation location;
                     bool isVailLocation = navMeshQuery.IsValid(status.sourceLocation);
@@ -458,7 +452,7 @@ public partial struct GameNavMeshSystem : ISystem
                                     status.sourceLocation = location;
                                     states[index] = status;
 
-                                    return;
+                                    return result;
                                 }
 
                                 ++status.wayPointIndex;
@@ -491,13 +485,13 @@ public partial struct GameNavMeshSystem : ISystem
                             if (positions.Length < 1 || !positions[0].value.Equals(target.position))
                                 SetPosition(index, entity, target.position, ref positions, ref directions, ref versions);
 
-                            RemoveTarget(entityManager, entity);
+                            result = true;
 
                             status.frameIndex = frameIndex;
                             status.translation = translation;
                             states[index] = status;
 
-                            return;
+                            return result;
                         }
 
                         if (isVailTarget)
@@ -549,7 +543,7 @@ public partial struct GameNavMeshSystem : ISystem
                     }
                     else
                     {
-                        RemoveTarget(entityManager, entity);
+                        result = true;
 
                         status.pathResult = PathQueryStatus.Failure;
                     }
@@ -557,7 +551,7 @@ public partial struct GameNavMeshSystem : ISystem
                     //status.frameIndex = frameIndex;
                     states[index] = status;
 
-                    return;
+                    return result;
                 }
 
                 status.pathResult = navMeshQuery.BeginFindPath(
@@ -573,23 +567,23 @@ public partial struct GameNavMeshSystem : ISystem
             {
                 if ((status.pathResult & PathQueryStatus.InProgress) == PathQueryStatus.InProgress)
                 {
-                    var result = navMeshQuery.UpdateFindPath(
+                    var pathResult = navMeshQuery.UpdateFindPath(
                             instance.iteractorCount,
                             out int iterationsPerformed);
 
-                    if((result & PathQueryStatus.InProgress) == PathQueryStatus.InProgress)
+                    if((pathResult & PathQueryStatus.InProgress) == PathQueryStatus.InProgress)
                     {
-                        if(isRepath || status.pathResult != result)
+                        if(isRepath || status.pathResult != pathResult)
                         {
-                            status.pathResult = result;
+                            status.pathResult = pathResult;
 
                             states[index] = status;
                         }
 
-                        return;
+                        return result;
                     }
 
-                    status.pathResult = result;
+                    status.pathResult = pathResult;
                 }
 
                 if ((status.pathResult & PathQueryStatus.Success) != PathQueryStatus.Success)
@@ -605,11 +599,11 @@ public partial struct GameNavMeshSystem : ISystem
                         status.pathResult |= PathQueryStatus.PartialResult;
                     }
                     else
-                        RemoveTarget(entityManager, entity);
+                        result = true;
 
                     states[index] = status;
                     
-                    return;
+                    return result;
                 }
                 /*else
                 {
@@ -648,25 +642,25 @@ public partial struct GameNavMeshSystem : ISystem
                         status.pathResult |= PathQueryStatus.PartialResult;
                     }
                     else
-                        RemoveTarget(entityManager, entity);
+                        result = true;
 
                     states[index] = status;
 
-                    return;
+                    return result;
                 }
 
                 numWayPoints = navMeshWayPoints.Length;
                 if (numWayPoints < 3)
                 {
-                    RemoveTarget(entityManager, entity);
-
                     status.wayPointIndex = numWayPoints - 1;
                     if (numWayPoints < 1)
                     {
                         states[index] = status;
 
-                        return;
+                        return true;
                     }
+
+                    result = true;
                 }
                 else
                 {
@@ -685,11 +679,9 @@ public partial struct GameNavMeshSystem : ISystem
                     {
                         if (status.wayPointIndex == numWayPoints)
                         {
-                            RemoveTarget(entityManager, entity);
-
                             states[index] = status;
 
-                            return;
+                            return true;
                         }
                     }
                     else
@@ -703,6 +695,8 @@ public partial struct GameNavMeshSystem : ISystem
                 SetPosition(index, entity, position, ref positions, ref directions, ref versions);
             
             states[index] = status;
+
+            return result;
         }
     }
     
@@ -724,9 +718,9 @@ public partial struct GameNavMeshSystem : ISystem
         [ReadOnly]
         public ComponentTypeHandle<GameNavMeshAgentQuery> queryType;
         [ReadOnly]
-        public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
-        [ReadOnly]
         public ComponentTypeHandle<GameNodeStaticThreshold> staticThresholdType;
+
+        public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
 
         public ComponentTypeHandle<GameNodeDirection> directionType;
 
@@ -739,11 +733,8 @@ public partial struct GameNavMeshSystem : ISystem
         [NativeDisableParallelForRestriction]
         public ComponentLookup<GameNodeVersion> versions;
 
-        public EntityCommandQueue<EntityCommandStructChange>.ParallelWriter entityManager;
-
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
-            int count = chunk.Count;
             var entityArray = chunk.GetNativeArray(entityType);
             if (chunk.Has(ref positionType))
             {
@@ -767,11 +758,13 @@ public partial struct GameNavMeshSystem : ISystem
                         findPath.wayPoints = chunk.GetBufferAccessor(ref wayPointType);
                         findPath.positions = chunk.GetBufferAccessor(ref positionType);
                         findPath.versions = versions;
-                        findPath.entityManager = entityManager;
 
                         var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
-                        while(iterator.NextEntityIndex(out int i))
-                            findPath.Execute(i);
+                        while (iterator.NextEntityIndex(out int i))
+                        {
+                            if(findPath.Execute(i))
+                                chunk.SetComponentEnabled(ref targetType, i, false);
+                        }
                     }
                 }
                 else
@@ -782,27 +775,23 @@ public partial struct GameNavMeshSystem : ISystem
                     move.directions = chunk.GetNativeArray(ref directionType);
                     move.positions = chunk.GetBufferAccessor(ref positionType);
                     move.versions = versions;
-                    move.entityManager = entityManager;
 
                     var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
                     while (iterator.NextEntityIndex(out int i))
+                    {
                         move.Execute(i);
+
+                        chunk.SetComponentEnabled(ref targetType, i, false);
+                    }
                 }
             }
             else
             {
-                for (int i = 0; i < count; ++i)
-                    RemoveTarget(entityManager, entityArray[i]);
+                var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+                while (iterator.NextEntityIndex(out int i))
+                    chunk.SetComponentEnabled(ref targetType, i, false);
             }
         }
-    }
-
-    public static void RemoveTarget(EntityCommandQueue<EntityCommandStructChange>.ParallelWriter entityManager, in Entity entity)
-    {
-        EntityCommandStructChange command;
-        command.entity = entity;
-        command.componentType = ComponentType.ReadWrite< GameNavMeshAgentTarget>();
-        entityManager.Enqueue(command);
     }
 
     public static void SetPosition(
@@ -841,22 +830,49 @@ public partial struct GameNavMeshSystem : ISystem
     }
 
     private EntityQuery __group;
-    /*private EntityQuery __syncDataGroup;
-    private EntityQuery __updateDataGroup;*/
-    private GameUpdateTime __time;
-    private EntityCommandPool<EntityCommandStructChange> __entityManager;
+    private EntityTypeHandle __entityType;
+    private BufferTypeHandle<GameNavMeshAgentExtends> __extendType;
+    private ComponentTypeHandle<Translation> __translationType;
+    private ComponentTypeHandle<Rotation> __rotationType;
+    private ComponentTypeHandle<GameNavMeshAgentData> __instanceType;
+    private ComponentTypeHandle<GameNavMeshAgentQuery> __queryType;
+    private ComponentTypeHandle<GameNodeStaticThreshold> __staticThresholdType;
+    private ComponentTypeHandle<GameNavMeshAgentTarget> __targetType;
+    private ComponentTypeHandle<GameNodeDirection> __directionType;
+    private ComponentTypeHandle<GameNavMeshAgentPathStatus> __statusType;
+    private BufferTypeHandle<GameNavMeshAgentWayPoint> __wayPointType;
+    private BufferTypeHandle<GameNodePosition> __positionType;
 
+    private ComponentLookup<GameNodeVersion> __versions;
+
+    private GameUpdateTime __time;
+
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(ComponentType.ReadOnly<GameNavMeshAgentTarget>());
+        using(var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameNavMeshAgentTarget>()
+                    .Build(ref state);
 
-        /*__syncDataGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameSyncData>());
-        __updateDataGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameUpdateData>());*/
+        __entityType = state.GetEntityTypeHandle();
+        __extendType = state.GetBufferTypeHandle<GameNavMeshAgentExtends>(true);
+        __translationType = state.GetComponentTypeHandle<Translation>(true);
+        __rotationType = state.GetComponentTypeHandle<Rotation>(true);
+        __instanceType = state.GetComponentTypeHandle<GameNavMeshAgentData>(true);
+        __queryType = state.GetComponentTypeHandle<GameNavMeshAgentQuery>(true);
+        __targetType = state.GetComponentTypeHandle<GameNavMeshAgentTarget>(true);
+        __staticThresholdType = state.GetComponentTypeHandle<GameNodeStaticThreshold>(true);
+        __directionType = state.GetComponentTypeHandle<GameNodeDirection>();
+        __statusType = state.GetComponentTypeHandle<GameNavMeshAgentPathStatus>();
+        __wayPointType = state.GetBufferTypeHandle<GameNavMeshAgentWayPoint>();
+        __positionType = state.GetBufferTypeHandle<GameNodePosition>();
+        __versions = state.GetComponentLookup<GameNodeVersion>();
+
         __time = new GameUpdateTime(ref state);
-
-        __entityManager = state.World.GetOrCreateSystemUnmanaged<EndFrameStructChangeSystem>().manager.removeComponentPool;
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 
@@ -865,34 +881,24 @@ public partial struct GameNavMeshSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        var entityManager = __entityManager.Create();
-
-        //var syncData = __syncDataGroup.GetSingleton<GameSyncData>();
-        //var updateData = __updateDataGroup.GetSingleton<GameUpdateData>();
-
         FindPathEx findPath;
         findPath.frameIndex = __time.RollbackTime.frameIndex / __time.frameCount;// updateData.GetFrameIndex(syncData.realFrameIndex);
         findPath.deltaTimeSq = __time.delta;// updateData.GetDelta(syncData.now.delta);
         findPath.deltaTimeSq *= findPath.deltaTimeSq;
-        findPath.entityType = state.GetEntityTypeHandle();
-        findPath.extendType = state.GetBufferTypeHandle<GameNavMeshAgentExtends>(true);
-        findPath.translationType = state.GetComponentTypeHandle<Translation>(true);
-        findPath.rotationType = state.GetComponentTypeHandle<Rotation>(true);
-        findPath.instanceType = state.GetComponentTypeHandle<GameNavMeshAgentData>(true);
-        findPath.queryType = state.GetComponentTypeHandle<GameNavMeshAgentQuery>(true);
-        findPath.targetType = state.GetComponentTypeHandle<GameNavMeshAgentTarget>(true);
-        findPath.staticThresholdType = state.GetComponentTypeHandle<GameNodeStaticThreshold>(true);
-        findPath.directionType = state.GetComponentTypeHandle<GameNodeDirection>();
-        findPath.statusType = state.GetComponentTypeHandle<GameNavMeshAgentPathStatus>();
-        findPath.wayPointType = state.GetBufferTypeHandle<GameNavMeshAgentWayPoint>();
-        findPath.positionType = state.GetBufferTypeHandle<GameNodePosition>();
-        findPath.versions = state.GetComponentLookup<GameNodeVersion>();
-        findPath.entityManager = entityManager.parallelWriter;
+        findPath.entityType = __entityType.UpdateAsRef(ref state);
+        findPath.extendType = __extendType.UpdateAsRef(ref state);
+        findPath.translationType = __translationType.UpdateAsRef(ref state);
+        findPath.rotationType = __rotationType.UpdateAsRef(ref state);
+        findPath.instanceType = __instanceType.UpdateAsRef(ref state);
+        findPath.queryType = __queryType.UpdateAsRef(ref state);
+        findPath.targetType = __targetType.UpdateAsRef(ref state);
+        findPath.staticThresholdType = __staticThresholdType.UpdateAsRef(ref state);
+        findPath.directionType = __directionType.UpdateAsRef(ref state);
+        findPath.statusType = __statusType.UpdateAsRef(ref state);
+        findPath.wayPointType = __wayPointType.UpdateAsRef(ref state);
+        findPath.positionType = __positionType.UpdateAsRef(ref state);
+        findPath.versions = __versions.UpdateAsRef(ref state);
 
-        var jobHandle = findPath.ScheduleParallel(__group, state.Dependency);
-
-        entityManager.AddJobHandleForProducer<FindPathEx>(jobHandle);
-
-        state.Dependency = jobHandle;
+        state.Dependency = findPath.ScheduleParallelByRef(__group, state.Dependency);
     }
 }

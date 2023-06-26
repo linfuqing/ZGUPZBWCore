@@ -368,6 +368,10 @@ public partial class GameActionNormalExecutorSystem : GameActionNormalSchedulerS
 
         public Random random;
 
+        public ArchetypeChunk chunk;
+
+        public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
+
         [ReadOnly]
         public NativeArray<Entity> entityArray;
 
@@ -684,7 +688,10 @@ public partial class GameActionNormalExecutorSystem : GameActionNormalSchedulerS
                             target.sourceAreaMask = sourceAreaMask;
                             target.destinationAreaMask = destinationAreaMask;
                             target.position = point;
-                            entityManager.AddComponentData(entity, target);
+                            targets[index] = target;
+
+                            chunk.SetComponentEnabled(ref targetType, index, true);
+                            //entityManager.AddComponentData(entity, target);
                         }
                         else
                             GameNavMeshSystem.SetPosition(
@@ -812,6 +819,8 @@ public partial class GameActionNormalExecutorSystem : GameActionNormalSchedulerS
             executor.time = time;
             long hash = math.aslong(time);
             executor.random = new Random((uint)((int)(hash >> 32) ^ ((int)hash) ^ index));
+            executor.chunk = chunk;
+            executor.targetType = targetType;
             executor.entityArray = chunk.GetNativeArray(entityType);
             executor.translations = chunk.GetNativeArray(ref translationType);
             executor.rotations = chunk.GetNativeArray(ref rotationType);
@@ -895,7 +904,7 @@ public partial class GameActionNormalExecutorSystem : GameActionNormalSchedulerS
         executorFactory.positionType = GetBufferTypeHandle<GameNodePosition>();
         executorFactory.versions = GetComponentLookup<GameNodeVersion>();
         executorFactory.speedScaleComponents = GetBufferLookup<GameNodeSpeedScaleComponent>();
-        executorFactory.entityManager = __entityManager.AsParallelWriter((UnsafeUtility.SizeOf<GameDreamer>() + UnsafeUtility.SizeOf<GameNavMeshAgentTarget>()) * entityCount, entityCount << 1);
+        executorFactory.entityManager = __entityManager.AsParallelWriter((UnsafeUtility.SizeOf<GameDreamer>()/* + UnsafeUtility.SizeOf<GameNavMeshAgentTarget>()*/) * entityCount, entityCount/* << 1*/);
 
         return executorFactory;
     }

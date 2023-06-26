@@ -21,15 +21,11 @@ public struct GameUpdateTime
 
     public GameUpdateTime(ref SystemState systemState)
     {
-        Group = systemState.GetEntityQuery(
-            new EntityQueryDesc()
-            { 
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameUpdateFrameCount>()
-                },
-                Options = EntityQueryOptions.IncludeSystems
-            });
+        using (var builder = new EntityQueryBuilder(Unity.Collections.Allocator.Temp))
+            Group = builder
+                    .WithAll<GameUpdateFrameCount>()
+                    .WithOptions(EntityQueryOptions.IncludeSystems)
+                    .Build(ref systemState);
 
         RollbackTime = new GameRollbackTime(ref systemState);
     }
