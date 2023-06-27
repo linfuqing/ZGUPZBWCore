@@ -2228,9 +2228,9 @@ public partial struct GameEntityHitSystem : ISystem
 
         public bool Execute(int index)
         {
-            var hit = inputs[index];
-            if (hit.value > math.FLT_MIN_NORMAL && actorHits[index].destinationHit > math.FLT_MIN_NORMAL)
+            if (/*hit.value > math.FLT_MIN_NORMAL && */actorHits[index].destinationHit > math.FLT_MIN_NORMAL)
             {
+                var hit = inputs[index];
                 var actorInfo = actorInfos[index];
 
                 //UnityEngine.Debug.Log("Hit: " + entityArray[index].ToString() + ":" + hit.value + ":" + actionInfo.hit + ":" + hit.time + ":" + actionInfo.time + (actorInfo.version != actionInfo.version));
