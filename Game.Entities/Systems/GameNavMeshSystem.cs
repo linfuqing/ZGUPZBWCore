@@ -852,7 +852,7 @@ public partial struct GameNavMeshSystem : ISystem
     {
         using(var builder = new EntityQueryBuilder(Allocator.Temp))
             __group = builder
-                    .WithAll<GameNavMeshAgentTarget>()
+                    .WithAllRW<GameNavMeshAgentTarget>()
                     .Build(ref state);
 
         __entityType = state.GetEntityTypeHandle();
@@ -861,7 +861,7 @@ public partial struct GameNavMeshSystem : ISystem
         __rotationType = state.GetComponentTypeHandle<Rotation>(true);
         __instanceType = state.GetComponentTypeHandle<GameNavMeshAgentData>(true);
         __queryType = state.GetComponentTypeHandle<GameNavMeshAgentQuery>(true);
-        __targetType = state.GetComponentTypeHandle<GameNavMeshAgentTarget>(true);
+        __targetType = state.GetComponentTypeHandle<GameNavMeshAgentTarget>();
         __staticThresholdType = state.GetComponentTypeHandle<GameNodeStaticThreshold>(true);
         __directionType = state.GetComponentTypeHandle<GameNodeDirection>();
         __statusType = state.GetComponentTypeHandle<GameNavMeshAgentPathStatus>();
