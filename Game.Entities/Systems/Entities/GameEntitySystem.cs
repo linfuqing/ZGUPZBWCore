@@ -2258,12 +2258,11 @@ public partial struct GameEntityHitSystem : ISystem
 
                         return true;
                     }
-                    else
-                    {
-                        hit.value = 0.0f;
-                        hit.normal = float3.zero;
-                        outputs[entityArray[index]] = hit;
-                    }
+
+                    hit.value = 0.0f;
+                    hit.time = actionInfo.time;
+                    hit.normal = float3.zero;
+                    outputs[entityArray[index]] = hit;
                 }
             }
 

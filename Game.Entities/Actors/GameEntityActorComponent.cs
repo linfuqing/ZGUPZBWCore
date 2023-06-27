@@ -142,7 +142,7 @@ public struct GameEntityActionInfo : ICleanupComponentData, IEquatable<GameEntit
 
     public float hit;
 
-    public double time;
+    public GameDeadline time;
     
     public float3 forward;
 
@@ -787,7 +787,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         actionInfo.version = 0;
         actionInfo.index = -1;
         actionInfo.hit = 0.0f;
-        actionInfo.time = 0.0;
+        actionInfo.time = default;
         actionInfo.forward = float3.zero;
         actionInfo.distance = float3.zero;
         //actionInfo.offset = float3.zero;
