@@ -560,7 +560,7 @@ public struct GameEntityActionSystemCore
                     if ((instanceEx.value.flag & GameActionFlag.ActorUnstoppable) == GameActionFlag.ActorUnstoppable)
                         unstoppableEntities.Create().value = instance.entity;
 
-                    if ((instanceEx.value.flag & GameActionFlag.TargetAttachActor) == GameActionFlag.TargetAttachActor)
+                    if ((instanceEx.value.flag & GameActionFlag.TargetActorLocation) == GameActionFlag.TargetActorLocation)
                     {
                         int rigidbodyIndex = collisionWorld.GetRigidBodyIndex(instance.entity);
                         if (rigidbodyIndex != -1)
@@ -572,11 +572,12 @@ public struct GameEntityActionSystemCore
                             colliderCastInput.Orientation = instanceEx.origin.rot;
                             colliderCastInput.Start = instanceEx.origin.pos;
                             colliderCastInput.End = destination;
-                            if (collisionWorld.CastCollider(colliderCastInput, out var closestHit))
+                            var collector = new ClosestHitCollectorExclude<ColliderCastHit>(rigidbodyIndex, 1.0f);
+                            if (collisionWorld.CastCollider(colliderCastInput, ref collector))
                             {
                                 EntityData<Translation> location;
                                 location.entity = instance.entity;
-                                location.value.Value = math.lerp(instanceEx.origin.pos, destination, closestHit.Fraction);
+                                location.value.Value = math.lerp(instanceEx.origin.pos, destination, collector.closestHit.Fraction);
 
                                 locations.Create().value = location;
                             }

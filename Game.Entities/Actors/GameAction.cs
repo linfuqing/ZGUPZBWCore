@@ -58,7 +58,7 @@ public enum GameActionFlag
     TargetInAir = 0x0800,
 
     [Tooltip("释放者传送到目标点")]
-    TargetAttachActor = 0x1100
+    TargetActorLocation = 0x1100
 }
 
 [Serializable]
