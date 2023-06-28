@@ -551,6 +551,7 @@ public struct GameEntityActionSystemCore
             double oldTime = time - deltaTime,
                 actorMoveStartTime = instance.time + instanceEx.info.actorMoveStartTime,
                 actorMoveTime = actorMoveStartTime + instanceEx.info.actorMoveDuration;
+            var rigidbodies = collisionWorld.Bodies;
             if (actorMoveStartTime <= time && oldTime < actorMoveTime)
             {
                 double max = math.min(time, actorMoveTime), min = math.max(oldTime, actorMoveStartTime);
@@ -559,7 +560,29 @@ public struct GameEntityActionSystemCore
                     if ((instanceEx.value.flag & GameActionFlag.ActorUnstoppable) == GameActionFlag.ActorUnstoppable)
                         unstoppableEntities.Create().value = instance.entity;
 
-                    if ((instanceEx.value.flag & GameActionFlag.ActorLocation) == GameActionFlag.ActorLocation)
+                    if ((instanceEx.value.flag & GameActionFlag.TargetAttachActor) == GameActionFlag.TargetAttachActor)
+                    {
+                        int rigidbodyIndex = collisionWorld.GetRigidBodyIndex(instance.entity);
+                        if (rigidbodyIndex != -1)
+                        {
+                            float3 destination = instanceEx.origin.pos + instanceEx.forward * instanceEx.info.distance;
+
+                            ColliderCastInput colliderCastInput = default;
+                            colliderCastInput.Collider = (Collider*)rigidbodies[rigidbodyIndex].Collider.GetUnsafePtr();
+                            colliderCastInput.Orientation = instanceEx.origin.rot;
+                            colliderCastInput.Start = instanceEx.origin.pos;
+                            colliderCastInput.End = destination;
+                            if (collisionWorld.CastCollider(colliderCastInput, out var closestHit))
+                            {
+                                EntityData<Translation> location;
+                                location.entity = instance.entity;
+                                location.value.Value = math.lerp(instanceEx.origin.pos, destination, closestHit.Fraction);
+
+                                locations.Create().value = location;
+                            }
+                        }
+                    }
+                    else if ((instanceEx.value.flag & GameActionFlag.ActorLocation) == GameActionFlag.ActorLocation)
                     {
                         EntityData<Translation> location;
                         location.entity = instance.entity;
@@ -628,7 +651,6 @@ public struct GameEntityActionSystemCore
                     isGravity = (instanceEx.value.flag & GameActionFlag.UseGravity) == GameActionFlag.UseGravity &&
                             instanceEx.value.trackType == GameActionRangeType.None;
                 RigidTransform transform = math.RigidTransform(rotations[index].Value, translations[index].Value);
-                var rigidbodies = collisionWorld.Bodies;
                 if (isDamaged)
                 {
                     value |= GameActionStatus.Status.Damaged;

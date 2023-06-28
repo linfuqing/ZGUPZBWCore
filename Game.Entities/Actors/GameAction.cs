@@ -56,6 +56,9 @@ public enum GameActionFlag
 
     [Tooltip("目标被击退时忽略Y轴")]
     TargetInAir = 0x0800,
+
+    [Tooltip("释放者传送到目标点")]
+    TargetAttachActor = 0x1100
 }
 
 [Serializable]
@@ -107,7 +110,7 @@ public struct GameActionInfo
     [Tooltip("冲撞速度：该速度为贴地移动（如牛的冲撞），该速度一般与actorMoveSpeedIndirect互斥")]
     public float actorMoveSpeed;
 
-    [Tooltip("冲撞开始时间")]
+    [Tooltip("冲撞/瞬移开始时间")]
     public float actorMoveStartTime;
 
     [Tooltip("冲撞时间")]

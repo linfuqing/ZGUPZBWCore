@@ -12,6 +12,7 @@ using Unity.Physics;
 using Unity.Physics.Systems;
 using ZG;
 using Math = ZG.Mathematics.Math;
+using UnityEngine.UIElements;
 
 public struct GameEntityCommandActionCreate
 {
@@ -842,7 +843,10 @@ public partial struct GameEntityActorInitSystem : ISystem
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(GameEntityActorSystemGroup))]
+[BurstCompile, 
+    CreateAfter(typeof(GamePhysicsWorldBuildSystem)),
+    CreateAfter(typeof(GameEntityActionBeginFactorySystem)),
+    UpdateInGroup(typeof(GameEntityActorSystemGroup))]
 public partial struct GameEntityActorSystem : ISystem
 {
     private struct Act
@@ -1397,7 +1401,6 @@ public partial struct GameEntityActorSystem : ISystem
                     stream.Assert(positionName, position);
                     stream.Assert(distanceName, distance);
 #endif
-
                         quaternion inverseSurfaceRotation = math.inverse(surfaceRotation);
                         float3 surfaceForward = math.mul(inverseSurfaceRotation, forward);
                         float surfaceForwardLength = math.lengthsq(surfaceForward.xz), surfaceAngle;
@@ -1665,6 +1668,7 @@ public partial struct GameEntityActorSystem : ISystem
                             result.value.time = command.time;
                             result.value.entity = entity;
                             result.valueEx.camp = camps[index].value;
+                            result.valueEx.forward = forward;
                             result.valueEx.direction = direction;
                             result.valueEx.offset = offset;
                             result.valueEx.position = position;
@@ -1864,7 +1868,6 @@ public partial struct GameEntityActorSystem : ISystem
             act.velocityMap = velocities;
             act.commandMap = commands;
             act.entityArray = chunk.GetNativeArray(entityArrayType);
-            act.translations = chunk.GetNativeArray(ref translationType);
             act.states = chunk.GetNativeArray(ref statusType);
             act.surfaces = chunk.GetNativeArray(ref surfaceType);
             act.characters = chunk.GetNativeArray(ref characterType);
@@ -1879,6 +1882,7 @@ public partial struct GameEntityActorSystem : ISystem
             act.actorActionInfos = chunk.GetBufferAccessor(ref actorActionInfoType);
             act.velocityComponents = chunk.GetBufferAccessor(ref velocityComponentType);
             act.positions = chunk.GetBufferAccessor(ref positionType);
+            act.translations = chunk.GetNativeArray(ref translationType);
             act.rotations = chunk.GetNativeArray(ref rotationType);
             act.delay = chunk.GetNativeArray(ref delayType);
             act.velocities = chunk.GetNativeArray(ref velocityType);
@@ -1927,6 +1931,10 @@ public partial struct GameEntityActorSystem : ISystem
 
     private EntityQuery __actionSetGroup;
     private EntityQuery __actionInfoSetGroup;
+    
+#if GAME_DEBUG_COMPARSION
+    private GameRollbackFrame __frame;
+#endif
 
     private ComponentLookup<Disabled> __disabled;
 
@@ -1945,8 +1953,6 @@ public partial struct GameEntityActorSystem : ISystem
     private EntityTypeHandle __entityArrayType;
 
     private ComponentTypeHandle<Disabled> __disabledType;
-
-    private ComponentTypeHandle<Translation> __translationType;
 
     private ComponentTypeHandle<GameNodeStatus> __statusType;
 
@@ -1973,6 +1979,8 @@ public partial struct GameEntityActorSystem : ISystem
     private BufferTypeHandle<GameNodeVelocityComponent> __velocityComponentType;
 
     private BufferTypeHandle<GameNodePosition> __positionType;
+
+    private ComponentTypeHandle<Translation> __translationType;
 
     private ComponentTypeHandle<Rotation> __rotationType;
 
@@ -2006,50 +2014,44 @@ public partial struct GameEntityActorSystem : ISystem
 
     private ComponentLookup<GameActionStatus> __actionStates;
 
-#if GAME_DEBUG_COMPARSION
-    private GameRollbackFrame __frame;
-#endif
-
     private EntityCommandPool<GameEntityCommandActionCreate> __endFrameBarrier;
     private SingletonAssetContainer<BlobAssetReference<Collider>> __actionColliders;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameNodeStatus>(),
-                    ComponentType.ReadOnly<GameEntityCamp>(),
-                    ComponentType.ReadOnly<GameEntityActorData>(),
-                    ComponentType.ReadOnly<GameEntityArchetype>(),
-                    ComponentType.ReadOnly<GameEntityActorActionData>(),
-                    ComponentType.ReadWrite<GameEntityActionCommander>(),
-                    ComponentType.ReadWrite<GameEntityCommandVersion>(),
-                    ComponentType.ReadWrite<GameEntityActorActionInfo>(),
-                    ComponentType.ReadWrite<GameEntityActorInfo>(),
-                    ComponentType.ReadWrite<GameEntityActorTime>(),
-                },
-                None = new ComponentType[]
-                {
-                    typeof(GameNodeParent)
-                },
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameNodeStatus, GameEntityCamp, GameEntityActorData, GameEntityArchetype, GameEntityActorActionData>()
+                    .WithAllRW<GameEntityActionCommander>()
+                    .WithAllRW<GameEntityCommandVersion>()
+                    .WithAllRW<GameEntityActorActionInfo>()
+                    .WithAllRW<GameEntityActorInfo>()
+                    .WithAllRW<GameEntityActorTime>()
+                    .WithNone<GameNodeParent>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
 
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
+        __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameEntityActionCommander>());
 
-        __group.SetChangedVersionFilter(typeof(GameEntityActionCommander));
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __physicsStepGroup = builder
+                .WithAll<Unity.Physics.PhysicsStep>()
+                .Build(ref state);
 
-        __physicsStepGroup = state.GetEntityQuery(typeof(Unity.Physics.PhysicsStep));
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __actionSetGroup = builder
+                .WithAll<GameActionSetData>()
+                .Build(ref state);
+
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __actionInfoSetGroup = builder
+                .WithAll<GameActionItemSetData>()
+                .Build(ref state);
 
 #if GAME_DEBUG_COMPARSION
         __frame = new GameRollbackFrame(ref state);
 #endif
-
-        __actionSetGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameActionSetData>());
-
-        __actionInfoSetGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameActionItemSetData>());
 
         __disabled = state.GetComponentLookup<Disabled>(true);
         __translations = state.GetComponentLookup<Translation>(true);
@@ -2060,7 +2062,6 @@ public partial struct GameEntityActorSystem : ISystem
         __commands = state.GetComponentLookup<GameEntityActionCommand>(true);
         __entityArrayType = state.GetEntityTypeHandle();
         __disabledType = state.GetComponentTypeHandle<Disabled>(true);
-        __translationType = state.GetComponentTypeHandle<Translation>(true);
         __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
         __surfaceType = state.GetComponentTypeHandle<GameNodeSurface>(true);
         __characterType = state.GetComponentTypeHandle<GameNodeCharacterData>(true);
@@ -2074,6 +2075,7 @@ public partial struct GameEntityActorSystem : ISystem
         __actorActionInfoType = state.GetBufferTypeHandle<GameEntityActorActionInfo>();
         __velocityComponentType = state.GetBufferTypeHandle<GameNodeVelocityComponent>();
         __positionType = state.GetBufferTypeHandle<GameNodePosition>();
+        __translationType = state.GetComponentTypeHandle<Translation>();
         __rotationType = state.GetComponentTypeHandle<Rotation>();
         __delayType = state.GetComponentTypeHandle<GameNodeDelay>();
         __velocityType = state.GetComponentTypeHandle<GameNodeVelocity>();
@@ -2091,7 +2093,7 @@ public partial struct GameEntityActorSystem : ISystem
         __actionStates = state.GetComponentLookup<GameActionStatus>();
         __nodeStates = state.GetComponentLookup<GameNodeStatus>();
 
-        __endFrameBarrier = state.World.GetOrCreateSystemUnmanaged<GameEntityActionBeginFactorySystem>().pool;
+        __endFrameBarrier = state.World.GetExistingSystemUnmanaged<GameEntityActionBeginFactorySystem>().pool;
 
         __actionColliders = SingletonAssetContainer<BlobAssetReference<Collider>>.instance;
 
@@ -2133,7 +2135,6 @@ public partial struct GameEntityActorSystem : ISystem
         act.commands = __commands.UpdateAsRef(ref state);
         act.entityArrayType = __entityArrayType.UpdateAsRef(ref state);
         act.disabledType = __disabledType.UpdateAsRef(ref state);
-        act.translationType = __translationType.UpdateAsRef(ref state);
         act.statusType = __statusType.UpdateAsRef(ref state);
         act.surfaceType = __surfaceType.UpdateAsRef(ref state);
         act.characterType = __characterType.UpdateAsRef(ref state);
@@ -2147,6 +2148,7 @@ public partial struct GameEntityActorSystem : ISystem
         act.actorActionInfoType = __actorActionInfoType.UpdateAsRef(ref state);
         act.velocityComponentType = __velocityComponentType.UpdateAsRef(ref state);
         act.positionType = __positionType.UpdateAsRef(ref state);
+        act.translationType = __translationType.UpdateAsRef(ref state);
         act.rotationType = __rotationType.UpdateAsRef(ref state);
         act.delayType = __delayType.UpdateAsRef(ref state);
         act.velocityType = __velocityType.UpdateAsRef(ref state);
