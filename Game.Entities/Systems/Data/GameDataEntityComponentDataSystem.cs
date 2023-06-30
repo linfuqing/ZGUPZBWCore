@@ -13,6 +13,13 @@ using ZG;
 [assembly: EntityDataDeserialize(typeof(GameOwner), typeof(GameDataEntityCompoentDataDeserializationSystem<GameOwner>), (int)GameDataConstans.Version)]
 #endregion
 
+#region GameActorMaster
+[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataEntityCompoentDataSerializationSystem<GameActorMaster>.Serializer, GameDataEntityCompoentDataSerializationSystem<GameActorMaster>.SerializerFactory>))]
+[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataEntityCompoentDataDeserializationSystem<GameActorMaster>.Deserializer, GameDataEntityCompoentDataDeserializationSystem<GameActorMaster>.DeserializerFactory>))]
+[assembly: EntityDataSerialize(typeof(GameActorMaster), typeof(GameDataEntityCompoentDataSerializationSystem<GameActorMaster>))]
+[assembly: EntityDataDeserialize(typeof(GameActorMaster), typeof(GameDataEntityCompoentDataDeserializationSystem<GameActorMaster>), (int)GameDataConstans.Version)]
+#endregion
+
 #region GamePlayerLocator
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataEntityCompoentDataSerializationSystem<GamePlayerLocator>.Serializer, GameDataEntityCompoentDataSerializationSystem<GamePlayerLocator>.SerializerFactory>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataEntityCompoentDataDeserializationSystem<GamePlayerLocator>.Deserializer, GameDataEntityCompoentDataDeserializationSystem<GamePlayerLocator>.DeserializerFactory>))]
@@ -27,7 +34,6 @@ using ZG;
 [assembly: EntityDataDeserialize(typeof(GamePlayerSpawn), typeof(GameDataEntityCompoentDataDeserializationSystem<GamePlayerSpawn>), (int)GameDataConstans.Version)]
 #endregion
 
-[Serializable]
 public struct GamePlayerLocator : IGameDataEntityCompoentData
 {
     public Entity entity;
@@ -40,7 +46,6 @@ public struct GamePlayerLocator : IGameDataEntityCompoentData
     }
 }
 
-[Serializable]
 [EntityDataTypeName("GameSpawn")]
 public struct GamePlayerSpawn : IGameDataEntityCompoentData
 {

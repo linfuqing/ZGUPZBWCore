@@ -91,16 +91,21 @@ public class GameQuestComponent : EntityProxyComponent
         command.index = index;
 
         this.AppendBuffer(command);
+
         this.SetComponentEnabled<GameQuestCommand>(true);
     }
 
     public void Append(in GameQuestCommandCondition value)
     {
         this.AppendBuffer(value);
+
+        this.SetComponentEnabled<GameQuestCommandCondition>(true);
     }
 
     public void Append<T>(T values) where T : IReadOnlyCollection<GameQuestCommandCondition>
     {
         this.AppendBuffer<GameQuestCommandCondition, T>(values);
+
+        this.SetComponentEnabled<GameQuestCommandCondition>(true);
     }
 }

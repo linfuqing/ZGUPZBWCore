@@ -3,10 +3,16 @@ using Unity.Entities;
 using ZG;
 using GameObjectEntity = ZG.GameObjectEntity;
 
-[Serializable]
-public struct GameActorMaster : IComponentData
+public struct GameActorMaster : IGameDataEntityCompoentData
 {
     public Entity entity;
+
+    Entity IGameDataEntityCompoentData.entity
+    {
+        get => entity;
+
+        set => entity = value;
+    }
 }
 
 [EntityComponent(typeof(GameActorMaster))]
