@@ -50,9 +50,15 @@ public abstract class GameItemSpawnCommander : IEntityCommander<GameItemSpawnDat
             itemRoot.handle = __itemHandle;
             gameObjectEntity.SetComponentData(itemRoot);
 
-            /*GameOwner owner;
-            owner.entity = this.owner;
-            gameObjectEntity.SetComponentData(owner);*/
+            var entity = this.owner;
+
+            GameOwner owner;
+            owner.entity = entity;
+            gameObjectEntity.SetComponentData(owner);
+
+            GameActorMaster master;
+            master.entity = entity;
+            gameObjectEntity.SetComponentData(master);
 
             /*GameVariant variant;
             variant.value = __soul.variant;

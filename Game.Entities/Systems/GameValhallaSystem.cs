@@ -21,11 +21,13 @@ public abstract class GameValhallaCommander : IEntityCommander<GameValhallaComma
         //private GameSoulData __soul;
         private GameItemHandle __itemHandle;
         private FixedString32Bytes __nickname;
+        private Entity __owner;
 
-        public Initializer(in GameItemHandle itemHandle, in FixedString32Bytes nickname)
+        public Initializer(in GameItemHandle itemHandle, in FixedString32Bytes nickname, Entity owner)
         {
             __itemHandle = itemHandle;
             __nickname = nickname;
+            __owner = owner;
         }
 
         public void Invoke<T>(ref T gameObjectEntity) where T : IGameObjectEntity
@@ -53,6 +55,14 @@ public abstract class GameValhallaCommander : IEntityCommander<GameValhallaComma
             /*GameVariant variant;
             variant.value = __soul.variant;
             gameObjectEntity.SetComponentData(variant);*/
+
+            GameOwner owner;
+            owner.entity = __owner;
+            gameObjectEntity.SetComponentData(owner);
+
+            GameActorMaster master;
+            master.entity = __owner;
+            gameObjectEntity.SetComponentData(master);
         }
     }
 
@@ -73,7 +83,7 @@ public abstract class GameValhallaCommander : IEntityCommander<GameValhallaComma
                 command.variant, 
                 command.transform,
                 command.entity, 
-                new Initializer(command.itemHandle, command.nickname));
+                new Initializer(command.itemHandle, command.nickname, command.entity));
         }
     }
 
