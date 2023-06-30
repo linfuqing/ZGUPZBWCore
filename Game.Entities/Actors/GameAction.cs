@@ -238,7 +238,9 @@ public struct GameAction
 
     public uint damageMask;
     
-    public uint breakMask;
+    public uint actionMask;
+
+    public uint actorMask;
 
     public uint actorStatusMask;
 
@@ -246,5 +248,7 @@ public struct GameAction
 
     public float3 direction;
 
-    public float3 location;
+    public float3 actorLocation;
+
+    public float3 actorOffset;
 }

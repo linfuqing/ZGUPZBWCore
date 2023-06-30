@@ -335,10 +335,10 @@ public partial struct GameEntityActionBeginFactorySystem : ISystem
                     {
                         entity = entityArray[index++];
 
-                        translation.Value = command.valueEx.origin.pos;
+                        translation.Value = command.valueEx.transform.pos;
                         translations[entity] = translation;
 
-                        rotation.Value = command.valueEx.origin.rot;
+                        rotation.Value = command.valueEx.transform.rot;
                         rotations[entity] = rotation;
 
                         instances[entity] = command.value;
@@ -499,6 +499,7 @@ public partial struct GameEntityEventSystem : ISystem
             if (index < actorTimes.Length)
             {
                 GameEntityActorTime actorTime;
+                actorTime.actionMask = 0;
                 actorTime.value = command.time + command.performTime;
                 actorTimes[index] = actorTime;
             }
@@ -1065,6 +1066,10 @@ public partial struct GameEntityActorSystem : ISystem
                 return;
             }
 
+            int actionIndex = actorActions[index][command.index].actionIndex;
+            ref var actions = ref this.actions.Value;
+            var action = actions.values[actionIndex];
+
             var actorTime = actorTimes[index];
 #if GAME_DEBUG_COMPARSION
             stream.Begin(entityIndices[index].value);
@@ -1073,7 +1078,7 @@ public partial struct GameEntityActorSystem : ISystem
 #endif
 
             //UnityEngine.Debug.Log($"Do: {frameIndex} : {entityIndices[index].value} : {entityArray[index].Index} : {(double)actorTime.value} : {(double)command.time} : {(double)this.actorActionInfos[index][command.index].coolDownTime} : {translations[index].Value}");
-            if (actorTime.value < command.time)
+            if ((actorTime.actionMask & action.instance.actorMask) != 0 || actorTime.value < command.time)
             {
                 //double x = (double)actorTime.value, y = (double)command.time;
                 //UnityEngine.Debug.Log($"Do: {entityArray[index].Index} : {command.index} : {x} : {y}");
@@ -1087,12 +1092,9 @@ public partial struct GameEntityActorSystem : ISystem
                         if (index < entityActions.Length)
                             GameEntityAction.Break(entityActions[index], ref actionStates);
 
-                        int actionIndex = actorActions[index][command.index].actionIndex;
-                        ref var actions = ref this.actions.Value;
-                        var action = actions.values[actionIndex];
                         if (index < this.entityItems.Length)
                         {
-                            DynamicBuffer<GameEntityItem> entityItems = this.entityItems[index];
+                            var entityItems = this.entityItems[index];
                             ref var items = ref this.items.Value;
                             int numItems = entityItems.Length, length = items.values.Length;
                             GameEntityItem entityItem;
@@ -1628,6 +1630,7 @@ public partial struct GameEntityActorSystem : ISystem
                             this.delay[index] = delay;
                         }
 
+                        actorTime.actionMask = action.instance.actionMask;
                         actorTime.value = command.time + action.info.performTime;
                         actorTimes[index] = actorTime;
 
@@ -1668,9 +1671,8 @@ public partial struct GameEntityActorSystem : ISystem
                             result.value.time = command.time;
                             result.value.entity = entity;
                             result.valueEx.camp = camps[index].value;
-                            result.valueEx.forward = forward;
                             result.valueEx.direction = direction;
-                            result.valueEx.offset = offset;
+                            //result.valueEx.offset = offset;
                             result.valueEx.position = position;
                             result.valueEx.targetPosition = position + distance;
                             result.valueEx.target = command.entity;
@@ -1678,22 +1680,24 @@ public partial struct GameEntityActorSystem : ISystem
                             result.valueEx.value = action.instance;
                             result.valueEx.entityArchetype = archetypes[index].value;
                             result.valueEx.collider = actionCollider;
-                            result.valueEx.origin.rot = quaternion.LookRotationSafe(
+                            result.valueEx.transform.rot = quaternion.LookRotationSafe(
                                 (action.instance.flag & GameActionFlag.MoveInAir) == GameActionFlag.MoveInAir ? Math.ProjectOnPlaneSafe(direction, up) : direction,
                                 up);
 
                             switch (action.instance.rangeType)
                             {
                                 case GameActionRangeType.Destination:
-                                    result.valueEx.origin.pos = result.valueEx.targetPosition;
+                                    result.valueEx.transform.pos = result.valueEx.targetPosition;
                                     break;
                                 case GameActionRangeType.All:
-                                    result.valueEx.origin.pos = (result.valueEx.position + result.valueEx.targetPosition) * 0.5f;
+                                    result.valueEx.transform.pos = (result.valueEx.position + result.valueEx.targetPosition) * 0.5f;
                                     break;
                                 default:
-                                    result.valueEx.origin.pos = result.valueEx.position;
+                                    result.valueEx.transform.pos = result.valueEx.position;
                                     break;
                             }
+
+                            result.valueEx.originTransform = math.RigidTransform(rotation, source + math.mul(rotation, action.instance.actorOffset));
 
                             entityManager.Enqueue(result);
                             //Create(result, action);
@@ -2093,7 +2097,7 @@ public partial struct GameEntityActorSystem : ISystem
         __actionStates = state.GetComponentLookup<GameActionStatus>();
         __nodeStates = state.GetComponentLookup<GameNodeStatus>();
 
-        __endFrameBarrier = state.World.GetExistingSystemUnmanaged<GameEntityActionBeginFactorySystem>().pool;
+        __endFrameBarrier = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameEntityActionBeginFactorySystem>().pool;
 
         __actionColliders = SingletonAssetContainer<BlobAssetReference<Collider>>.instance;
 
@@ -2566,6 +2570,7 @@ public partial struct GameEntityBreakSystem : ISystem
                 if (index < actorTimes.Length)
                 {
                     GameEntityActorTime actorTime;
+                    actorTime.actionMask = 0;
                     actorTime.value = command.time;
                     actorTime.value += command.delayTime;
                     actorTimes[index] = actorTime;

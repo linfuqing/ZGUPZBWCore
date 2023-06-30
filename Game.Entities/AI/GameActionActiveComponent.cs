@@ -9,6 +9,7 @@ public enum GameActionConditionResult
 {
     OK,
     OutOfGroup,
+    //OutOfActorTime,
     OutOfActorStatus, 
     OutOfSpeed, 
     CoolDown,
@@ -41,8 +42,10 @@ public struct GameActionCondition : IBufferElementData
     public float maxSpeed;
 
     public GameActionConditionResult Did(
+        //in GameEntityActorTime actorTime,
         double time,
-        float actorVelocity, 
+        float actorVelocity,
+        //uint actorMask,
         int actorStatus,
         int preActionIndex,
         ref int groupMask,
@@ -51,6 +54,9 @@ public struct GameActionCondition : IBufferElementData
     {
         if (groupMask != 0 && (groupMask & this.groupMask) == 0)
             return GameActionConditionResult.OutOfGroup;
+
+        /*if (!actorTime.Did(actorMask, time))
+            return GameActionConditionResult.OutOfActorTime;*/
 
         if (((actorStatusMask == 0 ? 1 : actorStatusMask) & (1 << actorStatus)) == 0)
             return GameActionConditionResult.OutOfActorStatus;
@@ -86,8 +92,10 @@ public struct GameActionCondition : IBufferElementData
     }
 
     public static GameActionConditionResult Did(
+        //in GameEntityActorTime actorTime,
         double time, 
-        float actorVelocity, 
+        float actorVelocity,
+        //uint actorMask,
         int actorStatus, 
         ref int groupMask,
         ref int conditionIndex, 
@@ -103,8 +111,10 @@ public struct GameActionCondition : IBufferElementData
             {
                 groupMaskTemp = groupMask;
                 temp = conditions[i].Did(
+                        //actorTime,
                         time,
                         actorVelocity,
+                        //actorMask, 
                         actorStatus,
                         -1,
                         ref groupMaskTemp,
@@ -134,13 +144,15 @@ public struct GameActionCondition : IBufferElementData
             {
                 groupMaskTemp = groupMask;
                 temp = conditions[i].Did(
-                    time,
-                    actorVelocity,
-                    actorStatus,
-                    preActionIndex,
-                    ref groupMaskTemp,
-                    actionInfos,
-                    actions);
+                        //actorTime,
+                        time,
+                        actorVelocity,
+                        //actorMask,
+                        actorStatus,
+                        preActionIndex,
+                        ref groupMaskTemp,
+                        actionInfos,
+                        actions);
                 if (temp == GameActionConditionResult.OK)
                 {
                     if (groupMask == 0)
@@ -160,13 +172,15 @@ public struct GameActionCondition : IBufferElementData
             {
                 groupMaskTemp = groupMask;
                 temp = conditions[i].Did(
-                       time,
-                       actorVelocity,
-                       actorStatus,
-                       preActionIndex,
-                       ref groupMaskTemp,
-                       actionInfos,
-                       actions);
+                        //actorTime,
+                        time,
+                        actorVelocity,
+                        //actorMask,
+                        actorStatus,
+                        preActionIndex,
+                        ref groupMaskTemp,
+                        actionInfos,
+                        actions);
                 if (temp == GameActionConditionResult.OK)
                 {
                     if (groupMask == 0)

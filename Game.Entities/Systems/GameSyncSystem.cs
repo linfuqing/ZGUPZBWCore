@@ -524,6 +524,8 @@ public partial class GameSyncSystemGroup : SystemBase
 
     public void Clear()
     {
+        rollbackManager.InvokeAll();
+
         __manager.Clear();
 
         rollbackManager.Clear();

@@ -136,12 +136,12 @@ public struct GameActionData : IComponentData
 public struct GameActionDataEx : IComponentData
 {
     public int camp;
-    public float3 forward;
     public float3 direction;
-    public float3 offset;
+    //public float3 offset;
     public float3 position;
     public float3 targetPosition;
-    public RigidTransform origin;
+    public RigidTransform transform;
+    public RigidTransform originTransform;
     public Entity target;
     public GameActionInfo info;
     public GameAction value;

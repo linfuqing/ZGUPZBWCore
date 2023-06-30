@@ -8,6 +8,8 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using ZG;
 
+[assembly: RegisterGenericJobType(typeof(ClearHashMap<int, int>))]
+
 #region GameItemManager
 [assembly: RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameDataItemContainerSerializationSystem.Serializer>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataContainerDeserialize<GameDataItemContainerDeserializationSystem.Deserializer>))]

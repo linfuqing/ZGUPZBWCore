@@ -219,7 +219,13 @@ public struct GameEntityActorInfo : IComponentData
 
 public struct GameEntityActorTime : IComponentData
 {
+    public uint actionMask;
     public GameDeadline value;
+
+    public bool Did(uint actorMask, double time)
+    {
+        return (actorMask & actionMask) != 0 || time > value;
+    }
 }
 
 public struct GameEntityActorHit : IComponentData
@@ -439,18 +445,16 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         }
     }
 
-    public GameDeadline actorTime
+    public GameEntityActorTime actorTime
     {
         get
         {
-            return this.GetComponentData<GameEntityActorTime>().value;
+            return this.GetComponentData<GameEntityActorTime>();
         }
         
         set
         {
-            GameEntityActorTime actorTime;
-            actorTime.value = value;
-            this.SetComponentData(actorTime);
+            this.SetComponentData(value);
         }
     }
 

@@ -565,19 +565,19 @@ public struct GameEntityActionSystemCore
                         int rigidbodyIndex = collisionWorld.GetRigidBodyIndex(instance.entity);
                         if (rigidbodyIndex != -1)
                         {
-                            float3 destination = instanceEx.origin.pos + instanceEx.forward * instanceEx.info.distance;
+                            float3 destination = instanceEx.originTransform.pos + math.forward(instanceEx.originTransform.rot) * instanceEx.info.distance;
 
                             ColliderCastInput colliderCastInput = default;
                             colliderCastInput.Collider = (Collider*)rigidbodies[rigidbodyIndex].Collider.GetUnsafePtr();
-                            colliderCastInput.Orientation = instanceEx.origin.rot;
-                            colliderCastInput.Start = instanceEx.origin.pos;
+                            colliderCastInput.Orientation = instanceEx.originTransform.rot;
+                            colliderCastInput.Start = instanceEx.originTransform.pos;
                             colliderCastInput.End = destination;
                             var collector = new ClosestHitCollectorExclude<ColliderCastHit>(rigidbodyIndex, 1.0f);
                             if (collisionWorld.CastCollider(colliderCastInput, ref collector))
                             {
                                 EntityData<Translation> location;
                                 location.entity = instance.entity;
-                                location.value.Value = math.lerp(instanceEx.origin.pos, destination, collector.closestHit.Fraction);
+                                location.value.Value = math.lerp(instanceEx.originTransform.pos, destination, collector.closestHit.Fraction);
 
                                 locations.Create().value = location;
                             }
@@ -587,7 +587,7 @@ public struct GameEntityActionSystemCore
                     {
                         EntityData<Translation> location;
                         location.entity = instance.entity;
-                        location.value.Value = instanceEx.value.location;
+                        location.value.Value = instanceEx.value.actorLocation;
 
                         locations.Create().value = location;
                     }
