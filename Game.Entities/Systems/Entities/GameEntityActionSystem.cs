@@ -12,8 +12,88 @@ using Unity.Physics.Extensions;
 using ZG;
 using Math = ZG.Mathematics.Math;
 
+[UpdateInGroup(typeof(GameNodeCharacterSystemGroup))]
+public partial struct GameEntityActionLocationSystem : ISystem
+{
+    [BurstCompile]
+    private struct ApplyTranslations : IJob
+    {
+        public SharedHashMap<Entity, float3>.Writer sources;
+
+        public ComponentLookup<Translation> destinations;
+
+        public void Execute()
+        {
+            Entity entity;
+            Translation translation;
+            foreach (var pair in sources)
+            {
+                entity = pair.Key;
+                if (!destinations.HasComponent(entity))
+                    return;
+
+                translation.Value = pair.Value;
+
+                destinations[entity] = translation;
+            }
+
+            sources.Clear();
+        }
+    }
+
+    private ComponentLookup<Translation> __translations;
+
+    public SharedHashMap<Entity, float3> locations
+    {
+        get;
+
+        private set;
+    }
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        locations = new SharedHashMap<Entity, float3>(Allocator.Persistent);
+
+        __translations = state.GetComponentLookup<Translation>();
+    }
+
+    public void OnDestroy(ref SystemState state)
+    {
+        locations.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        ApplyTranslations applyTranslations;
+        applyTranslations.sources = locations.writer;
+        applyTranslations.destinations = __translations.UpdateAsRef(ref state);
+
+        ref var lookupJobManager = ref locations.lookupJobManager;
+        var jobHandle = applyTranslations.ScheduleByRef(JobHandle.CombineDependencies(state.Dependency, lookupJobManager.readOnlyJobHandle));
+        lookupJobManager.AddReadOnlyDependency(jobHandle);
+
+        state.Dependency = jobHandle;
+    }
+}
+
 public struct GameEntityActionSystemCore
 {
+    [BurstCompile]
+    private struct Reset : IJob
+    {
+        [ReadOnly, DeallocateOnJobCompletion]
+        public NativeArray<int> count;
+
+        public SharedHashMap<Entity, float3>.Writer locations;
+
+        public void Execute()
+        {
+            locations.capacity = math.max(locations.capacity, count[0]);
+        }
+    }
+
     private struct DistanceCollector<T> : ICollector<DistanceHit> where T : IGameEntityActionHandler
     {
         //public float hitValue;
@@ -512,9 +592,9 @@ public struct GameEntityActionSystemCore
         [NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameActionStatus> results;
 
-        public NativeFactory<Entity>.ParallelWriter unstoppableEntities;
+        public SharedHashMap<Entity, float3>.ParallelWriter locations;
 
-        public NativeFactory<EntityData<Translation>>.ParallelWriter locations;
+        public NativeFactory<Entity>.ParallelWriter unstoppableEntities;
 
         public NativeFactory<EntityData<GameNodeVelocityComponent>>.ParallelWriter impacts;
 
@@ -565,22 +645,20 @@ public struct GameEntityActionSystemCore
                         int rigidbodyIndex = collisionWorld.GetRigidBodyIndex(instance.entity);
                         if (rigidbodyIndex != -1)
                         {
-                            float3 destination = instanceEx.originTransform.pos + math.forward(instanceEx.originTransform.rot) * instanceEx.info.distance;
+                            var rigidbody = rigidbodies[rigidbodyIndex];
+
+                            float3 destination = math.transform(rigidbody.WorldFromBody, instanceEx.value.actorOffset) + math.forward(rigidbody.WorldFromBody.rot) * instanceEx.info.distance;
 
                             ColliderCastInput colliderCastInput = default;
                             colliderCastInput.Collider = (Collider*)rigidbodies[rigidbodyIndex].Collider.GetUnsafePtr();
-                            colliderCastInput.Orientation = instanceEx.originTransform.rot;
-                            colliderCastInput.Start = instanceEx.originTransform.pos;
+                            colliderCastInput.Orientation = rigidbody.WorldFromBody.rot;
+                            colliderCastInput.Start = rigidbody.WorldFromBody.pos;
                             colliderCastInput.End = destination;
                             var collector = new ClosestHitCollectorExclude<ColliderCastHit>(rigidbodyIndex, 1.0f);
                             if (collisionWorld.CastCollider(colliderCastInput, ref collector))
-                            {
-                                EntityData<Translation> location;
-                                location.entity = instance.entity;
-                                location.value.Value = math.lerp(instanceEx.originTransform.pos, destination, collector.closestHit.Fraction);
+                                destination = math.lerp(rigidbody.WorldFromBody.pos, destination, collector.closestHit.Fraction);
 
-                                locations.Create().value = location;
-                            }
+                            locations.TryAdd(instance.entity, destination);
                         }
                     }
                     else if ((instanceEx.value.flag & GameActionFlag.ActorLocation) == GameActionFlag.ActorLocation)
@@ -589,7 +667,7 @@ public struct GameEntityActionSystemCore
                         location.entity = instance.entity;
                         location.value.Value = instanceEx.value.actorLocation;
 
-                        locations.Create().value = location;
+                        locations.TryAdd(instance.entity, instanceEx.value.actorLocation);
                     }
 
                     //actorMoveDistance = (instanceEx.info.actorMoveSpeed + instanceEx.info.actorMoveSpeedIndirect) * (float)(max - min);
@@ -1302,11 +1380,9 @@ public struct GameEntityActionSystemCore
         [NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameActionStatus> results;
 
+        public SharedHashMap<Entity, float3>.ParallelWriter locations;
+
         public NativeFactory<Entity>.ParallelWriter unstoppableEntities;
-
-        //public NativeQueue<EntityData<float>>.ParallelWriter directVelocities;
-
-        public NativeFactory<EntityData<Translation>>.ParallelWriter locations;
 
         public NativeFactory<EntityData<GameNodeVelocityComponent>>.ParallelWriter impacts;
 
@@ -1341,8 +1417,8 @@ public struct GameEntityActionSystemCore
             //perform.physicsGravityFactors = chunk.GetNativeArray(physicsGravityFactorType);
             executor.actionEntities = chunk.GetBufferAccessor(ref actionEntityType);
             executor.results = results;
-            executor.unstoppableEntities = unstoppableEntities;
             executor.locations = locations;
+            executor.unstoppableEntities = unstoppableEntities;
             //perform.directVelocities = directVelocities;
             executor.impacts = impacts;
             executor.breakCommands = breakCommands;
@@ -1470,56 +1546,6 @@ public struct GameEntityActionSystemCore
         }
     }
 
-    /*[BurstCompile]
-    private struct ApplyDirectVelocities : IJob
-    {
-        public NativeQueue<EntityData<float>> inputs;
-
-        public ComponentLookup<GameNodeDirect> outputs;
-
-        [ReadOnly]
-        public ComponentLookup<Rotation> rotations;
-
-        public void Execute()
-        {
-            GameNodeDirect output;
-            while (inputs.TryDequeue(out var input))
-            {
-                if (!outputs.HasComponent(input.entity))
-                    continue;
-
-                output = outputs[input.entity];
-                output.value += math.forward(rotations[input.entity].Value) * input.value;
-
-                outputs[input.entity] = output;
-            }
-        }
-    }*/
-
-    [BurstCompile]
-    public struct ApplyTranslations : IJob
-    {
-        public NativeFactory<EntityData<Translation>> sources;
-
-        public ComponentLookup<Translation> destinations;
-
-        public void Execute()
-        {
-            EntityData<Translation> value;
-            var enumerator = sources.GetEnumerator();
-            while (enumerator.MoveNext())
-            {
-                value = enumerator.Current;
-                if (!destinations.HasComponent(value.entity))
-                    continue;
-
-                destinations[value.entity] = value.value;
-            }
-
-            sources.Clear();
-        }
-    }
-
     [BurstCompile]
     private struct ApplyUnstoppableEntities : IJob
     {
@@ -1619,14 +1645,6 @@ public struct GameEntityActionSystemCore
 
     private SharedPhysicsWorld __physicsWorld;
 
-    //private EntityCommandPool<EntityData<GameActionDisabled>> __entityManager;
-
-    private NativeFactory<Entity> __unstoppableEntities;
-    private NativeFactory<EntityData<Translation>> __locations;
-    //private NativeQueue<EntityData<float>> __directVelocities;
-    private NativeFactory<EntityData<GameNodeVelocityComponent>> __impacts;
-    private NativeFactory<EntityData<GameEntityBreakCommand>> __commands;
-
     private EntityTypeHandle __entityType;
     private ComponentTypeHandle<GameActionData> __instanceType;
     private ComponentTypeHandle<GameActionStatus> __statusType;
@@ -1656,6 +1674,14 @@ public struct GameEntityActionSystemCore
 
     private BufferLookup<GameNodeVelocityComponent> __velocities;
     private ComponentLookup<GameEntityBreakCommand> __breakCommands;
+
+    //private EntityCommandPool<EntityData<GameActionDisabled>> __entityManager;
+
+    private SharedHashMap<Entity, float3> __locations;
+    private NativeFactory<Entity> __unstoppableEntities;
+    //private NativeQueue<EntityData<float>> __directVelocities;
+    private NativeFactory<EntityData<GameNodeVelocityComponent>> __impacts;
+    private NativeFactory<EntityData<GameEntityBreakCommand>> __commands;
 
     public GameEntityActionSystemCore(IEnumerable<EntityQueryDesc> queries, ref SystemState systemState)
     {
@@ -1698,8 +1724,8 @@ public struct GameEntityActionSystemCore
         World world = systemState.World;
         __physicsWorld = world.GetOrCreateSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
 
+        __locations = world.GetOrCreateSystemUnmanaged<GameEntityActionLocationSystem>().locations;
         __unstoppableEntities = new NativeFactory<Entity>(Allocator.Persistent, true);
-        __locations = new NativeFactory<EntityData<Translation>>(Allocator.Persistent, true);
         //__directVelocities = new NativeQueue<EntityData<float>>(Allocator.Persistent);
         __impacts = new NativeFactory<EntityData<GameNodeVelocityComponent>>(Allocator.Persistent, true);
         __commands = new NativeFactory<EntityData<GameEntityBreakCommand>>(Allocator.Persistent, true);
@@ -1740,8 +1766,6 @@ public struct GameEntityActionSystemCore
     public void Dispose()
     {
         __unstoppableEntities.Dispose();
-        __locations.Dispose();
-        //__directVelocities.Dispose();
         __impacts.Dispose();
         __commands.Dispose();
     }
@@ -1754,8 +1778,20 @@ public struct GameEntityActionSystemCore
         if (group.IsEmptyIgnoreFilter)
             return false;
 
+        var inputDeps = systemState.Dependency;
+
+        ref var locationJobManager = ref __locations.lookupJobManager;
+        var counter = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
+        var jobHandle = group.CalculateEntityCountAsync(counter, inputDeps);
+
+        jobHandle = JobHandle.CombineDependencies(jobHandle, locationJobManager.readWriteJobHandle);
+
+        Reset reset;
+        reset.count = counter;
+        reset.locations = __locations.writer;
+        jobHandle = reset.ScheduleByRef(jobHandle);
+
         NativeFactory<Entity> unstoppableEntities = __unstoppableEntities;
-        NativeFactory<EntityData<Translation>> locations = __locations; 
         NativeFactory<EntityData<GameNodeVelocityComponent>> impacts = __impacts;
         NativeFactory<EntityData<GameEntityBreakCommand>> commands = __commands;
 
@@ -1766,9 +1802,9 @@ public struct GameEntityActionSystemCore
 
         //var entityManager = __entityManager.Create();
 
-        ref var lookupJobManager = ref __physicsWorld.lookupJobManager;
+        ref var physicsWorldJobManager = ref __physicsWorld.lookupJobManager;
 
-        var jobHandle = JobHandle.CombineDependencies(systemState.Dependency, lookupJobManager.readOnlyJobHandle);
+        jobHandle = JobHandle.CombineDependencies(jobHandle, physicsWorldJobManager.readOnlyJobHandle);
 
         PerformEx<THandler, TFactory> perform;
         perform.deltaTime = __time.delta;
@@ -1794,19 +1830,21 @@ public struct GameEntityActionSystemCore
         //perform.physicsGravityFactorType = GetComponentTypeHandle<PhysicsGravityFactor>();
         perform.actionEntityType = actionEntityType;
         perform.results = __results.UpdateAsRef(ref systemState);
+        perform.locations = __locations.parallelWriter;
         perform.unstoppableEntities = unstoppableEntities.parallelWriter;
-        perform.locations = locations.parallelWriter;
         //perform.directVelocities = __directVelocities.AsParallelWriter();
         perform.impacts = impacts.parallelWriter;
         perform.breakCommands = commands.parallelWriter;
         //perform.entityManager = entityManager.parallelWriter;
         perform.factory = factory;
 
-        JobHandle performJob = perform.ScheduleParallel(group, jobHandle);
+        JobHandle performJob = perform.ScheduleParallelByRef(group, jobHandle);
 
         //entityManager.AddJobHandleForProducer(performJob);
 
-        lookupJobManager.AddReadOnlyDependency(performJob);
+        physicsWorldJobManager.AddReadOnlyDependency(performJob);
+
+        locationJobManager.readWriteJobHandle = performJob;
 
         this.performJob = performJob;
 
@@ -1822,18 +1860,6 @@ public struct GameEntityActionSystemCore
         computeHits.hits = __hits.UpdateAsRef(ref systemState);
 
         var hitJob = computeHits.Schedule(group, performJob);
-
-        ApplyTranslations applyLocations;
-        applyLocations.sources = locations;
-        applyLocations.destinations = translations;
-
-        hitJob = applyLocations.Schedule(hitJob);
-
-        /*ApplyDirectVelocities applyDirectVelocities;
-        applyDirectVelocities.inputs = __directVelocities;
-        applyDirectVelocities.outputs = GetComponentLookup<GameNodeDirect>();
-        applyDirectVelocities.rotations = GetComponentLookup<Rotation>(true);
-        JobHandle directVelocityJob = applyDirectVelocities.Schedule(performJob);*/
 
         ApplyUnstoppableEntities applyUnstoppableEntities;
         applyUnstoppableEntities.entities = unstoppableEntities;

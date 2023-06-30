@@ -141,7 +141,6 @@ public struct GameActionDataEx : IComponentData
     public float3 position;
     public float3 targetPosition;
     public RigidTransform transform;
-    public RigidTransform originTransform;
     public Entity target;
     public GameActionInfo info;
     public GameAction value;

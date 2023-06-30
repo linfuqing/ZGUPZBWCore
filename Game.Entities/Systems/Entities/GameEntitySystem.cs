@@ -1697,8 +1697,6 @@ public partial struct GameEntityActorSystem : ISystem
                                     break;
                             }
 
-                            result.valueEx.originTransform = math.RigidTransform(rotation, source + math.mul(rotation, action.instance.actorOffset));
-
                             entityManager.Enqueue(result);
                             //Create(result, action);
                         }
@@ -1958,6 +1956,8 @@ public partial struct GameEntityActorSystem : ISystem
 
     private ComponentTypeHandle<Disabled> __disabledType;
 
+    private ComponentTypeHandle<Translation> __translationType;
+
     private ComponentTypeHandle<GameNodeStatus> __statusType;
 
     private ComponentTypeHandle<GameNodeSurface> __surfaceType;
@@ -1983,8 +1983,6 @@ public partial struct GameEntityActorSystem : ISystem
     private BufferTypeHandle<GameNodeVelocityComponent> __velocityComponentType;
 
     private BufferTypeHandle<GameNodePosition> __positionType;
-
-    private ComponentTypeHandle<Translation> __translationType;
 
     private ComponentTypeHandle<Rotation> __rotationType;
 
@@ -2066,6 +2064,7 @@ public partial struct GameEntityActorSystem : ISystem
         __commands = state.GetComponentLookup<GameEntityActionCommand>(true);
         __entityArrayType = state.GetEntityTypeHandle();
         __disabledType = state.GetComponentTypeHandle<Disabled>(true);
+        __translationType = state.GetComponentTypeHandle<Translation>(true);
         __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
         __surfaceType = state.GetComponentTypeHandle<GameNodeSurface>(true);
         __characterType = state.GetComponentTypeHandle<GameNodeCharacterData>(true);
@@ -2079,7 +2078,6 @@ public partial struct GameEntityActorSystem : ISystem
         __actorActionInfoType = state.GetBufferTypeHandle<GameEntityActorActionInfo>();
         __velocityComponentType = state.GetBufferTypeHandle<GameNodeVelocityComponent>();
         __positionType = state.GetBufferTypeHandle<GameNodePosition>();
-        __translationType = state.GetComponentTypeHandle<Translation>();
         __rotationType = state.GetComponentTypeHandle<Rotation>();
         __delayType = state.GetComponentTypeHandle<GameNodeDelay>();
         __velocityType = state.GetComponentTypeHandle<GameNodeVelocity>();
@@ -2139,6 +2137,7 @@ public partial struct GameEntityActorSystem : ISystem
         act.commands = __commands.UpdateAsRef(ref state);
         act.entityArrayType = __entityArrayType.UpdateAsRef(ref state);
         act.disabledType = __disabledType.UpdateAsRef(ref state);
+        act.translationType = __translationType.UpdateAsRef(ref state);
         act.statusType = __statusType.UpdateAsRef(ref state);
         act.surfaceType = __surfaceType.UpdateAsRef(ref state);
         act.characterType = __characterType.UpdateAsRef(ref state);
@@ -2152,7 +2151,6 @@ public partial struct GameEntityActorSystem : ISystem
         act.actorActionInfoType = __actorActionInfoType.UpdateAsRef(ref state);
         act.velocityComponentType = __velocityComponentType.UpdateAsRef(ref state);
         act.positionType = __positionType.UpdateAsRef(ref state);
-        act.translationType = __translationType.UpdateAsRef(ref state);
         act.rotationType = __rotationType.UpdateAsRef(ref state);
         act.delayType = __delayType.UpdateAsRef(ref state);
         act.velocityType = __velocityType.UpdateAsRef(ref state);
