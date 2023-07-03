@@ -16,8 +16,11 @@ using ZG;
 
 public class GameActionFollow : StateMachineNode
 {
+    [Tooltip("跟随的优先级")]
     public int priority = 3;
+    [Tooltip("超过半径开始跟随")]
     public float radius = 8;
+    [Tooltip("跟随之后小于该距离不跟随")]
     public float distance = 5;
     
     public override void Enable(StateMachineComponentEx instance)

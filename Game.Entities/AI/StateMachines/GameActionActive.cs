@@ -44,10 +44,10 @@ public class GameActionActive : StateMachineNode
     [Tooltip("遇到该标签敌人则逃跑。")]
     public LayerMask layerMask;
 
-    [Tooltip("状态机优先级")]
+    [Tooltip("主动攻击的优先级（有GameWatcherComponent生效）")]
     public int watcherPriority = 1;
 
-    [Tooltip("状态机优先级")]
+    [Tooltip("被打之后反击优先级（有GameSpeakerComponent生效）")]
     public int speakerPriority = 3;
 
     [Tooltip("警觉技能")]
