@@ -277,12 +277,12 @@ public partial class GameActionFixedExecutorSystem :
             {
                 info.status = GameActionFixedInfo.Status.Acting;
                 info.time = time + random.NextFloat(frame.minTime, frame.maxTime);
-                /*if(frame.minTime < frame.maxTime)
+                //if(frame.minTime < frame.maxTime)
                 {
                     Rotation rotation;
                     rotation.Value = frame.rotation;
                     rotations[index] = rotation;
-                }*/
+                }
 
                 isMove = false;
             }
