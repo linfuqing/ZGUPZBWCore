@@ -12,7 +12,7 @@ using Unity.Physics.Extensions;
 using ZG;
 using Math = ZG.Mathematics.Math;
 
-[UpdateInGroup(typeof(GameNodeCharacterSystemGroup))]
+[BurstCompile, UpdateInGroup(typeof(GameNodeCharacterSystemGroup))]
 public partial struct GameEntityActionLocationSystem : ISystem
 {
     [BurstCompile]
@@ -58,6 +58,7 @@ public partial struct GameEntityActionLocationSystem : ISystem
         __translations = state.GetComponentLookup<Translation>();
     }
 
+    //[BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
         locations.Dispose();
