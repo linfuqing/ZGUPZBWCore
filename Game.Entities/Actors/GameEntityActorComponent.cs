@@ -51,7 +51,7 @@ public struct GameActionStatus : IComponentData
         Break = 0x08,
         Destroy = 0x10,
         Destroied = Break | Destroy,
-        Managed = 0x20//0x30
+        Managed = 0x21//0x30
     }
     
     public Status value;

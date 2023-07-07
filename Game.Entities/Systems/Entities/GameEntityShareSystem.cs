@@ -547,9 +547,14 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
                     UnityEngine.Debug.LogError(gameObject);
                     //UnityEngine.Debug.Break();
                 }*/
-
-                gameObject.transform.SetParent(parent);
-                GameObject.Destroy(gameObject, target.destroyTime);
+                
+                if (isDisabled)
+                {
+                    gameObject.transform.SetParent(parent);
+                    GameObject.Destroy(gameObject, target.destroyTime);
+                }
+                else
+                    GameObject.Destroy(gameObject);
             }
         }
 

@@ -606,8 +606,8 @@ public struct GameEntityActionSystemCore
 
         public unsafe void Execute(int index)
         {
-            GameActionStatus status = states[index];
-            GameActionStatus.Status value = status.value;
+            var status = states[index];
+            var value = status.value;
             if ((value & GameActionStatus.Status.Destroy) == GameActionStatus.Status.Destroy)
             {
                 actionEntities[index].Clear();
@@ -615,24 +615,36 @@ public struct GameEntityActionSystemCore
                 return;
             }
 
-            double time = now;
             Entity entity = entityArray[index];
+            var rigidbodies = collisionWorld.Bodies;
+            int rigidbodyIndex = collisionWorld.GetRigidBodyIndex(entity);
+            var rigidbody = rigidbodies[rigidbodyIndex];
+            var transform = rigidbody.WorldFromBody;// math.RigidTransform(rotations[index].Value, translations[index].Value);
+
+            double time = now;
             var instance = instances[index];
             var instanceEx = instancesEx[index];
             if ((value & GameActionStatus.Status.Created) != GameActionStatus.Status.Created &&
-                handler.Create(
+                (handler.Create(
                         index,
                         time,
                         entity,
                         instanceEx.target,
-                        instance))
-                value |= GameActionStatus.Status.Created | GameActionStatus.Status.Managed;
+                        instance) ||
+                        (value & GameActionStatus.Status.Damage) == GameActionStatus.Status.Damage &&
+                        handler.Init(
+                        index,
+                        instanceEx.info.damageTime,
+                        time,
+                        entity,
+                        transform,
+                        instance)))
+                value |= /*GameActionStatus.Status.Created | */GameActionStatus.Status.Managed;
 
             //float actorMoveDistance = 0.0f;
             double oldTime = time - deltaTime,
                 actorMoveStartTime = instance.time + instanceEx.info.actorMoveStartTime,
                 actorMoveTime = actorMoveStartTime + instanceEx.info.actorMoveDuration;
-            var rigidbodies = collisionWorld.Bodies;
             if (actorMoveStartTime <= time && oldTime < actorMoveTime)
             {
                 double max = math.min(time, actorMoveTime), min = math.max(oldTime, actorMoveStartTime);
@@ -643,21 +655,21 @@ public struct GameEntityActionSystemCore
 
                     if ((instanceEx.value.flag & GameActionFlag.TargetActorLocation) == GameActionFlag.TargetActorLocation)
                     {
-                        int rigidbodyIndex = collisionWorld.GetRigidBodyIndex(instance.entity);
-                        if (rigidbodyIndex != -1)
+                        int sourceRigidbodyIndex = collisionWorld.GetRigidBodyIndex(instance.entity);
+                        if (sourceRigidbodyIndex != -1)
                         {
-                            var rigidbody = rigidbodies[rigidbodyIndex];
+                            var sourceRigidbody = rigidbodies[sourceRigidbodyIndex];
 
-                            float3 destination = math.transform(rigidbody.WorldFromBody, instanceEx.value.actorOffset) + math.forward(rigidbody.WorldFromBody.rot) * instanceEx.info.distance;
+                            float3 destination = math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.actorOffset) + math.forward(sourceRigidbody.WorldFromBody.rot) * instanceEx.info.distance;
 
                             ColliderCastInput colliderCastInput = default;
-                            colliderCastInput.Collider = (Collider*)rigidbodies[rigidbodyIndex].Collider.GetUnsafePtr();
-                            colliderCastInput.Orientation = rigidbody.WorldFromBody.rot;
-                            colliderCastInput.Start = rigidbody.WorldFromBody.pos;
+                            colliderCastInput.Collider = (Collider*)rigidbodies[sourceRigidbodyIndex].Collider.GetUnsafePtr();
+                            colliderCastInput.Orientation = sourceRigidbody.WorldFromBody.rot;
+                            colliderCastInput.Start = sourceRigidbody.WorldFromBody.pos;
                             colliderCastInput.End = destination;
-                            var collector = new ClosestHitCollectorExclude<ColliderCastHit>(rigidbodyIndex, 1.0f);
+                            var collector = new ClosestHitCollectorExclude<ColliderCastHit>(sourceRigidbodyIndex, 1.0f);
                             if (collisionWorld.CastCollider(colliderCastInput, ref collector))
-                                destination = math.lerp(rigidbody.WorldFromBody.pos, destination, collector.closestHit.Fraction);
+                                destination = math.lerp(sourceRigidbody.WorldFromBody.pos, destination, collector.closestHit.Fraction);
 
                             locations.TryAdd(instance.entity, destination);
                         }
@@ -730,7 +742,6 @@ public struct GameEntityActionSystemCore
                     isVelocityDirty = false,
                     isGravity = (instanceEx.value.flag & GameActionFlag.UseGravity) == GameActionFlag.UseGravity &&
                             instanceEx.value.trackType == GameActionRangeType.None;
-                RigidTransform transform = math.RigidTransform(rotations[index].Value, translations[index].Value);
                 if (isDamaged)
                 {
                     value |= GameActionStatus.Status.Damaged;
@@ -1088,8 +1099,6 @@ public struct GameEntityActionSystemCore
                     bool isDestroy;
                     if (hasMove)
                     {
-                        int rigidbodyIndex = collisionWorld.GetRigidBodyIndex(entity);
-
                         GameEntityTransform start;
                         double minTime = time - deltaTime;
                         start.elapsedTime = minTime < damageTime ? instanceEx.info.damageTime : math.min((float)(minTime - instance.time), duration);
