@@ -3014,6 +3014,7 @@ public partial struct GameEntityStatusSystem : ISystem
         __group.AddChangedVersionFilter(ComponentType.ReadOnly<GameNodeStatus>());
         __group.AddChangedVersionFilter(ComponentType.ReadOnly<GameNodeOldStatus>());
 
+        __entityActionType = state.GetBufferTypeHandle<GameEntityAction>(true);
         __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
         __oldStatusType = state.GetComponentTypeHandle<GameNodeOldStatus>(true);
         __eventInfoType = state.GetComponentTypeHandle<GameEntityEventInfo>(true);
