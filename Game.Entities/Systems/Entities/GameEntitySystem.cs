@@ -2879,7 +2879,8 @@ public partial struct GameEntityStatusSystem : ISystem
     private struct UpdateCommandVersions
     {
         [ReadOnly]
-        public NativeArray<Entity> entityArray;
+        public BufferAccessor<GameEntityAction> entityActions;
+
         [ReadOnly]
         public NativeArray<GameNodeStatus> states;
         [ReadOnly]
@@ -2892,22 +2893,23 @@ public partial struct GameEntityStatusSystem : ISystem
 
         public NativeArray<GameEntityActorInfo> actorInfos;
 
+        public NativeArray<GameEntityEventCommand> eventCommands;
+
         public BufferAccessor<GameEntityActorActionInfo> actorActionInfos;
 
         [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameEntityEventCommand> eventCommands;
-        [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameEntityActionCommand> actionCommands;
-        [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameEntityBreakCommand> breakCommands;
+        public ComponentLookup<GameActionStatus> actionStates;
 
         public EntityCommandQueue<TimeEventHandle>.ParallelWriter timeEventHandles;
 
-        public void Execute(int index)
+        public bool Execute(int index)
         {
             int value = states[index].value & GameNodeStatus.OVER, oldValue = oldStates[index].value & GameNodeStatus.OVER;
             if (value == oldValue || value != GameNodeStatus.OVER)
-                return;
+                return false;
+
+            if (index < entityActions.Length)
+                GameEntityAction.Break(entityActions[index], ref actionStates);
 
             actorTimes[index] = default;
 
@@ -2918,14 +2920,10 @@ public partial struct GameEntityStatusSystem : ISystem
             for (int i = 0; i < numActorActionInfos; ++i)
                 actorActionInfos[i] = default;
 
-            var entity = entityArray[index];
-
             timeEventHandles.Enqueue(eventInfos[index].timeEventHandle);
-            timeEventHandles.Enqueue(eventCommands[entity].handle);
+            timeEventHandles.Enqueue(eventCommands[index].handle);
 
-            eventCommands.SetComponentEnabled(entity, false);
-            actionCommands.SetComponentEnabled(entity, false);
-            breakCommands.SetComponentEnabled(entity, false);
+            return true;
         }
     }
 
@@ -2933,7 +2931,8 @@ public partial struct GameEntityStatusSystem : ISystem
     private struct UpdateCommandVersionsEx : IJobChunk, IEntityCommandProducerJob
     {
         [ReadOnly]
-        public EntityTypeHandle entityType;
+        public BufferTypeHandle<GameEntityAction> entityActionType;
+
         [ReadOnly]
         public ComponentTypeHandle<GameNodeStatus> statusType;
         [ReadOnly]
@@ -2945,67 +2944,91 @@ public partial struct GameEntityStatusSystem : ISystem
 
         public ComponentTypeHandle<GameEntityActorInfo> actorInfoType;
 
+        public ComponentTypeHandle<GameEntityEventCommand> eventCommandType;
+        public ComponentTypeHandle<GameEntityActionCommand> actionCommandType;
+        public ComponentTypeHandle<GameEntityBreakCommand> breakCommandType;
+
         public BufferTypeHandle<GameEntityActorActionInfo> actorActionInfoType;
 
         [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameEntityEventCommand> eventCommands;
-        [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameEntityActionCommand> actionCommands;
-        [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameEntityBreakCommand> breakCommands;
+        public ComponentLookup<GameActionStatus> actionStates;
 
         public EntityCommandQueue<TimeEventHandle>.ParallelWriter timeEventHandles;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             UpdateCommandVersions updateCommandVersions;
-            updateCommandVersions.entityArray = chunk.GetNativeArray(entityType);
+            updateCommandVersions.entityActions = chunk.GetBufferAccessor(ref entityActionType);
             updateCommandVersions.states = chunk.GetNativeArray(ref statusType);
             updateCommandVersions.oldStates = chunk.GetNativeArray(ref oldStatusType);
             updateCommandVersions.eventInfos = chunk.GetNativeArray(ref eventInfoType);
             updateCommandVersions.actorTimes = chunk.GetNativeArray(ref actorTimeType);
             updateCommandVersions.actorInfos = chunk.GetNativeArray(ref actorInfoType);
+            updateCommandVersions.eventCommands = chunk.GetNativeArray(ref eventCommandType);
             updateCommandVersions.actorActionInfos = chunk.GetBufferAccessor(ref actorActionInfoType);
-            updateCommandVersions.eventCommands = eventCommands;
-            updateCommandVersions.actionCommands = actionCommands;
-            updateCommandVersions.breakCommands = breakCommands;
+            updateCommandVersions.actionStates = actionStates;
             updateCommandVersions.timeEventHandles = timeEventHandles;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
-                updateCommandVersions.Execute(i);
+            {
+                if(updateCommandVersions.Execute(i))
+                {
+                    chunk.SetComponentEnabled(ref eventCommandType, i, false);
+                    chunk.SetComponentEnabled(ref actionCommandType, i, false);
+                    chunk.SetComponentEnabled(ref breakCommandType, i, false);
+                }
+            }
         }
     }
 
     private EntityQuery __group;
+
+    private BufferTypeHandle<GameEntityAction> __entityActionType;
+
+    private ComponentTypeHandle<GameNodeStatus> __statusType;
+    private ComponentTypeHandle<GameNodeOldStatus> __oldStatusType;
+    private ComponentTypeHandle<GameEntityEventInfo> __eventInfoType;
+
+    private ComponentTypeHandle<GameEntityActorTime> __actorTimeType;
+    private ComponentTypeHandle<GameEntityActorInfo> __actorInfoType;
+
+    private ComponentTypeHandle<GameEntityEventCommand> __eventCommandType;
+    private ComponentTypeHandle<GameEntityActionCommand> __actionCommandType;
+    private ComponentTypeHandle<GameEntityBreakCommand> __breakCommandType;
+
+    private BufferTypeHandle<GameEntityActorActionInfo> __actorActionInfoType;
+
+    private ComponentLookup<GameActionStatus> __actionStates;
+
     private EntityCommandPool<TimeEventHandle> __timeEventHandles;
 
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(new EntityQueryDesc[]
-            {
-                new EntityQueryDesc()
-                {
-                    All = new ComponentType[]
-                    {
-                        ComponentType.ReadOnly<GameNodeStatus>(),
-                        ComponentType.ReadOnly<GameNodeOldStatus>(),
-                        ComponentType.ReadWrite<GameEntityCommandVersion>()
-                    },
+        using(var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameNodeStatus, GameNodeOldStatus>()
+                    .WithAllRW<GameEntityCommandVersion>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
+        __group.AddChangedVersionFilter(ComponentType.ReadOnly<GameNodeStatus>());
+        __group.AddChangedVersionFilter(ComponentType.ReadOnly<GameNodeOldStatus>());
 
-                    Options = EntityQueryOptions.IncludeDisabledEntities
-                }
-            });
-        __group.SetChangedVersionFilter(
-             new ComponentType[]
-             {
-                typeof(GameNodeStatus),
-                typeof(GameNodeOldStatus)
-             });
+        __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
+        __oldStatusType = state.GetComponentTypeHandle<GameNodeOldStatus>(true);
+        __eventInfoType = state.GetComponentTypeHandle<GameEntityEventInfo>(true);
+        __actorTimeType = state.GetComponentTypeHandle<GameEntityActorTime>();
+        __actorInfoType = state.GetComponentTypeHandle<GameEntityActorInfo>();
+        __eventCommandType = state.GetComponentTypeHandle<GameEntityEventCommand>();
+        __actionCommandType = state.GetComponentTypeHandle<GameEntityActionCommand>();
+        __breakCommandType = state.GetComponentTypeHandle<GameEntityBreakCommand>();
+        __actorActionInfoType = state.GetBufferTypeHandle<GameEntityActorActionInfo>();
+        __actionStates = state.GetComponentLookup<GameActionStatus>();
 
         __timeEventHandles = state.World.GetOrCreateSystemManaged<GameEntityTimeEventSystem>().pool;
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
     }
@@ -3016,19 +3039,20 @@ public partial struct GameEntityStatusSystem : ISystem
         var timeEventHandles = __timeEventHandles.Create();
 
         UpdateCommandVersionsEx updateCommandVersions;
-        updateCommandVersions.entityType = state.GetEntityTypeHandle();
-        updateCommandVersions.statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
-        updateCommandVersions.oldStatusType = state.GetComponentTypeHandle<GameNodeOldStatus>(true);
-        updateCommandVersions.eventInfoType = state.GetComponentTypeHandle<GameEntityEventInfo>(true);
-        updateCommandVersions.actorTimeType = state.GetComponentTypeHandle<GameEntityActorTime>();
-        updateCommandVersions.actorInfoType = state.GetComponentTypeHandle<GameEntityActorInfo>();
-        updateCommandVersions.actorActionInfoType = state.GetBufferTypeHandle<GameEntityActorActionInfo>();
-        updateCommandVersions.eventCommands = state.GetComponentLookup<GameEntityEventCommand>();
-        updateCommandVersions.actionCommands = state.GetComponentLookup<GameEntityActionCommand>();
-        updateCommandVersions.breakCommands = state.GetComponentLookup<GameEntityBreakCommand>();
+        updateCommandVersions.entityActionType = __entityActionType.UpdateAsRef(ref state);
+        updateCommandVersions.statusType = __statusType.UpdateAsRef(ref state);
+        updateCommandVersions.oldStatusType = __oldStatusType.UpdateAsRef(ref state);
+        updateCommandVersions.eventInfoType = __eventInfoType.UpdateAsRef(ref state);
+        updateCommandVersions.actorTimeType = __actorTimeType.UpdateAsRef(ref state);
+        updateCommandVersions.actorInfoType = __actorInfoType.UpdateAsRef(ref state);
+        updateCommandVersions.eventCommandType = __eventCommandType.UpdateAsRef(ref state);
+        updateCommandVersions.actionCommandType = __actionCommandType.UpdateAsRef(ref state);
+        updateCommandVersions.breakCommandType = __breakCommandType.UpdateAsRef(ref state);
+        updateCommandVersions.actorActionInfoType = __actorActionInfoType.UpdateAsRef(ref state);
+        updateCommandVersions.actionStates = __actionStates.UpdateAsRef(ref state);
         updateCommandVersions.timeEventHandles = timeEventHandles.parallelWriter;
 
-        var jobHandle = updateCommandVersions.ScheduleParallel(__group, state.Dependency);
+        var jobHandle = updateCommandVersions.ScheduleParallelByRef(__group, state.Dependency);
 
         timeEventHandles.AddJobHandleForProducer<UpdateCommandVersionsEx>(jobHandle);
 
