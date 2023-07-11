@@ -1,18 +1,19 @@
-﻿using System;
-using System.Collections.Generic;
-using Unity.Jobs;
+﻿using Unity.Jobs;
 using Unity.Entities;
 using Unity.Collections;
 using Unity.Mathematics;
 using Unity.Transforms;
 using UnityEngine;
 using ZG;
+using Unity.Burst;
 
-[assembly: RegisterGenericComponentType(typeof(GameActionFollowSchedulerSystem.StateMachine))]
-[assembly: RegisterGenericJobType(typeof(StateMachineExit<GameActionFollowSchedulerSystem.StateMachine, StateMachineScheduler, StateMachineFactory<StateMachineScheduler>>))]
-[assembly: RegisterGenericJobType(typeof(StateMachineEntry<GameActionFollowSchedulerSystem.SchedulerEntry, GameActionFollowSchedulerSystem.FactoryEntry>))]
-[assembly: RegisterGenericJobType(typeof(StateMachineEscaper<GameActionFollowSchedulerSystem.StateMachine, StateMachineEscaper, StateMachineFactory<StateMachineEscaper>>))]
-[assembly: RegisterGenericJobType(typeof(StateMachineExecutor<GameActionFollowSchedulerSystem.StateMachine, GameActionFollowExecutorSystem.Executor, GameActionFollowExecutorSystem.ExecutorFactory>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineSchedulerJob<
+    StateMachineScheduler, 
+    StateMachineFactory<StateMachineScheduler>, 
+    GameActionFollowSchedulerSystem.SchedulerEntry, 
+    GameActionFollowSchedulerSystem.FactoryEntry>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineEscaperJob<StateMachineEscaper, StateMachineFactory<StateMachineEscaper>>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineExecutorJob<GameActionFollowExecutorSystem.Executor, GameActionFollowExecutorSystem.ExecutorFactory>))]
 
 public class GameActionFollow : StateMachineNode
 {
@@ -38,7 +39,6 @@ public class GameActionFollow : StateMachineNode
     }
 }
 
-[Serializable]
 public struct GameActionFollowData : IComponentData
 {
     [Tooltip("状态机优先级")]
@@ -48,11 +48,8 @@ public struct GameActionFollowData : IComponentData
     public float distanceSq;
 }
 
-[UpdateAfter(typeof(GameActionActiveSchedulerSystem))]
-public partial class GameActionFollowSchedulerSystem : StateMachineSchedulerSystem<
-    GameActionFollowSchedulerSystem.SchedulerEntry, 
-    GameActionFollowSchedulerSystem.FactoryEntry, 
-    GameActionFollowSchedulerSystem>
+[BurstCompile, UpdateInGroup(typeof(StateMachineSchedulerGroup)), UpdateAfter(typeof(GameActionActiveSchedulerSystem))]
+public partial struct GameActionFollowSchedulerSystem : ISystem
 {
     public struct SchedulerEntry : IStateMachineScheduler
     {
@@ -70,20 +67,19 @@ public partial class GameActionFollowSchedulerSystem : StateMachineSchedulerSyst
         
         public bool Execute(
             int runningStatus,
-            int runningSystemIndex,
-            int nextSystemIndex,
-            int currentSystemIndex,
-            int index,
-            in Entity entity)
+            in SystemHandle runningSystemHandle,
+            in SystemHandle nextSystemHandle,
+            in SystemHandle currentSystemHandle,
+            int index)
         {
-            if (currentSystemIndex == runningSystemIndex)
+            if (currentSystemHandle == runningSystemHandle)
                 return false;
 
-            GameActionFollowData instance = instances[index];
+            var instance = instances[index];
             if (runningStatus >= instance.priority)
                 return false;
 
-            GameActorMaster actorMaster = actorMasters[index];
+            var actorMaster = actorMasters[index];
             if (!translationMap.HasComponent(actorMaster.entity))
                 return false;
 
@@ -108,54 +104,67 @@ public partial class GameActionFollowSchedulerSystem : StateMachineSchedulerSyst
         [ReadOnly]
         public ComponentTypeHandle<GameActorMaster> actorMasterType;
         
-        public bool Create(
+        public SchedulerEntry Create(
             int index, 
-            in ArchetypeChunk chunk,
-            out SchedulerEntry schedulerEntry)
+            in ArchetypeChunk chunk)
         {
+            SchedulerEntry schedulerEntry;
             schedulerEntry.translationMap = translations;
             schedulerEntry.translations = chunk.GetNativeArray(ref translationType);
             schedulerEntry.instances = chunk.GetNativeArray(ref instanceType);
             schedulerEntry.actorMasters = chunk.GetNativeArray(ref actorMasterType);
 
-            return true;
+            return schedulerEntry;
         }
     }
 
-    public override IEnumerable<EntityQueryDesc> entryEntityArchetypeQueries => __entryEntityArchetypeQueries;
+    private ComponentLookup<Translation> __translations;
 
-    protected override FactoryEntry _GetEntry(ref JobHandle inputDeps)
+    private ComponentTypeHandle<Translation> __translationType;
+
+    private ComponentTypeHandle<GameActionFollowData> __instanceType;
+
+    private ComponentTypeHandle<GameActorMaster> __actorMasterType;
+
+    private StateMachineSchedulerSystemCore __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __translations = state.GetComponentLookup<Translation>(true);
+        __translationType = state.GetComponentTypeHandle<Translation>(true);
+        __instanceType = state.GetComponentTypeHandle<GameActionFollowData>(true);
+        __actorMasterType = state.GetComponentTypeHandle<GameActorMaster>(true);
+
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __core = new StateMachineSchedulerSystemCore(
+                ref state,
+                builder
+                .WithAll<Translation, GameActionFollowData, GameActorMaster>());
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
         FactoryEntry factoryEntry;
-        factoryEntry.translations = GetComponentLookup<Translation>(true);
-        factoryEntry.translationType = GetComponentTypeHandle<Translation>(true);
-        factoryEntry.instanceType = GetComponentTypeHandle<GameActionFollowData>(true);
-        factoryEntry.actorMasterType = GetComponentTypeHandle<GameActorMaster>(true);
-        return factoryEntry;
-    }
+        factoryEntry.translations = __translations.UpdateAsRef(ref state);
+        factoryEntry.translationType = __translationType.UpdateAsRef(ref state);
+        factoryEntry.instanceType = __instanceType.UpdateAsRef(ref state);
+        factoryEntry.actorMasterType = __actorMasterType.UpdateAsRef(ref state);
 
-    private readonly EntityQueryDesc[] __entryEntityArchetypeQueries = new EntityQueryDesc[]
-    {
-        new EntityQueryDesc()
-        {
-            All = new ComponentType[]
-            {
-                ComponentType.ReadOnly<Translation>(),
-                ComponentType.ReadOnly<GameActionFollowData>(),
-                ComponentType.ReadOnly<GameActorMaster>()
-            }, 
-            None = new ComponentType[]
-            {
-                typeof(Disabled)
-            }
-        }
-    };
+        StateMachineFactory<StateMachineScheduler> factoryExit;
+        __core.Update<StateMachineScheduler, SchedulerEntry, StateMachineFactory<StateMachineScheduler>, FactoryEntry>(ref state, ref factoryEntry, ref factoryExit);
+    }
 }
 
-//[UpdateInGroup(typeof(StateMachineExecutorGroup))]
-public partial class GameActionFollowExecutorSystem : GameActionFollowSchedulerSystem.StateMachineExecutorSystem<
-    GameActionFollowExecutorSystem.Executor, 
-    GameActionFollowExecutorSystem.ExecutorFactory>, IEntityCommandProducerJob
+[BurstCompile, CreateAfter(typeof(GameActionFollowSchedulerSystem)), UpdateInGroup(typeof(StateMachineExecutorGroup))]
+public partial struct GameActionFollowExecutorSystem : ISystem
 {
     public struct Executor : IStateMachineExecutor
     {
@@ -267,8 +276,6 @@ public partial class GameActionFollowExecutorSystem : GameActionFollowSchedulerS
         public ComponentLookup<Translation> translations;
         [ReadOnly]
         public BufferTypeHandle<GameNodePosition> positionType;
-        //[ReadOnly]
-        //public EntityTypeHandle entityType;
         [ReadOnly]
         public ComponentTypeHandle<Translation> translationType;
         [ReadOnly]
@@ -278,13 +285,11 @@ public partial class GameActionFollowExecutorSystem : GameActionFollowSchedulerS
 
         public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
 
-        //public EntityAddDataQueue.ParallelWriter entityManager;
-
-        public bool Create(
+        public Executor Create(
             int index, 
-            in ArchetypeChunk chunk,
-            out Executor executor)
+            in ArchetypeChunk chunk)
         {
+            Executor executor;
             executor.isHasPositions = chunk.Has(ref positionType);
             executor.time = time;
             executor.chunk = chunk;
@@ -297,64 +302,61 @@ public partial class GameActionFollowExecutorSystem : GameActionFollowSchedulerS
             executor.targets = chunk.GetNativeArray(ref targetType);
             //executor.entityManager = entityManager;
 
-            return true;
+            return executor;
         }
     }
 
     private GameSyncTime __time;
-    //private EntityAddDataPool __endFrameBarrier;
-    //private EntityAddDataQueue __entityManager;
 
-    public override IEnumerable<EntityQueryDesc> runEntityArchetypeQueries => __runEntityArchetypeQueries;
+    private ComponentLookup<Translation> __translations;
+    private BufferTypeHandle<GameNodePosition> __positionType;
+    private ComponentTypeHandle<Translation> __translationType;
+    private ComponentTypeHandle<GameActionFollowData> __instanceType;
+    private ComponentTypeHandle<GameActorMaster> __actorMasterType;
 
-    protected override void OnCreate()
+    private ComponentTypeHandle<GameNavMeshAgentTarget> __targetType;
+
+    private StateMachineExecutorSystemCore __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        __time = new GameSyncTime(ref state);
 
-        __time = new GameSyncTime(ref this.GetState());
+        __translations = state.GetComponentLookup<Translation>(true);
+        __positionType = state.GetBufferTypeHandle<GameNodePosition>(true);
+        __translationType = state.GetComponentTypeHandle<Translation>(true);
+        __instanceType = state.GetComponentTypeHandle<GameActionFollowData>(true);
+        __actorMasterType = state.GetComponentTypeHandle<GameActorMaster>(true);
+        __targetType = state.GetComponentTypeHandle<GameNavMeshAgentTarget>();
 
-        //var world = World;
-        //__endFrameBarrier = world.GetOrCreateSystemUnmanaged<GameActionStructChangeSystem>().addDataCommander;
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __core = new StateMachineExecutorSystemCore(
+                ref state,
+                builder
+                .WithAll<GameActionFollowData, GameActorMaster>(),
+                state.WorldUnmanaged.GetExistingUnmanagedSystem<GameActionFollowSchedulerSystem>());
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        //__entityManager = __endFrameBarrier.Create();
 
-        base.OnUpdate();
-
-        //__entityManager.AddJobHandleForProducer<GameActionFollowExecutorSystem>(Dependency);
     }
 
-    protected override ExecutorFactory _GetRun(ref JobHandle inputDeps)
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
         ExecutorFactory executorFactory;
         executorFactory.time = __time.nextTime;
-        executorFactory.translations = GetComponentLookup<Translation>(true);
-        executorFactory.positionType = GetBufferTypeHandle<GameNodePosition>(true);
-        //executorFactory.entityType = GetEntityTypeHandle();
-        executorFactory.translationType = GetComponentTypeHandle<Translation>(true);
-        executorFactory.instanceType = GetComponentTypeHandle<GameActionFollowData>(true);
-        executorFactory.actorMasterType = GetComponentTypeHandle<GameActorMaster>(true);
-        executorFactory.targetType = GetComponentTypeHandle<GameNavMeshAgentTarget>();
-        //executorFactory.entityManager = __entityManager.AsComponentParallelWriter<GameNavMeshAgentTarget>(runGroup.CalculateEntityCount());
+        executorFactory.translations = __translations.UpdateAsRef(ref state);
+        executorFactory.positionType = __positionType.UpdateAsRef(ref state);
+        executorFactory.translationType = __translationType.UpdateAsRef(ref state);
+        executorFactory.instanceType = __instanceType.UpdateAsRef(ref state);
+        executorFactory.actorMasterType = __actorMasterType.UpdateAsRef(ref state);
+        executorFactory.targetType = __targetType.UpdateAsRef(ref state);
 
-        return executorFactory;
+        StateMachineFactory<StateMachineEscaper> escaperFactory;
+        __core.Update<StateMachineEscaper, Executor, StateMachineFactory<StateMachineEscaper>, ExecutorFactory>(ref state, ref executorFactory, ref escaperFactory);
     }
-    
-    private readonly EntityQueryDesc[] __runEntityArchetypeQueries = new EntityQueryDesc[]
-    {
-        new EntityQueryDesc()
-        {
-            All = new ComponentType[]
-            {
-                ComponentType.ReadOnly<GameActionFollowData>(),
-                ComponentType.ReadOnly<GameActorMaster>(),
-            }, 
-            None = new ComponentType[]
-            {
-                typeof(Disabled)
-            }
-        }
-    };
 }

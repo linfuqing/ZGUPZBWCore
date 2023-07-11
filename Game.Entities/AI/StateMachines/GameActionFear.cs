@@ -6,13 +6,15 @@ using Unity.Mathematics;
 using Unity.Transforms;
 using UnityEngine;
 using ZG;
-using System.Collections.Generic;
+using Unity.Burst;
 
-[assembly: RegisterGenericComponentType(typeof(GameActionFearSchedulerSystem.StateMachine))]
-[assembly: RegisterGenericJobType(typeof(StateMachineExit<GameActionFearSchedulerSystem.StateMachine, StateMachineScheduler, StateMachineFactory<StateMachineScheduler>>))]
-[assembly: RegisterGenericJobType(typeof(StateMachineEntry<GameActionFearSchedulerSystem.SchedulerEntry, GameActionFearSchedulerSystem.FactoryEntry>))]
-[assembly: RegisterGenericJobType(typeof(StateMachineEscaper<GameActionFearSchedulerSystem.StateMachine, GameActionFearExecutorSystem.Escaper, GameActionFearExecutorSystem.EscaperFactory>))]
-[assembly: RegisterGenericJobType(typeof(StateMachineExecutor<GameActionFearSchedulerSystem.StateMachine, GameActionFearExecutorSystem.Executor, GameActionFearExecutorSystem.ExecutorFactory>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineSchedulerJob<
+    StateMachineScheduler, 
+    StateMachineFactory<StateMachineScheduler>, 
+    GameActionFearSchedulerSystem.SchedulerEntry, 
+    GameActionFearSchedulerSystem.FactoryEntry>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineEscaperJob<GameActionFearExecutorSystem.Escaper, GameActionFearExecutorSystem.EscaperFactory>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineExecutorJob<GameActionFearExecutorSystem.Executor, GameActionFearExecutorSystem.ExecutorFactory>))]
 
 public class GameActionFear : StateMachineNode
 {
@@ -42,7 +44,6 @@ public class GameActionFear : StateMachineNode
     }
 }
 
-[Serializable]
 public struct GameActionFearData : IComponentData
 {
     public int auraFlag; 
@@ -50,17 +51,13 @@ public struct GameActionFearData : IComponentData
     public float distance;
 }
 
-[Serializable]
 public struct GameActionFearInfo : IComponentData
 {
     public float3 position;
 }
 
-[UpdateBefore(typeof(GameActionActiveSchedulerSystem)), UpdateAfter(typeof(GameActionNormalSchedulerSystem))]
-public partial class GameActionFearSchedulerSystem : StateMachineSchedulerSystem<
-    GameActionFearSchedulerSystem.SchedulerEntry,
-    GameActionFearSchedulerSystem.FactoryEntry,
-    GameActionFearSchedulerSystem>
+[BurstCompile, UpdateInGroup(typeof(StateMachineSchedulerGroup)), UpdateBefore(typeof(GameActionActiveSchedulerSystem)), UpdateAfter(typeof(GameActionNormalSchedulerSystem))]
+public partial struct GameActionFearSchedulerSystem : ISystem
 {
     public struct SchedulerEntry : IStateMachineScheduler
     {
@@ -77,11 +74,10 @@ public partial class GameActionFearSchedulerSystem : StateMachineSchedulerSystem
 
         public bool Execute(
             int runningStatus,
-            int runningSystemIndex,
-            int nextSystemIndex,
-            int currentSystemIndex,
-            int index,
-            in Entity entity)
+            in SystemHandle runningSystemHandle,
+            in SystemHandle nextSystemHandle,
+            in SystemHandle currentSystemHandle,
+            int index)
         {
             var instance = instances[index];
             if (runningStatus >= instance.priority)
@@ -120,55 +116,67 @@ public partial class GameActionFearSchedulerSystem : StateMachineSchedulerSystem
 
         public ComponentTypeHandle<GameActionFearInfo> infoType;
 
-        public bool Create(
+        public SchedulerEntry Create(
             int index, 
-            in ArchetypeChunk chunk,
-            out SchedulerEntry schedulerEntry)
+            in ArchetypeChunk chunk)
         {
+            SchedulerEntry schedulerEntry;
             schedulerEntry.auraOrigins = chunk.GetBufferAccessor(ref auraOriginType);
             schedulerEntry.translations = chunk.GetNativeArray(ref translationType);
             schedulerEntry.instances = chunk.GetNativeArray(ref instanceType);
             schedulerEntry.infos = chunk.GetNativeArray(ref infoType);
 
-            return true;
+            return schedulerEntry;
         }
     }
 
-    public override IEnumerable<EntityQueryDesc> entryEntityArchetypeQueries => __entryEntityArchetypeQueries;
+    private BufferTypeHandle<GameAuraOrigin> __auraOriginType;
 
-    protected override FactoryEntry _GetEntry(ref JobHandle inputDeps)
+    private ComponentTypeHandle<Translation> __translationType;
+
+    private ComponentTypeHandle<GameActionFearData> __instanceType;
+
+    private ComponentTypeHandle<GameActionFearInfo> __infoType;
+
+    private StateMachineSchedulerSystemCore __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __auraOriginType = state.GetBufferTypeHandle<GameAuraOrigin>(true);
+        __translationType = state.GetComponentTypeHandle<Translation>(true);
+        __instanceType = state.GetComponentTypeHandle<GameActionFearData>(true);
+        __infoType = state.GetComponentTypeHandle<GameActionFearInfo>();
+
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __core = new StateMachineSchedulerSystemCore(
+                ref state,
+                builder
+                .WithAll<GameActionFearData, GameAuraOrigin>());
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
         FactoryEntry factoryEntry;
-        factoryEntry.auraOriginType = GetBufferTypeHandle<GameAuraOrigin>(true);
-        factoryEntry.translationType = GetComponentTypeHandle<Translation>(true);
-        factoryEntry.instanceType = GetComponentTypeHandle<GameActionFearData>(true);
-        factoryEntry.infoType = GetComponentTypeHandle<GameActionFearInfo>();
+        factoryEntry.auraOriginType = __auraOriginType.UpdateAsRef(ref state);
+        factoryEntry.translationType = __translationType.UpdateAsRef(ref state);
+        factoryEntry.instanceType = __instanceType.UpdateAsRef(ref state);
+        factoryEntry.infoType = __infoType.UpdateAsRef(ref state);
 
-        return factoryEntry;
+        StateMachineFactory<StateMachineScheduler> factoryExit;
+        __core.Update<StateMachineScheduler, SchedulerEntry, StateMachineFactory<StateMachineScheduler>, FactoryEntry>(ref state, ref factoryEntry, ref factoryExit);
     }
-
-    private readonly EntityQueryDesc[] __entryEntityArchetypeQueries = new EntityQueryDesc[]
-    {
-        new EntityQueryDesc()
-        {
-            All = new ComponentType[]
-            {
-                ComponentType.ReadOnly<GameActionFearData>(),
-                ComponentType.ReadOnly<GameAuraOrigin>(),
-            },
-            None = new ComponentType[]
-            {
-                typeof(Disabled)
-            }
-        }
-    };
 }
 
-public partial class GameActionFearExecutorSystem : GameActionFearSchedulerSystem.StateMachineExecutorSystem<
-    GameActionFearExecutorSystem.Escaper,
-    GameActionFearExecutorSystem.Executor,
-    GameActionFearExecutorSystem.EscaperFactory,
-    GameActionFearExecutorSystem.ExecutorFactory>, IEntityCommandProducerJob
+[BurstCompile, CreateAfter(typeof(GameActionFearSchedulerSystem)), UpdateInGroup(typeof(StateMachineExecutorGroup))]
+public partial struct GameActionFearExecutorSystem : ISystem
 {
     public struct Escaper : IStateMachineEscaper
     {
@@ -176,24 +184,19 @@ public partial class GameActionFearExecutorSystem : GameActionFearSchedulerSyste
 
         public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
 
-        //[ReadOnly]
-        //public NativeArray<Entity> entityArray;
-
         [ReadOnly]
         public NativeArray<GameActionFearInfo> infos;
 
         public NativeArray<GameNavMeshAgentTarget> targets;
 
-        //public EntityAddDataQueue.ParallelWriter entityManager;
-
         public bool Execute(
             int runningStatus,
-            int runningSystemIndex,
-            int nextSystemIndex,
-            int currentSystemIndex,
+            in SystemHandle runningSystemHandle,
+            in SystemHandle nextSystemHandle,
+            in SystemHandle currentSystemHandle,
             int index)
         {
-            if (nextSystemIndex != -1 && index < infos.Length)
+            if (nextSystemHandle != SystemHandle.Null && index < infos.Length)
             {
                 GameNavMeshAgentTarget target;
                 target.sourceAreaMask = -1;
@@ -215,29 +218,22 @@ public partial class GameActionFearExecutorSystem : GameActionFearSchedulerSyste
 
     public struct EscaperFactory : IStateMachineFactory<Escaper>
     {
-        //[ReadOnly]
-        //public EntityTypeHandle entityType;
-
         [ReadOnly]
         public ComponentTypeHandle<GameActionFearInfo> infoType;
 
         public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
 
-        //public EntityAddDataQueue.ParallelWriter entityManager;
-
-        public bool Create(
+        public Escaper Create(
             int index, 
-            in ArchetypeChunk chunk,
-            out Escaper escaper)
+            in ArchetypeChunk chunk)
         {
+            Escaper escaper;
             escaper.chunk = chunk;
             escaper.targetType = targetType;
-            //escaper.entityArray = chunk.GetNativeArray(entityType);
             escaper.infos = chunk.GetNativeArray(ref infoType);
             escaper.targets = chunk.GetNativeArray(ref targetType);
-            //escaper.entityManager = entityManager;
 
-            return true;
+            return escaper;
         }
     }
 
@@ -256,15 +252,10 @@ public partial class GameActionFearExecutorSystem : GameActionFearSchedulerSyste
         [ReadOnly]
         public NativeArray<Translation> translations;
 
-        //[ReadOnly]
-        //public NativeArray<Entity> entityArray;
-
         [ReadOnly]
         public NativeArray<GameActionFearData> instances;
 
         public NativeArray<GameNavMeshAgentTarget> targets;
-
-        //public EntityAddDataQueue.ParallelWriter entityManager;
 
         public unsafe int Execute(bool isEntry, int index)
         {
@@ -311,94 +302,78 @@ public partial class GameActionFearExecutorSystem : GameActionFearSchedulerSyste
         public ComponentLookup<Translation> translations;
         [ReadOnly]
         public BufferTypeHandle<GameAuraOrigin> auraOriginType;
-        //[ReadOnly]
-        //public EntityTypeHandle entityType;
         [ReadOnly]
         public ComponentTypeHandle<Translation> translationType;
         [ReadOnly]
         public ComponentTypeHandle<GameActionFearData> instanceType;
         public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
 
-        //public EntityAddDataQueue.ParallelWriter entityManager;
-
-        public bool Create(
+        public Executor Create(
             int index, 
-            in ArchetypeChunk chunk,
-            out Executor executor)
+            in ArchetypeChunk chunk)
         {
+            Executor executor;
             executor.chunk = chunk;
             executor.targetType = targetType;
             executor.translationMap = translations;
             executor.auraOrigins = chunk.GetBufferAccessor(ref auraOriginType);
-            //executor.entityArray = chunk.GetNativeArray(entityType);
             executor.translations = chunk.GetNativeArray(ref translationType);
             executor.instances = chunk.GetNativeArray(ref instanceType);
             executor.targets = chunk.GetNativeArray(ref targetType);
-            //executor.entityManager = entityManager;
 
-            return true;
+            return executor;
         }
     }
 
-    //private EntityAddDataPool __endFrameBarrier;
-    //private EntityAddDataQueue.ParallelWriter __entityManager;
+    private ComponentLookup<Translation> __translations;
+    private BufferTypeHandle<GameAuraOrigin> __auraOriginType;
+    private ComponentTypeHandle<Translation> __translationType;
+    private ComponentTypeHandle<GameActionFearData> __instanceType;
+    private ComponentTypeHandle<GameActionFearInfo> __infoType;
+    private ComponentTypeHandle<GameNavMeshAgentTarget> __targetType;
 
-    public override IEnumerable<EntityQueryDesc> runEntityArchetypeQueries => __runEntityArchetypeQueries;
+    private StateMachineExecutorSystemCore __core;
 
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        __translations = state.GetComponentLookup<Translation>(true);
+        __auraOriginType = state.GetBufferTypeHandle<GameAuraOrigin>(true);
+        __translationType = state.GetComponentTypeHandle<Translation>(true);
+        __instanceType = state.GetComponentTypeHandle<GameActionFearData>(true);
+        __infoType = state.GetComponentTypeHandle<GameActionFearInfo>(true);
+        __targetType = state.GetComponentTypeHandle<GameNavMeshAgentTarget>();
 
-        //__endFrameBarrier = World.GetOrCreateSystemUnmanaged<GameActionStructChangeSystem>().addDataCommander;
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __core = new StateMachineExecutorSystemCore(
+                ref state,
+                builder
+                .WithAll<GameAuraOrigin, GameActionFearData>(), 
+                state.WorldUnmanaged.GetExistingUnmanagedSystem<GameActionFearSchedulerSystem>());
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        //var entityManager = __endFrameBarrier.Create();
 
-        //__entityManager = entityManager.AsComponentParallelWriter<GameNavMeshAgentTarget>(exitGroup.CalculateEntityCount() + runGroup.CalculateEntityCount());
-
-        base.OnUpdate();
-
-        //entityManager.AddJobHandleForProducer<GameActionFearExecutorSystem>(Dependency);
     }
 
-    protected override EscaperFactory _GetExit(ref JobHandle inputDeps)
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
+        var targetType = __targetType.UpdateAsRef(ref state);
+
         EscaperFactory escaperFactory;
-        //escaperFactory.entityType = GetEntityTypeHandle();
-        escaperFactory.infoType = GetComponentTypeHandle<GameActionFearInfo>(true);
-        escaperFactory.targetType = GetComponentTypeHandle<GameNavMeshAgentTarget>();
-        //escaperFactory.entityManager = __entityManager;
-        return escaperFactory;
-    }
+        escaperFactory.infoType = __infoType.UpdateAsRef(ref state);
+        escaperFactory.targetType = targetType;
 
-    protected override ExecutorFactory _GetRun(ref JobHandle inputDeps)
-    {
         ExecutorFactory executorFactory;
-        executorFactory.translations = GetComponentLookup<Translation>(true);
-        executorFactory.auraOriginType = GetBufferTypeHandle<GameAuraOrigin>(true);
-        //executorFactory.entityType = GetEntityTypeHandle();
-        executorFactory.translationType = GetComponentTypeHandle<Translation>(true);
-        executorFactory.instanceType = GetComponentTypeHandle<GameActionFearData>(true);
-        executorFactory.targetType = GetComponentTypeHandle<GameNavMeshAgentTarget>();
-        //executorFactory.entityManager = __entityManager;
-        return executorFactory;
-    }
+        executorFactory.translations = __translations.UpdateAsRef(ref state);
+        executorFactory.auraOriginType = __auraOriginType.UpdateAsRef(ref state);
+        executorFactory.translationType = __translationType.UpdateAsRef(ref state);
+        executorFactory.instanceType = __instanceType.UpdateAsRef(ref state);
+        executorFactory.targetType = targetType;
 
-    private readonly EntityQueryDesc[] __runEntityArchetypeQueries = new EntityQueryDesc[]
-    {
-        new EntityQueryDesc()
-        {
-            All = new ComponentType[]
-            {
-                ComponentType.ReadOnly<GameAuraOrigin>(),
-                ComponentType.ReadOnly<GameActionFearData>()
-            },
-            None = new ComponentType[]
-            {
-                typeof(Disabled)
-            }
-        }
-    };
+        __core.Update<Escaper, Executor, EscaperFactory, ExecutorFactory>(ref state, ref executorFactory, ref escaperFactory);
+    }
 }

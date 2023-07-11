@@ -4,6 +4,7 @@ using Unity.Collections;
 using ZG;
 
 [assembly: RegisterGenericJobType(typeof(GameEffectApply<GameEffect, GameEffectSystem.Handler, GameEffectSystem.Factory>))]
+[assembly: RegisterGenericJobType(typeof(ClearMultiHashMap<int, Entity>))]
 
 [UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(GameCreatureSystem)), /*UpdateBefore(typeof(GameItemSystem)), */UpdateAfter(typeof(GameSyncSystemGroup))]
 public partial class GameEffectSystem : GameEffectSystem<GameEffect, GameEffectSystem.Handler, GameEffectSystem.Factory>

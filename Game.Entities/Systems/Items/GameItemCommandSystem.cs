@@ -54,7 +54,7 @@ public partial class GameItemCommandSystem : LookupSystem
         public ComponentLookup<GameItemDurability> durabilities;
 
         [ReadOnly]
-        public NativeParallelHashMap<int, float> maxDurabilities;
+        public NativeHashMap<int, float> maxDurabilities;
 
         [ReadOnly]
         public SharedHashMap<Entity, Entity>.Reader entities;
@@ -330,7 +330,7 @@ public partial class GameItemCommandSystem : LookupSystem
 
     private EntityQuery __structChangeManagerGroup;
     private GameItemManagerShared __itemManager;
-    private NativeParallelHashMap<int, float> __maxDurabilities;
+    private NativeHashMap<int, float> __maxDurabilities;
     private NativeParallelMultiHashMap<int, Adapter> __adapters;
 
     public NativeList<Command> commands
@@ -356,7 +356,7 @@ public partial class GameItemCommandSystem : LookupSystem
                 __adapters.Add(data.type, value);
         }
 
-        __maxDurabilities = new NativeParallelHashMap<int, float>(maxDurabilities.Count, Allocator.Persistent);
+        __maxDurabilities = new NativeHashMap<int, float>(maxDurabilities.Count, Allocator.Persistent);
         foreach (var pair in maxDurabilities)
             __maxDurabilities.Add(pair.Key, pair.Value);
     }

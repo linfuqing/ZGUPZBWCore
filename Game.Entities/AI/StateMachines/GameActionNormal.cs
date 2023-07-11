@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using Unity.Jobs;
+using Unity.Burst;
 using Unity.Entities;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
@@ -10,11 +11,13 @@ using UnityEngine;
 using ZG;
 using Random = Unity.Mathematics.Random;
 
-[assembly: RegisterGenericComponentType(typeof(GameActionNormalSchedulerSystem.StateMachine))]
-[assembly: RegisterGenericJobType(typeof(StateMachineExit<GameActionNormalSchedulerSystem.StateMachine, GameActionNormalSchedulerSystem.SchedulerExit, GameActionNormalSchedulerSystem.FactoryExit>))]
-[assembly: RegisterGenericJobType(typeof(StateMachineEntry<GameActionNormalSchedulerSystem.SchedulerEntry, GameActionNormalSchedulerSystem.FactoryEntry>))]
-[assembly: RegisterGenericJobType(typeof(StateMachineEscaper<GameActionNormalSchedulerSystem.StateMachine, GameActionNormalExecutorSystem.Escaper, GameActionNormalExecutorSystem.EscaperFactory>))]
-[assembly: RegisterGenericJobType(typeof(StateMachineExecutor<GameActionNormalSchedulerSystem.StateMachine, GameActionNormalExecutorSystem.Executor, GameActionNormalExecutorSystem.ExecutorFactory>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineSchedulerJob<
+    GameActionNormalSchedulerSystem.SchedulerExit, 
+    GameActionNormalSchedulerSystem.FactoryExit, 
+    GameActionNormalSchedulerSystem.SchedulerEntry, 
+    GameActionNormalSchedulerSystem.FactoryEntry>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineEscaperJob<GameActionNormalExecutorSystem.Escaper, GameActionNormalExecutorSystem.EscaperFactory>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineExecutorJob<GameActionNormalExecutorSystem.Executor, GameActionNormalExecutorSystem.ExecutorFactory>))]
 
 [Flags]
 public enum GameActionNormalFlag
@@ -108,7 +111,6 @@ public struct GameActionNormalDelayTime : IBufferElementData
     }
 }
 
-[Serializable]
 public struct GameActionNormalData : IComponentData
 {
     public GameActionNormalFlag flag;
@@ -143,7 +145,6 @@ public struct GameActionNormalData : IComponentData
     public GameActionNormalDelayTime delayTime;
 }
 
-[Serializable]
 public struct GameActionNormalInfo : IComponentData
 {
     [Flags]
@@ -160,32 +161,26 @@ public struct GameActionNormalInfo : IComponentData
     public double time;
 }
 
-public partial class GameActionNormalSchedulerSystem : StateMachineSchedulerSystem<
-    GameActionNormalSchedulerSystem.SchedulerExit, 
-    GameActionNormalSchedulerSystem.SchedulerEntry,
-    GameActionNormalSchedulerSystem.FactoryExit,
-    GameActionNormalSchedulerSystem.FactoryEntry, 
-    GameActionNormalSchedulerSystem>
+[BurstCompile, UpdateInGroup(typeof(StateMachineSchedulerGroup))]
+public partial struct GameActionNormalSchedulerSystem : ISystem
 {
     public struct SchedulerExit : IStateMachineScheduler
     {
         [ReadOnly]
         public NativeArray<GameActionNormalInfo> infos;
         
-        [NativeDisableParallelForRestriction]
-        public BufferLookup<GameNodeSpeedScaleComponent> speedScaleComponents;
+        public BufferAccessor<GameNodeSpeedScaleComponent> speedScaleComponents;
         
         public bool Execute(
-               int runningStatus,
-               int runningSystemIndex,
-               int nextSystemIndex,
-               int currentSystemIndex,
-               int index,
-               in Entity entity)
+            int runningStatus,
+            in SystemHandle runningSystemHandle,
+            in SystemHandle nextSystemHandle,
+            in SystemHandle currentSystemHandle,
+            int index)
         {
-            if(index < infos.Length && this.speedScaleComponents.HasBuffer(entity))
+            if(index < infos.Length && index < this.speedScaleComponents.Length)
             {
-                var speedScaleComponents = this.speedScaleComponents[entity];
+                var speedScaleComponents = this.speedScaleComponents[index];
                 var speedScale = infos[index].speedScale;
                 int length = speedScaleComponents.Length;
                 for(int i = 0; i < length; ++i)
@@ -208,15 +203,15 @@ public partial class GameActionNormalSchedulerSystem : StateMachineSchedulerSyst
         [ReadOnly]
         public ComponentTypeHandle<GameActionNormalInfo> infoType;
 
-        [NativeDisableParallelForRestriction]
-        public BufferLookup<GameNodeSpeedScaleComponent> speedScaleComponents;
+        public BufferTypeHandle<GameNodeSpeedScaleComponent> speedScaleComponentType;
 
-        public bool Create(int index, in ArchetypeChunk chunk, out SchedulerExit schedulerExit)
+        public SchedulerExit Create(int index, in ArchetypeChunk chunk)
         {
+            SchedulerExit schedulerExit;
             schedulerExit.infos = chunk.GetNativeArray(ref infoType);
-            schedulerExit.speedScaleComponents = speedScaleComponents;
+            schedulerExit.speedScaleComponents = chunk.GetBufferAccessor(ref speedScaleComponentType);
 
-            return true;
+            return schedulerExit;
         }
     }
     
@@ -230,16 +225,15 @@ public partial class GameActionNormalSchedulerSystem : StateMachineSchedulerSyst
 
         public bool Execute(
             int runningStatus,
-            int runningSystemIndex,
-            int nextSystemIndex,
-            int currentSystemIndex, 
-            int index,
-            in Entity entity)
+            in SystemHandle runningSystemHandle,
+            in SystemHandle nextSystemHandle,
+            in SystemHandle currentSystemHandle,
+            int index)
         {
             if (runningStatus > 0)
                 return false;
 
-            if (currentSystemIndex == runningSystemIndex || runningSystemIndex != nextSystemIndex && nextSystemIndex >= 0)
+            if (currentSystemHandle == runningSystemHandle || runningSystemHandle != nextSystemHandle && nextSystemHandle != SystemHandle.Null)
                 return false;
 
             GameActionNormalInfo info;
@@ -258,60 +252,71 @@ public partial class GameActionNormalSchedulerSystem : StateMachineSchedulerSyst
     {
         [ReadOnly]
         public ComponentTypeHandle<GameActionNormalData> instanceType;
-        
+
+        [NativeDisableContainerSafetyRestriction]
         public ComponentTypeHandle<GameActionNormalInfo> infoType;
 
-        public bool Create(int index, in ArchetypeChunk chunk, out SchedulerEntry schedulerEntry)
+        public SchedulerEntry Create(int index, in ArchetypeChunk chunk)
         {
+            SchedulerEntry schedulerEntry;
             schedulerEntry.instances = chunk.GetNativeArray(ref instanceType);
             schedulerEntry.infos = chunk.GetNativeArray(ref infoType);
 
-            return true;
+            return schedulerEntry;
         }
     }
-    
-    public override IEnumerable<EntityQueryDesc> entryEntityArchetypeQueries => __entryEntityArchetypeQueries;
 
-    protected override FactoryExit _GetExit(ref JobHandle inputDeps)
+    private ComponentTypeHandle<GameActionNormalData> __instanceType;
+
+    private ComponentTypeHandle<GameActionNormalInfo> __infoType;
+
+    private BufferTypeHandle<GameNodeSpeedScaleComponent> __speedScaleComponentType;
+
+    private StateMachineSchedulerSystemCore __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
+        __instanceType = state.GetComponentTypeHandle<GameActionNormalData>(true);
+        __infoType = state.GetComponentTypeHandle<GameActionNormalInfo>();
+        __speedScaleComponentType = state.GetBufferTypeHandle<GameNodeSpeedScaleComponent>();
+
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __core = new StateMachineSchedulerSystemCore(
+                ref state,
+                builder
+                .WithAll<GameActionNormalData>()
+                .WithAllRW<GameActionNormalInfo>());
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        var infoType = __infoType.UpdateAsRef(ref state);
+
         FactoryExit factoryExit;
-        factoryExit.infoType = GetComponentTypeHandle<GameActionNormalInfo>(true);
-        factoryExit.speedScaleComponents = GetBufferLookup<GameNodeSpeedScaleComponent>();
+        factoryExit.infoType = infoType;
+        factoryExit.speedScaleComponentType = __speedScaleComponentType.UpdateAsRef(ref state);
 
-        return factoryExit;
-    }
-
-    protected override FactoryEntry _GetEntry(ref JobHandle inputDeps)
-    {
         FactoryEntry factoryEntry;
-        factoryEntry.instanceType = GetComponentTypeHandle<GameActionNormalData>(true);
-        factoryEntry.infoType = GetComponentTypeHandle<GameActionNormalInfo>();
-        return factoryEntry;
+        factoryEntry.instanceType = __instanceType.UpdateAsRef(ref state);
+        factoryEntry.infoType = infoType;
+
+        __core.Update<SchedulerExit, SchedulerEntry, FactoryExit, FactoryEntry>(ref state, ref factoryEntry, ref factoryExit);
     }
-    
-    private readonly EntityQueryDesc[] __entryEntityArchetypeQueries = new EntityQueryDesc[]
-    {
-        new EntityQueryDesc()
-        {
-            All = new ComponentType[]
-            {
-                ComponentType.ReadOnly<GameActionNormalData>(), 
-                ComponentType.ReadOnly<GameActionNormalInfo>()
-            }, 
-            None = new ComponentType[]
-            {
-                typeof(Disabled)
-            }
-        }
-    };
 }
 
-//[UpdateInGroup(typeof(StateMachineExecutorGroup))]
-public partial class GameActionNormalExecutorSystem : GameActionNormalSchedulerSystem.StateMachineExecutorSystem<
-    GameActionNormalExecutorSystem.Escaper, 
-    GameActionNormalExecutorSystem.Executor, 
-    GameActionNormalExecutorSystem.EscaperFactory,
-    GameActionNormalExecutorSystem.ExecutorFactory>, IEntityCommandProducerJob
+[BurstCompile, 
+    CreateAfter(typeof(GameActionNormalSchedulerSystem)), 
+    CreateAfter(typeof(GameActionStructChangeSystem)), 
+    UpdateInGroup(typeof(StateMachineExecutorGroup))]
+public partial struct GameActionNormalExecutorSystem : ISystem, IEntityCommandProducerJob
 {
     public struct Escaper : IStateMachineEscaper
     {
@@ -321,14 +326,14 @@ public partial class GameActionNormalExecutorSystem : GameActionNormalSchedulerS
         
         public bool Execute(
             int runningStatus,
-            int runningSystemIndex,
-            int nextSystemIndex,
-            int currentSystemIndex,
+            in SystemHandle runningSystemHandle,
+            in SystemHandle nextSystemHandle,
+            in SystemHandle currentSystemHandle,
             int index)
         {
             if (dreamers.Length > index)
             {
-                GameDreamer dreamer = dreamers[index];
+                var dreamer = dreamers[index];
                 switch(dreamer.status)
                 {
                     case GameDreamerStatus.Sleep:
@@ -353,12 +358,13 @@ public partial class GameActionNormalExecutorSystem : GameActionNormalSchedulerS
 
         public ComponentTypeHandle<GameDreamer> dreamerType;
         
-        public bool Create(int index, in ArchetypeChunk chunk, out Escaper escaper)
+        public Escaper Create(int index, in ArchetypeChunk chunk)
         {
+            Escaper escaper;
             escaper.time = time;
             escaper.dreamers = chunk.GetNativeArray(ref dreamerType);
 
-            return true;
+            return escaper;
         }
     }
     
@@ -814,8 +820,9 @@ public partial class GameActionNormalExecutorSystem : GameActionNormalSchedulerS
 
         public EntityAddDataQueue.ParallelWriter entityManager;
 
-        public bool Create(int index, in ArchetypeChunk chunk, out Executor executor)
+        public Executor Create(int index, in ArchetypeChunk chunk)
         {
+            Executor executor;
             executor.time = time;
             long hash = math.aslong(time);
             executor.random = new Random((uint)((int)(hash >> 32) ^ ((int)hash) ^ index));
@@ -846,94 +853,147 @@ public partial class GameActionNormalExecutorSystem : GameActionNormalSchedulerS
             executor.speedScaleComponents = speedScaleComponents;
             executor.entityManager = entityManager;
 
-            return true;
+            return executor;
         }
     }
     
-    public override IEnumerable<EntityQueryDesc> runEntityArchetypeQueries => __runEntityArchetypeQueries;
-
     private GameSyncTime __time;
+
+    private EntityTypeHandle __entityType;
+
+    private ComponentTypeHandle<Translation> __translationType;
+
+    private ComponentTypeHandle<Rotation> __rotationType;
+
+    private ComponentTypeHandle<GameOwner> __ownerType;
+
+    private ComponentTypeHandle<GameNodeSpeed> __speedType;
+
+    private ComponentTypeHandle<GameNodeVelocity> __velocityType;
+
+    private ComponentTypeHandle<GameNodeDelay> __delayType;
+    private ComponentTypeHandle<GameNodeStatus> __statusType;
+    private ComponentTypeHandle<GameNodeActorStatus> __actorStatusType;
+
+    private ComponentTypeHandle<GameNavMeshAgentData> __agentType;
+
+    private ComponentTypeHandle<GameNavMeshAgentQuery> __queryType;
+
+    private BufferTypeHandle<GameNavMeshAgentExtends> __extendType;
+
+    private BufferTypeHandle<GameActionNormalDelayTime> __delayTimeType;
+
+    private BufferTypeHandle<GameNodeSpeedSection> __speedSectionType;
+
+    private ComponentTypeHandle<GameActionNormalData> __instanceType;
+
+    private ComponentTypeHandle<GameActionNormalInfo> __infoType;
+
+    private ComponentTypeHandle<GameDreamerInfo> __dreamerInfoType;
+
+    private ComponentTypeHandle<GameDreamer> __dreamerType;
+
+    private ComponentTypeHandle<GameNavMeshAgentTarget> __targetType;
+
+    private ComponentTypeHandle<GameNodeDirection> __directionType;
+    private BufferTypeHandle<GameNodePosition> __positionType;
+
+    private ComponentLookup<GameNodeVersion> __versions;
+
+    private BufferLookup<GameNodeSpeedScaleComponent> __speedScaleComponents;
+
     private EntityAddDataPool __endFrameBarrier;
-    private EntityAddDataQueue __entityManager;
 
-    protected override void OnCreate()
+    private StateMachineExecutorSystemCore __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        __time = new GameSyncTime(ref state);
 
-        __time = new GameSyncTime(ref this.GetState());
+        __entityType = state.GetEntityTypeHandle();
+        __translationType = state.GetComponentTypeHandle<Translation>(true);
+        __rotationType = state.GetComponentTypeHandle<Rotation>(true);
+        __ownerType = state.GetComponentTypeHandle<GameOwner>(true);
+        __speedType = state.GetComponentTypeHandle<GameNodeSpeed>(true);
+        __velocityType = state.GetComponentTypeHandle<GameNodeVelocity>(true);
+        __delayType = state.GetComponentTypeHandle<GameNodeDelay>(true);
+        __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
+        __actorStatusType = state.GetComponentTypeHandle<GameNodeActorStatus>(true);
+        __agentType = state.GetComponentTypeHandle<GameNavMeshAgentData>(true);
+        __queryType = state.GetComponentTypeHandle<GameNavMeshAgentQuery>(true);
+        __extendType = state.GetBufferTypeHandle<GameNavMeshAgentExtends>(true);
+        __delayTimeType = state.GetBufferTypeHandle<GameActionNormalDelayTime>(true);
+        __speedSectionType = state.GetBufferTypeHandle<GameNodeSpeedSection>(true);
+        __instanceType = state.GetComponentTypeHandle<GameActionNormalData>(true);
+        __infoType = state.GetComponentTypeHandle<GameActionNormalInfo>();
+        __dreamerInfoType = state.GetComponentTypeHandle<GameDreamerInfo>();
+        __dreamerType = state.GetComponentTypeHandle<GameDreamer>();
+        __targetType = state.GetComponentTypeHandle<GameNavMeshAgentTarget>();
+        __directionType = state.GetComponentTypeHandle<GameNodeDirection>();
+        __positionType = state.GetBufferTypeHandle<GameNodePosition>();
+        __versions = state.GetComponentLookup<GameNodeVersion>();
+        __speedScaleComponents = state.GetBufferLookup<GameNodeSpeedScaleComponent>();
 
-        World world = World;
-        __endFrameBarrier = world.GetOrCreateSystemUnmanaged<GameActionStructChangeSystem>().addDataCommander;
+        __endFrameBarrier = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameActionStructChangeSystem>().addDataCommander;
+
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __core = new StateMachineExecutorSystemCore(
+                ref state,
+                builder
+                .WithAll<Translation, Rotation, GameNodeStatus, GameActionNormalData, GameActionNormalInfo>(),
+                state.WorldUnmanaged.GetExistingUnmanagedSystem<GameActionNormalSchedulerSystem>());
     }
 
-    protected override EscaperFactory _GetExit(ref JobHandle inputDeps)
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
+
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        var dreamerType = __dreamerType.UpdateAsRef(ref state);
+
         EscaperFactory escaperFactory;
         escaperFactory.time = __time.nextTime;
-        escaperFactory.dreamerType = GetComponentTypeHandle<GameDreamer>();
+        escaperFactory.dreamerType = dreamerType;
 
-        return escaperFactory;
-    }
+        var entityManager = __endFrameBarrier.Create();
 
-    protected override ExecutorFactory _GetRun(ref JobHandle inputDeps)
-    {
-        int entityCount = runGroup.CalculateEntityCount();
+        int entityCount = __core.runGroup.CalculateEntityCount();
 
         ExecutorFactory executorFactory;
         executorFactory.time = __time.nextTime;
-        executorFactory.entityType = GetEntityTypeHandle();
-        executorFactory.translationType = GetComponentTypeHandle<Translation>(true);
-        executorFactory.rotationType = GetComponentTypeHandle<Rotation>(true);
-        executorFactory.ownerType = GetComponentTypeHandle<GameOwner>(true);
-        executorFactory.speedType = GetComponentTypeHandle<GameNodeSpeed>(true);
-        executorFactory.velocityType = GetComponentTypeHandle<GameNodeVelocity>(true);
-        executorFactory.delayType = GetComponentTypeHandle<GameNodeDelay>(true);
-        executorFactory.statusType = GetComponentTypeHandle<GameNodeStatus>(true);
-        executorFactory.actorStatusType = GetComponentTypeHandle<GameNodeActorStatus>(true);
-        executorFactory.agentType = GetComponentTypeHandle<GameNavMeshAgentData>(true);
-        executorFactory.queryType = GetComponentTypeHandle<GameNavMeshAgentQuery>(true);
-        executorFactory.extendType = GetBufferTypeHandle<GameNavMeshAgentExtends>(true);
-        executorFactory.delayTimeType = GetBufferTypeHandle<GameActionNormalDelayTime>(true);
-        executorFactory.speedSectionType = GetBufferTypeHandle<GameNodeSpeedSection>(true);
-        executorFactory.instanceType = GetComponentTypeHandle<GameActionNormalData>(true);
-        executorFactory.infoType = GetComponentTypeHandle<GameActionNormalInfo>();
-        executorFactory.dreamerInfoType = GetComponentTypeHandle<GameDreamerInfo>();
-        executorFactory.dreamerType = GetComponentTypeHandle<GameDreamer>();
-        executorFactory.targetType = GetComponentTypeHandle<GameNavMeshAgentTarget>();
-        executorFactory.directionType = GetComponentTypeHandle<GameNodeDirection>();
-        executorFactory.positionType = GetBufferTypeHandle<GameNodePosition>();
-        executorFactory.versions = GetComponentLookup<GameNodeVersion>();
-        executorFactory.speedScaleComponents = GetBufferLookup<GameNodeSpeedScaleComponent>();
-        executorFactory.entityManager = __entityManager.AsParallelWriter((UnsafeUtility.SizeOf<GameDreamer>()/* + UnsafeUtility.SizeOf<GameNavMeshAgentTarget>()*/) * entityCount, entityCount/* << 1*/);
+        executorFactory.entityType = __entityType.UpdateAsRef(ref state);
+        executorFactory.translationType = __translationType.UpdateAsRef(ref state);
+        executorFactory.rotationType = __rotationType.UpdateAsRef(ref state);
+        executorFactory.ownerType = __ownerType.UpdateAsRef(ref state);
+        executorFactory.speedType = __speedType.UpdateAsRef(ref state);
+        executorFactory.velocityType = __velocityType.UpdateAsRef(ref state);
+        executorFactory.delayType = __delayType.UpdateAsRef(ref state);
+        executorFactory.statusType = __statusType.UpdateAsRef(ref state);
+        executorFactory.actorStatusType = __actorStatusType.UpdateAsRef(ref state);
+        executorFactory.agentType = __agentType.UpdateAsRef(ref state);
+        executorFactory.queryType = __queryType.UpdateAsRef(ref state);
+        executorFactory.extendType = __extendType.UpdateAsRef(ref state);
+        executorFactory.delayTimeType = __delayTimeType.UpdateAsRef(ref state);
+        executorFactory.speedSectionType = __speedSectionType.UpdateAsRef(ref state);
+        executorFactory.instanceType = __instanceType.UpdateAsRef(ref state);
+        executorFactory.infoType = __infoType.UpdateAsRef(ref state);
+        executorFactory.dreamerInfoType = __dreamerInfoType.UpdateAsRef(ref state);
+        executorFactory.dreamerType = dreamerType;
+        executorFactory.targetType = __targetType.UpdateAsRef(ref state);
+        executorFactory.directionType = __directionType.UpdateAsRef(ref state);
+        executorFactory.positionType = __positionType.UpdateAsRef(ref state);
+        executorFactory.versions = __versions.UpdateAsRef(ref state);
+        executorFactory.speedScaleComponents = __speedScaleComponents.UpdateAsRef(ref state);
+        executorFactory.entityManager = entityManager.AsParallelWriter((UnsafeUtility.SizeOf<GameDreamer>()/* + UnsafeUtility.SizeOf<GameNavMeshAgentTarget>()*/) * entityCount, entityCount/* << 1*/);
 
-        return executorFactory;
+        __core.Update<Escaper, Executor, EscaperFactory, ExecutorFactory>(ref state, ref executorFactory, ref escaperFactory);
+
+        entityManager.AddJobHandleForProducer<GameActionNormalExecutorSystem>(state.Dependency);
     }
-
-    protected override void OnUpdate()
-    {
-        __entityManager = __endFrameBarrier.Create();
-
-        base.OnUpdate();
-
-        __entityManager.AddJobHandleForProducer<GameActionNormalExecutorSystem>(Dependency);
-    }
-    
-    private readonly EntityQueryDesc[] __runEntityArchetypeQueries = new EntityQueryDesc[]
-    {
-        new EntityQueryDesc()
-        {
-            All = new ComponentType[]
-            {
-                ComponentType.ReadOnly<Translation>(),
-                ComponentType.ReadOnly<Rotation>(),
-                ComponentType.ReadOnly<GameNodeStatus>(),
-                ComponentType.ReadOnly<GameActionNormalData>(),
-                ComponentType.ReadWrite<GameActionNormalInfo>(),
-            }, 
-            None = new ComponentType[]
-            {
-                typeof(Disabled)
-            }
-        }
-    };
 }

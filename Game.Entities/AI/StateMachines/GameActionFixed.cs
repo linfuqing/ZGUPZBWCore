@@ -7,12 +7,15 @@ using Unity.Mathematics;
 using Unity.Transforms;
 using ZG;
 using Random = Unity.Mathematics.Random;
+using Unity.Burst;
 
-[assembly: RegisterGenericComponentType(typeof(GameActionFixedSchedulerSystem.StateMachine))]
-[assembly: RegisterGenericJobType(typeof(StateMachineExit<GameActionFixedSchedulerSystem.StateMachine, StateMachineScheduler, StateMachineFactory<StateMachineScheduler>>))]
-[assembly: RegisterGenericJobType(typeof(StateMachineEntry<GameActionFixedSchedulerSystem.SchedulerEntry, GameActionFixedSchedulerSystem.FactoryEntry>))]
-[assembly: RegisterGenericJobType(typeof(StateMachineEscaper<GameActionFixedSchedulerSystem.StateMachine, StateMachineEscaper, StateMachineFactory<StateMachineEscaper>>))]
-[assembly: RegisterGenericJobType(typeof(StateMachineExecutor<GameActionFixedSchedulerSystem.StateMachine, GameActionFixedExecutorSystem.Executor, GameActionFixedExecutorSystem.ExecutorFactory>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineSchedulerJob<
+    StateMachineScheduler, 
+    StateMachineFactory<StateMachineScheduler>, 
+    GameActionFixedSchedulerSystem.SchedulerEntry, 
+    GameActionFixedSchedulerSystem.FactoryEntry>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineEscaperJob<StateMachineEscaper, StateMachineFactory<StateMachineEscaper>>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineExecutorJob<GameActionFixedExecutorSystem.Executor, GameActionFixedExecutorSystem.ExecutorFactory>))]
 
 [Serializable]
 public struct GameActionFixedNextFrame : IBufferElementData
@@ -68,13 +71,11 @@ public struct GameActionFixedStageIndex : IComponentData
     public int value;
 }
 
-[Serializable]
 public struct GameActionFixedData : IComponentData
 {
     public int priority;
 }
 
-[Serializable]
 public struct GameActionFixedInfo : IComponentData
 {
     public enum Status
@@ -116,8 +117,8 @@ public class GameActionFixed : StateMachineNode
 }
 
 
-[UpdateAfter(typeof(GameActionActiveSchedulerSystem))]
-public partial class GameActionFixedSchedulerSystem : StateMachineSchedulerSystem<GameActionFixedSchedulerSystem.SchedulerEntry, GameActionFixedSchedulerSystem.FactoryEntry, GameActionFixedSchedulerSystem>
+[BurstCompile, UpdateInGroup(typeof(StateMachineSchedulerGroup)), UpdateAfter(typeof(GameActionActiveSchedulerSystem))]
+public partial struct GameActionFixedSchedulerSystem : ISystem
 {
     public struct SchedulerEntry : IStateMachineScheduler
     {
@@ -126,13 +127,12 @@ public partial class GameActionFixedSchedulerSystem : StateMachineSchedulerSyste
 
         public bool Execute(
             int runningStatus,
-            int runningSystemIndex,
-            int nextSystemIndex,
-            int currentSystemIndex,
-            int index,
-            in Entity entity)
+            in SystemHandle runningSystemHandle,
+            in SystemHandle nextSystemHandle,
+            in SystemHandle currentSystemHandle,
+            int index)
         {
-            if (currentSystemIndex == runningSystemIndex)
+            if (currentSystemHandle == runningSystemHandle)
                 return false;
 
             var instance = instances[index];
@@ -148,45 +148,52 @@ public partial class GameActionFixedSchedulerSystem : StateMachineSchedulerSyste
         [ReadOnly]
         public ComponentTypeHandle<GameActionFixedData> instanceType;
 
-        public bool Create(
+        public SchedulerEntry Create(
             int index, 
-            in ArchetypeChunk chunk,
-            out SchedulerEntry schedulerEntry)
+            in ArchetypeChunk chunk)
         {
+            SchedulerEntry schedulerEntry;
             schedulerEntry.instances = chunk.GetNativeArray(ref instanceType);
 
-            return true;
+            return schedulerEntry;
         }
     }
 
-    public override IEnumerable<EntityQueryDesc> entryEntityArchetypeQueries => __entryEntityArchetypeQueries;
+    private ComponentTypeHandle<GameActionFixedData> __instanceType;
 
-    protected override FactoryEntry _GetEntry(ref JobHandle inputDeps)
+    private StateMachineSchedulerSystemCore __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        FactoryEntry factory;
-        factory.instanceType = GetComponentTypeHandle<GameActionFixedData>(true);
-        return factory;
+        __instanceType = state.GetComponentTypeHandle<GameActionFixedData>(true);
+
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __core = new StateMachineSchedulerSystemCore(
+                ref state,
+                builder
+                .WithAll<GameActionFixedData>());
     }
 
-    private readonly EntityQueryDesc[] __entryEntityArchetypeQueries = new EntityQueryDesc[]
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        new EntityQueryDesc()
-        {
-            All = new ComponentType[]
-            {
-                ComponentType.ReadOnly<GameActionFixedData>(),
-            },
-            None = new ComponentType[]
-            {
-                typeof(Disabled)
-            }
-        }
-    };
+
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        FactoryEntry factoryEntry;
+        factoryEntry.instanceType = __instanceType.UpdateAsRef(ref state);
+
+        StateMachineFactory<StateMachineScheduler> factoryExit;
+        __core.Update<StateMachineScheduler, SchedulerEntry, StateMachineFactory<StateMachineScheduler>, FactoryEntry>(ref state, ref factoryEntry, ref factoryExit);
+    }
 }
 
-//[UpdateInGroup(typeof(StateMachineExecutorGroup))]
-public partial class GameActionFixedExecutorSystem : 
-    GameActionFixedSchedulerSystem.StateMachineExecutorSystem<GameActionFixedExecutorSystem.Executor, GameActionFixedExecutorSystem.ExecutorFactory>, IEntityCommandProducerJob
+[BurstCompile, CreateAfter(typeof(GameActionFixedSchedulerSystem)), UpdateInGroup(typeof(StateMachineExecutorGroup))]
+public partial struct GameActionFixedExecutorSystem : ISystem
 {
     public struct Executor : IStateMachineExecutor
     {
@@ -229,6 +236,9 @@ public partial class GameActionFixedExecutorSystem :
 
         public int Execute(bool isEntry, int index)
         {
+            if (chunk.IsComponentEnabled(ref targetType, index))
+                return 0;
+
             bool isMove;
             var info = infos[index];
             int stageIndex = stageIndices[index].value;
@@ -343,11 +353,11 @@ public partial class GameActionFixedExecutorSystem :
 
         //public EntityAddDataQueue.ParallelWriter entityManager;
 
-        public bool Create(
+        public Executor Create(
             int index, 
-            in ArchetypeChunk chunk,
-            out Executor executor)
+            in ArchetypeChunk chunk)
         {
+            Executor executor;
             executor.time = time;
             long hash = math.aslong(time);
             executor.random = new Random((uint)hash ^ (uint)(hash >> 32) ^ (uint)index);
@@ -365,67 +375,75 @@ public partial class GameActionFixedExecutorSystem :
             executor.targets = chunk.GetNativeArray(ref targetType);
             //executor.entityManager = entityManager;
 
-            return true;
+            return executor;
         }
     }
 
     private GameSyncTime __time;
-    //private EntityAddDataPool __endFrameBarrier;
-    //private EntityAddDataQueue __entityManager;
 
-    public override IEnumerable<EntityQueryDesc> runEntityArchetypeQueries => __runEntityArchetypeQueries;
+    private BufferTypeHandle<GameActionFixedFrame> __frameType;
 
-    protected override void OnCreate()
+    private BufferTypeHandle<GameActionFixedNextFrame> __nextFrameType;
+
+    private BufferTypeHandle<GameActionFixedStage> __stageType;
+
+    private ComponentTypeHandle<GameActionFixedStageIndex> __stageIndexType;
+
+    private ComponentTypeHandle<Translation> __translationType;
+    private ComponentTypeHandle<GameActionFixedData> __instanceType;
+    private ComponentTypeHandle<GameActionFixedInfo> __infoType;
+
+    private ComponentTypeHandle<Rotation> __rotationType;
+
+    private ComponentTypeHandle<GameNavMeshAgentTarget> __targetType;
+
+    private StateMachineExecutorSystemCore __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        __time = new GameSyncTime(ref state);
 
-        __time = new GameSyncTime(ref this.GetState());
+        __frameType = state.GetBufferTypeHandle<GameActionFixedFrame>(true);
+        __nextFrameType = state.GetBufferTypeHandle<GameActionFixedNextFrame>(true);
+        __stageType = state.GetBufferTypeHandle<GameActionFixedStage>(true);
+        __stageIndexType = state.GetComponentTypeHandle<GameActionFixedStageIndex>(true);
+        __translationType = state.GetComponentTypeHandle<Translation>(true);
+        __instanceType = state.GetComponentTypeHandle<GameActionFixedData>(true);
+        __infoType = state.GetComponentTypeHandle<GameActionFixedInfo>();
+        __rotationType = state.GetComponentTypeHandle<Rotation>();
+        __targetType = state.GetComponentTypeHandle<GameNavMeshAgentTarget>();
 
-       // var world = World;
-        //__endFrameBarrier = world.GetOrCreateSystemUnmanaged<GameActionStructChangeSystem>().addDataCommander;
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __core = new StateMachineExecutorSystemCore(
+                ref state,
+                builder
+                .WithAllRW<GameActionFixedInfo>(),
+                state.WorldUnmanaged.GetExistingUnmanagedSystem<GameActionFixedSchedulerSystem>());
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        //__entityManager = __endFrameBarrier.Create();
 
-        base.OnUpdate();
-
-        //__entityManager.AddJobHandleForProducer<GameActionFixedExecutorSystem>(Dependency);
     }
 
-    protected override ExecutorFactory _GetRun(ref JobHandle inputDeps)
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
         ExecutorFactory executorFactory;
         executorFactory.time = __time.nextTime;
-        //executorFactory.entityType = GetEntityTypeHandle();
-        executorFactory.frameType = GetBufferTypeHandle<GameActionFixedFrame>(true);
-        executorFactory.nextFrameType = GetBufferTypeHandle<GameActionFixedNextFrame>(true);
-        executorFactory.stageType = GetBufferTypeHandle<GameActionFixedStage>(true);
-        executorFactory.stageIndexType = GetComponentTypeHandle<GameActionFixedStageIndex>(true);
-        executorFactory.translationType = GetComponentTypeHandle<Translation>(true);
-        executorFactory.instanceType = GetComponentTypeHandle<GameActionFixedData>(true);
-        executorFactory.infoType = GetComponentTypeHandle<GameActionFixedInfo>();
-        executorFactory.rotationType = GetComponentTypeHandle<Rotation>();
-        executorFactory.targetType = GetComponentTypeHandle<GameNavMeshAgentTarget>();
-        //executorFactory.entityManager = __entityManager.AsComponentParallelWriter<GameNavMeshAgentTarget>(runGroup.CalculateEntityCount());
+        executorFactory.frameType = __frameType.UpdateAsRef(ref state);
+        executorFactory.nextFrameType = __nextFrameType.UpdateAsRef(ref state);
+        executorFactory.stageType = __stageType.UpdateAsRef(ref state);
+        executorFactory.stageIndexType = __stageIndexType.UpdateAsRef(ref state);
+        executorFactory.translationType = __translationType.UpdateAsRef(ref state);
+        executorFactory.instanceType = __instanceType.UpdateAsRef(ref state);
+        executorFactory.infoType = __infoType.UpdateAsRef(ref state);
+        executorFactory.rotationType = __rotationType.UpdateAsRef(ref state);
+        executorFactory.targetType = __targetType.UpdateAsRef(ref state);
 
-        return executorFactory;
+        StateMachineFactory<StateMachineEscaper> escaperFactory;
+        __core.Update<StateMachineEscaper, Executor, StateMachineFactory<StateMachineEscaper>, ExecutorFactory>(ref state, ref executorFactory, ref escaperFactory);
     }
-
-    private readonly EntityQueryDesc[] __runEntityArchetypeQueries = new EntityQueryDesc[]
-    {
-        new EntityQueryDesc()
-        {
-            All = new ComponentType[]
-            {
-                ComponentType.ReadWrite<GameActionFixedInfo>(),
-            },
-            None = new ComponentType[]
-            {
-                typeof(GameNavMeshAgentTarget), 
-                typeof(Disabled)
-            }
-        }
-    };
 }

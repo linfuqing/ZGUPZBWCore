@@ -12,11 +12,13 @@ using ZG;
 using Random = Unity.Mathematics.Random;
 using Collider = Unity.Physics.Collider;
 
-[assembly: RegisterGenericComponentType(typeof(GameActionActiveSchedulerSystem.StateMachine))]
-[assembly: RegisterGenericJobType(typeof(StateMachineExit<GameActionActiveSchedulerSystem.StateMachine, StateMachineScheduler, StateMachineFactory<StateMachineScheduler>>))]
-[assembly: RegisterGenericJobType(typeof(StateMachineEntry<GameActionActiveSchedulerSystem.SchedulerEntry, GameActionActiveSchedulerSystem.FactoryEntry>))]
-[assembly: RegisterGenericJobType(typeof(StateMachineEscaper<GameActionActiveSchedulerSystem.StateMachine, GameActionActiveExecutorSystem.Escaper, GameActionActiveExecutorSystem.EscaperFactory>))]
-[assembly: RegisterGenericJobType(typeof(StateMachineExecutor<GameActionActiveSchedulerSystem.StateMachine, GameActionActiveExecutorSystem.Executor, GameActionActiveExecutorSystem.ExecutorFactory>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineSchedulerJob<
+    StateMachineScheduler, 
+    StateMachineFactory<StateMachineScheduler>, 
+    GameActionActiveSchedulerSystem.SchedulerEntry, 
+    GameActionActiveSchedulerSystem.FactoryEntry>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineEscaperJob<GameActionActiveExecutorSystem.Escaper, GameActionActiveExecutorSystem.EscaperFactory>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineExecutorJob<GameActionActiveExecutorSystem.Executor, GameActionActiveExecutorSystem.ExecutorFactory>))]
 
 [Flags]
 public enum GameActionActiveFlag
@@ -27,7 +29,6 @@ public enum GameActionActiveFlag
     Timid = 0x02,
 }
 
-[Serializable]
 public struct GameActionActiveProtectedTime : IComponentData
 {
     public double value;
@@ -139,12 +140,11 @@ public class GameActionActive : StateMachineNode
 
     public override void Disable(StateMachineComponentEx instance)
     {
-        instance.RemoveComponent<GameActionActiveData>();
+        instance.RemoveComponent<GameActionActiveInfo>();
         instance.RemoveComponent<GameActionActiveInfo>();
     }
 }
 
-[Serializable]
 public struct GameActionActiveData : IComponentData
 {
     public GameActionActiveFlag flag;
@@ -210,7 +210,6 @@ public struct GameActionActiveData : IComponentData
     public float alertSpeedScale;
 }
 
-[Serializable]
 public struct GameActionActiveInfo : IComponentData
 {
     public enum Status
@@ -230,11 +229,8 @@ public struct GameActionActiveInfo : IComponentData
     public Entity entity;
 }
 
-[UpdateAfter(typeof(GameActionNormalSchedulerSystem))]
-public partial class GameActionActiveSchedulerSystem : StateMachineSchedulerSystem<
-    GameActionActiveSchedulerSystem.SchedulerEntry,
-    GameActionActiveSchedulerSystem.FactoryEntry, 
-    GameActionActiveSchedulerSystem>
+[BurstCompile, UpdateInGroup(typeof(StateMachineSchedulerGroup)), UpdateAfter(typeof(GameActionNormalSchedulerSystem))]
+public partial struct GameActionActiveSchedulerSystem : ISystem
 {
     public struct SchedulerEntry : IStateMachineScheduler
     {
@@ -262,13 +258,12 @@ public partial class GameActionActiveSchedulerSystem : StateMachineSchedulerSyst
 
         public bool Execute(
             int runningStatus,
-            int runningSystemIndex,
-            int nextSystemIndex,
-            int currentSystemIndex,
-            int index,
-            in Entity entity)
+            in SystemHandle runningSystemHandle,
+            in SystemHandle nextSystemHandle,
+            in SystemHandle currentSystemHandle,
+            int index)
         {
-            if (currentSystemIndex == runningSystemIndex)
+            if (currentSystemHandle == runningSystemHandle)
                 return false;
 
             var instance = instances[index];
@@ -352,11 +347,9 @@ public partial class GameActionActiveSchedulerSystem : StateMachineSchedulerSyst
         
         public ComponentTypeHandle<GameActionActiveInfo> infoType;
 
-        public bool Create(
-            int index, 
-            in ArchetypeChunk chunk,
-            out SchedulerEntry schedulerEntry)
+        public SchedulerEntry Create(int index, in ArchetypeChunk chunk)
         {
+            SchedulerEntry schedulerEntry;
             schedulerEntry.time = time;
             schedulerEntry.disabled = disabled;
             schedulerEntry.translationMap = translations;
@@ -366,86 +359,82 @@ public partial class GameActionActiveSchedulerSystem : StateMachineSchedulerSyst
             schedulerEntry.instances = chunk.GetNativeArray(ref instanceType);
             schedulerEntry.infos = chunk.GetNativeArray(ref infoType);
 
-            return true;
+            return schedulerEntry;
         }
     }
-
-    //public override IEnumerable<ComponentType> exitAnyComponentTypes =>  __exitAnyComponentTypes;
-
-    public override IEnumerable<EntityQueryDesc> entryEntityArchetypeQueries => __entryEntityArchetypeQueries;
 
     private GameSyncTime __time;
 
-    protected override void OnCreate()
-    {
-        base.OnCreate();
+    private ComponentLookup<Disabled> __disabled;
 
-        __time = new GameSyncTime(ref this.GetState());
+    private ComponentLookup<Translation> __translations;
+
+    private ComponentTypeHandle<Translation> __translationType;
+
+    private ComponentTypeHandle<GameWatcherInfo> __watcherInfoType;
+    private ComponentTypeHandle<GameSpeakerInfo> __speakerInfoType;
+    private ComponentTypeHandle<GameActionActiveData> __instanceType;
+
+    private ComponentTypeHandle<GameActionActiveInfo> __infoType;
+
+    private StateMachineSchedulerSystemCore __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __time = new GameSyncTime(ref state);
+
+        __disabled = state.GetComponentLookup<Disabled>(true);
+        __translations = state.GetComponentLookup<Translation>(true);
+        __translationType = state.GetComponentTypeHandle<Translation>(true);
+        __watcherInfoType = state.GetComponentTypeHandle<GameWatcherInfo>(true);
+        __speakerInfoType = state.GetComponentTypeHandle<GameSpeakerInfo>(true);
+        __instanceType = state.GetComponentTypeHandle<GameActionActiveData>(true);
+        __infoType = state.GetComponentTypeHandle<GameActionActiveInfo>();
+
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __core = new StateMachineSchedulerSystemCore(
+                ref state, 
+                builder
+                .WithAll<Translation, GameActionActiveData>()
+                .WithAllRW<GameActionActiveInfo>()
+                .WithAny<GameSpeakerInfo, GameWatcherInfo>());
     }
 
-    protected override FactoryEntry _GetEntry(ref JobHandle inputDeps)
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
         FactoryEntry factoryEntry;
         factoryEntry.time = __time.nextTime;
-        factoryEntry.disabled = GetComponentLookup<Disabled>(true);
-        factoryEntry.translations = GetComponentLookup<Translation>(true);
-        factoryEntry.translationType = GetComponentTypeHandle<Translation>(true);
-        factoryEntry.watcherInfoType = GetComponentTypeHandle<GameWatcherInfo>(true);
-        factoryEntry.speakerInfoType = GetComponentTypeHandle<GameSpeakerInfo>(true);
-        factoryEntry.instanceType = GetComponentTypeHandle<GameActionActiveData>(true);
-        factoryEntry.infoType = GetComponentTypeHandle<GameActionActiveInfo>();
+        factoryEntry.disabled = __disabled.UpdateAsRef(ref state);
+        factoryEntry.translations = __translations.UpdateAsRef(ref state);
+        factoryEntry.translationType = __translationType.UpdateAsRef(ref state);
+        factoryEntry.watcherInfoType = __watcherInfoType.UpdateAsRef(ref state);
+        factoryEntry.speakerInfoType = __speakerInfoType.UpdateAsRef(ref state);
+        factoryEntry.instanceType = __instanceType.UpdateAsRef(ref state);
+        factoryEntry.infoType = __infoType.UpdateAsRef(ref state);
 
-        return factoryEntry;
+        StateMachineFactory<StateMachineScheduler> factoryExit;
+        __core.Update<StateMachineScheduler, SchedulerEntry, StateMachineFactory<StateMachineScheduler>, FactoryEntry>(ref state, ref factoryEntry, ref factoryExit);
     }
-
-    /*private readonly ComponentType[] __exitAnyComponentTypes = new ComponentType[]
-    {
-        ComponentType.ReadOnly<GameActionActiveInfo>(),
-        ComponentType.ReadWrite<GameWatcherInfo>()
-    };*/
-
-    private readonly EntityQueryDesc[] __entryEntityArchetypeQueries = new EntityQueryDesc[]
-    {
-        new EntityQueryDesc()
-        {
-            All = new ComponentType[]
-            {
-                ComponentType.ReadOnly<Translation>(),
-                ComponentType.ReadOnly<GameActionActiveData>(),
-                ComponentType.ReadWrite<GameActionActiveInfo>()
-            },
-            Any = new ComponentType[]
-            {
-                ComponentType.ReadOnly<GameSpeakerInfo>(),
-                ComponentType.ReadOnly<GameWatcherInfo>()
-            }, 
-            None = new ComponentType[]
-            {
-                typeof(Disabled)
-            }
-        }
-    };
 }
 
-//[UpdateInGroup(typeof(StateMachineExecutorGroup))]
-public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerSystem.StateMachineExecutorSystem<
-    GameActionActiveExecutorSystem.Escaper, 
-    GameActionActiveExecutorSystem.Executor,
-    GameActionActiveExecutorSystem.EscaperFactory,
-    GameActionActiveExecutorSystem.ExecutorFactory>, IEntityCommandProducerJob
+[BurstCompile, CreateAfter(typeof(GameActionActiveSchedulerSystem)), UpdateInGroup(typeof(StateMachineExecutorGroup))]
+public partial struct GameActionActiveExecutorSystem : ISystem
 {
     public struct Escaper : IStateMachineEscaper
     {
-        //public double time;
-
         public bool isHasPositions;
 
         public ArchetypeChunk chunk;
 
         public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
-
-        //[ReadOnly]
-        //public NativeArray<Entity> entityArray;
 
         [ReadOnly]
         public NativeArray<GameActionActiveInfo> infos;
@@ -454,12 +443,12 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
 
         public bool Execute(
             int runningStatus,
-            int runningSystemIndex,
-            int nextSystemIndex,
-            int currentSystemIndex,
+            in SystemHandle runningSystemHandle,
+            in SystemHandle nextSystemHandle,
+            in SystemHandle currentSystemHandle,
             int index)
         {
-            if (isHasPositions && nextSystemIndex != -1 && index < infos.Length)
+            if (isHasPositions && nextSystemHandle != SystemHandle.Null && index < infos.Length)
             {
                 GameNavMeshAgentTarget target;
                 target.sourceAreaMask = -1;
@@ -528,11 +517,6 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
 
     public struct EscaperFactory : IStateMachineFactory<Escaper>
     {
-        //public double time;
-
-        //[ReadOnly]
-        //public EntityTypeHandle entityType;
-
         [ReadOnly]
         public BufferTypeHandle<GameNodePosition> positionType;
 
@@ -541,11 +525,11 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
 
         public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
 
-        public bool Create(
+        public Escaper Create(
             int index, 
-            in ArchetypeChunk chunk,
-            out Escaper escaper)
+            in ArchetypeChunk chunk)
         {
+            Escaper escaper;
             //escaper.time = time;
             escaper.isHasPositions = chunk.Has(ref positionType);
             escaper.chunk = chunk;
@@ -553,7 +537,7 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
             //escaper.entityArray = chunk.GetNativeArray(entityType);
             escaper.infos = chunk.GetNativeArray(ref infoType);
             escaper.targets = chunk.GetNativeArray(ref targetType);
-            return true;
+            return escaper;
         }
     }
 
@@ -1289,11 +1273,11 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
         //public EntityAddDataQueue.ParallelWriter addComponentCommander;
         //public EntityCommandQueue<EntityCommandStructChange>.ParallelWriter removeComponentCommander;
 
-        public bool Create(
+        public Executor Create(
             int index, 
-            in ArchetypeChunk chunk,
-            out Executor executor)
+            in ArchetypeChunk chunk)
         {
+            Executor executor;
             long hash = math.aslong((double)time);
             executor.collisionTolerance = collisionTolerance;
             executor.time = time;
@@ -1338,144 +1322,187 @@ public partial class GameActionActiveExecutorSystem : GameActionActiveSchedulerS
             //executor.addComponentCommander = addComponentCommander;
             //executor.removeComponentCommander = removeComponentCommander;
 
-            return true;
+            return executor;
         }
     }
 
-    public float collisionTolerance = 0.1f;
+    public static readonly float CollisionTolerance = 0.1f;
 
     private GameSyncTime __time;
-    //private EntityAddDataPool __addComponentPool;
-    //private EntityAddDataQueue.ParallelWriter __addComponentCommander;
-    //private EntityCommandPool<EntityCommandStructChange> __removeComponentPool;
-    //private EntityCommandQueue<EntityCommandStructChange>.ParallelWriter __removeComponentCommander;
+
+    private ComponentLookup<Disabled> __disabled;
+
+    private ComponentLookup<Translation> __translations;
+
+    private ComponentLookup<Rotation> __rotations;
+
+    private ComponentLookup<PhysicsMass> __physicsMasses;
+
+    private ComponentLookup<PhysicsCollider> __physicsColliders;
+
+    private ComponentLookup<GameActionActiveProtectedTime> __protectedTimes;
+
+    private EntityTypeHandle __entityType;
+
+    private ComponentTypeHandle<GameNodeStatus> __statusType;
+    private ComponentTypeHandle<GameNodeDelay> __delayType;
+    private ComponentTypeHandle<GameNodeAngle> __angleType;
+    private ComponentTypeHandle<GameNodeActorStatus> __actorStatusType;
+    private ComponentTypeHandle<GameNodeCharacterDesiredVelocity> __desiredVelocityType;
+    private ComponentTypeHandle<GameEntityHealthData> __healthDataType;
+    private ComponentTypeHandle<GameEntityHealth> __healthType;
+    private ComponentTypeHandle<GameEntityTorpidityData> __torpidityDataType;
+    private ComponentTypeHandle<GameEntityTorpidity> __torpidityType;
+    private ComponentTypeHandle<GameEntityCommandVersion> __commandVersionType;
+    private ComponentTypeHandle<GameEntityActorTime> __actorTimeType;
+    private ComponentTypeHandle<GameEntityActorData> __actorType;
+    private ComponentTypeHandle<GameActionActiveData> __instanceType;
+    private ComponentTypeHandle<GameSpeakerInfo> __speakerInfoType;
+    private ComponentTypeHandle<GameWatcherInfo> __watcherInfoType;
+
+    private BufferTypeHandle<GameEntityActorActionData> __actorActionType;
+
+    private BufferTypeHandle<GameEntityActorActionInfo> __actorActionInfoType;
+
+    private BufferTypeHandle<GameActionConditionAction> __conditionActionType;
+
+    private BufferTypeHandle<GameActionCondition> __conditionType;
+
+    private BufferTypeHandle<GameActionGroup> __groupType;
+
+    private BufferTypeHandle<GameNodePosition> __positionType;
+
+    private ComponentTypeHandle<GameNodeDirection> __directionType;
+
+    private ComponentTypeHandle<GameActionActiveInfo> __infoType;
+
+    private ComponentTypeHandle<GameNavMeshAgentTarget> __targetType;
+
+    private ComponentLookup<GameEntityActionCommand> __commands;
+
+    private ComponentLookup<GameNodeVersion> __versions;
+
     private SingletonAssetContainer<BlobAssetReference<Collider>> __actionColliders;
 
-    public override IEnumerable<EntityQueryDesc> runEntityArchetypeQueries => __runEntityArchetypeQueries;
-    
-    protected override void OnCreate()
+    private StateMachineExecutorSystemCore __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        __time = new GameSyncTime(ref state);
 
-        __time = new GameSyncTime(ref this.GetState());
-
-        //World world = World;
-
-        //ref var endFrameBarrier = ref world.GetOrCreateSystemUnmanaged<GameActionStructChangeSystem>();
-
-        //__addComponentPool = endFrameBarrier.addDataCommander;
-        //__removeComponentPool = endFrameBarrier.manager.removeComponentPool;
+        __disabled = state.GetComponentLookup<Disabled>(true);
+        __translations = state.GetComponentLookup<Translation>(true);
+        __rotations = state.GetComponentLookup<Rotation>(true);
+        __physicsMasses = state.GetComponentLookup<PhysicsMass>(true);
+        __physicsColliders = state.GetComponentLookup<PhysicsCollider>(true);
+        __protectedTimes = state.GetComponentLookup<GameActionActiveProtectedTime>(true);
+        __entityType = state.GetEntityTypeHandle();
+        __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
+        __delayType = state.GetComponentTypeHandle<GameNodeDelay>(true);
+        __angleType = state.GetComponentTypeHandle<GameNodeAngle>(true);
+        __actorStatusType = state.GetComponentTypeHandle<GameNodeActorStatus>(true);
+        __desiredVelocityType = state.GetComponentTypeHandle<GameNodeCharacterDesiredVelocity>(true);
+        __angleType = state.GetComponentTypeHandle<GameNodeAngle>(true);
+        __healthDataType = state.GetComponentTypeHandle<GameEntityHealthData>(true);
+        __healthType = state.GetComponentTypeHandle<GameEntityHealth>(true);
+        __torpidityDataType = state.GetComponentTypeHandle<GameEntityTorpidityData>(true);
+        __torpidityType = state.GetComponentTypeHandle<GameEntityTorpidity>(true);
+        __commandVersionType = state.GetComponentTypeHandle<GameEntityCommandVersion>(true);
+        __actorTimeType = state.GetComponentTypeHandle<GameEntityActorTime>(true);
+        __actorType = state.GetComponentTypeHandle<GameEntityActorData>(true);
+        __instanceType = state.GetComponentTypeHandle<GameActionActiveData>(true);
+        __speakerInfoType = state.GetComponentTypeHandle<GameSpeakerInfo>(true);
+        __watcherInfoType = state.GetComponentTypeHandle<GameWatcherInfo>(true);
+        __actorActionType = state.GetBufferTypeHandle<GameEntityActorActionData>(true);
+        __actorActionInfoType = state.GetBufferTypeHandle<GameEntityActorActionInfo>(true);
+        __conditionActionType = state.GetBufferTypeHandle<GameActionConditionAction>(true);
+        __conditionType = state.GetBufferTypeHandle<GameActionCondition>(true);
+        __groupType = state.GetBufferTypeHandle<GameActionGroup>(true);
+        __positionType = state.GetBufferTypeHandle<GameNodePosition>();
+        __directionType = state.GetComponentTypeHandle<GameNodeDirection>();
+        __targetType = state.GetComponentTypeHandle<GameNavMeshAgentTarget>();
+        __infoType = state.GetComponentTypeHandle<GameActionActiveInfo>();
+        __commands = state.GetComponentLookup<GameEntityActionCommand>();
+        __versions = state.GetComponentLookup<GameNodeVersion>();
 
         __actionColliders = SingletonAssetContainer<BlobAssetReference<Collider>>.instance;
+
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __core = new StateMachineExecutorSystemCore(
+                ref state,
+                builder
+                .WithAll<GameNodeStatus, GameNodeDelay, GameEntityCommandVersion, GameEntityActorData, GameActionActiveData, GameEntityActorActionData, GameEntityActorActionInfo>()
+                .WithAllRW<GameActionActiveInfo>()
+                .WithAny<GameSpeakerInfo, GameWatcherInfo>(), 
+                state.WorldUnmanaged.GetExistingUnmanagedSystem<GameActionActiveSchedulerSystem>());
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
         if (!SystemAPI.HasSingleton<GameActionSetData>())
             return;
 
-        //var addComponentQueue = __addComponentPool.Create();
-        //var removeComponentQueue = __removeComponentPool.Create();
+        var positionType = __positionType.UpdateAsRef(ref state);
+        var infoType = __infoType.UpdateAsRef(ref state);
+        var targetType = __targetType.UpdateAsRef(ref state);
 
-        //__addComponentCommander = addComponentQueue.AsComponentParallelWriter<GameNavMeshAgentTarget>(exitGroup.CalculateEntityCount() + runGroup.CalculateEntityCount());
-        //__removeComponentCommander = removeComponentQueue.parallelWriter;
-
-        base.OnUpdate();
-
-        var jobHandle = Dependency;
-
-        //addComponentQueue.AddJobHandleForProducer<GameActionActiveExecutorSystem>(jobHandle);
-        //removeComponentQueue.AddJobHandleForProducer<GameActionActiveExecutorSystem>(jobHandle);
-
-        __actionColliders.AddDependency(this.GetState().GetSystemID(), jobHandle);
-    }
-
-    protected override EscaperFactory _GetExit(ref JobHandle inputDeps)
-    {
-        EscaperFactory escaperFactory;
-        //escaperFactory.time = __syncSystemGroup.nextTime;
-        //escaperFactory.entityType = GetEntityTypeHandle();
-        escaperFactory.positionType = GetBufferTypeHandle<GameNodePosition>(true);
-        escaperFactory.infoType = GetComponentTypeHandle<GameActionActiveInfo>(true);
-        escaperFactory.targetType = GetComponentTypeHandle<GameNavMeshAgentTarget>();
-        //escaperFactory.entityManager = __addComponentCommander;
-        return escaperFactory;
-    }
-
-    protected override ExecutorFactory _GetRun(ref JobHandle inputDeps)
-    {
         ExecutorFactory executorFactory;
-        executorFactory.collisionTolerance = collisionTolerance;
+        executorFactory.collisionTolerance = CollisionTolerance;
         executorFactory.time = __time.nextTime;
         executorFactory.actions = SystemAPI.GetSingleton<GameActionSetData>().definition;
         executorFactory.actionColliders = __actionColliders.reader;
-        executorFactory.disabled = GetComponentLookup<Disabled>(true);
-        executorFactory.translations = GetComponentLookup<Translation>(true);
-        executorFactory.rotations = GetComponentLookup<Rotation>(true);
-        executorFactory.physicsMasses = GetComponentLookup<PhysicsMass>(true);
-        executorFactory.physicsColliders = GetComponentLookup<PhysicsCollider>(true);
-        executorFactory.protectedTimes = GetComponentLookup<GameActionActiveProtectedTime>(true);
-        executorFactory.entityType = GetEntityTypeHandle();
-        executorFactory.statusType = GetComponentTypeHandle<GameNodeStatus>(true);
-        executorFactory.delayType = GetComponentTypeHandle<GameNodeDelay>(true);
-        executorFactory.angleType = GetComponentTypeHandle<GameNodeAngle>(true);
-        executorFactory.actorStatusType = GetComponentTypeHandle<GameNodeActorStatus>(true);
-        executorFactory.desiredVelocityType = GetComponentTypeHandle<GameNodeCharacterDesiredVelocity>(true);
-        executorFactory.angleType = GetComponentTypeHandle<GameNodeAngle>(true);
-        executorFactory.healthDataType = GetComponentTypeHandle<GameEntityHealthData>(true);
-        executorFactory.healthType = GetComponentTypeHandle<GameEntityHealth>(true);
-        executorFactory.torpidityDataType = GetComponentTypeHandle<GameEntityTorpidityData>(true);
-        executorFactory.torpidityType = GetComponentTypeHandle<GameEntityTorpidity>(true);
-        executorFactory.commandVersionType = GetComponentTypeHandle<GameEntityCommandVersion>(true);
-        executorFactory.actorTimeType = GetComponentTypeHandle<GameEntityActorTime>(true);
-        executorFactory.actorType = GetComponentTypeHandle<GameEntityActorData>(true);
-        executorFactory.instanceType = GetComponentTypeHandle<GameActionActiveData>(true);
-        executorFactory.speakerInfoType = GetComponentTypeHandle<GameSpeakerInfo>(true);
-        executorFactory.watcherInfoType = GetComponentTypeHandle<GameWatcherInfo>(true);
-        executorFactory.actorActionType = GetBufferTypeHandle<GameEntityActorActionData>(true);
-        executorFactory.actorActionInfoType = GetBufferTypeHandle<GameEntityActorActionInfo>(true);
-        executorFactory.conditionActionType = GetBufferTypeHandle<GameActionConditionAction>(true);
-        executorFactory.conditionType = GetBufferTypeHandle<GameActionCondition>(true);
-        executorFactory.groupType = GetBufferTypeHandle<GameActionGroup>(true);
-        executorFactory.positionType = GetBufferTypeHandle<GameNodePosition>();
-        executorFactory.directionType = GetComponentTypeHandle<GameNodeDirection>();
-        executorFactory.targetType = GetComponentTypeHandle<GameNavMeshAgentTarget>();
-        executorFactory.infoType = GetComponentTypeHandle<GameActionActiveInfo>();
-        executorFactory.commands = GetComponentLookup<GameEntityActionCommand>();
-        executorFactory.versions = GetComponentLookup<GameNodeVersion>();
-        //executorFactory.addComponentCommander = __addComponentCommander;
-        //executorFactory.removeComponentCommander = __removeComponentCommander;
-        return executorFactory;
+        executorFactory.disabled = __disabled.UpdateAsRef(ref state);
+        executorFactory.translations = __translations.UpdateAsRef(ref state);
+        executorFactory.rotations = __rotations.UpdateAsRef(ref state);
+        executorFactory.physicsMasses = __physicsMasses.UpdateAsRef(ref state);
+        executorFactory.physicsColliders = __physicsColliders.UpdateAsRef(ref state);
+        executorFactory.protectedTimes = __protectedTimes.UpdateAsRef(ref state);
+        executorFactory.entityType = __entityType.UpdateAsRef(ref state);
+        executorFactory.statusType = __statusType.UpdateAsRef(ref state);
+        executorFactory.delayType = __delayType.UpdateAsRef(ref state);
+        executorFactory.angleType = __angleType.UpdateAsRef(ref state);
+        executorFactory.actorStatusType = __actorStatusType.UpdateAsRef(ref state);
+        executorFactory.desiredVelocityType = __desiredVelocityType.UpdateAsRef(ref state);
+        executorFactory.angleType = __angleType.UpdateAsRef(ref state);
+        executorFactory.healthDataType = __healthDataType.UpdateAsRef(ref state);
+        executorFactory.healthType = __healthType.UpdateAsRef(ref state);
+        executorFactory.torpidityDataType = __torpidityDataType.UpdateAsRef(ref state);
+        executorFactory.torpidityType = __torpidityType.UpdateAsRef(ref state);
+        executorFactory.commandVersionType = __commandVersionType.UpdateAsRef(ref state);
+        executorFactory.actorTimeType = __actorTimeType.UpdateAsRef(ref state);
+        executorFactory.actorType = __actorType.UpdateAsRef(ref state);
+        executorFactory.instanceType = __instanceType.UpdateAsRef(ref state);
+        executorFactory.speakerInfoType = __speakerInfoType.UpdateAsRef(ref state);
+        executorFactory.watcherInfoType = __watcherInfoType.UpdateAsRef(ref state);
+        executorFactory.actorActionType = __actorActionType.UpdateAsRef(ref state);
+        executorFactory.actorActionInfoType = __actorActionInfoType.UpdateAsRef(ref state);
+        executorFactory.conditionActionType = __conditionActionType.UpdateAsRef(ref state);
+        executorFactory.conditionType = __conditionType.UpdateAsRef(ref state);
+        executorFactory.groupType = __groupType.UpdateAsRef(ref state);
+        executorFactory.positionType = positionType;
+        executorFactory.directionType = __directionType.UpdateAsRef(ref state);
+        executorFactory.targetType = targetType;
+        executorFactory.infoType = infoType;
+        executorFactory.commands = __commands.UpdateAsRef(ref state);
+        executorFactory.versions = __versions.UpdateAsRef(ref state);
+
+        EscaperFactory escaperFactory;
+        escaperFactory.positionType = positionType;
+        escaperFactory.infoType = infoType;
+        escaperFactory.targetType = targetType;
+
+        __core.Update<Escaper, Executor, EscaperFactory, ExecutorFactory>(ref state, ref executorFactory, ref escaperFactory);
+        
+        var jobHandle = state.Dependency;
+
+        __actionColliders.AddDependency(state.GetSystemID(), jobHandle);
     }
-    
-    private readonly EntityQueryDesc[] __runEntityArchetypeQueries = new EntityQueryDesc[]
-    {
-        new EntityQueryDesc()
-        {
-            All = new ComponentType[]
-            {
-                ComponentType.ReadOnly<GameNodeStatus>(),
-                ComponentType.ReadOnly<GameNodeDelay>(),
-                /*ComponentType.ReadOnly<GameEntityHealthData>(),
-                ComponentType.ReadOnly<GameEntityHealth>(),
-                ComponentType.ReadOnly<GameEntityTorpidityData>(),
-                ComponentType.ReadOnly<GameEntityTorpidity>(),*/
-                ComponentType.ReadOnly<GameEntityCommandVersion>(),
-                ComponentType.ReadOnly<GameEntityActorData>(),
-                ComponentType.ReadOnly<GameActionActiveData>(),
-                ComponentType.ReadOnly<GameEntityActorActionData>(),
-                ComponentType.ReadOnly<GameEntityActorActionInfo>(),
-                ComponentType.ReadWrite<GameActionActiveInfo>()
-            },
-            Any = new ComponentType[]
-            {
-                ComponentType.ReadOnly<GameSpeakerInfo>(),
-                ComponentType.ReadWrite<GameWatcherInfo>()
-            },
-            None = new ComponentType[]
-            {
-                typeof(Disabled)
-            }
-        }
-    };
 }
