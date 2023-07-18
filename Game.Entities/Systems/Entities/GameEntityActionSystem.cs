@@ -660,7 +660,8 @@ public struct GameEntityActionSystemCore
                         {
                             var sourceRigidbody = rigidbodies[sourceRigidbodyIndex];
 
-                            float3 destination = math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.actorOffset) + math.forward(sourceRigidbody.WorldFromBody.rot) * instanceEx.info.distance;
+                            float3 source = math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.actorOffset), 
+                                destination = source + math.forward(sourceRigidbody.WorldFromBody.rot) * instanceEx.info.distance;
 
                             ColliderCastInput colliderCastInput = default;
                             colliderCastInput.Collider = (Collider*)rigidbodies[sourceRigidbodyIndex].Collider.GetUnsafePtr();
@@ -671,7 +672,9 @@ public struct GameEntityActionSystemCore
                             if (collisionWorld.CastCollider(colliderCastInput, ref collector))
                                 destination = math.lerp(sourceRigidbody.WorldFromBody.pos, destination, collector.closestHit.Fraction);
 
-                            locations.TryAdd(instance.entity, destination);
+                            locations.TryAdd(instance.entity, collisionWorld.CastCollider(colliderCastInput, ref collector) ?
+                                math.lerp(sourceRigidbody.WorldFromBody.pos, destination, collector.closestHit.Fraction) :
+                                source);
                         }
                     }
                     else if ((instanceEx.value.flag & GameActionFlag.ActorLocation) == GameActionFlag.ActorLocation)
