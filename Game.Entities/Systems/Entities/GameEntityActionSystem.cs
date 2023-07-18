@@ -669,8 +669,8 @@ public struct GameEntityActionSystemCore
                             colliderCastInput.Start = sourceRigidbody.WorldFromBody.pos;
                             colliderCastInput.End = destination;
                             var collector = new ClosestHitCollectorExclude<ColliderCastHit>(sourceRigidbodyIndex, 1.0f);
-                            if (collisionWorld.CastCollider(colliderCastInput, ref collector))
-                                destination = math.lerp(sourceRigidbody.WorldFromBody.pos, destination, collector.closestHit.Fraction);
+                            /*if (collisionWorld.CastCollider(colliderCastInput, ref collector))
+                                destination = math.lerp(sourceRigidbody.WorldFromBody.pos, destination, collector.closestHit.Fraction);*/
 
                             locations.TryAdd(instance.entity, collisionWorld.CastCollider(colliderCastInput, ref collector) ?
                                 math.lerp(sourceRigidbody.WorldFromBody.pos, destination, collector.closestHit.Fraction) :

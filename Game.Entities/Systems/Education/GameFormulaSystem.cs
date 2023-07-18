@@ -232,7 +232,7 @@ public struct GameFormulaManager : IDisposable
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
     internal AtomicSafetyHandle m_Safety;
 
-    internal static readonly SharedStatic<int> StaticSafetyID = SharedStatic<int>.GetOrCreate<GameQuestManager>();
+    internal static readonly SharedStatic<int> StaticSafetyID = SharedStatic<int>.GetOrCreate<GameFormulaManager>();
 #endif
 
     public static int IndexOf(int index, in DynamicBuffer<GameFormula> formulas, out GameFormula formula)
@@ -268,7 +268,7 @@ public struct GameFormulaManager : IDisposable
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
         m_Safety = CollectionHelper.CreateSafetyHandle(allocator);
 
-        CollectionHelper.SetStaticSafetyId<GameQuestManager>(ref m_Safety, ref StaticSafetyID.Data);
+        CollectionHelper.SetStaticSafetyId<GameFormulaManager>(ref m_Safety, ref StaticSafetyID.Data);
 #endif
     }
 

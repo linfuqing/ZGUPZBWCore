@@ -12,12 +12,12 @@ using Unity.Collections.LowLevel.Unsafe;
     GameDataItemDeserializationSystem<GameItemTime, GameItemTimeInitSystem.Initializer, GameItemTimeInitSystem>.Deserializer,
     GameItemTimeInitSystem.Initializer>))]
 
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<ComponentDataSerializationSystem<GameItemTime>.Serializer, ComponentDataSerializationSystem<GameItemTime>.SerializerFactory>))]
+//[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<ComponentDataSerializationSystem<GameItemTime>.Serializer, ComponentDataSerializationSystem<GameItemTime>.SerializerFactory>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<
     GameDataItemDeserializer<GameItemTime, GameDataItemDeserializationSystem<GameItemTime, GameItemTimeInitSystem.Initializer, GameItemTimeInitSystem>.Deserializer>,
     GameDataItemDeserializerFactory<GameItemTime, GameDataItemDeserializationSystem<GameItemTime, GameItemTimeInitSystem.Initializer, GameItemTimeInitSystem>.Deserializer>>))]
 
-[assembly: EntityDataSerialize(typeof(GameItemTime))]
+//[assembly: EntityDataSerialize(typeof(GameItemTime))]
 [assembly: EntityDataDeserialize(typeof(GameItemTime), typeof(GameDataItemDeserializationSystem<GameItemTime, GameItemTimeInitSystem.Initializer, GameItemTimeInitSystem>), (int)GameDataConstans.Version)]
 #endregion
 
@@ -27,12 +27,12 @@ using Unity.Collections.LowLevel.Unsafe;
     GameDataItemDeserializationSystem<GameItemDurability, GameItemDurabilityInitSystem.Initializer, GameItemDurabilityInitSystem>.Deserializer, 
     GameItemDurabilityInitSystem.Initializer>))]
 
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<ComponentDataSerializationSystem<GameItemDurability>.Serializer, ComponentDataSerializationSystem<GameItemDurability>.SerializerFactory>))]
+//[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<ComponentDataSerializationSystem<GameItemDurability>.Serializer, ComponentDataSerializationSystem<GameItemDurability>.SerializerFactory>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<
     GameDataItemDeserializer<GameItemDurability, GameDataItemDeserializationSystem<GameItemDurability, GameItemDurabilityInitSystem.Initializer, GameItemDurabilityInitSystem>.Deserializer>,
     GameDataItemDeserializerFactory<GameItemDurability, GameDataItemDeserializationSystem<GameItemDurability, GameItemDurabilityInitSystem.Initializer, GameItemDurabilityInitSystem>.Deserializer>>))]
 
-[assembly: EntityDataSerialize(typeof(GameItemDurability))]
+//[assembly: EntityDataSerialize(typeof(GameItemDurability))]
 [assembly: EntityDataDeserialize(typeof(GameItemDurability), typeof(GameDataItemDeserializationSystem<GameItemDurability, GameItemDurabilityInitSystem.Initializer, GameItemDurabilityInitSystem>), (int)GameDataConstans.Version)]
 #endregion
 
@@ -72,12 +72,12 @@ using Unity.Collections.LowLevel.Unsafe;
     GameDataItemDeserializationSystem<GameItemLevel, GameItemLevelInitSystem.Initializer, GameItemLevelInitSystem>.Deserializer,
     GameItemLevelInitSystem.Initializer>))]
 
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<ComponentDataSerializationSystem<GameItemLevel>.Serializer, ComponentDataSerializationSystem<GameItemLevel>.SerializerFactory>))]
+//[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<ComponentDataSerializationSystem<GameItemLevel>.Serializer, ComponentDataSerializationSystem<GameItemLevel>.SerializerFactory>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<
     GameDataItemDeserializer<GameItemLevel, GameDataItemDeserializationSystem<GameItemLevel, GameItemLevelInitSystem.Initializer, GameItemLevelInitSystem>.Deserializer>,
     GameDataItemDeserializerFactory<GameItemLevel, GameDataItemDeserializationSystem<GameItemLevel, GameItemLevelInitSystem.Initializer, GameItemLevelInitSystem>.Deserializer>>))]
 
-[assembly: EntityDataSerialize(typeof(GameItemLevel))]
+//[assembly: EntityDataSerialize(typeof(GameItemLevel))]
 [assembly: EntityDataDeserialize(typeof(GameItemLevel), typeof(GameDataItemDeserializationSystem<GameItemLevel, GameItemLevelInitSystem.Initializer, GameItemLevelInitSystem>), (int)GameDataConstans.Version)]
 #endregion
 
@@ -87,12 +87,12 @@ using Unity.Collections.LowLevel.Unsafe;
     GameDataItemDeserializationSystem<GameItemExp, GameItemExpInitSystem.Initializer, GameItemExpInitSystem>.Deserializer,
     GameItemExpInitSystem.Initializer>))]
 
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<ComponentDataSerializationSystem<GameItemExp>.Serializer, ComponentDataSerializationSystem<GameItemExp>.SerializerFactory>))]
+//[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<ComponentDataSerializationSystem<GameItemExp>.Serializer, ComponentDataSerializationSystem<GameItemExp>.SerializerFactory>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<
     GameDataItemDeserializer<GameItemExp, GameDataItemDeserializationSystem<GameItemExp, GameItemExpInitSystem.Initializer, GameItemExpInitSystem>.Deserializer>,
     GameDataItemDeserializerFactory<GameItemExp, GameDataItemDeserializationSystem<GameItemExp, GameItemExpInitSystem.Initializer, GameItemExpInitSystem>.Deserializer>>))]
 
-[assembly: EntityDataSerialize(typeof(GameItemExp))]
+//[assembly: EntityDataSerialize(typeof(GameItemExp))]
 [assembly: EntityDataDeserialize(typeof(GameItemExp), typeof(GameDataItemDeserializationSystem<GameItemExp, GameItemExpInitSystem.Initializer, GameItemExpInitSystem>), (int)GameDataConstans.Version)]
 #endregion
 
@@ -102,14 +102,149 @@ using Unity.Collections.LowLevel.Unsafe;
     GameDataItemDeserializationSystem<GameItemPower, GameItemPowerInitSystem.Initializer, GameItemPowerInitSystem>.Deserializer,
     GameItemPowerInitSystem.Initializer>))]
 
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<ComponentDataSerializationSystem<GameItemPower>.Serializer, ComponentDataSerializationSystem<GameItemPower>.SerializerFactory>))]
+//[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<ComponentDataSerializationSystem<GameItemPower>.Serializer, ComponentDataSerializationSystem<GameItemPower>.SerializerFactory>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<
     GameDataItemDeserializer<GameItemPower, GameDataItemDeserializationSystem<GameItemPower, GameItemPowerInitSystem.Initializer, GameItemPowerInitSystem>.Deserializer>,
     GameDataItemDeserializerFactory<GameItemPower, GameDataItemDeserializationSystem<GameItemPower, GameItemPowerInitSystem.Initializer, GameItemPowerInitSystem>.Deserializer>>))]
 
-[assembly: EntityDataSerialize(typeof(GameItemPower))]
+//[assembly: EntityDataSerialize(typeof(GameItemPower))]
 [assembly: EntityDataDeserialize(typeof(GameItemPower), typeof(GameDataItemDeserializationSystem<GameItemPower, GameItemPowerInitSystem.Initializer, GameItemPowerInitSystem>), (int)GameDataConstans.Version)]
 #endregion
+
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameItemTime)),
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataItemTimeSerializationSystem : ISystem
+{
+    private EntityDataSerializationSystemCoreEx __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = EntityDataSerializationSystemCoreEx.Create<GameItemTime>(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        __core.Update(ref state);
+    }
+}
+
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameItemDurability)),
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataItemDurabilitySerializationSystem : ISystem
+{
+    private EntityDataSerializationSystemCoreEx __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = EntityDataSerializationSystemCoreEx.Create<GameItemDurability>(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        __core.Update(ref state);
+    }
+}
+
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameItemLevel)),
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataItemLevelSerializationSystem : ISystem
+{
+    private EntityDataSerializationSystemCoreEx __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = EntityDataSerializationSystemCoreEx.Create<GameItemLevel>(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        __core.Update(ref state);
+    }
+}
+
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameItemExp)),
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataItemExpSerializationSystem : ISystem
+{
+    private EntityDataSerializationSystemCoreEx __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = EntityDataSerializationSystemCoreEx.Create<GameItemExp>(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        __core.Update(ref state);
+    }
+}
+
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameItemPower)),
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataItemPowerSerializationSystem : ISystem
+{
+    private EntityDataSerializationSystemCoreEx __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = EntityDataSerializationSystemCoreEx.Create<GameItemPower>(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        __core.Update(ref state);
+    }
+}
 
 public interface IGameDataItemDeserializer<T> where T : struct, IComponentData
 {

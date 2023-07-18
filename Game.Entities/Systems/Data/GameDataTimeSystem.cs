@@ -7,18 +7,18 @@ using Unity.Burst;
 using Unity.Burst.Intrinsics;
 
 #region GameDataTime
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataTimeSerializationSystem.Serializer, GameDataTimeSerializationSystem.SerializerFactory>))]
+[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataTimeSerializationSystemCore<GameDataTime, GameDataTimeStatus, GameDataTimeMask>.Serializer, GameDataTimeSerializationSystemCore<GameDataTime, GameDataTimeStatus, GameDataTimeMask>.SerializerFactory>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<ComponentDataDeserializationSystem<GameDataTime>.Deserializer, ComponentDataDeserializationSystem<GameDataTime>.DeserializerFactory>))]
 
-[assembly: EntityDataSerialize(typeof(GameDataTime), typeof(GameDataTimeSerializationSystem))]
+//[assembly: EntityDataSerialize(typeof(GameDataTime), typeof(GameDataTimeSerializationSystem))]
 [assembly: EntityDataDeserialize(typeof(GameDataTime), (int)GameDataConstans.Version)]
 #endregion
 
 #region GameDataDeadline
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataDeadlineSerializationSystem.Serializer, GameDataDeadlineSerializationSystem.SerializerFactory>))]
+[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataTimeSerializationSystemCore<GameDataDeadline, GameDataDeadlineStatus, GameDataDeadlineMask>.Serializer, GameDataTimeSerializationSystemCore<GameDataDeadline, GameDataDeadlineStatus, GameDataDeadlineMask>.SerializerFactory>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<ComponentDataDeserializationSystem<GameDataDeadline>.Deserializer, ComponentDataDeserializationSystem<GameDataDeadline>.DeserializerFactory>))]
 
-[assembly: EntityDataSerialize(typeof(GameDataDeadline), typeof(GameDataDeadlineSerializationSystem))]
+//[assembly: EntityDataSerialize(typeof(GameDataDeadline), typeof(GameDataDeadlineSerializationSystem))]
 [assembly: EntityDataDeserialize(typeof(GameDataDeadline), (int)GameDataConstans.Version)]
 #endregion
 
@@ -124,10 +124,7 @@ public struct GameDataDeadlineTrigger : IComponentData
 
 }
 
-public partial class GameDataTimeSerializationSystem<TTime, TStatus, TMask> : EntityDataSerializationComponentSystem<
-    TTime,
-    GameDataTimeSerializationSystem<TTime, TStatus, TMask>.Serializer,
-    GameDataTimeSerializationSystem<TTime, TStatus, TMask>.SerializerFactory> 
+public struct GameDataTimeSerializationSystemCore<TTime, TStatus, TMask>
     where TTime : unmanaged, IGameDataTime
     where TStatus : unmanaged, IGameDataTimeStatus
     where TMask : unmanaged, IGameDataTimeMask
@@ -141,7 +138,7 @@ public partial class GameDataTimeSerializationSystem<TTime, TStatus, TMask> : En
         public NativeArray<TStatus> states;
         [ReadOnly]
         public NativeArray<TMask> masks;
-        public void Serialize(int index, in NativeParallelHashMap<Hash128, int> entityIndices, ref EntityDataWriter writer)
+        public void Serialize(int index, in SharedHashMap<Hash128, int>.Reader entityIndices, ref EntityDataWriter writer)
         {
             var time = times[index];
             time.value = GameDataTimeUtility.CalculateTime(
@@ -176,27 +173,89 @@ public partial class GameDataTimeSerializationSystem<TTime, TStatus, TMask> : En
         }
     }
 
-    protected override SerializerFactory _Get(ref JobHandle jobHandle)
+    private ComponentTypeHandle<TTime> __timeType;
+    private ComponentTypeHandle<TStatus> __statusType;
+    private ComponentTypeHandle<TMask> __maskType;
+    private EntityDataSerializationSystemCore __core;
+
+    public GameDataTimeSerializationSystemCore(ref SystemState state)
+    {
+        __timeType = state.GetComponentTypeHandle<TTime>(true);
+        __statusType = state.GetComponentTypeHandle<TStatus>(true);
+        __maskType = state.GetComponentTypeHandle<TMask>(true);
+
+        __core = EntityDataSerializationSystemCore.Create<TTime>(ref state);
+    }
+
+    public void Dispose()
+    {
+        __core.Dispose();
+    }
+
+    public void Update(ref SystemState state)
     {
         SerializerFactory factory;
-        factory.time = World.Time.ElapsedTime;
-        factory.timeType = GetComponentTypeHandle<TTime>(true);
-        factory.statusType = GetComponentTypeHandle<TStatus>(true);
-        factory.maskType = GetComponentTypeHandle<TMask>(true);
+        factory.time = state.WorldUnmanaged.Time.ElapsedTime;
+        factory.timeType = __timeType.UpdateAsRef(ref state);
+        factory.statusType = __statusType.UpdateAsRef(ref state);
+        factory.maskType = __maskType.UpdateAsRef(ref state);
 
-        return factory;
+        __core.Update<Serializer, SerializerFactory>(ref factory, ref state);
     }
 }
 
-[DisableAutoCreation]
-public partial class GameDataTimeSerializationSystem : GameDataTimeSerializationSystem<GameDataTime, GameDataTimeStatus, GameDataTimeMask>
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameDataTime)),
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataTimeSerializationSystem : ISystem
 {
+    private GameDataTimeSerializationSystemCore<GameDataTime, GameDataTimeStatus, GameDataTimeMask> __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = new GameDataTimeSerializationSystemCore<GameDataTime, GameDataTimeStatus, GameDataTimeMask>(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        __core.Update(ref state);
+    }
 }
 
-[DisableAutoCreation]
-public partial class GameDataDeadlineSerializationSystem : GameDataTimeSerializationSystem<GameDataDeadline, GameDataDeadlineStatus, GameDataDeadlineMask>
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameDataDeadline)),
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataDeadlineSerializationSystem : ISystem
 {
+    private GameDataTimeSerializationSystemCore<GameDataDeadline, GameDataDeadlineStatus, GameDataDeadlineMask> __core;
 
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = new GameDataTimeSerializationSystemCore<GameDataDeadline, GameDataDeadlineStatus, GameDataDeadlineMask>(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        __core.Update(ref state);
+    }
 }
 
 [BurstCompile, AutoCreateIn("Server"), UpdateAfter(typeof(NetworkRPCSystem))]

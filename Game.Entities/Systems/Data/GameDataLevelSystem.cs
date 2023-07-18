@@ -1,4 +1,5 @@
-﻿using Unity.Collections;
+﻿using Unity.Burst;
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
 using ZG;
@@ -7,31 +8,31 @@ using ZG;
 [assembly: RegisterGenericJobType(typeof(EntityDataIndexComponentInit<GameLevel, GameLevelWrapper>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataIndexBufferInit<GameSoul, GameSoulLevelWrapper>))]
 
-[assembly: RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameDataLevelContainerSerializationSystem.Serializer>))]
+//[assembly: RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameDataLevelContainerSerializationSystem.Serializer>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataContainerDeserialize<GameDataLevelContainerDeserializationSystem.Deserializer>))]
 
-[assembly: EntityDataSerialize(typeof(GameLevelManager), typeof(GameDataLevelContainerSerializationSystem))]
+//[assembly: EntityDataSerialize(typeof(GameLevelManager), typeof(GameDataLevelContainerSerializationSystem))]
 [assembly: EntityDataDeserialize(typeof(GameLevelManager), typeof(GameDataLevelContainerDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
 #region GameLevel
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataLevelSerializationSystem.Serializer, GameDataLevelSerializationSystem.SerializerFactory>))]
+[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<EntityDataSerializationIndexComponentDataSystemCore<GameLevel, GameLevelWrapper>.Serializer, EntityDataSerializationIndexComponentDataSystemCore<GameLevel, GameLevelWrapper>.SerializerFactory>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataLevelDeserializationSystem.Deserializer, GameDataLevelDeserializationSystem.DeserializerFactory>))]
-[assembly: EntityDataSerialize(typeof(GameLevel), typeof(GameDataLevelSerializationSystem))]
+//[assembly: EntityDataSerialize(typeof(GameLevel), typeof(GameDataLevelSerializationSystem))]
 [assembly: EntityDataDeserialize(typeof(GameLevel), typeof(GameDataLevelDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
 #region GameExp
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<ComponentDataSerializationSystem<GameExp>.Serializer, ComponentDataSerializationSystem<GameExp>.SerializerFactory>))]
+//[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<ComponentDataSerializationSystem<GameExp>.Serializer, ComponentDataSerializationSystem<GameExp>.SerializerFactory>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<ComponentDataDeserializationSystem<GameExp>.Deserializer, ComponentDataDeserializationSystem<GameExp>.DeserializerFactory>))]
-[assembly: EntityDataSerialize(typeof(GameExp))]
+//[assembly: EntityDataSerialize(typeof(GameExp))]
 [assembly: EntityDataDeserialize(typeof(GameExp), (int)GameDataConstans.Version)]
 #endregion
 
 #region GamePower
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<ComponentDataSerializationSystem<GamePower>.Serializer, ComponentDataSerializationSystem<GamePower>.SerializerFactory>))]
+//[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<ComponentDataSerializationSystem<GamePower>.Serializer, ComponentDataSerializationSystem<GamePower>.SerializerFactory>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<ComponentDataDeserializationSystem<GamePower>.Deserializer, ComponentDataDeserializationSystem<GamePower>.DeserializerFactory>))]
-[assembly: EntityDataSerialize(typeof(GamePower))]
+//[assembly: EntityDataSerialize(typeof(GamePower))]
 [assembly: EntityDataDeserialize(typeof(GamePower), (int)GameDataConstans.Version)]
 #endregion
 
@@ -58,6 +59,16 @@ public struct GameLevelWrapper : IEntityDataIndexReadWriteWrapper<GameLevel>
     {
         data.handle = index + 1;
     }
+
+    public void Serialize(ref EntityDataWriter writer, in GameLevel data, int guidIndex)
+    {
+        EntityDataIndexReadWriteWrapperUtility.Serialize(ref this, ref writer, data, guidIndex);
+    }
+
+    public GameLevel Deserialize(ref EntityDataReader reader, in NativeArray<int>.ReadOnly indices)
+    {
+        return EntityDataIndexReadWriteWrapperUtility.Deserialize<GameLevel, GameLevelWrapper>(ref this, ref reader, indices);
+    }
 }
 
 public struct GameSoulLevelWrapper : IEntityDataIndexReadWriteWrapper<GameSoul>
@@ -78,64 +89,161 @@ public struct GameSoulLevelWrapper : IEntityDataIndexReadWriteWrapper<GameSoul>
     {
         data.data.levelIndex = index;
     }
+
+    public void Serialize(ref EntityDataWriter writer, in GameSoul data, int guidIndex)
+    {
+        EntityDataIndexReadWriteWrapperUtility.Serialize(ref this, ref writer, data, guidIndex);
+    }
+
+    public GameSoul Deserialize(ref EntityDataReader reader, in NativeArray<int>.ReadOnly indices)
+    {
+        return EntityDataIndexReadWriteWrapperUtility.Deserialize<GameSoul, GameSoulLevelWrapper>(ref this, ref reader, indices);
+    }
 }
 
-[DisableAutoCreation]
-public partial class GameDataLevelContainerSerializationSystem : EntityDataIndexContainerSerializationSystem
+public struct GameDataSoulContainer : IComponentData
 {
-    private GameSoulSystem __soulSystem;
+    public NativeArray<Hash128>.ReadOnly guids;
+}
+
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameLevelManager)),
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataLevelContainerSerializationSystem : ISystem, IEntityDataSerializationIndexContainerSystem
+{
     private EntityQuery __instanceGroup;
     private EntityQuery __soulGroup;
 
-    protected override void OnCreate()
+    private ComponentTypeHandle<GameLevel> __instanceType;
+    private BufferTypeHandle<GameSoul> __soulType;
+    private EntityDataSerializationIndexContainerSystemCore __core;
+
+    public SharedHashMap<int, int> guidIndices => __core.guidIndices;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __instanceGroup = builder
+                    .WithAll<GameLevel, EntityDataIdentity, EntityDataSerializable>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
 
-        __soulSystem = World.GetOrCreateSystemManaged<GameSoulSystem>();
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __soulGroup = builder
+                    .WithAll<GameSoul, EntityDataIdentity, EntityDataSerializable>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
 
-        __instanceGroup = GetEntityQuery(
-                new EntityQueryDesc()
-                {
-                    All = new ComponentType[]
-                    {
-                        ComponentType.ReadOnly<GameLevel>(),
-                        ComponentType.ReadOnly<EntityDataIdentity>(),
-                        ComponentType.ReadOnly<EntityDataSerializable>()
-                    },
-                    Options = EntityQueryOptions.IncludeDisabledEntities
-                });
+        __instanceType = state.GetComponentTypeHandle<GameLevel>(true);
+        __soulType = state.GetBufferTypeHandle<GameSoul>(true);
 
-        __soulGroup = GetEntityQuery(
-                new EntityQueryDesc()
-                {
-                    All = new ComponentType[]
-                    {
-                        ComponentType.ReadOnly<GameSoul>(),
-                        ComponentType.ReadOnly<EntityDataIdentity>(),
-                        ComponentType.ReadOnly<EntityDataSerializable>()
-                    },
-                    Options = EntityQueryOptions.IncludeDisabledEntities
-                });
+        __core = new EntityDataSerializationIndexContainerSystemCore(ref state);
     }
 
-    protected override JobHandle _Update(in JobHandle inputDeps)
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        var guids = __soulSystem.guids;
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        var jobHandle = __core.Clear(state.Dependency);
+
+        var guids = SystemAPI.GetSingleton<GameDataSoulContainer>().guids;
 
         GameLevelWrapper instanceWrapper;
-        var jobHandle = _ScheduleComponent<GameLevel, GameLevelWrapper>(__instanceGroup, guids, ref instanceWrapper, inputDeps);
+        jobHandle = __core.Update(__instanceGroup, guids, __instanceType.UpdateAsRef(ref state), ref instanceWrapper, jobHandle);
 
         GameSoulLevelWrapper soulWrapper;
-        return _ScheduleBuffer<GameSoul, GameSoulLevelWrapper>(__soulGroup, guids, ref soulWrapper, jobHandle);
+        state.Dependency = __core.Update(__soulGroup, guids, __soulType.UpdateAsRef(ref state), ref soulWrapper, jobHandle);
     }
 }
 
-[DisableAutoCreation, UpdateAfter(typeof(GameDataLevelContainerSerializationSystem))]
-public partial class GameDataLevelSerializationSystem : EntityDataIndexComponentSerializationSystem<GameLevel, GameLevelWrapper>
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameLevel)),
+    CreateAfter(typeof(GameDataLevelContainerSerializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server"),
+    UpdateAfter(typeof(GameDataLevelContainerSerializationSystem))]
+public partial struct GameDataLevelSerializationSystem : ISystem
 {
-    protected override GameLevelWrapper _GetWrapper() => default;
+    private EntityDataSerializationIndexComponentDataSystemCore<GameLevel, GameLevelWrapper> __core;
 
-    protected override EntityDataIndexContainerSerializationSystem _GetOrCreateContainerSystem() => World.GetOrCreateSystemManaged<GameDataLevelContainerSerializationSystem>();
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = EntityDataSerializationIndexComponentDataSystemCore<GameLevel, GameLevelWrapper>.Create<GameDataLevelContainerSerializationSystem>(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        GameLevelWrapper wrapper;
+        __core.Update(ref wrapper, ref state);
+    }
+}
+
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameExp)),
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataExpSerializationSystem : ISystem
+{
+    private EntityDataSerializationSystemCoreEx __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = EntityDataSerializationSystemCoreEx.Create<GameExp>(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        __core.Update(ref state);
+    }
+}
+
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GamePower)),
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataPowerSerializationSystem : ISystem
+{
+    private EntityDataSerializationSystemCoreEx __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = EntityDataSerializationSystemCoreEx.Create<GamePower>(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        __core.Update(ref state);
+    }
 }
 
 [DisableAutoCreation]
@@ -150,9 +258,9 @@ public partial class GameDataLevelContainerDeserializationSystem : EntityDataInd
         __soulSystem = World.GetOrCreateSystemManaged<GameSoulSystem>();
     }
 
-    protected override NativeArray<Hash128> _GetGuids()
+    protected override NativeArray<Hash128>.ReadOnly _GetGuids()
     {
-        return __soulSystem.guids;
+        return SystemAPI.GetSingleton<GameDataSoulContainer>().guids;
     }
 }
 

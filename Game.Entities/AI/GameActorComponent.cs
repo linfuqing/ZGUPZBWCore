@@ -3,11 +3,16 @@ using Unity.Entities;
 using ZG;
 using GameObjectEntity = ZG.GameObjectEntity;
 
-public struct GameActorMaster : IGameDataEntityCompoentData
+public struct GameActorMaster : IGameDataEntityCompoent, IComponentData
 {
     public Entity entity;
 
-    Entity IGameDataEntityCompoentData.entity
+    public void Serialize(int entityIndex, ref EntityDataWriter writer)
+    {
+        writer.Write(entityIndex);
+    }
+
+    Entity IGameDataEntityCompoent.entity
     {
         get => entity;
 

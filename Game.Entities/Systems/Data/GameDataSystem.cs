@@ -40,13 +40,8 @@ public partial class GameDataDeserializationSystemGroup : EntityDataDeserializat
 
     public override NativeArray<Hash128> types => __types;
 
-    public bool Activate(string path, EntityDataDeserializationCommander commander, Hash128[] types)
+    public bool Activate(string path, EntityDataDeserializationCommander commander, Hash128[] types, ref Entity entity)
     {
-        if (__types.IsCreated)
-            __types.Dispose();
-
-        __types = new NativeArray<Hash128>(types, Allocator.Persistent);
-
         path = Path.Combine(UnityEngine.Application.persistentDataPath, path);
         this.path = path;
         if (!File.Exists(path))
@@ -66,6 +61,19 @@ public partial class GameDataDeserializationSystemGroup : EntityDataDeserializat
             return false;
 
         __commander = commander;
+
+        if (__types.IsCreated)
+            __types.Dispose();
+
+        __types = new NativeArray<Hash128>(types, Allocator.Persistent);
+
+        var entityManager = EntityManager;
+        if (!entityManager.HasComponent<EntityDataCommon>(entity))
+            entityManager.AddComponent<EntityDataCommon>(entity);
+
+        EntityDataCommon common;
+        common.typesGUIDs = __types.AsReadOnly();
+        EntityManager.SetComponentData(entity, common);
 
         Enabled = true;
 
@@ -96,13 +104,15 @@ public partial class GameDataDeserializationSystemGroup : EntityDataDeserializat
 }
 
 [AutoCreateIn("Server"), UpdateInGroup(typeof(InitializationSystemGroup)),  UpdateAfter(typeof(GameDataDeserializationSystemGroup)),  UpdateAfter(typeof(GameItemInitSystemGroup))]
-public partial class GameDataSerializationSystemGroup : EntityDataSerializationSystemGroup
+public partial class GameDataSerializationSystemGroup : EntityDataSerializationManagedSystem
 {
-    public double time = 600.0f;
+    public double time = 5;//600.0f;
 
     public int maxCount = 1024;
 
     private int __times;
+
+    private SystemHandle __systemHandle;
 
     private List<string> __guids;
 
@@ -110,13 +120,20 @@ public partial class GameDataSerializationSystemGroup : EntityDataSerializationS
 
     public override int version => (int)GameDataConstans.Version;
 
-    public override NativeArray<Hash128> types => __deserializationSystemGroup.types;
-
     protected override void OnCreate()
     {
         base.OnCreate();
 
-        __deserializationSystemGroup = World.GetOrCreateSystemManaged<GameDataDeserializationSystemGroup>();
+        var world = World;
+
+        __deserializationSystemGroup = world.GetOrCreateSystemManaged<GameDataDeserializationSystemGroup>();
+    }
+
+    protected override void OnStartRunning()
+    {
+        base.OnStartRunning();
+
+        __systemHandle = World.GetExistingSystem<EntityDataSerializationSystemGroup>();
     }
 
     protected override void OnStopRunning()
@@ -155,7 +172,9 @@ public partial class GameDataSerializationSystemGroup : EntityDataSerializationS
             }
         }
 
-        base.OnUpdate();
+        //base.OnUpdate();
+        var world = World.Unmanaged;
+        __systemHandle.Update(world);
 
         IEnumerable<string> lines = File.Exists(path) ? File.ReadLines(path) : Array.Empty<string>();
         if (__guids == null)
@@ -187,7 +206,7 @@ public partial class GameDataSerializationSystemGroup : EntityDataSerializationS
             guid = Guid.NewGuid().ToString();
         } while (__guids.IndexOf(guid) != -1);
 
-        File.WriteAllBytes(Path.Combine(folder, guid), ToBytes());
+        File.WriteAllBytes(Path.Combine(folder, guid), world.GetUnsafeSystemRef<EntityDataSerializationSystemGroup>(__systemHandle).ToBytes());
 
         if (count > maxCount)
         {

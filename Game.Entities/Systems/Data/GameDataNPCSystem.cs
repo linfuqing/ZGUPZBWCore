@@ -7,30 +7,30 @@ using Unity.Jobs;
 using Unity.Mathematics;
 using ZG;
 
-#region GameLevelManager
+#region GameNPCManager
 [assembly: RegisterGenericJobType(typeof(EntityDataIndexBufferInit<GameNPC, GameNPCWrapper>))]
 
-[assembly: RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameDataNPCContainerSerializationSystem.Serializer>))]
+//[assembly: RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameDataNPCContainerSerializationSystem.Serializer>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataContainerDeserialize<GameDataNPCContainerDeserializationSystem.Deserializer>))]
 
-[assembly: EntityDataSerialize(typeof(GameNPCManager), typeof(GameDataNPCContainerSerializationSystem))]
+//[assembly: EntityDataSerialize(typeof(GameNPCManager), typeof(GameDataNPCContainerSerializationSystem))]
 [assembly: EntityDataDeserialize(typeof(GameNPCManager), typeof(GameDataNPCContainerDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
 #region GameNPCStageManager
 [assembly: RegisterGenericJobType(typeof(EntityDataIndexBufferInit<GameNPC, GameNPCStageWrapper>))]
 
-[assembly: RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameDataNPCStageContainerSerializationSystem.Serializer>))]
+//[assembly: RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameDataNPCStageContainerSerializationSystem.Serializer>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataContainerDeserialize<GameDataNPCStageContainerDeserializationSystem.Deserializer>))]
 
-[assembly: EntityDataSerialize(typeof(GameNPCStageManager), typeof(GameDataNPCStageContainerSerializationSystem))]
+//[assembly: EntityDataSerialize(typeof(GameNPCStageManager), typeof(GameDataNPCStageContainerSerializationSystem))]
 [assembly: EntityDataDeserialize(typeof(GameNPCStageManager), typeof(GameDataNPCStageContainerDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
 #region GameNPC
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataNPCSerializationSystem.Serializer, GameDataNPCSerializationSystem.SerializerFactory>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataNPCDeserializationSystem.Deserializer, GameDataNPCDeserializationSystem.DeserializerFactory>))]
-[assembly: EntityDataSerialize(typeof(GameNPC), typeof(GameDataNPCSerializationSystem))]
+//[assembly: EntityDataSerialize(typeof(GameNPC), typeof(GameDataNPCSerializationSystem))]
 [assembly: EntityDataDeserialize(typeof(GameNPC), typeof(GameDataNPCDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
@@ -45,7 +45,6 @@ public struct GameNPCStageManager
 
 }
 
-[Serializable]
 public struct GameNPC : IBufferElementData
 {
     public int index;
@@ -72,99 +71,100 @@ public struct GameNPCStageWrapper : IEntityDataIndexReadOnlyWrapper<GameNPC>
     }
 }
 
-[DisableAutoCreation]
-public partial class GameDataNPCSystem : SystemBase
+public struct GameDataNPCContainer : IComponentData
 {
-    public NativeArray<Hash128> npcs
-    {
-        get;
+    public NativeArray<Hash128>.ReadOnly guids;
+}
 
-        private set;
+public struct GameDataNPCStageContainer : IComponentData
+{
+    public NativeArray<Hash128>.ReadOnly guids;
+}
+
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameNPCManager)),
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataNPCContainerSerializationSystem : ISystem, IEntityDataSerializationIndexContainerSystem
+{
+    private EntityDataSerializationIndexContainerBufferSystemCore<GameNPC> __core;
+
+    public SharedHashMap<int, int> guidIndices => __core.guidIndices;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = new EntityDataSerializationIndexContainerBufferSystemCore<GameNPC>(ref state);
     }
 
-    public NativeArray<Hash128> stages
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        get;
-
-        private set;
+        __core.Dispose();
     }
 
-    public void Create(Hash128[] npcs, Hash128[] stages)
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
-        this.npcs = new NativeArray<Hash128>(npcs, Allocator.Persistent);
-        this.stages = new NativeArray<Hash128>(stages, Allocator.Persistent);
-    }
+        GameNPCWrapper wrapper;
+        var guids = SystemAPI.GetSingleton<GameDataNPCContainer>().guids;
 
-    protected override void OnDestroy()
-    {
-        if (npcs.IsCreated)
-            npcs.Dispose();
-
-        if (stages.IsCreated)
-            stages.Dispose();
-
-        base.OnDestroy();
-    }
-
-    protected override void OnUpdate()
-    {
-        throw new NotImplementedException();
+        __core.Update(guids, ref wrapper, ref state);
     }
 }
 
-[DisableAutoCreation]
-public partial class GameDataNPCContainerSerializationSystem : EntityDataIndexBufferContainerSerializationSystem<GameNPC, GameNPCWrapper>
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameNPCStageManager)),
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataNPCStageContainerSerializationSystem : ISystem, IEntityDataSerializationIndexContainerSystem
 {
-    private GameDataNPCSystem __npcSystem;
-    private GameNPCWrapper __wrapper;
+    private EntityDataSerializationIndexContainerBufferSystemCore<GameNPC> __core;
 
-    protected override void OnCreate()
+    public SharedHashMap<int, int> guidIndices => __core.guidIndices;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
-
-        __npcSystem = World.GetOrCreateSystemManaged<GameDataNPCSystem>();
+        __core = new EntityDataSerializationIndexContainerBufferSystemCore<GameNPC>(ref state);
     }
 
-    protected override NativeArray<Hash128> _GetGuids() => __npcSystem.npcs;
-
-    protected override ref GameNPCWrapper _GetWrapper() => ref __wrapper;
-}
-
-[DisableAutoCreation]
-public partial class GameDataNPCStageContainerSerializationSystem : EntityDataIndexBufferContainerSerializationSystem<GameNPC, GameNPCStageWrapper>
-{
-    private GameDataNPCSystem __npcSystem;
-    private GameNPCStageWrapper __wrapper;
-
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        base.OnCreate();
-
-        __npcSystem = World.GetOrCreateSystemManaged<GameDataNPCSystem>();
+        __core.Dispose();
     }
 
-    protected override NativeArray<Hash128> _GetGuids() => __npcSystem.stages;
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        GameNPCStageWrapper wrapper;
+        var guids = SystemAPI.GetSingleton<GameDataNPCStageContainer>().guids;
 
-    protected override ref GameNPCStageWrapper _GetWrapper() => ref __wrapper;
+        __core.Update(guids, ref wrapper, ref state);
+    }
 }
 
 
-[DisableAutoCreation, UpdateAfter(typeof(GameDataNPCContainerSerializationSystem)), UpdateAfter(typeof(GameDataNPCStageContainerSerializationSystem))]
-public partial class GameDataNPCSerializationSystem : EntityDataSerializationComponentSystem<
-        GameNPC,
-        GameDataNPCSerializationSystem.Serializer,
-        GameDataNPCSerializationSystem.SerializerFactory>
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameNPC)),
+    CreateAfter(typeof(GameDataNPCContainerSerializationSystem)),
+    CreateAfter(typeof(GameDataNPCStageContainerSerializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server"),
+    UpdateAfter(typeof(GameDataNPCContainerSerializationSystem)), 
+    UpdateAfter(typeof(GameDataNPCStageContainerSerializationSystem))]
+public partial struct GameDataNPCSerializationSystem : ISystem
 {
     public struct Serializer : IEntityDataSerializer
     {
         [ReadOnly]
-        public NativeParallelHashMap<int, int> indices;
+        public SharedHashMap<int, int>.Reader guidIndices;
         [ReadOnly]
-        public NativeParallelHashMap<int, int> stages;
+        public SharedHashMap<int, int>.Reader stageGUIDIndices;
         [ReadOnly]
         public BufferAccessor<GameNPC> instances;
 
-        public void Serialize(int index, in NativeParallelHashMap<Hash128, int> entityIndices, ref EntityDataWriter writer)
+        public void Serialize(int index, in SharedHashMap<Hash128, int>.Reader entityIndices, ref EntityDataWriter writer)
         {
             var instances = this.instances[index].ToNativeArray(Allocator.Temp);
 
@@ -174,8 +174,8 @@ public partial class GameDataNPCSerializationSystem : EntityDataSerializationCom
             {
                 instance = instances[i];
 
-                instance.index = indices[instance.index];
-                instance.stage = stages[instance.stage];
+                instance.index = guidIndices[instance.index];
+                instance.stage = stageGUIDIndices[instance.stage];
 
                 instances[i] = instance;
             }
@@ -190,81 +190,78 @@ public partial class GameDataNPCSerializationSystem : EntityDataSerializationCom
     public struct SerializerFactory : IEntityDataFactory<Serializer>
     {
         [ReadOnly]
-        public NativeParallelHashMap<int, int> indices;
+        public SharedHashMap<int, int>.Reader guidIndices;
         [ReadOnly]
-        public NativeParallelHashMap<int, int> stages;
+        public SharedHashMap<int, int>.Reader stageGUIDIndices;
         [ReadOnly]
         public BufferTypeHandle<GameNPC> instanceType;
 
         public Serializer Create(in ArchetypeChunk chunk, int firstEntityIndex)
         {
             Serializer serializer;
-            serializer.indices = indices;
-            serializer.stages = stages;
+            serializer.guidIndices = guidIndices;
+            serializer.stageGUIDIndices = stageGUIDIndices;
             serializer.instances = chunk.GetBufferAccessor(ref instanceType);
 
             return serializer;
         }
     }
 
-    private GameDataNPCContainerSerializationSystem __containerSystem;
-    private GameDataNPCStageContainerSerializationSystem __stageContainerSystem;
+    private BufferTypeHandle<GameNPC> __instanceType;
+    private SharedHashMap<int, int> __guidIndices;
+    private SharedHashMap<int, int> __stageGUIDIndices;
+    private EntityDataSerializationSystemCore __core;
 
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
-
-        World world = World;
-        __containerSystem = world.GetOrCreateSystemManaged<GameDataNPCContainerSerializationSystem>();
-        __stageContainerSystem = world.GetOrCreateSystemManaged<GameDataNPCStageContainerSerializationSystem>();
+        __instanceType = state.GetBufferTypeHandle<GameNPC>(true);
+        var world = state.WorldUnmanaged;
+        __guidIndices = world.GetExistingSystemUnmanaged<GameDataNPCContainerSerializationSystem>().guidIndices;
+        __stageGUIDIndices = world.GetExistingSystemUnmanaged<GameDataNPCStageContainerSerializationSystem>().guidIndices;
+        __core = EntityDataSerializationSystemCore.Create<GameNPC>(ref state);
     }
 
-    protected override SerializerFactory _Get(ref JobHandle jobHandle)
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        jobHandle = JobHandle.CombineDependencies(jobHandle, __containerSystem.readOnlyJobHandle, __stageContainerSystem.readOnlyJobHandle);
+        __core.Dispose();
+    }
 
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
         SerializerFactory serializerFactory;
-        serializerFactory.indices = __containerSystem.indices;
-        serializerFactory.stages = __stageContainerSystem.indices;
-        serializerFactory.instanceType = GetBufferTypeHandle<GameNPC>(true);
+        serializerFactory.guidIndices = __guidIndices.reader;
+        serializerFactory.stageGUIDIndices = __stageGUIDIndices.reader;
+        serializerFactory.instanceType = __instanceType.UpdateAsRef(ref state);
 
-        return serializerFactory;
+        state.Dependency = JobHandle.CombineDependencies(state.Dependency, __guidIndices.lookupJobManager.readOnlyJobHandle, __stageGUIDIndices.lookupJobManager.readOnlyJobHandle);
+
+        __core.Update<Serializer, SerializerFactory>(ref serializerFactory, ref state);
+
+        var jobHandle = state.Dependency;
+
+        __guidIndices.lookupJobManager.AddReadOnlyDependency(jobHandle);
+        __stageGUIDIndices.lookupJobManager.AddReadOnlyDependency(jobHandle);
     }
 }
 
 [DisableAutoCreation]
 public partial class GameDataNPCContainerDeserializationSystem : EntityDataIndexContainerDeserializationSystem
 {
-    private GameDataNPCSystem __npcSystem;
-
-    protected override void OnCreate()
+    protected override NativeArray<Hash128>.ReadOnly _GetGuids()
     {
-        base.OnCreate();
-
-        __npcSystem = World.GetOrCreateSystemManaged<GameDataNPCSystem>();
-    }
-
-    protected override NativeArray<Hash128> _GetGuids()
-    {
-        return __npcSystem.npcs;
+        return SystemAPI.GetSingleton<GameDataNPCContainer>().guids;
     }
 }
 
 [DisableAutoCreation]
 public partial class GameDataNPCStageContainerDeserializationSystem : EntityDataIndexContainerDeserializationSystem
 {
-    private GameDataNPCSystem __npcSystem;
-
-    protected override void OnCreate()
+    protected override NativeArray<Hash128>.ReadOnly _GetGuids()
     {
-        base.OnCreate();
-
-        __npcSystem = World.GetOrCreateSystemManaged<GameDataNPCSystem>();
-    }
-
-    protected override NativeArray<Hash128> _GetGuids()
-    {
-        return __npcSystem.stages;
+        return SystemAPI.GetSingleton<GameDataNPCStageContainer>().guids;
     }
 }
 

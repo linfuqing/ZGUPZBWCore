@@ -1,22 +1,23 @@
-﻿using Unity.Collections;
+﻿using Unity.Burst;
+using Unity.Collections;
 using Unity.Entities;
 using ZG;
 
 #region GameQuestManager
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(EntityDataIndexBufferInit<GameQuest, GameQuestWrapper>))]
 
-[assembly: Unity.Jobs.RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameDataQuestContainerSerializationSystem.Serializer>))]
+//[assembly: Unity.Jobs.RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameDataQuestContainerSerializationSystem.Serializer>))]
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(EntityDataContainerDeserialize<GameDataQuestContainerDeserializationSystem.Deserializer>))]
 
-[assembly: EntityDataSerialize(typeof(GameQuestManager), typeof(GameDataQuestContainerSerializationSystem))]
+//[assembly: EntityDataSerialize(typeof(GameQuestManager), typeof(GameDataQuestContainerSerializationSystem))]
 [assembly: EntityDataDeserialize(typeof(GameQuestManager), typeof(GameDataQuestContainerDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
 #region GameNPC
-[assembly: Unity.Jobs.RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataQuestSerializationSystem.Serializer, GameDataQuestSerializationSystem.SerializerFactory>))]
+[assembly: Unity.Jobs.RegisterGenericJobType(typeof(EntityDataComponentSerialize<EntityDataSerializationIndexBufferSystemCore<GameQuest, GameQuestWrapper>.Serializer, EntityDataSerializationIndexBufferSystemCore<GameQuest, GameQuestWrapper>.SerializerFactory>))]
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataQuestDeserializationSystem.Deserializer, GameDataQuestDeserializationSystem.DeserializerFactory>))]
 
-[assembly: EntityDataSerialize(typeof(GameQuest), typeof(GameDataQuestSerializationSystem))]
+//[assembly: EntityDataSerialize(typeof(GameQuest), typeof(GameDataQuestSerializationSystem))]
 [assembly: EntityDataDeserialize(typeof(GameQuest), typeof(GameDataQuestDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
@@ -39,73 +40,88 @@ public struct GameQuestWrapper : IEntityDataIndexReadWriteWrapper<GameQuest>
     {
         data.index = index;
     }
-}
 
-[DisableAutoCreation]
-public partial class GameDataQuestSystem : SystemBase
-{
-    private NativeArray<Hash128> __guids;
-
-    public NativeArray<Hash128> guids => __guids;
-
-    public void Create(Hash128[] guids)
+    public void Serialize(ref EntityDataWriter writer, in GameQuest data, int guidIndex)
     {
-        __guids = new NativeArray<Hash128>(guids, Allocator.Persistent);
+        EntityDataIndexReadWriteWrapperUtility.Serialize(ref this, ref writer, data, guidIndex);
     }
 
-    protected override void OnDestroy()
+    public GameQuest Deserialize(ref EntityDataReader reader, in NativeArray<int>.ReadOnly indices)
     {
-        if (__guids.IsCreated)
-            __guids.Dispose();
-
-        base.OnDestroy();
-    }
-
-    protected override void OnUpdate()
-    {
-        throw new System.NotImplementedException();
+        return EntityDataIndexReadWriteWrapperUtility.Deserialize<GameQuest, GameQuestWrapper>(ref this, ref reader, indices);
     }
 }
 
-[DisableAutoCreation]
-public partial class GameDataQuestContainerSerializationSystem : EntityDataIndexBufferContainerSerializationSystem<GameQuest, GameQuestWrapper>
+public struct GameDataQuestContainer : IComponentData
 {
-    private GameDataQuestSystem __questsSystem;
-    private GameQuestWrapper __wrapper;
-
-    protected override void OnCreate()
-    {
-        base.OnCreate();
-
-        __questsSystem = World.GetOrCreateSystemManaged<GameDataQuestSystem>();
-    }
-
-    protected override NativeArray<Hash128> _GetGuids() => __questsSystem.guids;
-
-    protected override ref GameQuestWrapper _GetWrapper() => ref __wrapper;
+    public NativeArray<Hash128>.ReadOnly guids;
 }
 
-[DisableAutoCreation, UpdateAfter(typeof(GameDataQuestContainerSerializationSystem))]
-public partial class GameDataQuestSerializationSystem : EntityDataIndexBufferSerializationSystem<GameQuest, GameQuestWrapper>
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameQuestManager)),
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataQuestContainerSerializationSystem : ISystem, IEntityDataSerializationIndexContainerSystem
 {
-    protected override GameQuestWrapper _GetWrapper() => default;
+    private EntityDataSerializationIndexContainerBufferSystemCore<GameQuest> __core;
 
-    protected override EntityDataIndexContainerSerializationSystem _GetOrCreateContainerSystem() => World.GetOrCreateSystemManaged<GameDataQuestContainerSerializationSystem>();
+    public SharedHashMap<int, int> guidIndices => __core.guidIndices;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = new EntityDataSerializationIndexContainerBufferSystemCore<GameQuest>(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        var guids = SystemAPI.GetSingleton<GameDataQuestContainer>().guids;
+
+        GameQuestWrapper wrapper;
+        __core.Update(guids, ref wrapper, ref state);
+    }
+}
+
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameQuest)),
+    CreateAfter(typeof(GameDataQuestContainerSerializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server"),
+    UpdateAfter(typeof(GameDataQuestContainerSerializationSystem))]
+public partial struct GameDataQuestSerializationSystem : ISystem
+{
+    private EntityDataSerializationIndexBufferSystemCore<GameQuest, GameQuestWrapper> __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = EntityDataSerializationIndexBufferSystemCore<GameQuest, GameQuestWrapper>.Create<GameDataQuestContainerSerializationSystem>(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        GameQuestWrapper wrapper;
+        __core.Update(ref wrapper, ref state);
+    }
 }
 
 [DisableAutoCreation]
 public partial class GameDataQuestContainerDeserializationSystem : EntityDataIndexContainerDeserializationSystem
 {
-    private GameDataQuestSystem __questsSystem;
-
-    protected override void OnCreate()
-    {
-        base.OnCreate();
-
-        __questsSystem = World.GetOrCreateSystemManaged<GameDataQuestSystem>();
-    }
-
-    protected override NativeArray<Hash128> _GetGuids() => __questsSystem.guids;
+    protected override NativeArray<Hash128>.ReadOnly _GetGuids() => SystemAPI.GetSingleton<GameDataQuestContainer>().guids;
 }
 
 [DisableAutoCreation, UpdateAfter(typeof(GameDataQuestContainerDeserializationSystem))]

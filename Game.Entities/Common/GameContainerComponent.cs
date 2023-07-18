@@ -7,10 +7,23 @@ using Unity.Entities;
 using ZG;
 
 [Serializable, EntityDataTypeName("GameChild")]
-public struct GameContainerChild : IBufferElementData
+public struct GameContainerChild : IBufferElementData, IGameDataEntityCompoent
 {
     public int index;
     public Entity entity;
+
+    public void Serialize(int entityIndex, ref EntityDataWriter writer)
+    {
+        writer.Write(index);
+        writer.Write(entityIndex);
+    }
+
+    Entity IGameDataEntityCompoent.entity
+    {
+        get => entity;
+
+        set => entity = value;
+    }
 }
 
 [Serializable]

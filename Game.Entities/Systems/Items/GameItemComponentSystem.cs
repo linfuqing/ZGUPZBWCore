@@ -347,6 +347,7 @@ public partial struct GameItemComponentStructChangeSystem : ISystem
 
     public EntityAddDataPool addDataPool => new EntityAddDataPool(manager.addComponentPool, assigner);
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         //__group = state.GetEntityQuery(ComponentType.ReadOnly<GameItemData>());
@@ -355,6 +356,7 @@ public partial struct GameItemComponentStructChangeSystem : ISystem
         assigner = new EntityComponentAssigner(Allocator.Persistent);
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
         manager.Dispose();
@@ -364,8 +366,11 @@ public partial struct GameItemComponentStructChangeSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
+        manager.Playback(ref state/*, ref assigner*/);
+
         var assigner = this.assigner;
-        manager.Playback(ref state, ref assigner);
+
+        assigner.Playback(ref state);
     }
 }
 

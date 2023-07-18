@@ -8,7 +8,6 @@ using Unity.Jobs;
 using ZG;
 using Random = Unity.Mathematics.Random;
 
-[Serializable]
 public struct GameSoulData
 {
     public int type;
@@ -20,13 +19,11 @@ public struct GameSoulData
     public FixedString32Bytes nickname;
 }
 
-[Serializable]
 public struct GameSoulIndex : IComponentData
 {
     public int value;
 }
 
-[Serializable]
 public struct GameSoul : IBufferElementData
 {
     public int index;
@@ -481,7 +478,6 @@ public partial class GameSoulSystem : ReadOnlyLookupSystem
     }
 
     private EntityQuery __group;
-    private NativeArray<Hash128> __guids;
     private NativeQueue<EntityData<GameSoulData>> __results;
 
     public GameSoulManager manager
@@ -491,13 +487,9 @@ public partial class GameSoulSystem : ReadOnlyLookupSystem
         private set;
     }
 
-    public NativeArray<Hash128> guids => __guids;
-
-    public void Create(GameSoulManager.LevelData[] levels, Hash128[] guids)
+    public void Create(GameSoulManager.LevelData[] levels)
     {
         manager = new GameSoulManager(levels, Allocator.Persistent);
-
-        __guids = new NativeArray<Hash128>(guids, Allocator.Persistent);
     }
 
     protected override void OnCreate()
@@ -555,9 +547,6 @@ public partial class GameSoulSystem : ReadOnlyLookupSystem
     protected override void OnDestroy()
     {
         __results.Dispose();
-
-        if (__guids.IsCreated)
-            __guids.Dispose();
 
         var manager = this.manager;
         if (manager.isCreated)

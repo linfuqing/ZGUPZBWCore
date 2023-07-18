@@ -4,11 +4,12 @@ using Unity.Entities;
 using Unity.Collections;
 using Unity.Mathematics;
 using ZG;
+using Unity.Burst;
 
 #region GameAreaManager
 [assembly: RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameAreaManager.Serializer>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataContainerDeserialize<GameAreaManager.Deserializer>))]
-[assembly: EntityDataSerialize(typeof(GameAreaManager), typeof(GameDataAreaSerializationSystem))]
+//[assembly: EntityDataSerialize(typeof(GameAreaManager), typeof(GameDataAreaSerializationSystem))]
 [assembly: EntityDataDeserialize(typeof(GameAreaManager), typeof(GameDataAreaDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
@@ -59,35 +60,42 @@ public struct GameAreaManager
     }
 }
 
-[DisableAutoCreation]
-public partial class GameDataAreaSerializationSystem : EntityDataSerializationContainerSystem<GameAreaManager.Serializer>
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameAreaManager)),
+    CreateAfter(typeof(GameAreaPrefabSystem)),
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataAreaSerializationContainerSystem : ISystem
 {
     private SharedHashMap<Hash128, int> __versions;
 
-    protected override void OnCreate()
-    {
-        base.OnCreate();
+    private EntityDataSerializationTypeHandle __typeHandle;
 
-        __versions = World.GetOrCreateSystemUnmanaged<GameAreaPrefabSystem>().versions;
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __typeHandle = EntityDataSerializationUtility.GetTypeHandle(ref state);
+
+        __versions = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameAreaPrefabSystem>().versions;
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        var serializer = new GameAreaManager.Serializer(__versions.reader);
+
         ref var lookupJobManager = ref __versions.lookupJobManager;
+        state.Dependency = JobHandle.CombineDependencies(state.Dependency, lookupJobManager.readOnlyJobHandle);
 
-        var initializationSystem = systemGroup.initializationSystem;
-        Dependency = JobHandle.CombineDependencies(Dependency, lookupJobManager.readOnlyJobHandle, initializationSystem.readOnlyJobHandle);
+        EntityDataSerializationUtility.Update(__typeHandle, ref serializer, ref state);
 
-        base.OnUpdate();
-
-        var jobHandle = Dependency;
-
-        lookupJobManager.AddReadOnlyDependency(jobHandle);
-
-        initializationSystem.AddReadOnlyDependency(jobHandle);
+        lookupJobManager.AddReadOnlyDependency(state.Dependency);
     }
-
-    protected override GameAreaManager.Serializer _Get() => new GameAreaManager.Serializer(__versions.reader);
 }
 
 [DisableAutoCreation]

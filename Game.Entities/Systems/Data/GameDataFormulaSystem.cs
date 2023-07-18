@@ -1,20 +1,20 @@
-﻿using Unity.Collections;
+﻿using Unity.Burst;
+using Unity.Collections;
 using Unity.Entities;
 using ZG;
 
 #region GameFormulaManager
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(EntityDataIndexBufferInit<GameFormula, GameFormulaWrapper>))]
 
-[assembly: Unity.Jobs.RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameDataFormulaContainerSerializationSystem.Serializer>))]
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(EntityDataContainerDeserialize<GameDataFormulaContainerDeserializationSystem.Deserializer>))]
-[assembly: EntityDataSerialize(typeof(GameFormulaManager), typeof(GameDataFormulaContainerSerializationSystem))]
+//[assembly: EntityDataSerialize(typeof(GameFormulaManager), typeof(GameDataFormulaContainerSerializationSystem))]
 [assembly: EntityDataDeserialize(typeof(GameFormulaManager), typeof(GameDataFormulaContainerDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
 #region GameFormula
-[assembly: Unity.Jobs.RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataFormulaSerializationSystem.Serializer, GameDataFormulaSerializationSystem.SerializerFactory>))]
+[assembly: Unity.Jobs.RegisterGenericJobType(typeof(EntityDataComponentSerialize<EntityDataSerializationIndexBufferSystemCore<GameFormula, GameFormulaWrapper>.Serializer, EntityDataSerializationIndexBufferSystemCore<GameFormula, GameFormulaWrapper>.SerializerFactory>))]
 [assembly: Unity.Jobs.RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataFormulaDeserializationSystem.Deserializer, GameDataFormulaDeserializationSystem.DeserializerFactory>))]
-[assembly: EntityDataSerialize(typeof(GameFormula), typeof(GameDataFormulaSerializationSystem))]
+//[assembly: EntityDataSerialize(typeof(GameFormula), typeof(GameDataFormulaSerializationSystem))]
 [assembly: EntityDataDeserialize(typeof(GameFormula), typeof(GameDataFormulaDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
@@ -36,9 +36,24 @@ public struct GameFormulaWrapper : IEntityDataIndexReadWriteWrapper<GameFormula>
     {
         data.index = index;
     }
+
+    public void Serialize(ref EntityDataWriter writer, in GameFormula data, int guidIndex)
+    {
+        EntityDataIndexReadWriteWrapperUtility.Serialize(ref this, ref writer, data, guidIndex);
+    }
+
+    public GameFormula Deserialize(ref EntityDataReader reader, in NativeArray<int>.ReadOnly indices)
+    {
+        return EntityDataIndexReadWriteWrapperUtility.Deserialize<GameFormula, GameFormulaWrapper>(ref this, ref reader, indices);
+    }
 }
 
-[DisableAutoCreation]
+public struct GameDataFormulaContainer : IComponentData
+{
+    public NativeArray<Hash128>.ReadOnly guids;
+}
+
+/*[DisableAutoCreation]
 public partial class GameDataFormulaSystem : SystemBase
 {
     private NativeArray<Hash128> __guids;
@@ -62,48 +77,73 @@ public partial class GameDataFormulaSystem : SystemBase
     {
         throw new System.NotImplementedException();
     }
-}
+}*/
 
-[DisableAutoCreation]
-public partial class GameDataFormulaContainerSerializationSystem : EntityDataIndexBufferContainerSerializationSystem<GameFormula, GameFormulaWrapper>
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameFormulaManager)),
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataFormulaContainerSerializationSystem : ISystem, IEntityDataSerializationIndexContainerSystem
 {
-    private GameDataFormulaSystem __formulaSystem;
-    private GameFormulaWrapper __wrapper;
+    private EntityDataSerializationIndexContainerBufferSystemCore<GameFormula> __core;
 
-    protected override void OnCreate()
+    public SharedHashMap<int, int> guidIndices => __core.guidIndices;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
-
-        __formulaSystem = World.GetOrCreateSystemManaged<GameDataFormulaSystem>();
+        __core = new EntityDataSerializationIndexContainerBufferSystemCore<GameFormula>(ref state);
     }
 
-    protected override NativeArray<Hash128> _GetGuids() => __formulaSystem.guids;
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
 
-    protected override ref GameFormulaWrapper _GetWrapper() => ref __wrapper;
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        var guids = SystemAPI.GetSingleton<GameDataFormulaContainer>().guids;
+
+        GameFormulaWrapper wrapper;
+        __core.Update(guids, ref wrapper, ref state);
+    }
 }
 
-[DisableAutoCreation, UpdateAfter(typeof(GameDataFormulaContainerSerializationSystem))]
-public partial class GameDataFormulaSerializationSystem : EntityDataIndexBufferSerializationSystem<GameFormula, GameFormulaWrapper>
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameFormula)),
+    CreateAfter(typeof(GameDataFormulaContainerSerializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server"), 
+    UpdateAfter(typeof(GameDataFormulaContainerSerializationSystem))]
+public partial struct GameDataFormulaSerializationSystem : ISystem
 {
-    protected override GameFormulaWrapper _GetWrapper() => default;
+    private EntityDataSerializationIndexBufferSystemCore<GameFormula, GameFormulaWrapper> __core;
 
-    protected override EntityDataIndexContainerSerializationSystem _GetOrCreateContainerSystem() => World.GetOrCreateSystemManaged<GameDataFormulaContainerSerializationSystem>();
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = EntityDataSerializationIndexBufferSystemCore<GameFormula, GameFormulaWrapper>.Create<GameDataFormulaContainerSerializationSystem>(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        GameFormulaWrapper wrapper;
+        __core.Update(ref wrapper, ref state);
+    }
 }
-
 
 [DisableAutoCreation]
 public partial class GameDataFormulaContainerDeserializationSystem : EntityDataIndexContainerDeserializationSystem
 {
-    private GameDataFormulaSystem __formulaSystem;
-
-    protected override void OnCreate()
-    {
-        base.OnCreate();
-
-        __formulaSystem = World.GetOrCreateSystemManaged<GameDataFormulaSystem>();
-    }
-
-    protected override NativeArray<Hash128> _GetGuids() => __formulaSystem.guids;
+    protected override NativeArray<Hash128>.ReadOnly _GetGuids() => SystemAPI.GetSingleton<GameDataFormulaContainer>().guids;
 }
 
 [DisableAutoCreation, UpdateAfter(typeof(GameDataFormulaContainerDeserializationSystem))]

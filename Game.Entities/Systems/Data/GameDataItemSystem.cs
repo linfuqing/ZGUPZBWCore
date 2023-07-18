@@ -11,28 +11,35 @@ using ZG;
 [assembly: RegisterGenericJobType(typeof(ClearHashMap<int, int>))]
 
 #region GameItemManager
-[assembly: RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameDataItemContainerSerializationSystem.Serializer>))]
+//[assembly: RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameDataItemContainerSerializationSystem.Serializer>))]
+[assembly: RegisterGenericJobType(typeof(EntityDataIndexComponentInit<GameItemData, GameItemDataSerializationWrapper>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataContainerDeserialize<GameDataItemContainerDeserializationSystem.Deserializer>))]
 
-[assembly: EntityDataSerialize(typeof(GameItemManager), typeof(GameDataItemContainerSerializationSystem))]
+//[assembly: EntityDataSerialize(typeof(GameItemManager), typeof(GameDataItemContainerSerializationSystem))]
 [assembly: EntityDataDeserialize(typeof(GameItemManager), typeof(GameDataItemContainerDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
 #region GameItemRoot
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataItemRootSerializationSystem.Serializer, GameDataItemRootSerializationSystem.SerializerFactory>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataItemRootDeserializationSystem.Deserializer, GameDataItemRootDeserializationSystem.DeserializerFactory>))]
-[assembly: EntityDataSerialize(typeof(GameItemRoot), typeof(GameDataItemRootSerializationSystem))]
+//[assembly: EntityDataSerialize(typeof(GameItemRoot), typeof(GameDataItemRootSerializationSystem))]
 [assembly: EntityDataDeserialize(typeof(GameItemRoot), typeof(GameDataItemRootDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
-#region GameItemRoot
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataItemSerializationSystem.Serializer, GameDataItemSerializationSystem.SerializerFactory>))]
+#region GameItemSibling
+[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataItemSiblingSerializationSystem.Serializer, GameDataItemSiblingSerializationSystem.SerializerFactory>))]
+[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataItemSiblingDeserializationSystem.Deserializer, GameDataItemSiblingDeserializationSystem.DeserializerFactory>))]
+//[assembly: EntityDataSerialize(typeof(GameItemSibling), typeof(GameDataItemSiblingSerializationSystem))]
+[assembly: EntityDataDeserialize(typeof(GameItemSibling), typeof(GameDataItemSiblingDeserializationSystem), (int)GameDataConstans.Version)]
+#endregion
+
+#region GameItemData
+[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<EntityDataSerializationIndexComponentDataSystemCore<GameItemData, GameItemDataSerializationWrapper>.Serializer, EntityDataSerializationIndexComponentDataSystemCore<GameItemData, GameItemDataSerializationWrapper>.SerializerFactory>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataItemDeserializationSystem.Deserializer, GameDataItemDeserializationSystem.DeserializerFactory>))]
-[assembly: EntityDataSerialize(typeof(GameItemData), typeof(GameDataItemSerializationSystem))]
+//[assembly: EntityDataSerialize(typeof(GameItemData), typeof(GameDataItemSerializationSystem))]
 [assembly: EntityDataDeserialize(typeof(GameItemData), typeof(GameDataItemDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
-[Serializable]
 public struct GameDataItem
 {
     public int entityIndex;
@@ -43,7 +50,66 @@ public struct GameDataItem
     public int siblingEntityIndex;
 }
 
-public partial class GameItemContainerSystem : SystemBase
+public struct GameDataItemContainer : IComponentData
+{
+    public NativeArray<Hash128>.ReadOnly typeGUIDs;
+}
+
+public struct GameItemDataSerializationWrapper : IEntityDataIndexSerializationWrapper<GameItemData>
+{
+    [ReadOnly]
+    public GameItemManager.ReadOnlyInfos infos;
+
+    public bool TryGet(in GameItemData data, out int index)
+    {
+        if (infos.TryGetValue(data.handle, out var item))
+        {
+            index = item.type;
+
+            return true;
+        }
+
+        index = -1;
+
+        return false;
+    }
+
+    public void Serialize(ref EntityDataWriter writer, in GameItemData data, int guidIndex)
+    {
+        if (!infos.TryGetValue(data.handle, out var item))
+        {
+            UnityEngine.Debug.LogError($"Item Handle {data.handle} Serialize Fail.");
+
+            writer.Write(-1);
+
+            return;
+        }
+
+        writer.Write(guidIndex);
+        writer.Write(item.count);
+    }
+}
+
+public struct GameItemDataDeserializationWrapper : IEntityDataIndexDeserializationWrapper<GameItemData>
+{
+    public GameItemManager manager;
+
+    public GameItemData Deserialize(ref EntityDataReader reader, in NativeArray<int>.ReadOnly indices)
+    {
+        int typeIndex = reader.Read<int>();
+        int count = reader.Read<int>();
+        count = math.max(count, 1);
+
+        int type = typeIndex == -1 ? -1 : indices[typeIndex];
+
+        GameItemData instance;
+        instance.handle = type == -1 ? GameItemHandle.Empty : manager.Add(type, ref count);
+
+        return instance;
+    }
+}
+
+/*public partial class GameItemContainerSystem : SystemBase
 {
     private NativeArray<Hash128> __typeGuids;
 
@@ -73,7 +139,7 @@ public partial class GameItemContainerSystem : SystemBase
     {
         throw new NotImplementedException();
     }
-}
+}*/
 
 [BurstCompile,
     AutoCreateIn("Server"),
@@ -848,9 +914,6 @@ public struct GameDataItemSerializer
     public GameItemManager.Hierarchy hierarchy;
 
     [ReadOnly]
-    public NativeParallelHashMap<Hash128, int> entityIndices;
-
-    [ReadOnly]
     public SharedHashMap<Entity, Entity>.Reader entities;
 
     [ReadOnly]
@@ -859,7 +922,7 @@ public struct GameDataItemSerializer
     [ReadOnly]
     public ComponentLookup<EntityDataSerializable> serializable;
 
-    public int GetEntityIndex(in GameItemHandle handle)
+    public int GetEntityIndex(in GameItemHandle handle, in SharedHashMap<Hash128, int>.Reader entityIndices)
     {
         if (entities.TryGetValue(GameItemStructChangeFactory.Convert(handle), out Entity entity))
         {
@@ -872,33 +935,33 @@ public struct GameDataItemSerializer
         return -1;
     }
 
-    public void Serialize(in GameItemHandle handle, ref NativeArray<GameDataItem> items, ref int itemIndex)
+    public void Serialize(in GameItemHandle handle, SharedHashMap<Hash128, int>.Reader entityIndices, ref NativeArray<GameDataItem> items, ref int itemIndex)
     {
         if (!hierarchy.GetChildren(handle, out var enumerator, out var source))
             return;
 
         GameDataItem destination;
-        destination.entityIndex = GetEntityIndex(handle);
+        destination.entityIndex = GetEntityIndex(handle, entityIndices);
 
         UnityEngine.Assertions.Assert.AreNotEqual(-1, destination.entityIndex);
 
         destination.parentChildIndex = source.parentChildIndex;
-        destination.parentEntityIndex = GetEntityIndex(source.parentHandle);
-        destination.siblingEntityIndex = GetEntityIndex(source.siblingHandle);
+        destination.parentEntityIndex = GetEntityIndex(source.parentHandle, entityIndices);
+        destination.siblingEntityIndex = GetEntityIndex(source.siblingHandle, entityIndices);
 
         items[itemIndex++] = destination;
 
         while (enumerator.MoveNext())
-            Serialize(enumerator.Current.handle, ref items, ref itemIndex);
+            Serialize(enumerator.Current.handle, entityIndices, ref items, ref itemIndex);
 
-        Serialize(source.siblingHandle, ref items, ref itemIndex);
+        Serialize(source.siblingHandle, entityIndices, ref items, ref itemIndex);
     }
 
-    public void Serialize(in GameItemHandle handle, ref EntityDataWriter writer)
+    public void Serialize(ref EntityDataWriter writer, in GameItemHandle handle, in SharedHashMap<Hash128, int>.Reader entityIndices)
     {
         int count = hierarchy.CountOf(handle), itemIndex = 0;
         var items = new NativeArray<GameDataItem>(count, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
-        Serialize(handle, ref items, ref itemIndex);
+        Serialize(handle, entityIndices, ref items, ref itemIndex);
 
         writer.Write(itemIndex);
         writer.Write(items);
@@ -946,10 +1009,14 @@ public struct GameDataItemDeserializer
     }
 }
 
-[DisableAutoCreation, AlwaysUpdateSystem]
-public partial class GameDataItemContainerSerializationSystem : EntityDataSerializationContainerSystem<GameDataItemContainerSerializationSystem.Serializer>, IReadOnlyLookupJobManager
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameItemManager)),
+    CreateAfter(typeof(GameItemSystem)),
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataItemContainerSerializationSystem : ISystem, IEntityDataSerializationIndexContainerSystem
 {
-    private struct Init
+    /*private struct Init
     {
         public GameItemManager.ReadOnlyInfos infos;
 
@@ -959,7 +1026,7 @@ public partial class GameDataItemContainerSerializationSystem : EntityDataSerial
         [ReadOnly]
         public NativeArray<GameItemData> instances;
 
-        public NativeParallelHashMap<int, int> typeIndices;
+        public SharedHashMap<int, int>.Writer typeIndices;
 
         public NativeList<Hash128> outputs;
 
@@ -984,7 +1051,7 @@ public partial class GameDataItemContainerSerializationSystem : EntityDataSerial
         [ReadOnly]
         public ComponentTypeHandle<GameItemData> instanceType;
 
-        public NativeParallelHashMap<int, int> typeIndices;
+        public SharedHashMap<int, int>.Writer typeIndices;
 
         public NativeList<Hash128> outputs;
 
@@ -1012,109 +1079,54 @@ public partial class GameDataItemContainerSerializationSystem : EntityDataSerial
         {
             writer.Write(typeGuids);
         }
-    }
+    }*/
 
-    private LookupJobManager __lookupJobManager;
-
-    private EntityQuery __group;
+    //private EntityQuery __group;
     private GameItemManagerShared __itemManager;
-    private GameItemContainerSystem __containerSystem;
 
-    private NativeList<Hash128> __typeGuids;
+    private EntityDataSerializationIndexContainerComponentDataSystemCore<GameItemData> __core;
 
-    public NativeParallelHashMap<int, int> typeIndices
+    public SharedHashMap<int, int> guidIndices => __core.guidIndices;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        get;
+        __itemManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>().manager;
 
-        private set;
+        __core = new EntityDataSerializationIndexContainerComponentDataSystemCore<GameItemData>(ref state);
     }
 
-    #region LookupJob
-    public JobHandle readOnlyJobHandle
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        get => __lookupJobManager.readOnlyJobHandle;
+        __core.Dispose();
     }
 
-    public void CompleteReadOnlyDependency() => __lookupJobManager.CompleteReadOnlyDependency();
-
-    public void AddReadOnlyDependency(in JobHandle inputDeps) => __lookupJobManager.AddReadOnlyDependency(inputDeps);
-    #endregion
-
-    protected override void OnCreate()
-    {
-        base.OnCreate();
-
-        __group = GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                        ComponentType.ReadOnly<GameItemData>(),
-                        ComponentType.ReadOnly<EntityDataIdentity>(),
-                        ComponentType.ReadOnly<EntityDataSerializable>()
-                },
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
-
-        World world = World;
-        __itemManager = world.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
-        __containerSystem = world.GetOrCreateSystemManaged<GameItemContainerSystem>();
-
-        __typeGuids = new NativeList<Hash128>(Allocator.Persistent);
-
-        typeIndices = new NativeParallelHashMap<int, int>(1, Allocator.Persistent);
-    }
-
-    protected override void OnDestroy()
-    {
-        __typeGuids.Dispose();
-
-        typeIndices.Dispose();
-
-        base.OnDestroy();
-    }
-
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
         if (!__itemManager.isCreated)
             return;
 
-        __lookupJobManager.CompleteReadWriteDependency();
-
-        var inputDeps = Dependency;
-        var jobHandle = typeIndices.Clear(__group.CalculateEntityCount(), inputDeps);
-        jobHandle = JobHandle.CombineDependencies(jobHandle, __typeGuids.Clear(inputDeps));
-
-        InitEx init;
-        init.infos = __itemManager.value.readOnlyInfos;
-        init.inputs = __containerSystem.typeGuids;
-        init.instanceType = GetComponentTypeHandle<GameItemData>();
-        init.typeIndices = typeIndices;
-        init.outputs = __typeGuids;
-
+        GameItemDataSerializationWrapper wrapper;
+        wrapper.infos = __itemManager.value.readOnlyInfos;
+        
         ref var lookupJobManager = ref __itemManager.lookupJobManager;
 
-        jobHandle = init.Schedule(__group, JobHandle.CombineDependencies(lookupJobManager.readOnlyJobHandle, jobHandle));
+        state.Dependency = JobHandle.CombineDependencies(state.Dependency, lookupJobManager.readOnlyJobHandle);
 
-        __lookupJobManager.readWriteJobHandle = jobHandle;
+        __core.Update(SystemAPI.GetSingleton<GameDataItemContainer>().typeGUIDs, ref wrapper, ref state);
 
-        lookupJobManager.AddReadOnlyDependency(jobHandle);
-
-        Dependency = jobHandle;
-
-        base.OnUpdate();
-    }
-
-    protected override Serializer _Get()
-    {
-        Serializer serializer;
-        serializer.typeGuids = __typeGuids.AsDeferredJobArray();
-        return serializer;
+        lookupJobManager.AddReadOnlyDependency(state.Dependency);
     }
 }
 
-[DisableAutoCreation]
-public partial class GameDataItemRootSerializationSystem : EntityDataSerializationComponentSystem<GameItemRoot, GameDataItemRootSerializationSystem.Serializer, GameDataItemRootSerializationSystem.SerializerFactory>
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameItemRoot)),
+    CreateAfter(typeof(GameItemSystem)),
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataItemRootSerializationSystem : ISystem
 {
     public struct Serializer : IEntityDataSerializer
     {
@@ -1123,9 +1135,9 @@ public partial class GameDataItemRootSerializationSystem : EntityDataSerializati
         [ReadOnly]
         public NativeArray<GameItemRoot> roots;
 
-        public void Serialize(int index, in NativeParallelHashMap<Hash128, int> entityIndices, ref EntityDataWriter writer)
+        public void Serialize(int index, in SharedHashMap<Hash128, int>.Reader entityIndices, ref EntityDataWriter writer)
         {
-            instance.Serialize(roots[index].handle, ref writer);
+            instance.Serialize(ref writer, roots[index].handle, entityIndices);
         }
     }
 
@@ -1147,52 +1159,61 @@ public partial class GameDataItemRootSerializationSystem : EntityDataSerializati
     }
 
     private EntityQuery __structChangeManagerGroup;
-    private SharedHashMap<Entity, Entity> __handleEntities;
+    private ComponentLookup<EntityDataIdentity> __identities;
+    private ComponentLookup<EntityDataSerializable> __serializable;
+    private ComponentTypeHandle<GameItemRoot> __rootType;
+
     private GameItemManagerShared __itemManager;
+    private EntityDataSerializationSystemCore __core;
 
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        __structChangeManagerGroup = GameItemStructChangeManager.GetEntityQuery(ref state);
 
-        __structChangeManagerGroup = GameItemStructChangeManager.GetEntityQuery(ref this.GetState());
+        __identities = state.GetComponentLookup<EntityDataIdentity>(true);
+        __serializable = state.GetComponentLookup<EntityDataSerializable>(true);
+        __rootType = state.GetComponentTypeHandle<GameItemRoot>(true);
 
-        World world = World;
-        __itemManager = world.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
+        __itemManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>().manager;
+
+        __core = EntityDataSerializationSystemCore.Create<GameItemRoot>(ref state);
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        __handleEntities = __structChangeManagerGroup.GetSingleton<GameItemStructChangeManager>().handleEntities;
-
-        base.OnUpdate();
-
-        var jobHandle = Dependency;
-        __itemManager.lookupJobManager.AddReadOnlyDependency(jobHandle);
-        __handleEntities.lookupJobManager.AddReadOnlyDependency(jobHandle);
-        systemGroup.initializationSystem.AddReadOnlyDependency(jobHandle);
+        __core.Dispose();
     }
 
-    protected override SerializerFactory _Get(ref JobHandle jobHandle)
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
-        jobHandle = JobHandle.CombineDependencies(jobHandle, __itemManager.lookupJobManager.readOnlyJobHandle, __handleEntities.lookupJobManager.readOnlyJobHandle);
+        var handleEntities = __structChangeManagerGroup.GetSingleton<GameItemStructChangeManager>().handleEntities;
 
-        var initializationSystem = systemGroup.initializationSystem;
-        jobHandle = JobHandle.CombineDependencies(jobHandle, initializationSystem.readOnlyJobHandle);
+        state.Dependency = JobHandle.CombineDependencies(state.Dependency, __itemManager.lookupJobManager.readOnlyJobHandle, handleEntities.lookupJobManager.readOnlyJobHandle);
 
         SerializerFactory serializerFactory;
         serializerFactory.instance.hierarchy = __itemManager.value.hierarchy;
-        serializerFactory.instance.entityIndices = initializationSystem.entityIndices;
-        serializerFactory.instance.entities = __handleEntities.reader;
-        serializerFactory.instance.identities = GetComponentLookup<EntityDataIdentity>(true);
-        serializerFactory.instance.serializable = GetComponentLookup<EntityDataSerializable>(true);
-        serializerFactory.rootType = GetComponentTypeHandle<GameItemRoot>(true);
+        serializerFactory.instance.entities = handleEntities.reader;
+        serializerFactory.instance.identities = __identities.UpdateAsRef(ref state);
+        serializerFactory.instance.serializable = __serializable.UpdateAsRef(ref state);
+        serializerFactory.rootType = __rootType.UpdateAsRef(ref state);
 
-        return serializerFactory;
+        __core.Update<Serializer, SerializerFactory>(ref serializerFactory, ref state);
+
+        var jobHandle = state.Dependency;
+        __itemManager.lookupJobManager.AddReadOnlyDependency(jobHandle);
+        handleEntities.lookupJobManager.AddReadOnlyDependency(jobHandle);
     }
 }
 
-[DisableAutoCreation]
-public partial class GameDataItemSiblingSerializationSystem : EntityDataSerializationComponentSystem<GameItemSibling, GameDataItemSiblingSerializationSystem.Serializer, GameDataItemSiblingSerializationSystem.SerializerFactory>
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameItemSibling)),
+    CreateAfter(typeof(GameItemSystem)),
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataItemSiblingSerializationSystem : ISystem
 {
     public struct Serializer : IEntityDataSerializer
     {
@@ -1201,14 +1222,14 @@ public partial class GameDataItemSiblingSerializationSystem : EntityDataSerializ
         [ReadOnly]
         public BufferAccessor<GameItemSibling> siblings;
 
-        public void Serialize(int index, in NativeParallelHashMap<Hash128, int> entityIndices, ref EntityDataWriter writer)
+        public void Serialize(int index, in SharedHashMap<Hash128, int>.Reader entityIndices, ref EntityDataWriter writer)
         {
             var siblings = this.siblings[index];
 
             int numSiblings = siblings.Length;
             writer.Write(numSiblings);
             for (int i = 0; i < numSiblings; ++i)
-                instance.Serialize(siblings[i].handle, ref writer);
+                instance.Serialize(ref writer, siblings[i].handle, entityIndices);
         }
     }
 
@@ -1230,55 +1251,64 @@ public partial class GameDataItemSiblingSerializationSystem : EntityDataSerializ
     }
 
     private EntityQuery __structChangeManagerGroup;
-    private SharedHashMap<Entity, Entity> __handleEntities;
+    private ComponentLookup<EntityDataIdentity> __identities;
+    private ComponentLookup<EntityDataSerializable> __serializable;
+    private BufferTypeHandle<GameItemSibling> __siblingType;
+
     private GameItemManagerShared __itemManager;
+    private EntityDataSerializationSystemCore __core;
 
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        __structChangeManagerGroup = GameItemStructChangeManager.GetEntityQuery(ref state);
 
-        __structChangeManagerGroup = GameItemStructChangeManager.GetEntityQuery(ref this.GetState());
+        __identities = state.GetComponentLookup<EntityDataIdentity>(true);
+        __serializable = state.GetComponentLookup<EntityDataSerializable>(true);
+        __siblingType = state.GetBufferTypeHandle<GameItemSibling>(true);
 
-        World world = World;
-        __itemManager = world.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
+        __itemManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>().manager;
+
+        __core = EntityDataSerializationSystemCore.Create<GameItemSibling>(ref state);
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        __handleEntities = __structChangeManagerGroup.GetSingleton<GameItemStructChangeManager>().handleEntities;
-
-        base.OnUpdate();
-
-        var jobHandle = Dependency;
-
-        __itemManager.lookupJobManager.AddReadOnlyDependency(jobHandle);
-        __handleEntities.lookupJobManager.AddReadOnlyDependency(jobHandle);
-        systemGroup.initializationSystem.AddReadOnlyDependency(jobHandle);
+        __core.Dispose();
     }
 
-    protected override SerializerFactory _Get(ref JobHandle jobHandle)
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
-        jobHandle = JobHandle.CombineDependencies(jobHandle, __itemManager.lookupJobManager.readOnlyJobHandle, __handleEntities.lookupJobManager.readOnlyJobHandle);
+        var handleEntities = __structChangeManagerGroup.GetSingleton<GameItemStructChangeManager>().handleEntities;
 
-        var initializationSystem = systemGroup.initializationSystem;
-        jobHandle = JobHandle.CombineDependencies(jobHandle, initializationSystem.readOnlyJobHandle);
+        state.Dependency = JobHandle.CombineDependencies(state.Dependency, __itemManager.lookupJobManager.readOnlyJobHandle, handleEntities.lookupJobManager.readOnlyJobHandle);
 
         SerializerFactory serializerFactory;
         serializerFactory.instance.hierarchy = __itemManager.value.hierarchy;
-        serializerFactory.instance.entityIndices = initializationSystem.entityIndices;
-        serializerFactory.instance.entities = __handleEntities.reader;
-        serializerFactory.instance.identities = GetComponentLookup<EntityDataIdentity>(true);
-        serializerFactory.instance.serializable = GetComponentLookup<EntityDataSerializable>(true);
-        serializerFactory.siblingType = GetBufferTypeHandle<GameItemSibling>(true);
+        serializerFactory.instance.entities = handleEntities.reader;
+        serializerFactory.instance.identities = __identities.UpdateAsRef(ref state);
+        serializerFactory.instance.serializable = __serializable.UpdateAsRef(ref state);
+        serializerFactory.siblingType = __siblingType.UpdateAsRef(ref state);
 
-        return serializerFactory;
+        __core.Update<Serializer, SerializerFactory>(ref serializerFactory, ref state);
+
+        var jobHandle = state.Dependency;
+        __itemManager.lookupJobManager.AddReadOnlyDependency(jobHandle);
+        handleEntities.lookupJobManager.AddReadOnlyDependency(jobHandle);
     }
 }
 
-[DisableAutoCreation, UpdateAfter(typeof(GameDataItemContainerSerializationSystem))]
-public partial class GameDataItemSerializationSystem : EntityDataSerializationComponentSystem<GameItemData, GameDataItemSerializationSystem.Serializer, GameDataItemSerializationSystem.SerializerFactory>
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameItemData)),
+    CreateAfter(typeof(GameItemSystem)),
+    CreateAfter(typeof(GameDataItemContainerSerializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server"),
+    UpdateAfter(typeof(GameDataItemContainerSerializationSystem))]
+public partial struct GameDataItemSerializationSystem : ISystem//EntityDataSerializationComponentSystem<GameItemData, GameDataItemSerializationSystem.Serializer, GameDataItemSerializationSystem.SerializerFactory>
 {
-    public struct Serializer : IEntityDataSerializer
+    /*public struct Serializer : IEntityDataSerializer
     {
         public GameItemManager.ReadOnlyInfos infos;
 
@@ -1324,39 +1354,39 @@ public partial class GameDataItemSerializationSystem : EntityDataSerializationCo
 
             return serializer;
         }
-    }
+    }*/
 
     private GameItemManagerShared __itemManager;
-    private GameDataItemContainerSerializationSystem __containerSystem;
 
-    protected override void OnCreate()
+    private EntityDataSerializationIndexComponentDataSystemCore<GameItemData, GameItemDataSerializationWrapper> __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
-
-        World world = World;
-        __itemManager = world.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
-        __containerSystem = world.GetOrCreateSystemManaged<GameDataItemContainerSerializationSystem>();
+        __itemManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>().manager;
+        __core = EntityDataSerializationIndexComponentDataSystemCore<GameItemData, GameItemDataSerializationWrapper>.Create<GameDataItemContainerSerializationSystem>(ref state);
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        base.OnUpdate();
-
-        var jobHandle = Dependency;
-
-        __itemManager.lookupJobManager.AddReadOnlyDependency(jobHandle);
-        __containerSystem.AddReadOnlyDependency(jobHandle);
+        __core.Dispose();
     }
 
-    protected override SerializerFactory _Get(ref JobHandle jobHandle)
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
-        jobHandle = JobHandle.CombineDependencies(jobHandle, __itemManager.lookupJobManager.readOnlyJobHandle, __containerSystem.readOnlyJobHandle);
+        if (!__itemManager.isCreated)
+            return;
 
-        SerializerFactory serializerFactory;
-        serializerFactory.infos = __itemManager.value.readOnlyInfos;
-        serializerFactory.typeIndices = __containerSystem.typeIndices;
-        serializerFactory.instanceType = GetComponentTypeHandle<GameItemData>(true);
-        return serializerFactory;
+        GameItemDataSerializationWrapper wrapper;
+        wrapper.infos = __itemManager.value.readOnlyInfos;
+
+        state.Dependency = JobHandle.CombineDependencies(state.Dependency, __itemManager.lookupJobManager.readOnlyJobHandle);
+
+        __core.Update(ref wrapper, ref state);
+
+        __itemManager.lookupJobManager.AddReadOnlyDependency(state.Dependency);
     }
 }
 
@@ -1392,8 +1422,6 @@ public partial class GameDataItemContainerDeserializationSystem : EntityDataDese
 
     private LookupJobManager __lookupJobManager;
 
-    private GameItemContainerSystem __containerSystem;
-
     private NativeList<int> __types;
 
     public NativeArray<int> types => __types.AsDeferredJobArray();
@@ -1412,8 +1440,6 @@ public partial class GameDataItemContainerDeserializationSystem : EntityDataDese
     protected override void OnCreate()
     {
         base.OnCreate();
-
-        __containerSystem = World.GetOrCreateSystemManaged<GameItemContainerSystem>();
 
         __types = new NativeList<int>(Allocator.Persistent);
     }
@@ -1439,7 +1465,7 @@ public partial class GameDataItemContainerDeserializationSystem : EntityDataDese
     protected override Deserializer _Create(ref JobHandle jobHandle)
     {
         Deserializer deserializer;
-        deserializer.typeGuids = __containerSystem.typeGuids;
+        deserializer.typeGuids = SystemAPI.GetSingleton<GameDataItemContainer>().typeGUIDs;
         deserializer.types = __types;
         return deserializer;
     }

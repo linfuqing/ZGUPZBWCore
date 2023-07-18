@@ -6,9 +6,9 @@ using Unity.Collections;
 using ZG;
 
 #region GameStatus
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<ComponentDataSerializationSystem<GameStatus>.Serializer, ComponentDataSerializationSystem<GameStatus>.SerializerFactory>))]
+//[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<ComponentDataSerializationSystem<GameStatus>.Serializer, ComponentDataSerializationSystem<GameStatus>.SerializerFactory>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<ComponentDataDeserializationSystem<GameStatus>.Deserializer, ComponentDataDeserializationSystem<GameStatus>.DeserializerFactory>))]
-[assembly: EntityDataSerialize(typeof(GameStatus))]
+//[assembly: EntityDataSerialize(typeof(GameStatus))]
 [assembly: EntityDataDeserialize(typeof(GameStatus), (int)GameDataConstans.Version)]
 #endregion
 
@@ -17,8 +17,11 @@ public struct GameStatus : IComponentData
     public int value;
 }
 
-[AutoCreateIn("Server"), UpdateInGroup(typeof(GameDataSystemGroup))]
-public partial class GameDataStatusSystem : SystemBase
+[AutoCreateIn("Server"), 
+    BurstCompile, 
+    CreateAfter(typeof(EndFrameStructChangeSystem)), 
+    UpdateInGroup(typeof(GameDataSystemGroup))]
+public partial struct GameDataStatusSystem : ISystem
 {
     private struct Serialize
     {
@@ -28,14 +31,14 @@ public partial class GameDataStatusSystem : SystemBase
         [ReadOnly]
         public NativeArray<GameNodeStatus> states;
 
-        public EntityCommandQueue<Entity>.ParallelWriter entityManager;
+        public EntityCommandQueue<EntityCommandStructChange>.ParallelWriter entityManager;
 
         public void Execute(int index)
         {
             if ((states[index].value & (int)GameEntityStatus.Mask) != (int)GameEntityStatus.KnockedOut)
                 return;
 
-            entityManager.Enqueue(entityArray[index]);
+            entityManager.Enqueue(EntityCommandStructChange.Create<EntityDataSerializable>(entityArray[index]));
         }
     }
 
@@ -48,7 +51,7 @@ public partial class GameDataStatusSystem : SystemBase
         [ReadOnly]
         public ComponentTypeHandle<GameNodeStatus> statusType;
 
-        public EntityCommandQueue<Entity>.ParallelWriter entityManager;
+        public EntityCommandQueue<EntityCommandStructChange>.ParallelWriter entityManager;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -65,44 +68,76 @@ public partial class GameDataStatusSystem : SystemBase
 
     private EntityQuery __group;
 
-    private EntityCommandPool<Entity> __entityManager;
+    private EntityTypeHandle __entityType;
 
-    protected override void OnCreate()
+    private ComponentTypeHandle<GameNodeStatus> __statusType;
+
+    private EntityCommandPool<EntityCommandStructChange> __entityManager;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
-
-        __group = GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameNodeStatus>()
-                },
-                None = new ComponentType[]
-                {
-                    typeof(EntityDataSerializable), 
-                    typeof(GameNonSerialized)
-                }, 
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameNodeStatus>()
+                    .WithNone<EntityDataSerializable, GameNonSerialized>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
         __group.SetChangedVersionFilter(typeof(GameNodeStatus));
 
-        __entityManager = World.GetOrCreateSystemManaged<EndFrameEntityCommandSystem>().CreateAddComponentCommander<EntityDataSerializable>();
+        __entityType = state.GetEntityTypeHandle();
+        __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
+
+        __entityManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<EndFrameStructChangeSystem>().manager.addComponentPool;
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
         var entityManager = __entityManager.Create();
 
         SerializeEx serialize;
-        serialize.entityType = GetEntityTypeHandle();
-        serialize.statusType = GetComponentTypeHandle<GameNodeStatus>(true);
+        serialize.entityType = __entityType.UpdateAsRef(ref state);
+        serialize.statusType = __statusType.UpdateAsRef(ref state);
         serialize.entityManager = entityManager.parallelWriter;
 
-        JobHandle jobHandle = serialize.ScheduleParallel(__group, Dependency);
+        var jobHandle = serialize.ScheduleParallelByRef(__group, state.Dependency);
 
         entityManager.AddJobHandleForProducer<SerializeEx>(jobHandle);
 
-        Dependency = jobHandle;
+        state.Dependency = jobHandle;
+    }
+}
+
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameStatus)),
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataStatusSerializationSystem : ISystem
+{
+    private EntityDataSerializationSystemCoreEx __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = EntityDataSerializationSystemCoreEx.Create<GameStatus>(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        __core.Update(ref state);
     }
 }

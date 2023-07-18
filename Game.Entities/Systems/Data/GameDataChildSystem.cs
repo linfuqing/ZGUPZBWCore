@@ -1,13 +1,14 @@
 ﻿using System;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
 using ZG;
 
 #region GameContainerChild
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataContainerChildSerializationSystem.Serializer, GameDataContainerChildSerializationSystem.SerializerFactory>))]
+[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataEntityBufferSerializationSystemCore<GameContainerChild>.Serializer, GameDataEntityBufferSerializationSystemCore<GameContainerChild>.SerializerFactory>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataContainerChildDeserializationSystem.Deserializer, GameDataContainerChildDeserializationSystem.DeserializerFactory>))]
-[assembly: EntityDataSerialize(typeof(GameContainerChild), typeof(GameDataContainerChildSerializationSystem))]
+//[assembly: EntityDataSerialize(typeof(GameContainerChild), typeof(GameDataContainerChildSerializationSystem))]
 [assembly: EntityDataDeserialize(typeof(GameContainerChild), typeof(GameDataContainerChildDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
@@ -19,69 +20,30 @@ public struct GameChild : IBufferElementData
     public Hash128 guid;
 }*/
 
-[DisableAutoCreation]
-public partial class GameDataContainerChildSerializationSystem : EntityDataSerializationComponentSystem<
-    GameContainerChild,
-    GameDataContainerChildSerializationSystem.Serializer,
-    GameDataContainerChildSerializationSystem.SerializerFactory>
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameContainerChild)), 
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)), 
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataContainerChildSerializationSystem : ISystem
 {
-    public struct Serializer : IEntityDataSerializer
+    private GameDataEntityBufferSerializationSystemCore<GameContainerChild> __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        [ReadOnly]
-        public ComponentLookup<EntityDataIdentity> identities;
-        public BufferAccessor<GameContainerChild> instances;
-
-        public void Serialize(int index, in NativeParallelHashMap<Hash128, int> entityIndices, ref EntityDataWriter writer)
-        {
-            var instances = this.instances[index];
-            GameContainerChild instance;
-            int length = instances.Length;
-            for(int i = 0; i < length; ++i)
-            {
-                instance = instances[i];
-                if (!identities.HasComponent(instance.entity) || !entityIndices.ContainsKey(identities[instance.entity].guid))
-                {
-                    UnityEngine.Debug.LogError($"Child {instance.entity} Missing.");
-
-                    instances.RemoveAt(i--);
-
-                    --length;
-                }
-            }
-
-            writer.Write(length);
-            for (int i = 0; i < length; ++i)
-            {
-                instance = instances[i];
-                writer.Write(instance.index);
-                writer.Write(entityIndices[identities[instance.entity].guid]);
-            }
-        }
+        __core = new GameDataEntityBufferSerializationSystemCore<GameContainerChild>(ref state);
     }
 
-    public struct SerializerFactory : IEntityDataFactory<Serializer>
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        [ReadOnly]
-        public ComponentLookup<EntityDataIdentity> identities;
-        public BufferTypeHandle<GameContainerChild> instanceType;
 
-        public Serializer Create(in ArchetypeChunk chunk, int firstEntityIndex)
-        {
-            Serializer serializer;
-            serializer.identities = identities;
-            serializer.instances = chunk.GetBufferAccessor(ref instanceType);
-
-            return serializer;
-        }
     }
 
-    protected override SerializerFactory _Get(ref JobHandle jobHandle)
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
-        SerializerFactory serializerFactory;
-        serializerFactory.identities = GetComponentLookup<EntityDataIdentity>(true);
-        serializerFactory.instanceType = GetBufferTypeHandle<GameContainerChild>();
-
-        return serializerFactory;
+        __core.Update(ref state);
     }
 }
 
