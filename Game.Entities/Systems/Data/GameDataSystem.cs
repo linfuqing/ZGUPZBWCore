@@ -42,6 +42,19 @@ public partial class GameDataDeserializationSystemGroup : EntityDataDeserializat
 
     public bool Activate(string path, EntityDataDeserializationCommander commander, Hash128[] types, ref Entity entity)
     {
+        if (__types.IsCreated)
+            __types.Dispose();
+
+        __types = new NativeArray<Hash128>(types, Allocator.Persistent);
+
+        var entityManager = EntityManager;
+        if (!entityManager.HasComponent<EntityDataCommon>(entity))
+            entityManager.AddComponent<EntityDataCommon>(entity);
+
+        EntityDataCommon common;
+        common.typesGUIDs = __types.AsReadOnly();
+        EntityManager.SetComponentData(entity, common);
+
         path = Path.Combine(UnityEngine.Application.persistentDataPath, path);
         this.path = path;
         if (!File.Exists(path))
@@ -61,19 +74,6 @@ public partial class GameDataDeserializationSystemGroup : EntityDataDeserializat
             return false;
 
         __commander = commander;
-
-        if (__types.IsCreated)
-            __types.Dispose();
-
-        __types = new NativeArray<Hash128>(types, Allocator.Persistent);
-
-        var entityManager = EntityManager;
-        if (!entityManager.HasComponent<EntityDataCommon>(entity))
-            entityManager.AddComponent<EntityDataCommon>(entity);
-
-        EntityDataCommon common;
-        common.typesGUIDs = __types.AsReadOnly();
-        EntityManager.SetComponentData(entity, common);
 
         Enabled = true;
 
