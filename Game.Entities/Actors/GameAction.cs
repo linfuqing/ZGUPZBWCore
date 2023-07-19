@@ -57,8 +57,8 @@ public enum GameActionFlag
     [Tooltip("目标被击退时忽略Y轴")]
     TargetInAir = 0x0800,
 
-    [Tooltip("释放者传送到目标点")]
-    TargetActorLocation = 0x1100
+    //[Tooltip("释放者传送到目标点")]
+    //TargetActorLocation = 0x1100
 }
 
 [Serializable]
@@ -93,6 +93,9 @@ public struct GameActionInfo
 
     [Tooltip("攻击定身持续时间")]
     public float delayDuration;
+
+    [Tooltip("释放者传送到目标点的最大判定距离，大于零时传送生效")]
+    public float actorLocationDistance;
 
     [Tooltip("动量，代表惯性转化成速度的比率，跳跃时生效")]
     public float actorMomentum;
@@ -168,6 +171,7 @@ public struct GameActionInfo
         x.damageTime += y.damageTime;
         x.interval += y.interval;
         x.duration += y.duration;
+        x.actorLocationDistance += y.actorLocationDistance;
         x.actorMomentum += y.actorMomentum;
         x.actorJumpSpeed += y.actorJumpSpeed;
         x.actorJumpStartTime += y.actorJumpStartTime;
@@ -201,6 +205,7 @@ public struct GameActionInfo
         x.damageTime -= y.damageTime;
         x.interval -= y.interval;
         x.duration -= y.duration;
+        x.actorLocationDistance -= y.actorLocationDistance;
         x.actorMomentum -= y.actorMomentum;
         x.actorJumpSpeed -= y.actorJumpSpeed;
         x.actorJumpStartTime -= y.actorJumpStartTime;
@@ -248,7 +253,7 @@ public struct GameAction
 
     public float3 direction;
 
-    public float3 actorLocation;
+    //public float3 actorLocation;
 
     public float3 actorOffset;
 }

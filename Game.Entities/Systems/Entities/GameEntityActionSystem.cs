@@ -557,6 +557,9 @@ public struct GameEntityActionSystemCore
         public ComponentLookup<GameNodeActorStatus> actorStates;
 
         [ReadOnly]
+        public ComponentLookup<GameNodeCharacterCollider> colliders;
+
+        [ReadOnly]
         public ComponentLookup<GameEntityCamp> camps;
 
         [ReadOnly]
@@ -641,10 +644,12 @@ public struct GameEntityActionSystemCore
                         instance)))
                 value |= /*GameActionStatus.Status.Created | */GameActionStatus.Status.Managed;
 
+            bool isSourceTransform = false;
             //float actorMoveDistance = 0.0f;
             double oldTime = time - deltaTime,
                 actorMoveStartTime = instance.time + instanceEx.info.actorMoveStartTime,
                 actorMoveTime = actorMoveStartTime + instanceEx.info.actorMoveDuration;
+            RigidTransform sourceTransform = RigidTransform.identity;
             if (actorMoveStartTime <= time && oldTime < actorMoveTime)
             {
                 double max = math.min(time, actorMoveTime), min = math.max(oldTime, actorMoveStartTime);
@@ -653,18 +658,19 @@ public struct GameEntityActionSystemCore
                     if ((instanceEx.value.flag & GameActionFlag.ActorUnstoppable) == GameActionFlag.ActorUnstoppable)
                         unstoppableEntities.Create().value = instance.entity;
 
-                    if ((instanceEx.value.flag & GameActionFlag.TargetActorLocation) == GameActionFlag.TargetActorLocation)
+                    if (instanceEx.info.actorLocationDistance > math.FLT_MIN_NORMAL)
                     {
                         int sourceRigidbodyIndex = collisionWorld.GetRigidBodyIndex(instance.entity);
                         if (sourceRigidbodyIndex != -1)
                         {
                             var sourceRigidbody = rigidbodies[sourceRigidbodyIndex];
 
-                            float3 source = math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.actorOffset), 
-                                destination = source + math.forward(sourceRigidbody.WorldFromBody.rot) * instanceEx.info.distance;
+                            float3 destination = (instanceEx.value.flag & GameActionFlag.ActorLocation) == GameActionFlag.ActorLocation ?
+                                instanceEx.value.actorOffset :
+                                math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.actorOffset) + math.forward(sourceRigidbody.WorldFromBody.rot) * instanceEx.info.actorLocationDistance;
 
                             ColliderCastInput colliderCastInput = default;
-                            colliderCastInput.Collider = (Collider*)rigidbodies[sourceRigidbodyIndex].Collider.GetUnsafePtr();
+                            colliderCastInput.Collider = (Collider*)(colliders.HasComponent(entity) ? colliders[entity].value.GetUnsafePtr() : rigidbodies[sourceRigidbodyIndex].Collider.GetUnsafePtr());
                             colliderCastInput.Orientation = sourceRigidbody.WorldFromBody.rot;
                             colliderCastInput.Start = sourceRigidbody.WorldFromBody.pos;
                             colliderCastInput.End = destination;
@@ -672,19 +678,26 @@ public struct GameEntityActionSystemCore
                             /*if (collisionWorld.CastCollider(colliderCastInput, ref collector))
                                 destination = math.lerp(sourceRigidbody.WorldFromBody.pos, destination, collector.closestHit.Fraction);*/
 
-                            locations.TryAdd(instance.entity, collisionWorld.CastCollider(colliderCastInput, ref collector) ?
-                                math.lerp(sourceRigidbody.WorldFromBody.pos, destination, collector.closestHit.Fraction) :
-                                source);
+                            float fraction = collisionWorld.CastCollider(colliderCastInput, ref collector) ? collector.closestHit.Fraction : instanceEx.info.distance / instanceEx.info.actorLocationDistance;
+                            sourceTransform.pos = math.lerp(sourceRigidbody.WorldFromBody.pos, destination, fraction);
+
+                            sourceTransform.rot = sourceRigidbody.WorldFromBody.rot;
+
+                            isSourceTransform = true;
                         }
                     }
                     else if ((instanceEx.value.flag & GameActionFlag.ActorLocation) == GameActionFlag.ActorLocation)
                     {
-                        EntityData<Translation> location;
-                        location.entity = instance.entity;
-                        location.value.Value = instanceEx.value.actorLocation;
+                        sourceTransform.pos = instanceEx.value.actorOffset;
+                        int sourceRigidbodyIndex = collisionWorld.GetRigidBodyIndex(instance.entity);
+                        if (sourceRigidbodyIndex != -1)
+                            sourceTransform.rot = rigidbodies[sourceRigidbodyIndex].WorldFromBody.rot;
 
-                        locations.TryAdd(instance.entity, instanceEx.value.actorLocation);
+                        isSourceTransform = true;
                     }
+
+                    if (isSourceTransform)
+                        locations.TryAdd(instance.entity, sourceTransform.pos);
 
                     //actorMoveDistance = (instanceEx.info.actorMoveSpeed + instanceEx.info.actorMoveSpeedIndirect) * (float)(max - min);
 
@@ -912,10 +925,15 @@ public struct GameEntityActionSystemCore
                                 }
                                 else
                                 {
-                                    var sourceRigidbody = rigidbodies[sourceRigidbodyIndex];
+                                    if (isSourceTransform)
+                                        result = sourceTransform;
+                                    else
+                                    {
+                                        var sourceRigidbody = rigidbodies[sourceRigidbodyIndex];
 
-                                    result.rot = sourceRigidbody.WorldFromBody.rot;
-                                    result.pos = math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.offset);
+                                        result.rot = sourceRigidbody.WorldFromBody.rot;
+                                        result.pos = math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.actorOffset);
+                                    }
 
                                     var surfaceRotation = surfaces.HasComponent(instance.entity) ? surfaces[instance.entity].rotation : quaternion.identity;
                                     if (directs.HasComponent(instance.entity))
@@ -1357,6 +1375,9 @@ public struct GameEntityActionSystemCore
         public ComponentLookup<GameNodeActorStatus> actorStates;
 
         [ReadOnly]
+        public ComponentLookup<GameNodeCharacterCollider> colliders;
+
+        [ReadOnly]
         public ComponentLookup<GameEntityCamp> camps;
 
         [ReadOnly]
@@ -1416,6 +1437,7 @@ public struct GameEntityActionSystemCore
             executor.directs = directs;
             executor.indirects = indirects;
             executor.actorStates = actorStates;
+            executor.colliders = colliders;
             executor.camps = camps;
             executor.masses = masses;
             executor.infos = infos;
@@ -1667,6 +1689,8 @@ public struct GameEntityActionSystemCore
     private ComponentLookup<GameNodeDirect> __directs;
     private ComponentLookup<GameNodeIndirect> __indirects;
     private ComponentLookup<GameNodeActorStatus> __actorStates;
+    private ComponentLookup<GameNodeCharacterCollider> __colliders;
+
     private ComponentLookup<GameEntityCamp> __camps;
     private ComponentLookup<GameEntityActorMass> __masses;
     private ComponentLookup<GameEntityActorInfo> __infos;
@@ -1696,11 +1720,11 @@ public struct GameEntityActionSystemCore
     private NativeFactory<EntityData<GameNodeVelocityComponent>> __impacts;
     private NativeFactory<EntityData<GameEntityBreakCommand>> __commands;
 
-    public GameEntityActionSystemCore(IEnumerable<EntityQueryDesc> queries, ref SystemState systemState)
+    public GameEntityActionSystemCore(EntityQueryBuilder builder, ref SystemState systemState)
     {
         performJob = default;
 
-        var source = queries;
+        /*var source = queries;
         var destination = source == null ? new List<EntityQueryDesc>(1) : new List<EntityQueryDesc>(source);
         if (destination.Count < 1)
             destination.Add(new EntityQueryDesc());
@@ -1726,9 +1750,9 @@ public struct GameEntityActionSystemCore
                 componentTypes.AddRange(query.None);
 
             query.None = componentTypes.ToArray();
-        }
+        }*/
 
-        group = systemState.GetEntityQuery(new List<EntityQueryDesc>(destination).ToArray());
+        group = builder.WithAll<GameActionData, GameActionDataEx, GameActionEntity>().Build(ref systemState);// systemState.GetEntityQuery(new List<EntityQueryDesc>(destination).ToArray());
 
         __physicsStepGroup = systemState.GetEntityQuery(ComponentType.ReadOnly<Unity.Physics.PhysicsStep>());
 
@@ -1752,6 +1776,7 @@ public struct GameEntityActionSystemCore
         __directs = systemState.GetComponentLookup<GameNodeDirect>(true);
         __indirects = systemState.GetComponentLookup<GameNodeIndirect>(true);
         __actorStates = systemState.GetComponentLookup<GameNodeActorStatus>(true);
+        __colliders = systemState.GetComponentLookup<GameNodeCharacterCollider>(true);
         __camps = systemState.GetComponentLookup<GameEntityCamp>(true);
         __masses = systemState.GetComponentLookup<GameEntityActorMass>(true);
         __infos = systemState.GetComponentLookup<GameEntityActorInfo>(true);
@@ -1829,6 +1854,7 @@ public struct GameEntityActionSystemCore
         perform.directs = __directs.UpdateAsRef(ref systemState);
         perform.indirects = __indirects.UpdateAsRef(ref systemState);
         perform.actorStates = __actorStates.UpdateAsRef(ref systemState);
+        perform.colliders = __colliders.UpdateAsRef(ref systemState);
         perform.camps = __camps.UpdateAsRef(ref systemState);
         perform.masses = __masses.UpdateAsRef(ref systemState);
         perform.infos = __infos.UpdateAsRef(ref systemState);

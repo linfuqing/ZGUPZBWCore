@@ -9,7 +9,7 @@ using ZG;
 
 [assembly: RegisterGenericJobType(typeof(GameEntityActionSystemCore.PerformEx<GameEntityActionDataSystem.Handler, GameEntityActionDataSystem.Factory>))]
 
-[BurstCompile, UpdateInGroup(typeof(GameEntityActionSystemGroup))]
+[BurstCompile, CreateAfter(typeof(GameItemSystem)), UpdateInGroup(typeof(GameEntityActionSystemGroup))]
 public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProducerJob //GameEntityActionSystem<GameEntityActionDataSystem.Handler, GameEntityActionDataSystem.Factory>, IEntityCommandProducerJob
 {
     public struct Action
@@ -826,18 +826,6 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
 
     private GameItemManagerShared __itemManager;
 
-    public IEnumerable<EntityQueryDesc> queries => new EntityQueryDesc[]
-    {
-        new EntityQueryDesc()
-        {
-            All = new ComponentType[]
-            {
-                ComponentType.ReadWrite<GameActionBuff>(),
-                ComponentType.ReadWrite<GameActionAttack>()
-            }
-        }
-    };
-
     public void Create<T>(
         World world, 
         int hitCount, 
@@ -973,6 +961,7 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
         __spawnCommander = world.GetExistingSystemManaged<EndTimeSystemGroupEntityCommandSystem>().Create<GameSpawnData, T>(EntityCommandManager.QUEUE_PRESENT, spawnCommander);
     }
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         BurstUtility.InitializeJob<Convert>();
@@ -980,9 +969,12 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
         __healthBuffs = new NativeFactory<BufferElementData<GameEntityHealthBuff>>(Allocator.Persistent, true);
         __torpidityBuffs = new NativeFactory<BufferElementData<GameEntityTorpidityBuff>>(Allocator.Persistent, true);
 
-        __core = new GameEntityActionSystemCore(queries, ref state);
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __core = new GameEntityActionSystemCore(builder
+                .WithAllRW<GameActionBuff, GameActionAttack>(), 
+                ref state);
 
-        __itemManager = state.World.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
+        __itemManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>().manager;
     }
 
     public void OnDestroy(ref SystemState state)

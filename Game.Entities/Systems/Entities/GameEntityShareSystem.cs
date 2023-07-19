@@ -1657,23 +1657,6 @@ public partial struct GameEntitySharedActionSystem : ISystem
     private BufferTypeHandle<GameEntitySharedHit> __hitType;
     private BufferLookup<GameEntitySharedHit> __hitResults;
 
-    public IEnumerable<EntityQueryDesc> queries
-    {
-        get
-        {
-            return new EntityQueryDesc[]
-            {
-                new EntityQueryDesc()
-                {
-                    All = new ComponentType[]
-                    {
-                        ComponentType.ReadOnly<GameEntitySharedActionData>()
-                    }
-                }
-            };
-        }
-    }
-
     public void Create(
         NativeArray<Item> items, 
         NativeArray<ActionObject> actionObjects, 
@@ -1701,6 +1684,7 @@ public partial struct GameEntitySharedActionSystem : ISystem
         NativeArray<ActionObjectRange>.Copy(actionObjectRanges, __actionObjectRanges);
     }
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         __hitGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameEntitySharedHit>());
@@ -1709,7 +1693,10 @@ public partial struct GameEntitySharedActionSystem : ISystem
 
         __endFrameBarrier = state.World.GetOrCreateSystemUnmanaged<GameEntityActionSharedFactorySytem>().pool;
 
-        __core = new GameEntityActionSystemCore(queries, ref state);
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __core = new GameEntityActionSystemCore(builder
+                .WithAll<GameEntitySharedActionData>(),
+                ref state);
 
         __entityItems = state.GetBufferLookup<GameEntityItem>(true);
         __translations = state.GetComponentLookup<Translation>(true);
