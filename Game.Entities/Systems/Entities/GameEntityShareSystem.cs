@@ -1046,7 +1046,11 @@ public partial struct GameEntitySharedActionUpdateSystem : ISystem
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(GameEntityActionSystemGroup))]
+[BurstCompile,
+    CreateAfter(typeof(GameEntityActionLocationSystem)),
+    CreateAfter(typeof(GamePhysicsWorldBuildSystem)),
+    CreateAfter(typeof(GameEntityActionSharedFactorySytem)),
+    UpdateInGroup(typeof(GameEntityActionSystemGroup))]
 public partial struct GameEntitySharedActionSystem : ISystem
 {
     public struct Item
@@ -1687,11 +1691,14 @@ public partial struct GameEntitySharedActionSystem : ISystem
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __hitGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameEntitySharedHit>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __hitGroup = builder
+                .WithAllRW<GameEntitySharedHit>()
+                .Build(ref state);
 
         __hits = new NativeFactory<EntityData<GameEntitySharedHit>>(Allocator.Persistent, true);
 
-        __endFrameBarrier = state.World.GetOrCreateSystemUnmanaged<GameEntityActionSharedFactorySytem>().pool;
+        __endFrameBarrier = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameEntityActionSharedFactorySytem>().pool;
 
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __core = new GameEntityActionSystemCore(builder

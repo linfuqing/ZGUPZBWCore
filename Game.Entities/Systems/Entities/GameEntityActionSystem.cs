@@ -665,21 +665,22 @@ public struct GameEntityActionSystemCore
                         {
                             var sourceRigidbody = rigidbodies[sourceRigidbodyIndex];
 
-                            float3 destination = (instanceEx.value.flag & GameActionFlag.ActorLocation) == GameActionFlag.ActorLocation ?
+                            float3 source = math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.actorOffset), 
+                                destination = (instanceEx.value.flag & GameActionFlag.ActorLocation) == GameActionFlag.ActorLocation ?
                                 instanceEx.value.actorLocation :
-                                math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.actorOffset) + math.forward(sourceRigidbody.WorldFromBody.rot) * instanceEx.info.actorLocationDistance;
+                                source + math.forward(sourceRigidbody.WorldFromBody.rot) * instanceEx.info.distance;
 
                             ColliderCastInput colliderCastInput = default;
                             colliderCastInput.Collider = (Collider*)(colliders.HasComponent(instance.entity) ? colliders[instance.entity].value.GetUnsafePtr() : rigidbodies[sourceRigidbodyIndex].Collider.GetUnsafePtr());
                             colliderCastInput.Orientation = sourceRigidbody.WorldFromBody.rot;
-                            colliderCastInput.Start = sourceRigidbody.WorldFromBody.pos;
+                            colliderCastInput.Start = source;
                             colliderCastInput.End = destination;
                             var collector = new ClosestHitCollectorExclude<ColliderCastHit>(sourceRigidbodyIndex, 1.0f);
                             /*if (collisionWorld.CastCollider(colliderCastInput, ref collector))
                                 destination = math.lerp(sourceRigidbody.WorldFromBody.pos, destination, collector.closestHit.Fraction);*/
 
-                            float fraction = collisionWorld.CastCollider(colliderCastInput, ref collector) ? collector.closestHit.Fraction : instanceEx.info.distance / instanceEx.info.actorLocationDistance;
-                            sourceTransform.pos = math.lerp(sourceRigidbody.WorldFromBody.pos, destination, fraction);
+                            float fraction = collisionWorld.CastCollider(colliderCastInput, ref collector) ? collector.closestHit.Fraction : instanceEx.info.actorLocationDistance / instanceEx.info.distance;
+                            sourceTransform.pos = fraction > math.FLT_MIN_NORMAL ? math.lerp(source, destination, fraction) : sourceRigidbody.WorldFromBody.pos;
 
                             sourceTransform.rot = sourceRigidbody.WorldFromBody.rot;
 
@@ -1762,10 +1763,10 @@ public struct GameEntityActionSystemCore
 
         __time = new GameUpdateTime(ref systemState);
 
-        World world = systemState.World;
-        __physicsWorld = world.GetOrCreateSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
+        var world = systemState.WorldUnmanaged;
+        __physicsWorld = world.GetExistingSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
 
-        __locations = world.GetOrCreateSystemUnmanaged<GameEntityActionLocationSystem>().locations;
+        __locations = world.GetExistingSystemUnmanaged<GameEntityActionLocationSystem>().locations;
         __unstoppableEntities = new NativeFactory<Entity>(Allocator.Persistent, true);
         //__directVelocities = new NativeQueue<EntityData<float>>(Allocator.Persistent);
         __impacts = new NativeFactory<EntityData<GameNodeVelocityComponent>>(Allocator.Persistent, true);

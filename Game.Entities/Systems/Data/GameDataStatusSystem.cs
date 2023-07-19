@@ -83,7 +83,7 @@ public partial struct GameDataStatusSystem : ISystem
                     .WithNone<EntityDataSerializable, GameNonSerialized>()
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
-        __group.SetChangedVersionFilter(typeof(GameNodeStatus));
+        __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameNodeStatus>());
 
         __entityType = state.GetEntityTypeHandle();
         __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);

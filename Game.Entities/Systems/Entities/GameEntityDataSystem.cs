@@ -9,7 +9,11 @@ using ZG;
 
 [assembly: RegisterGenericJobType(typeof(GameEntityActionSystemCore.PerformEx<GameEntityActionDataSystem.Handler, GameEntityActionDataSystem.Factory>))]
 
-[BurstCompile, CreateAfter(typeof(GameItemSystem)), UpdateInGroup(typeof(GameEntityActionSystemGroup))]
+[BurstCompile,
+    CreateAfter(typeof(GameEntityActionLocationSystem)),
+    CreateAfter(typeof(GamePhysicsWorldBuildSystem)),
+    CreateAfter(typeof(GameItemSystem)), 
+    UpdateInGroup(typeof(GameEntityActionSystemGroup))]
 public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProducerJob //GameEntityActionSystem<GameEntityActionDataSystem.Handler, GameEntityActionDataSystem.Factory>, IEntityCommandProducerJob
 {
     public struct Action
