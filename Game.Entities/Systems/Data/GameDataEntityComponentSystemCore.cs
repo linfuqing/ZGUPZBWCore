@@ -56,7 +56,7 @@ public struct GameDataEntityComponentDataSerializationSystemCore<T> where T : un
     {
         __identities = state.GetComponentLookup<EntityDataIdentity>(true);
         __instanceType = state.GetComponentTypeHandle<T>();
-        __core = EntityDataSerializationSystemCore.Create<GameContainerChild>(ref state);
+        __core = EntityDataSerializationSystemCore.Create<T>(ref state);
     }
 
     public void Dispose()
@@ -136,7 +136,7 @@ public struct GameDataEntityBufferSerializationSystemCore<T> where T : unmanaged
     {
         __identities = state.GetComponentLookup<EntityDataIdentity>(true);
         __instanceType = state.GetBufferTypeHandle<T>();
-        __core = EntityDataSerializationSystemCore.Create<GameContainerChild>(ref state);
+        __core = EntityDataSerializationSystemCore.Create<T>(ref state);
     }
 
     public void Dispose()

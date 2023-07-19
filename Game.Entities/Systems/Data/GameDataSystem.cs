@@ -106,7 +106,7 @@ public partial class GameDataDeserializationSystemGroup : EntityDataDeserializat
 [AutoCreateIn("Server"), UpdateInGroup(typeof(InitializationSystemGroup)),  UpdateAfter(typeof(GameDataDeserializationSystemGroup)),  UpdateAfter(typeof(GameItemInitSystemGroup))]
 public partial class GameDataSerializationSystemGroup : EntityDataSerializationManagedSystem
 {
-    public double time = 5;//600.0f;
+    public double time = 600.0f;
 
     public int maxCount = 1024;
 
