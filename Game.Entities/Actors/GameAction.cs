@@ -253,7 +253,7 @@ public struct GameAction
 
     public float3 direction;
 
-    //public float3 actorLocation;
+    public float3 actorLocation;
 
     public float3 actorOffset;
 }
