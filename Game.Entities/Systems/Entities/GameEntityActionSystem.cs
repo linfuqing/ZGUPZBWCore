@@ -670,7 +670,7 @@ public struct GameEntityActionSystemCore
                                 math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.actorOffset) + math.forward(sourceRigidbody.WorldFromBody.rot) * instanceEx.info.actorLocationDistance;
 
                             ColliderCastInput colliderCastInput = default;
-                            colliderCastInput.Collider = (Collider*)(colliders.HasComponent(entity) ? colliders[entity].value.GetUnsafePtr() : rigidbodies[sourceRigidbodyIndex].Collider.GetUnsafePtr());
+                            colliderCastInput.Collider = (Collider*)(colliders.HasComponent(instance.entity) ? colliders[instance.entity].value.GetUnsafePtr() : rigidbodies[sourceRigidbodyIndex].Collider.GetUnsafePtr());
                             colliderCastInput.Orientation = sourceRigidbody.WorldFromBody.rot;
                             colliderCastInput.Start = sourceRigidbody.WorldFromBody.pos;
                             colliderCastInput.End = destination;
