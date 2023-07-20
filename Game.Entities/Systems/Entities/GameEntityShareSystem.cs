@@ -1176,6 +1176,7 @@ public partial struct GameEntitySharedActionSystem : ISystem
             double time,
             in Entity entity,
             in Entity target,
+            in RigidTransform transform,
             in GameActionData data)
         {
             if (!Check(data.index, data.version, (float)(time - data.time), data.entity))
@@ -1215,11 +1216,13 @@ public partial struct GameEntitySharedActionSystem : ISystem
                     {
                         if(!isDestinationTransformed)
                         {
-                            isDestinationTransformed = true;
+                            isDestinationTransformed = __GetTransform(target, out destaintionTransform);
+                            if (!isDestinationTransformed)
+                            {
+                                isDestinationTransformed = true;
 
-                            destaintionTransform = math.RigidTransform(
-                                rotations.HasComponent(target) ? rotations[target].Value : quaternion.identity,
-                                translations.HasComponent(target) ? translations[target].Value : float3.zero);
+                                destaintionTransform = transform;
+                            }
                         }
 
                         command.instance.transform = destaintionTransform;
@@ -1229,11 +1232,13 @@ public partial struct GameEntitySharedActionSystem : ISystem
                     {
                         if (!isSourceTransformed)
                         {
-                            isSourceTransformed = true;
+                            isSourceTransformed = __GetTransform(data.entity, out sourceTransform);
+                            if (!isSourceTransformed)
+                            {
+                                isSourceTransformed = true;
 
-                            sourceTransform = math.RigidTransform(
-                                rotations.HasComponent(data.entity) ? rotations[data.entity].Value : quaternion.identity,
-                                translations.HasComponent(data.entity) ? translations[data.entity].Value : float3.zero);
+                                sourceTransform = transform;
+                            }
                         }
 
                         command.instance.transform = sourceTransform;
@@ -1290,12 +1295,11 @@ public partial struct GameEntitySharedActionSystem : ISystem
                         {
                             if (!isSourceTransformed)
                             {
-                                isSourceTransformed = true;
+                                isSourceTransformed = __GetTransform(data.entity, out sourceTransform);
 
-                                sourceTransform = math.mul(math.inverse(math.RigidTransform(
-                                    rotations.HasComponent(data.entity) ? rotations[data.entity].Value : quaternion.identity,
-                                    translations.HasComponent(data.entity) ? translations[data.entity].Value : float3.zero)),
-                                    transform);
+                                sourceTransform = isSourceTransformed ? math.mul(math.inverse(sourceTransform), transform) : RigidTransform.identity;
+
+                                isSourceTransformed = true;
                             }
 
                             command.instance.transform = sourceTransform;
@@ -1369,12 +1373,11 @@ public partial struct GameEntitySharedActionSystem : ISystem
                             {
                                 if (!isDestinationTransformed)
                                 {
-                                    isDestinationTransformed = true;
+                                    isDestinationTransformed = __GetTransform(target, out destinationTranform);
 
-                                    destinationTranform = math.mul(math.inverse(math.RigidTransform(
-                                        rotations.HasComponent(target) ? rotations[target].Value : quaternion.identity,
-                                        translations.HasComponent(target) ? translations[target].Value : float3.zero)),
-                                        transform);
+                                    destinationTranform = isDestinationTransformed ? math.mul(math.inverse(destinationTranform), transform) : RigidTransform.identity;
+
+                                    isDestinationTransformed = true;
                                 }
 
                                 command.instance.transform = destinationTranform;
@@ -1390,12 +1393,11 @@ public partial struct GameEntitySharedActionSystem : ISystem
                             {
                                 if (!isSourceTransformed)
                                 {
-                                    isSourceTransformed = true;
+                                    isSourceTransformed = __GetTransform(data.entity, out sourceTransform);
 
-                                    sourceTransform = math.mul(math.inverse(math.RigidTransform(
-                                        rotations.HasComponent(data.entity) ? rotations[data.entity].Value : quaternion.identity,
-                                        translations.HasComponent(data.entity) ? translations[data.entity].Value : float3.zero)),
-                                        transform);
+                                    sourceTransform = isSourceTransformed ? math.mul(math.inverse(sourceTransform), transform) : RigidTransform.identity;
+
+                                    isSourceTransformed = true;
                                 }
 
                                 command.instance.transform = sourceTransform;
@@ -1473,8 +1475,6 @@ public partial struct GameEntitySharedActionSystem : ISystem
                         {
                             if(!isDestinationTransformed)
                             {
-                                isDestinationTransformed = true;
-
                                 if (!isTransformed)
                                 {
                                     isTransformed = true;
@@ -1482,10 +1482,11 @@ public partial struct GameEntitySharedActionSystem : ISystem
                                     transform = math.RigidTransform(quaternion.LookRotationSafe(-normal, up), position);
                                 }
 
-                                destinationTranform = math.mul(math.inverse(math.RigidTransform(
-                                    rotations.HasComponent(target) ? rotations[target].Value : quaternion.identity,
-                                    translations.HasComponent(target) ? translations[target].Value : float3.zero)), 
-                                    transform);
+                                isDestinationTransformed = __GetTransform(target, out destinationTranform);
+
+                                destinationTranform = isDestinationTransformed ? math.mul(math.inverse(destinationTranform), transform) : RigidTransform.identity;
+
+                                isDestinationTransformed = true;
                             }
 
                             command.instance.transform = destinationTranform;
@@ -1501,8 +1502,6 @@ public partial struct GameEntitySharedActionSystem : ISystem
                         {
                             if (!isSourceTransformed)
                             {
-                                isSourceTransformed = true;
-
                                 if (!isTransformed)
                                 {
                                     isTransformed = true;
@@ -1510,10 +1509,12 @@ public partial struct GameEntitySharedActionSystem : ISystem
                                     transform = math.RigidTransform(quaternion.LookRotationSafe(-normal, up), position);
                                 }
 
-                                sourceTransform = math.mul(math.inverse(math.RigidTransform(
-                                    rotations.HasComponent(data.entity) ? rotations[data.entity].Value : quaternion.identity,
-                                    translations.HasComponent(data.entity) ? translations[data.entity].Value : float3.zero)),
-                                    transform);
+                                isSourceTransformed = __GetTransform(data.entity, out sourceTransform);
+
+                                sourceTransform = isSourceTransformed ? math.mul(math.inverse(sourceTransform), transform) : RigidTransform.identity;
+
+                                isSourceTransformed = true;
+
                             }
 
                             command.instance.transform = sourceTransform;
@@ -1547,6 +1548,22 @@ public partial struct GameEntitySharedActionSystem : ISystem
             in RigidTransform transform,
             in GameActionData data)
         {
+        }
+
+        private bool __GetTransform(in Entity entity, out RigidTransform transform)
+        {
+            if (!translations.HasComponent(entity))
+            {
+                transform = RigidTransform.identity;
+
+                return false;
+            }
+
+            transform = math.RigidTransform(
+                    rotations.HasComponent(entity) ? rotations[entity].Value : quaternion.identity,
+                    translations[entity].Value);
+
+            return true;
         }
     }
     

@@ -360,6 +360,7 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
             double time,
             in Entity entity,
             in Entity target,
+            in RigidTransform transform, 
             in GameActionData data)
         {
             return false;

@@ -47,10 +47,15 @@ public struct GameFootstepDefinition
             uint layerMask, 
             float speed, 
             in DynamicBuffer<AnimatorControllerParameter> parameterValues, 
-            ref BlobArray<AnimatorControllerDefinition.Parameter> parameterKeys)
+            ref BlobArray<AnimatorControllerDefinition.Parameter> parameterKeys, 
+            out float weight)
         {
             if ((this.layerMask & layerMask) == 0)
+            {
+                weight = 0.0f;
+
                 return false;
+            }
 
             float targetSpeed = speed;
             if (!StringHash.IsNullOrEmpty(speedParamter))
@@ -59,6 +64,8 @@ public struct GameFootstepDefinition
                 if (paramterIndex != -1)
                     targetSpeed = parameterKeys[paramterIndex].GetFloat(paramterIndex, parameterValues);
             }
+
+            weight = math.smoothstep(minSpeed, maxSpeed, targetSpeed);
 
             return minSpeed <= targetSpeed && (minSpeed >= maxSpeed || maxSpeed > targetSpeed);
         }
@@ -382,7 +389,7 @@ public partial struct GameFootstepSystem : ISystem
                                     if (!animatorControllerParameters.IsCreated)
                                         animatorControllerParameters = this.animatorControllerParameters[entity];
 
-                                    if (tag.Check(layerMask, speed, animatorControllerParameters, ref animatorControllerDefinition.parameters))
+                                    if (tag.Check(layerMask, speed, animatorControllerParameters, ref animatorControllerDefinition.parameters, out result.weight))
                                     {
                                         if (StringHash.IsNullOrEmpty(tag.eventType))
                                         {
@@ -399,7 +406,7 @@ public partial struct GameFootstepSystem : ISystem
 
                                             result.state = tag.state;
                                             result.type = tag.eventType;
-                                            result.weight = math.smoothstep(tag.minSpeed, tag.maxSpeed, speed);
+                                            //result.weight = math.smoothstep(tag.minSpeed, tag.maxSpeed, speed);
 
                                             results.Add(result);
                                         }
@@ -581,7 +588,7 @@ public partial struct GameFootstepSystem : ISystem
                                             if (!animatorControllerParameters.IsCreated)
                                                 animatorControllerParameters = this.animatorControllerParameters[entity];
 
-                                            if (tag.Check(layerMask, speed, animatorControllerParameters, ref animatorControllerDefinition.parameters))
+                                            if (tag.Check(layerMask, speed, animatorControllerParameters, ref animatorControllerDefinition.parameters, out _))
                                             {
                                                 tagResult.scale = 1.0f + tag.scale + (int)math.round(tag.scalePerSpeed * speed);
 

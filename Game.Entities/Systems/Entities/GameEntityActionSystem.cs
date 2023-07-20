@@ -624,20 +624,27 @@ public struct GameEntityActionSystemCore
             var rigidbody = rigidbodies[rigidbodyIndex];
             var transform = rigidbody.WorldFromBody;// math.RigidTransform(rotations[index].Value, translations[index].Value);
 
-            double time = now;
             var instance = instances[index];
             var instanceEx = instancesEx[index];
+
+            double time = now, damageTime = instance.time + instanceEx.info.damageTime,
+                maxDamageTime = damageTime + instanceEx.info.duration,
+                actorMoveStartTime = instance.time + instanceEx.info.actorMoveStartTime,
+                actorMoveTime = actorMoveStartTime + instanceEx.info.actorMoveDuration,
+                maxTime = math.max(actorMoveTime, maxDamageTime),
+                oldTime = time - deltaTime;
             if ((value & GameActionStatus.Status.Created) != GameActionStatus.Status.Created &&
                 (handler.Create(
                         index,
                         time,
                         entity,
                         instanceEx.target,
+                        instanceEx.transform, 
                         instance) ||
                         (value & GameActionStatus.Status.Damage) == GameActionStatus.Status.Damage &&
                         handler.Init(
                         index,
-                        instanceEx.info.damageTime,
+                        (float)(maxTime > oldTime ? oldTime - instance.time : maxTime - instance.time),
                         time,
                         entity,
                         transform,
@@ -646,9 +653,6 @@ public struct GameEntityActionSystemCore
 
             bool isSourceTransform = false;
             //float actorMoveDistance = 0.0f;
-            double oldTime = time - deltaTime,
-                actorMoveStartTime = instance.time + instanceEx.info.actorMoveStartTime,
-                actorMoveTime = actorMoveStartTime + instanceEx.info.actorMoveDuration;
             RigidTransform sourceTransform = RigidTransform.identity;
             if (actorMoveStartTime <= time && oldTime < actorMoveTime)
             {
@@ -713,16 +717,6 @@ public struct GameEntityActionSystemCore
                 }
             }
 
-            /*if (instance.time + instanceEx.info.performTime <= time)
-            {
-                if ((value & GameActionStatus.Status.Perform) == GameActionStatus.Status.Perform)
-                    value |= GameActionStatus.Status.Performed;
-                else
-                    value |= GameActionStatus.Status.Perform;
-            }*/
-
-            double damageTime = instance.time + instanceEx.info.damageTime, maxDamageTime = damageTime + instanceEx.info.duration;
-            double maxTime = math.max(actorMoveTime, maxDamageTime);
             float elapsedTime;
             if (maxTime > time)
                 elapsedTime = (float)(time - instance.time);
@@ -732,6 +726,13 @@ public struct GameEntityActionSystemCore
 
                 value |= GameActionStatus.Status.Destroied;
             }
+            /*if (instance.time + instanceEx.info.performTime <= time)
+            {
+                if ((value & GameActionStatus.Status.Perform) == GameActionStatus.Status.Perform)
+                    value |= GameActionStatus.Status.Performed;
+                else
+                    value |= GameActionStatus.Status.Perform;
+            }*/
 
             if (damageTime <= time && oldTime < maxDamageTime)
             {
@@ -788,7 +789,7 @@ public struct GameEntityActionSystemCore
                         instanceEx.info.damageTime,
                         time,
                         entity,
-                        transform,
+                        instanceEx.transform,
                         instance))
                         value |= GameActionStatus.Status.Managed;
 
@@ -921,24 +922,22 @@ public struct GameEntityActionSystemCore
                                 instanceEx.target != Entity.Null && !disabled.HasComponent(instanceEx.target));
                             if (isDirty)
                             {
-                                int sourceRigidbodyIndex = collisionWorld.GetRigidBodyIndex(instance.entity);
-                                if (sourceRigidbodyIndex == -1)
+                                if (!isSourceTransform)
                                 {
-                                    result = transform;
-
-                                    isDirty = false;
-                                }
-                                else
-                                {
-                                    if (isSourceTransform)
-                                        result = sourceTransform;
-                                    else
+                                    int sourceRigidbodyIndex = collisionWorld.GetRigidBodyIndex(instance.entity);
+                                    if (sourceRigidbodyIndex != -1)
                                     {
-                                        var sourceRigidbody = rigidbodies[sourceRigidbodyIndex];
+                                        sourceTransform = rigidbodies[sourceRigidbodyIndex].WorldFromBody;
+                                        //result.pos = math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.actorOffset);
 
-                                        result.rot = sourceRigidbody.WorldFromBody.rot;
-                                        result.pos = math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.actorOffset);
+                                        isSourceTransform = true;
                                     }
+                                }
+
+                                if(isSourceTransform)
+                                {
+                                    result.rot = sourceTransform.rot;
+                                    result.pos = math.transform(sourceTransform, instanceEx.value.offset);
 
                                     var surfaceRotation = surfaces.HasComponent(instance.entity) ? surfaces[instance.entity].rotation : quaternion.identity;
                                     if (directs.HasComponent(instance.entity))
@@ -989,6 +988,12 @@ public struct GameEntityActionSystemCore
                                             isRotationDirty = true;
                                         }
                                     }
+                                }
+                                else
+                                {
+                                    result = transform;
+
+                                    isDirty = false;
                                 }
                             }
                             else

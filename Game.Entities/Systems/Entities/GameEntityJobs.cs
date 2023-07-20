@@ -18,6 +18,7 @@ public interface IGameEntityActionHandler
         double time,
         in Entity entity,
         in Entity target,
+        in RigidTransform transform,
         in GameActionData instance);
 
     bool Init(

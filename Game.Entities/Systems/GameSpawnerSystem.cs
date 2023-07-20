@@ -9,8 +9,8 @@ using ZG;
 [assembly: RegisterGenericJobType(typeof(TimeManager<Entity>.Clear))]
 [assembly: RegisterGenericJobType(typeof(TimeManager<Entity>.UpdateEvents))]
 
-[/*AlwaysUpdateSystem, */UpdateInGroup(typeof(TimeSystemGroup)), UpdateAfter(typeof(GameSyncSystemGroup))]
-public partial class GameSpawnerTimeSystem : SystemBase
+[BurstCompile, CreateAfter(typeof(EndFrameStructChangeSystem))]//, /*AlwaysUpdateSystem, */UpdateInGroup(typeof(TimeSystemGroup)), UpdateAfter(typeof(GameSyncSystemGroup))]
+public partial struct GameSpawnerTimeSystem : ISystem
 {
     private struct Init
     {
@@ -35,7 +35,7 @@ public partial class GameSpawnerTimeSystem : SystemBase
 
         public NativeQueue<TimeEvent<Entity>>.ParallelWriter timeEvents;
 
-        public EntityCommandQueue<EntityData<GameSpawnedInstanceInfo>>.ParallelWriter entityManager;
+        public EntityAddDataQueue.ParallelWriter entityManager;
 
         public void Execute(int index)
         {
@@ -69,10 +69,9 @@ public partial class GameSpawnerTimeSystem : SystemBase
                 }
             }
 
-            EntityData<GameSpawnedInstanceInfo> result;
-            result.entity = entity;
-            result.value.time = time;
-            entityManager.Enqueue(result);
+            GameSpawnedInstanceInfo result;
+            result.time = time;
+            entityManager.AddComponentData(entity, result);
         }
     }
 
@@ -100,7 +99,7 @@ public partial class GameSpawnerTimeSystem : SystemBase
 
         public NativeQueue<TimeEvent<Entity>>.ParallelWriter timeEvents;
 
-        public EntityCommandQueue<EntityData<GameSpawnedInstanceInfo>>.ParallelWriter entityManager;
+        public EntityAddDataQueue.ParallelWriter entityManager;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -242,11 +241,30 @@ public partial class GameSpawnerTimeSystem : SystemBase
         }
     }
 
-    public int innerloopBatchCount = 32;
+    public static readonly int InnerloopBatchCount = 32;
 
     private EntityQuery __groupToInit;
     private EntityQuery __groupToCount;
-    private EntityCommandPool<EntityData<GameSpawnedInstanceInfo>> __entityManager;
+
+    private EntityTypeHandle __entityType;
+
+    private BufferLookup<GameSpawnerAssetCounter> __counters;
+
+    private ComponentTypeHandle<GameOwner> __ownerType;
+
+    private ComponentTypeHandle<GameSpawnedInstanceData> __instanceType;
+
+    private ComponentTypeHandle<GameActorMaster> __masterType;
+
+    private ComponentLookup<GameNodeStatus> __states;
+
+    private ComponentLookup<GameSpawnedInstanceData> __instances;
+
+    private BufferTypeHandle<GameFollower> __followerType;
+
+    private BufferTypeHandle<GameSpawnerAssetCounter> __counterType;
+
+    private EntityAddDataPool __entityManager;
 
     private TimeManager<Entity> __timeManager;
 
@@ -258,45 +276,46 @@ public partial class GameSpawnerTimeSystem : SystemBase
         __assets = new NativeArray<GameSpawnerAsset>(assets, Allocator.Persistent);
     }
 
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __groupToInit = builder
+                    .WithAll<GameSpawnedInstanceData, GameOwner>()
+                    .WithNone<GameSpawnedInstanceInfo>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
 
-        __groupToInit = GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameSpawnedInstanceData>(), ComponentType.ReadOnly<GameOwner>()
-                },
-                None = new ComponentType[]
-                {
-                    typeof(GameSpawnedInstanceInfo)
-                }, 
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
-        __groupToInit.SetChangedVersionFilter(typeof(GameOwner));
+        __groupToInit.SetChangedVersionFilter(ComponentType.ReadOnly<GameOwner>());
 
-        __groupToCount = GetEntityQuery(new EntityQueryDesc()
-        {
-            All = new ComponentType[]
-            {
-                ComponentType.ReadOnly<GameFollower>(), 
-                ComponentType.ReadWrite<GameSpawnerAssetCounter>()
-            },
-            Options = EntityQueryOptions.IncludeDisabledEntities
-        });
-        __groupToCount.SetChangedVersionFilter(typeof(GameFollower));
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __groupToCount = builder
+                    .WithAll<GameFollower>()
+                    .WithAllRW<GameSpawnerAssetCounter>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
+        __groupToCount.SetChangedVersionFilter(ComponentType.ReadOnly<GameFollower>());
 
-        World world = World;
-        __entityManager = world.GetOrCreateSystemManaged<EndTimeSystemGroupEntityCommandSystem>().CreateAddComponentDataCommander<GameSpawnedInstanceInfo>();
+        __entityType = state.GetEntityTypeHandle();
+        __counters = state.GetBufferLookup<GameSpawnerAssetCounter>(true);
+        __ownerType = state.GetComponentTypeHandle<GameOwner>(true);
+        __instanceType = state.GetComponentTypeHandle<GameSpawnedInstanceData>(true);
+        __masterType = state.GetComponentTypeHandle<GameActorMaster>();
+        __states = state.GetComponentLookup<GameNodeStatus>();
+
+        __instances = state.GetComponentLookup<GameSpawnedInstanceData>(true);
+        __followerType = state.GetBufferTypeHandle<GameFollower>(true);
+        __counterType = state.GetBufferTypeHandle<GameSpawnerAssetCounter>();
+
+        __entityManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<EndFrameStructChangeSystem>().addDataPool;//GetOrCreateSystemManaged<EndTimeSystemGroupEntityCommandSystem>().CreateAddComponentDataCommander<GameSpawnedInstanceInfo>();
 
         __timeManager = new TimeManager<Entity>(Allocator.Persistent);
 
         __timeEvents = new NativeQueue<TimeEvent<Entity>>(Allocator.Persistent);
     }
 
-    protected override void OnDestroy()
+    //[BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
         if (__assets.IsCreated)
             __assets.Dispose();
@@ -304,30 +323,32 @@ public partial class GameSpawnerTimeSystem : SystemBase
         __timeManager.Dispose();
 
         __timeEvents.Dispose();
-
-        base.OnDestroy();
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
         if (!__assets.IsCreated)
             return;
 
         var entityManager = __entityManager.Create();
 
-        double time = World.Time.ElapsedTime;
+        double time = state.WorldUnmanaged.Time.ElapsedTime;
+
+        var entityCount = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
+        var inputDeps = __groupToInit.CalculateEntityCountAsync(entityCount, state.Dependency);
 
         InitEx init;
         init.time = time;
         init.assets = __assets;
-        init.entityType = GetEntityTypeHandle();
-        init.ownerType = GetComponentTypeHandle<GameOwner>(true);
-        init.counters = GetBufferLookup<GameSpawnerAssetCounter>(true);
-        init.instanceType = GetComponentTypeHandle<GameSpawnedInstanceData>(true);
-        init.masterType = GetComponentTypeHandle<GameActorMaster>();
+        init.entityType = __entityType.UpdateAsRef(ref state);
+        init.ownerType = __ownerType.UpdateAsRef(ref state);
+        init.counters = __counters.UpdateAsRef(ref state);
+        init.instanceType = __instanceType.UpdateAsRef(ref state);
+        init.masterType = __masterType.UpdateAsRef(ref state);
         init.timeEvents = __timeEvents.AsParallelWriter();
-        init.entityManager = entityManager.parallelWriter;
-        var inputDeps = init.ScheduleParallel(__groupToInit, Dependency);
+        init.entityManager = entityManager.AsComponentParallelWriter<GameSpawnedInstanceInfo>(entityCount, ref inputDeps);
+        inputDeps = init.ScheduleParallelByRef(__groupToInit, inputDeps);
 
         entityManager.AddJobHandleForProducer<InitEx>(inputDeps);
 
@@ -341,18 +362,20 @@ public partial class GameSpawnerTimeSystem : SystemBase
 
         Die die;
         die.entities = __timeManager.values;
-        die.states = GetComponentLookup<GameNodeStatus>();
-        jobHandle = __timeManager.ScheduleParallel(ref die, innerloopBatchCount, jobHandle);
+        die.states = __states.UpdateAsRef(ref state);
+        jobHandle = __timeManager.ScheduleParallel(ref die, InnerloopBatchCount, jobHandle);
 
         jobHandle = __timeManager.Flush(jobHandle);
 
         CountEx count;
         count.assets = __assets;
-        count.instances = GetComponentLookup<GameSpawnedInstanceData>(true);
-        count.followerType = GetBufferTypeHandle<GameFollower>(true);
-        count.counterType = GetBufferTypeHandle<GameSpawnerAssetCounter>();
-        inputDeps = count.ScheduleParallel(__groupToCount, inputDeps);
+        count.instances = __instances.UpdateAsRef(ref state);
+        count.followerType = __followerType.UpdateAsRef(ref state);
+        count.counterType = __counterType.UpdateAsRef(ref state);
 
-        Dependency = JobHandle.CombineDependencies(jobHandle, inputDeps);
+        state.Dependency = JobHandle.CombineDependencies(
+            count.ScheduleParallelByRef(__groupToCount, inputDeps),
+            entityCount.Dispose(inputDeps), 
+            jobHandle);
     }
 }

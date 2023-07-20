@@ -28,11 +28,16 @@ public class GameFootstepDatabase : ScriptableObject, ISerializationCallbackRece
         [Tooltip("根据速度来缩放粒子，与常规缩放叠加")]
         public float scalePerSpeed;
 
+        [Tooltip("根据速度来发射对应数量的粒子")]
         public float countPerSpeed;
 
+        [Tooltip("最小速度限制，在速度限制范围内该项才生效")]
         public float minSpeed;
+
+        [Tooltip("最大速度限制，在速度限制范围内该项才生效")]
         public float maxSpeed;
 
+        [Tooltip("填写后从Animator里提取Speed参数，否则根据动画Y轴速度自动计算")]
         public string animatorControllerSpeedParameter;
 
         public void ToAsset(ref GameFootstepDefinition.Tag tag)
