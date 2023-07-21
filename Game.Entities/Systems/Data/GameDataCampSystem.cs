@@ -345,7 +345,7 @@ public struct GameCampManagerShared
 }
 
 [AutoCreateIn("Server"), BurstCompile, CreateAfter(typeof(EndFrameStructChangeSystem)), UpdateInGroup(typeof(GameDataSystemGroup))]
-public partial struct GameCampSystem : ISystem
+public partial struct GameDataCampSystem : ISystem
 {
     private struct Serialize
     {
@@ -458,7 +458,7 @@ public partial struct GameCampSystem : ISystem
 
 [BurstCompile,
     EntityDataSerializationSystem(typeof(GameCampManager)),
-    CreateAfter(typeof(GameCampSystem)),
+    CreateAfter(typeof(GameDataCampSystem)),
     CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
     UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
 public partial struct GameDataCampSerializationContainerSystem : ISystem
@@ -471,7 +471,7 @@ public partial struct GameDataCampSerializationContainerSystem : ISystem
     {
         __typeHandle = EntityDataSerializationUtility.GetTypeHandle(ref state);
 
-        __manager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameCampSystem>().manager;
+        __manager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameDataCampSystem>().manager;
     }
 
     [BurstCompile]
@@ -529,7 +529,7 @@ public partial class GameDataCampDeserializationSystem : EntityDataDeserializati
     {
         base.OnCreate();
 
-        __manager = World.GetOrCreateSystemUnmanaged<GameCampSystem>().manager;
+        __manager = World.GetOrCreateSystemUnmanaged<GameDataCampSystem>().manager;
     }
 
     protected override void OnUpdate()

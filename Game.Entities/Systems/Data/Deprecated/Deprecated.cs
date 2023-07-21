@@ -1,10 +1,7 @@
-using System;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Burst;
-using Unity.Burst.Intrinsics;
 using Unity.Jobs;
-using ZG;
 
 [assembly: RegisterGenericJobType(typeof(GameItemComponentDataSyncInit<GameLevel, GameItemLevel, GameItemLevelSyncInitSystem.Converter, GameItemLevelSyncInitSystem.Factory>))]
 [assembly: RegisterGenericJobType(typeof(GameItemComponentDataSyncApply<GameLevel, GameItemLevel, GameItemLevelSyncApplySystem.Converter, GameItemLevelSyncApplySystem.Factory>))]
@@ -15,31 +12,26 @@ using ZG;
 [assembly: RegisterGenericJobType(typeof(GameItemComponentDataSyncInit<GamePower, GameItemPower, GameItemPowerSyncInitSystem.Converter, GameItemPowerSyncInitSystem.Factory>))]
 [assembly: RegisterGenericJobType(typeof(GameItemComponentDataSyncApply<GamePower, GameItemPower, GameItemPowerSyncApplySystem.Converter, GameItemPowerSyncApplySystem.Factory>))]
 
-[Serializable]
 public struct GameVariant : IComponentData
 {
     public int value;
 }
 
-[Serializable]
 public struct GameNickname : IComponentData
 {
     public FixedString128Bytes value;
 }
 
-[Serializable]
 public struct GameLevel : IComponentData
 {
     public int handle;
 }
 
-[Serializable]
 public struct GameExp : IComponentData
 {
     public float value;
 }
 
-[Serializable]
 public struct GamePower : IComponentData
 {
     public float value;

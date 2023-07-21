@@ -12,9 +12,53 @@ public enum GameDataConstans
     BuiltInCamps = 32,
 }
 
-[AutoCreateIn("Server"), UpdateInGroup(typeof(InitializationSystemGroup)), UpdateBefore(typeof(GameItemInitSystemGroup))]
-public partial class GameDataSystemGroup : ComponentSystemGroup
+public struct GameDataCommon : IComponentData
 {
+    public FixedString4096Bytes path;
+}
+
+[AutoCreateIn("Server"), UpdateInGroup(typeof(InitializationSystemGroup)), UpdateBefore(typeof(GameItemInitSystemGroup))]
+public partial struct GameDataSystemGroup : ISystem
+{
+    private SystemGroup __systemGroup;
+    private NativeArray<Hash128> __types;
+
+    public static void Activate(World world, string path, Hash128[] types)
+    {
+        var systemHandle = world.GetOrCreateSystem<GameDataSystemGroup>();
+
+        ref var systemGroup = ref world.Unmanaged.GetUnsafeSystemRef<GameDataSystemGroup>(systemHandle);
+
+        systemGroup.__types = new NativeArray<Hash128>(types, Allocator.Persistent);
+
+        var entityManager = world.EntityManager;
+
+        EntityDataCommon entityDatacommon;
+        entityDatacommon.typesGUIDs = systemGroup.__types.AsReadOnly();
+        entityManager.AddComponentData(systemHandle, entityDatacommon);
+
+        GameDataCommon gameDataCommon;
+        gameDataCommon.path = Path.Combine(UnityEngine.Application.persistentDataPath, path);
+        entityManager.AddComponentData(systemHandle, gameDataCommon);
+    }
+
+    public void OnCreate(ref SystemState state)
+    {
+        __systemGroup = SystemGroupUtility.GetOrCreateSystemGroup(state.World, typeof(GameDataSystemGroup));
+    }
+
+    public void OnDestroy(ref SystemState state)
+    {
+        //__systemGroup.Dispose();
+        if (__types.IsCreated)
+            __types.Dispose();
+    }
+
+    public void OnUpdate(ref SystemState state)
+    {
+        var world = state.WorldUnmanaged;
+        __systemGroup.Update(ref world);
+    }
 }
 
 //BeginFrameEntityCommandSystem 为了在GameItemEntitySystem之前
@@ -27,7 +71,6 @@ public partial class GameDataDeserializationSystemGroup : EntityDataDeserializat
 {
     private string __filePath;
     private EntityDataDeserializationCommander __commander;
-    private NativeArray<Hash128> __types;
 
     public bool isDone => path != null && !Enabled;
 
@@ -38,23 +81,10 @@ public partial class GameDataDeserializationSystemGroup : EntityDataDeserializat
         private set;
     }
 
-    public override NativeArray<Hash128> types => __types;
+    public override NativeArray<Hash128>.ReadOnly types => SystemAPI.GetSingleton<EntityDataCommon>().typesGUIDs;
 
-    public bool Activate(string path, EntityDataDeserializationCommander commander, Hash128[] types, ref Entity entity)
+    public bool Activate(string path, EntityDataDeserializationCommander commander/*, Hash128[] types, ref Entity entity*/)
     {
-        if (__types.IsCreated)
-            __types.Dispose();
-
-        __types = new NativeArray<Hash128>(types, Allocator.Persistent);
-
-        var entityManager = EntityManager;
-        if (!entityManager.HasComponent<EntityDataCommon>(entity))
-            entityManager.AddComponent<EntityDataCommon>(entity);
-
-        EntityDataCommon common;
-        common.typesGUIDs = __types.AsReadOnly();
-        EntityManager.SetComponentData(entity, common);
-
         path = Path.Combine(UnityEngine.Application.persistentDataPath, path);
         this.path = path;
         if (!File.Exists(path))
@@ -87,14 +117,6 @@ public partial class GameDataDeserializationSystemGroup : EntityDataDeserializat
         base.OnCreate();
 
         Enabled = false;
-    }
-
-    protected override void OnDestroy()
-    {
-        if (__types.IsCreated)
-            __types.Dispose();
-
-        base.OnDestroy();
     }
 
     protected override byte[] _GetBytes()

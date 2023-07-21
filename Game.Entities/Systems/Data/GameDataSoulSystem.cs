@@ -59,6 +59,7 @@ public struct GameSoulTypeWrapper : IEntityDataIndexReadWriteWrapper<GameSoul>
 public partial struct GameDataSoulSerializationInitSystem : ISystem
 {
     private EntityQuery __group;
+    private EntityQuery __commonGroup;
     private BufferTypeHandle<GameSoul> __instanceType;
 
     private SharedList<Hash128> __typeGUIDs;
@@ -72,6 +73,8 @@ public partial struct GameDataSoulSerializationInitSystem : ISystem
                     .WithAll<GameSoul, EntityDataIdentity, EntityDataSerializable>()
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
+
+        __commonGroup = EntityDataCommon.GetEntityQuery(ref state);
 
         __instanceType = state.GetBufferTypeHandle<GameSoul>(true);
 
@@ -100,7 +103,7 @@ public partial struct GameDataSoulSerializationInitSystem : ISystem
         GameSoulTypeWrapper wrapper;
         var jobHandle = EntityDataIndexBufferUtility<GameSoul, GameSoulTypeWrapper>.Schedule(
             __group,
-            SystemAPI.GetSingleton<EntityDataCommon>().typesGUIDs,
+            __commonGroup.GetSingleton<EntityDataCommon>().typesGUIDs,
             __instanceType.UpdateAsRef(ref state),
             ref typeGUIDIndicesWriter,
             ref typeGUIDsWriter,
@@ -280,7 +283,7 @@ public partial class GameDataSoulDeserializationSystem : EntityDataDeserializati
         public NativeArray<int> levelIndices;
 
         [ReadOnly]
-        public NativeArray<Hash128> typeInputs;
+        public NativeArray<Hash128>.ReadOnly typeInputs;
 
         [ReadOnly]
         public NativeArray<Hash128> typeOuputs;
@@ -319,7 +322,7 @@ public partial class GameDataSoulDeserializationSystem : EntityDataDeserializati
         public NativeArray<int> levelIndices;
 
         [ReadOnly]
-        public NativeArray<Hash128> typeInputs;
+        public NativeArray<Hash128>.ReadOnly typeInputs;
 
         [ReadOnly]
         public NativeArray<Hash128> typeOuputs;

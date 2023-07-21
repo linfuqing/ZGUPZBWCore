@@ -312,7 +312,7 @@ public struct GameIDManagerShared
 }
 
 [BurstCompile, AutoCreateIn("Server")]
-public partial struct GameIDSystem : ISystem
+public partial struct GameDataIDSystem : ISystem
 {
     public GameIDManagerShared manager
     {
@@ -343,7 +343,7 @@ public partial struct GameIDSystem : ISystem
 
 [BurstCompile,
     EntityDataSerializationSystem(typeof(GameIDManager)),
-    CreateAfter(typeof(GameIDSystem)),
+    CreateAfter(typeof(GameDataIDSystem)),
     CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
     UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
 public partial struct GameDataIDSerializationContainerSystem : ISystem
@@ -361,7 +361,7 @@ public partial struct GameDataIDSerializationContainerSystem : ISystem
 
         __entityIndices = world.GetExistingSystemUnmanaged<EntityDataSerializationInitializationSystem>().entityIndices;
 
-        __manager = world.GetExistingSystemUnmanaged<GameIDSystem>().manager;
+        __manager = world.GetExistingSystemUnmanaged<GameDataIDSystem>().manager;
     }
 
     [BurstCompile]
@@ -397,7 +397,7 @@ public partial class GameDataIDDeserializationSystem : EntityDataDeserialization
     {
         base.OnCreate();
 
-        __manager = World.GetOrCreateSystemUnmanaged<GameIDSystem>().manager;
+        __manager = World.GetOrCreateSystemUnmanaged<GameDataIDSystem>().manager;
     }
 
     protected override void OnUpdate()
