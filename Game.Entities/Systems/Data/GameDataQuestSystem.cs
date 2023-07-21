@@ -41,9 +41,9 @@ public struct GameQuestWrapper : IEntityDataIndexReadWriteWrapper<GameQuest>
         data.index = index;
     }
 
-    public void Serialize(ref EntityDataWriter writer, in GameQuest data, int guidIndex)
+    public void Serialize(ref EntityDataWriter writer, in GameQuest data, in SharedHashMap<int, int>.Reader guidIndices)
     {
-        EntityDataIndexReadWriteWrapperUtility.Serialize(ref this, ref writer, data, guidIndex);
+        EntityDataIndexReadWriteWrapperUtility.Serialize(ref this, ref writer, data, guidIndices);
     }
 
     public GameQuest Deserialize(ref EntityDataReader reader, in NativeArray<int>.ReadOnly indices)

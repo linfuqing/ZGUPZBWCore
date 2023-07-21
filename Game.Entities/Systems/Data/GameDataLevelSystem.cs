@@ -60,9 +60,9 @@ public struct GameLevelWrapper : IEntityDataIndexReadWriteWrapper<GameLevel>
         data.handle = index + 1;
     }
 
-    public void Serialize(ref EntityDataWriter writer, in GameLevel data, int guidIndex)
+    public void Serialize(ref EntityDataWriter writer, in GameLevel data, in SharedHashMap<int, int>.Reader guidIndices)
     {
-        EntityDataIndexReadWriteWrapperUtility.Serialize(ref this, ref writer, data, guidIndex);
+        EntityDataIndexReadWriteWrapperUtility.Serialize(ref this, ref writer, data, guidIndices);
     }
 
     public GameLevel Deserialize(ref EntityDataReader reader, in NativeArray<int>.ReadOnly indices)
@@ -90,9 +90,9 @@ public struct GameSoulLevelWrapper : IEntityDataIndexReadWriteWrapper<GameSoul>
         data.data.levelIndex = index;
     }
 
-    public void Serialize(ref EntityDataWriter writer, in GameSoul data, int guidIndex)
+    public void Serialize(ref EntityDataWriter writer, in GameSoul data, in SharedHashMap<int, int>.Reader guidIndices)
     {
-        EntityDataIndexReadWriteWrapperUtility.Serialize(ref this, ref writer, data, guidIndex);
+        EntityDataIndexReadWriteWrapperUtility.Serialize(ref this, ref writer, data, guidIndices);
     }
 
     public GameSoul Deserialize(ref EntityDataReader reader, in NativeArray<int>.ReadOnly indices)

@@ -40,9 +40,9 @@ public struct GameSoulTypeWrapper : IEntityDataIndexReadWriteWrapper<GameSoul>
         data.data.type = index;
     }
 
-    public void Serialize(ref EntityDataWriter writer, in GameSoul data, int guidIndex)
+    public void Serialize(ref EntityDataWriter writer, in GameSoul data, in SharedHashMap<int, int>.Reader guidIndices)
     {
-        EntityDataIndexReadWriteWrapperUtility.Serialize(ref this, ref writer, data, guidIndex);
+        EntityDataIndexReadWriteWrapperUtility.Serialize(ref this, ref writer, data, guidIndices);
     }
 
     public GameSoul Deserialize(ref EntityDataReader reader, in NativeArray<int>.ReadOnly indices)

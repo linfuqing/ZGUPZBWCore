@@ -55,7 +55,7 @@ public struct GameDataItemContainer : IComponentData
     public NativeArray<Hash128>.ReadOnly typeGUIDs;
 }
 
-public struct GameItemDataSerializationWrapper : IEntityDataIndexSerializationWrapper<GameItemData>
+public struct GameItemDataSerializationWrapper : IEntityDataIndexReadOnlyWrapper<GameItemData>, IEntityDataIndexSerializationWrapper<GameItemData>
 {
     [ReadOnly]
     public GameItemManager.ReadOnlyInfos infos;
@@ -74,9 +74,9 @@ public struct GameItemDataSerializationWrapper : IEntityDataIndexSerializationWr
         return false;
     }
 
-    public void Serialize(ref EntityDataWriter writer, in GameItemData data, int guidIndex)
+    public void Serialize(ref EntityDataWriter writer, in GameItemData data, in SharedHashMap<int, int>.Reader guidIndices)
     {
-        if (!infos.TryGetValue(data.handle, out var item))
+        if (!infos.TryGetValue(data.handle, out var item) || !guidIndices.TryGetValue(item.type, out int guidIndex))
         {
             UnityEngine.Debug.LogError($"Item Handle {data.handle} Serialize Fail.");
 

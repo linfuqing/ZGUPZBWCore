@@ -37,9 +37,9 @@ public struct GameFormulaWrapper : IEntityDataIndexReadWriteWrapper<GameFormula>
         data.index = index;
     }
 
-    public void Serialize(ref EntityDataWriter writer, in GameFormula data, int guidIndex)
+    public void Serialize(ref EntityDataWriter writer, in GameFormula data, in SharedHashMap<int, int>.Reader guidIndices)
     {
-        EntityDataIndexReadWriteWrapperUtility.Serialize(ref this, ref writer, data, guidIndex);
+        EntityDataIndexReadWriteWrapperUtility.Serialize(ref this, ref writer, data, guidIndices);
     }
 
     public GameFormula Deserialize(ref EntityDataReader reader, in NativeArray<int>.ReadOnly indices)
