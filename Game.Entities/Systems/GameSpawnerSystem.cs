@@ -9,7 +9,7 @@ using ZG;
 [assembly: RegisterGenericJobType(typeof(TimeManager<Entity>.Clear))]
 [assembly: RegisterGenericJobType(typeof(TimeManager<Entity>.UpdateEvents))]
 
-[BurstCompile, CreateAfter(typeof(EndFrameStructChangeSystem))]//, /*AlwaysUpdateSystem, */UpdateInGroup(typeof(TimeSystemGroup)), UpdateAfter(typeof(GameSyncSystemGroup))]
+[BurstCompile, CreateAfter(typeof(EndFrameStructChangeSystem)), UpdateInGroup(typeof(TimeSystemGroup)), UpdateAfter(typeof(GameSyncSystemGroup))]
 public partial struct GameSpawnerTimeSystem : ISystem
 {
     private struct Init
