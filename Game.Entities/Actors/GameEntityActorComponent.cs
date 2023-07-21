@@ -95,20 +95,9 @@ public struct GameEntityAction : ICleanupBufferElementData
 {
     public Entity entity;
 
-    public static implicit operator GameEntityAction(Entity entity)
-    {
-        GameEntityAction action;
-        action.entity = entity;
-        return action;
-    }
-
-    public static implicit operator Entity(GameEntityAction action)
-    {
-        return action.entity;
-    }
-
     public static void Break(
-        in DynamicBuffer<GameEntityAction> entityActions, 
+        in GameDeadline time,
+        in DynamicBuffer<GameEntityAction> entityActions,
         ref ComponentLookup<GameActionStatus> states)
     {
         int length = entityActions.Length;
@@ -116,15 +105,15 @@ public struct GameEntityAction : ICleanupBufferElementData
         GameActionStatus status;
         for (int i = 0; i < length; ++i)
         {
-            entity = entityActions[i];
+            entity = entityActions[i].entity;
             if (!states.HasComponent(entity))
                 continue;
 
             status = states[entity];
-            if ((status.value & GameActionStatus.Status.Damage) == GameActionStatus.Status.Damage ||
-                (status.value & GameActionStatus.Status.Destroy) == GameActionStatus.Status.Destroy)
+            if ((status.value & (GameActionStatus.Status.Damage | GameActionStatus.Status.Destroy)) != 0 && status.time < time)
                 continue;
 
+            status.time = time;
             status.value |= GameActionStatus.Status.Destroy;
 
             states[entity] = status;

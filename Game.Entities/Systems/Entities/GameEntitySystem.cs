@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using Unity.Jobs;
+﻿using Unity.Jobs;
 using Unity.Burst;
 using Unity.Burst.Intrinsics;
 using Unity.Entities;
@@ -9,10 +7,8 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Transforms;
 using Unity.Physics;
-using Unity.Physics.Systems;
 using ZG;
 using Math = ZG.Mathematics.Math;
-using UnityEngine.UIElements;
 
 public struct GameEntityCommandActionCreate
 {
@@ -46,7 +42,7 @@ public partial struct GameEntityActionSystemGroup : ISystem
     }
 }
 
-[BurstCompile, 
+[BurstCompile,
     UpdateInGroup(typeof(GameRollbackSystemGroup)),
     UpdateBefore(typeof(GameNodeSystem)),
     UpdateBefore(typeof(GameEntityActionBeginEntityCommandSystemGroup)),
@@ -324,6 +320,7 @@ public partial struct GameEntityActionBeginFactorySystem : ISystem
             Entity entity;
             Translation translation;
             Rotation rotation;
+            GameEntityAction action;
             GameEntityCommandActionCreate command;
             NativeParallelMultiHashMapIterator<EntityArchetype> iterator;
             for (int i = 0; i < numKeys; ++i)
@@ -333,7 +330,7 @@ public partial struct GameEntityActionBeginFactorySystem : ISystem
                 {
                     do
                     {
-                        entity = entityArray[index++];
+                        action.entity = entity = entityArray[index++];
 
                         translation.Value = command.valueEx.transform.pos;
                         translations[entity] = translation;
@@ -345,7 +342,7 @@ public partial struct GameEntityActionBeginFactorySystem : ISystem
                         instancesEx[entity] = command.valueEx;
 
                         if (actions.HasBuffer(command.value.entity))
-                            actions[command.value.entity].Add(entity);
+                            actions[command.value.entity].Add(action);
 
                     } while (commands.TryGetNextValue(out command, ref iterator));
                 }
@@ -844,7 +841,7 @@ public partial struct GameEntityActorInitSystem : ISystem
     }
 }
 
-[BurstCompile, 
+[BurstCompile,
     CreateAfter(typeof(GamePhysicsWorldBuildSystem)),
     CreateAfter(typeof(GameEntityActionBeginFactorySystem)),
     UpdateInGroup(typeof(GameEntityActorSystemGroup))]
@@ -1090,7 +1087,7 @@ public partial struct GameEntityActorSystem : ISystem
                     if (actorActionInfo.coolDownTime < command.time)
                     {
                         if (index < entityActions.Length)
-                            GameEntityAction.Break(entityActions[index], ref actionStates);
+                            GameEntityAction.Break(command.time, entityActions[index], ref actionStates);
 
                         if (index < this.entityItems.Length)
                         {
@@ -1933,7 +1930,7 @@ public partial struct GameEntityActorSystem : ISystem
 
     private EntityQuery __actionSetGroup;
     private EntityQuery __actionInfoSetGroup;
-    
+
 #if GAME_DEBUG_COMPARSION
     private GameRollbackFrame __frame;
 #endif
@@ -2485,7 +2482,7 @@ public partial struct GameEntityBreakSystem : ISystem
             if (!isAlert || actorInfo.alertTime < command.time)//isAlert ? actorInfo.alertTime < command.time : actorInfo.castingTime > command.time)
             {
                 if (index < entityActions.Length)
-                    GameEntityAction.Break(entityActions[index], ref actionStates);
+                    GameEntityAction.Break(command.time, entityActions[index], ref actionStates);
 
                 ++actorInfo.version;
 
@@ -2557,7 +2554,7 @@ public partial struct GameEntityBreakSystem : ISystem
                     else
                         delayIndex = 0;
 
-                    if(index < hits.Length)
+                    if (index < hits.Length)
                         hits[index] = hit;
                 }
 
@@ -2833,7 +2830,7 @@ public partial struct GameEntityBreakSystem : ISystem
     {
         InterruptEx interrupt;
         interrupt.entityArrayType = __entityArrayType.UpdateAsRef(ref state);
-        interrupt.disabledType = __disabledType.UpdateAsRef(ref state); 
+        interrupt.disabledType = __disabledType.UpdateAsRef(ref state);
         interrupt.nodeStatusType = __nodeStatusType.UpdateAsRef(ref state);
         interrupt.surfaceType = __surfaceType.UpdateAsRef(ref state);
         interrupt.eventInfoType = __eventInfoType.UpdateAsRef(ref state);
@@ -2878,6 +2875,8 @@ public partial struct GameEntityStatusSystem : ISystem
 {
     private struct UpdateCommandVersions
     {
+        public GameDeadline time;
+
         [ReadOnly]
         public BufferAccessor<GameEntityAction> entityActions;
 
@@ -2909,7 +2908,7 @@ public partial struct GameEntityStatusSystem : ISystem
                 return false;
 
             if (index < entityActions.Length)
-                GameEntityAction.Break(entityActions[index], ref actionStates);
+                GameEntityAction.Break(time, entityActions[index], ref actionStates);
 
             actorTimes[index] = default;
 
@@ -2930,6 +2929,8 @@ public partial struct GameEntityStatusSystem : ISystem
     [BurstCompile]
     private struct UpdateCommandVersionsEx : IJobChunk, IEntityCommandProducerJob
     {
+        public GameDeadline time;
+
         [ReadOnly]
         public BufferTypeHandle<GameEntityAction> entityActionType;
 
@@ -2958,6 +2959,7 @@ public partial struct GameEntityStatusSystem : ISystem
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             UpdateCommandVersions updateCommandVersions;
+            updateCommandVersions.time = time;
             updateCommandVersions.entityActions = chunk.GetBufferAccessor(ref entityActionType);
             updateCommandVersions.states = chunk.GetNativeArray(ref statusType);
             updateCommandVersions.oldStates = chunk.GetNativeArray(ref oldStatusType);
@@ -2972,7 +2974,7 @@ public partial struct GameEntityStatusSystem : ISystem
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
             {
-                if(updateCommandVersions.Execute(i))
+                if (updateCommandVersions.Execute(i))
                 {
                     chunk.SetComponentEnabled(ref eventCommandType, i, false);
                     chunk.SetComponentEnabled(ref actionCommandType, i, false);
@@ -2983,6 +2985,8 @@ public partial struct GameEntityStatusSystem : ISystem
     }
 
     private EntityQuery __group;
+
+    private GameSyncTime __time;
 
     private BufferTypeHandle<GameEntityAction> __entityActionType;
 
@@ -3005,7 +3009,7 @@ public partial struct GameEntityStatusSystem : ISystem
 
     public void OnCreate(ref SystemState state)
     {
-        using(var builder = new EntityQueryBuilder(Allocator.Temp))
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __group = builder
                     .WithAll<GameNodeStatus, GameNodeOldStatus>()
                     .WithAllRW<GameEntityCommandVersion>()
@@ -3013,6 +3017,8 @@ public partial struct GameEntityStatusSystem : ISystem
                     .Build(ref state);
         __group.AddChangedVersionFilter(ComponentType.ReadOnly<GameNodeStatus>());
         __group.AddChangedVersionFilter(ComponentType.ReadOnly<GameNodeOldStatus>());
+
+        __time = new GameSyncTime(ref state);
 
         __entityActionType = state.GetBufferTypeHandle<GameEntityAction>(true);
         __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
@@ -3040,6 +3046,7 @@ public partial struct GameEntityStatusSystem : ISystem
         var timeEventHandles = __timeEventHandles.Create();
 
         UpdateCommandVersionsEx updateCommandVersions;
+        updateCommandVersions.time = __time.time;
         updateCommandVersions.entityActionType = __entityActionType.UpdateAsRef(ref state);
         updateCommandVersions.statusType = __statusType.UpdateAsRef(ref state);
         updateCommandVersions.oldStatusType = __oldStatusType.UpdateAsRef(ref state);
@@ -3175,7 +3182,7 @@ public partial struct GameEntityClearActionSystem : ISystem
                 int numEntityActions = entityActions.Length;
                 for (int i = 0; i < numEntityActions; ++i)
                 {
-                    if (entityActions[i] == entity)
+                    if (entityActions[i].entity == entity)
                     {
                         entityActions.RemoveAt(i);
 

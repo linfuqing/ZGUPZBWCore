@@ -193,7 +193,7 @@ public partial struct GameEntityActionSharedFactorySytem : ISystem
             //entitiesWithParent.Dispose();
         }
 
-        if(!entitiesWithChild.IsEmpty)
+        if (!entitiesWithChild.IsEmpty)
         {
             entityManager.AddComponentBurstCompatible<GameEntitySharedActionChild>(entitiesWithChild.AsArray());
 
@@ -306,7 +306,7 @@ public partial struct GameEntitySharedActionTransformSystem : ISystem
     public void OnCreate(ref SystemState state)
     {
         __group = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameActionStatus>(), 
+            ComponentType.ReadOnly<GameActionStatus>(),
             ComponentType.ReadWrite<GameTransformKeyframe<GameTransform>>());
     }
 
@@ -326,7 +326,7 @@ public partial struct GameEntitySharedActionTransformSystem : ISystem
     }
 }
 
-[AlwaysUpdateSystem, UpdateBefore(typeof(GameTransformSystem))]//[UpdateBefore(typeof(GameEntityActionSharedCommandSytem))]
+[UpdateBefore(typeof(GameTransformSystem))]//[UpdateBefore(typeof(GameEntityActionSharedCommandSytem))]
 public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
 {
     public struct Asset
@@ -343,7 +343,7 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
     private GameRollbackTime __rollbackTime;
     //private GameUpdateSystemGroup __updateSystemGroup;
     private EntityCommander __endFrameBarrier;
-    
+
     private Asset[] __assets;
     private Pool<GameObject> __instances;
 
@@ -351,7 +351,7 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
     {
         __assets = new List<Asset>(assets).ToArray();
     }
-    
+
     protected override void OnCreate()
     {
         base.OnCreate();
@@ -363,12 +363,12 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
                 All = new ComponentType[]
                 {
                     ComponentType.ReadOnly<GameActionSharedObject>()
-                }, 
+                },
                 None = new ComponentType[]
                 {
                     typeof(GameActionSharedObjectData)
                 }
-            }, 
+            },
             new EntityQueryDesc()
             {
                 All = new ComponentType[]
@@ -379,8 +379,8 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
             });
 
         __groupToDestroyImmediate = GetEntityQuery(
-            ComponentType.ReadOnly<GameActionSharedObjectParent>(), 
-            ComponentType.Exclude<GameActionSharedObjectData>(), 
+            ComponentType.ReadOnly<GameActionSharedObjectParent>(),
+            ComponentType.Exclude<GameActionSharedObjectData>(),
             ComponentType.Exclude<GameActionSharedObject>(),
             ComponentType.Exclude<GameActionData>());
 
@@ -449,8 +449,21 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
         var entityManager = EntityManager;
 
         UnityEngine.Assertions.Assert.IsFalse(instance.index < 0 || instance.index >= __assets.Length);
-        
+
         bool isAction = entityManager.HasComponent<GameActionData>(entity);
+        if (!isAction)
+        {
+            var children = entityManager.HasComponent<GameEntitySharedActionChild>(instance.parentEntity) ?
+                entityManager.GetBuffer<GameEntitySharedActionChild>(instance.parentEntity) : default;
+            int childIndex = children.IsCreated ? children.Reinterpret<Entity>().AsNativeArray().IndexOf(entity) : -1;
+            if (childIndex == -1)
+            {
+                __endFrameBarrier.DestroyEntity(entity);
+
+                return;
+            }
+        }
+
         GameActionStatus.Status destroyStatus = 0;
         Entity actionEntity;
         var asset = __assets[instance.index];
@@ -488,16 +501,6 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
             if (gameObject != null)
                 GameObject.Destroy(gameObject, asset.destroyTime);
 
-            var children = entityManager.HasComponent<GameEntitySharedActionChild>(instance.parentEntity) ?
-                entityManager.GetBuffer<GameEntitySharedActionChild>(instance.parentEntity) : default;
-            int childIndex = children.IsCreated ? children.Reinterpret<Entity>().AsNativeArray().IndexOf(entity) : -1;
-            if (childIndex == -1)
-            {
-                __endFrameBarrier.DestroyEntity(entity);
-
-                return;
-            }
-
             UnityEngine.Assertions.Assert.IsTrue(
                 (entityManager.GetComponentData<GameActionStatus>(instance.parentEntity).value & GameActionStatus.Status.Managed) == GameActionStatus.Status.Managed);
 
@@ -526,8 +529,8 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
     {
         EntityManager entityManager = EntityManager;
         bool isDisabled = entityManager.TryGetComponentData<GameActionStatus>(target.actionEntity, out var status);
-        if (isDisabled && 
-            ((status.value & GameActionStatus.Status.Destroy) != GameActionStatus.Status.Destroy || 
+        if (isDisabled &&
+            ((status.value & GameActionStatus.Status.Destroy) != GameActionStatus.Status.Destroy ||
             status.time/* + Time.DeltaTime*/ > __time))
             return;
 
@@ -547,8 +550,8 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
                     UnityEngine.Debug.LogError(gameObject);
                     //UnityEngine.Debug.Break();
                 }*/
-                
-                if (isDisabled)
+
+                if (isDisabled && target.destroyStatus == 0)
                 {
                     gameObject.transform.SetParent(parent);
                     GameObject.Destroy(gameObject, target.destroyTime);
@@ -595,7 +598,7 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
 
         Transform result = entityManager.TryGetComponentData<EntityObject<Transform>>(parent.value, out var transform) ? transform.value : null;
 
-        if(isRemove)
+        if (isRemove)
             __endFrameBarrier.RemoveComponent<GameActionSharedObjectParent>(entity);
 
         return result;
@@ -752,7 +755,7 @@ public partial struct GameEntityActionSharedObjectBreakSystem : ISystem
             {
                 All = new ComponentType[]
                 {
-                    ComponentType.ReadOnly<GameActionStatus>(), 
+                    ComponentType.ReadOnly<GameActionStatus>(),
                     ComponentType.ReadWrite<GameEntitySharedActionChild>()
                 }
             });
@@ -937,11 +940,11 @@ public partial struct GameEntitySharedActionUpdateSystem : ISystem
             int numEntityActions = entityActions.Length, j;
             for (i = 0; i < numEntityActions; ++i)
             {
-                action = actions[entityActions[i]];
+                action = actions[entityActions[i].entity];
                 for (j = 0; j < numSharedActions; ++j)
                 {
                     sharedAction = sharedActions[j];
-                    if(sharedAction.index == action.index && sharedAction.version == action.version)
+                    if (sharedAction.index == action.index && sharedAction.version == action.version)
                     {
                         sharedAction.elapsedTime = math.max(sharedAction.elapsedTime, (float)(time - action.time));
 
@@ -953,7 +956,7 @@ public partial struct GameEntitySharedActionUpdateSystem : ISystem
                     }
                 }
 
-                if(j == numSharedActions)
+                if (j == numSharedActions)
                 {
                     sharedAction.index = action.index;
                     sharedAction.version = action.version;
@@ -1101,10 +1104,10 @@ public partial struct GameEntitySharedActionSystem : ISystem
 
         [ReadOnly]
         public ComponentLookup<GameEntitySharedActionMask> actionMasks;
-        
+
         [ReadOnly]
         public BufferLookup<GameEntitySharedAction> actions;
-        
+
         public NativeFactory<EntityData<GameEntitySharedHit>>.ParallelWriter hits;
 
         public EntityCommandQueue<GameEntityActionSharedFactorySytem.Command>.ParallelWriter entityManager;
@@ -1200,7 +1203,7 @@ public partial struct GameEntitySharedActionSystem : ISystem
             {
                 actionObjectIndex = actionObjectRange.startIndex + i;
                 actionObject = actionObjects[actionObjectIndex];
-                if ((actionObject.flag & GameEntitySharedActionObjectFlag.Create) == GameEntitySharedActionObjectFlag.Create && 
+                if ((actionObject.flag & GameEntitySharedActionObjectFlag.Create) == GameEntitySharedActionObjectFlag.Create &&
                     ((actionObject.sourceType & actionType) == actionType))
                 {
                     //Debug.LogError($"Create Action {entity.Index} : {data.index} : {data.version} : {(float)(time - data.time)}");
@@ -1214,7 +1217,7 @@ public partial struct GameEntitySharedActionSystem : ISystem
                     }
                     else if ((actionObject.flag & GameEntitySharedActionObjectFlag.Destination) == GameEntitySharedActionObjectFlag.Destination)
                     {
-                        if(!isDestinationTransformed)
+                        if (!isDestinationTransformed)
                         {
                             isDestinationTransformed = __GetTransform(target, out destaintionTransform);
                             if (!isDestinationTransformed)
@@ -1280,7 +1283,7 @@ public partial struct GameEntitySharedActionSystem : ISystem
             {
                 actionObjectIndex = actionObjectRange.startIndex + i;
                 actionObject = actionObjects[actionObjectIndex];
-                if((actionObject.flag & GameEntitySharedActionObjectFlag.Init) == GameEntitySharedActionObjectFlag.Init && 
+                if ((actionObject.flag & GameEntitySharedActionObjectFlag.Init) == GameEntitySharedActionObjectFlag.Init &&
                     ((actionObject.sourceType & actionType) == actionType))
                 {
                     //Debug.LogError($"Init Action {entity.Index} : {entity.Version} : {data.entity.Index}");
@@ -1324,7 +1327,7 @@ public partial struct GameEntitySharedActionSystem : ISystem
 
         public unsafe void Hit(
             int index,
-            float elapsedTime, 
+            float elapsedTime,
             double time,
             in Entity entity,
             in Entity target,
@@ -1351,9 +1354,9 @@ public partial struct GameEntitySharedActionSystem : ISystem
             {
                 actionObjectIndex = actionObjectRange.startIndex + i;
                 actionObject = actionObjects[actionObjectIndex];
-                if ((actionObject.flag & GameEntitySharedActionObjectFlag.Hit) == GameEntitySharedActionObjectFlag.Hit && 
-                    (actionObject.sourceType & sourceActionType) == sourceActionType && 
-                    (actionObject.destinationType & destinationActionType) == destinationActionType && 
+                if ((actionObject.flag & GameEntitySharedActionObjectFlag.Hit) == GameEntitySharedActionObjectFlag.Hit &&
+                    (actionObject.sourceType & sourceActionType) == sourceActionType &&
+                    (actionObject.destinationType & destinationActionType) == destinationActionType &&
                     (actionObject.mask == actionMask || (actionObject.mask & actionMask) != 0))
                 {
                     //Debug.LogError($"Action Hit {entity.Index} : {data.index} : {data.version} : {(float)(time - data.time)} : {actionObjectIndex}");
@@ -1419,8 +1422,8 @@ public partial struct GameEntitySharedActionSystem : ISystem
 
         public void Damage(
             int index,
-            int count, 
-            float elapsedTime, 
+            int count,
+            float elapsedTime,
             double time,
             in Entity entity,
             in Entity target,
@@ -1473,7 +1476,7 @@ public partial struct GameEntitySharedActionSystem : ISystem
                             command.instance.transform = RigidTransform.identity;
                         else
                         {
-                            if(!isDestinationTransformed)
+                            if (!isDestinationTransformed)
                             {
                                 if (!isTransformed)
                                 {
@@ -1566,7 +1569,7 @@ public partial struct GameEntitySharedActionSystem : ISystem
             return true;
         }
     }
-    
+
     public struct Factory : IGameEntityActionFactory<Handler>, IEntityCommandProducerJob
     {
         [ReadOnly]
@@ -1595,11 +1598,11 @@ public partial struct GameEntitySharedActionSystem : ISystem
 
         [ReadOnly]
         public BufferLookup<GameEntitySharedAction> actions;
-        
+
         public NativeFactory<EntityData<GameEntitySharedHit>>.ParallelWriter hits;
 
         public EntityCommandQueue<GameEntityActionSharedFactorySytem.Command>.ParallelWriter entityManager;
-        
+
         public Handler Create(in ArchetypeChunk chunk)
         {
             Handler handler;
@@ -1679,8 +1682,8 @@ public partial struct GameEntitySharedActionSystem : ISystem
     private BufferLookup<GameEntitySharedHit> __hitResults;
 
     public void Create(
-        NativeArray<Item> items, 
-        NativeArray<ActionObject> actionObjects, 
+        NativeArray<Item> items,
+        NativeArray<ActionObject> actionObjects,
         NativeArray<ActionObjectRange> actionObjectRanges)
     {
         if (__items.IsCreated)
@@ -1746,7 +1749,7 @@ public partial struct GameEntitySharedActionSystem : ISystem
 
         if (__actionObjectRanges.IsCreated)
             __actionObjectRanges.Dispose();
-        
+
         __hits.Dispose();
 
         __core.Dispose();
