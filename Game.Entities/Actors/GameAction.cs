@@ -94,7 +94,7 @@ public struct GameActionInfo
     [Tooltip("攻击定身持续时间")]
     public float delayDuration;
 
-    [Tooltip("释放者传送到目标点的最大判定距离，大于零时传送生效")]
+    [Tooltip("释放者传送到目标点的最大距离，大于零时传送生效")]
     public float actorLocationDistance;
 
     [Tooltip("动量，代表惯性转化成速度的比率，跳跃时生效")]
@@ -135,6 +135,9 @@ public struct GameActionInfo
 
     [Tooltip("远程攻击时间")]
     public float actionMoveTime;
+
+    [Tooltip("技能的最大距离，大于零时生效，否则使用攻击距离")]
+    public float actionDistance;
 
     [Tooltip("攻击碰撞体缩放")]
     public float scale;

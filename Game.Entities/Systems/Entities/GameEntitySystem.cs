@@ -1345,9 +1345,10 @@ public partial struct GameEntityActorSystem : ISystem
                                 offset = math.mul(rotation, action.instance.offset);
                                 position = source + offset;
 
+                                float actionDistance = action.info.actionDistance > math.FLT_MIN_NORMAL ? action.info.actionDistance : action.info.distance;
                                 if (action.instance.direction.Equals(float3.zero))
                                 {
-                                    distance = forward * action.info.distance;
+                                    distance = forward * actionDistance;
                                     if (action.instance.trackType != GameActionRangeType.Source)
                                     {
                                         /*float distanceSq = action.info.distance * action.info.distance,
@@ -1374,13 +1375,13 @@ public partial struct GameEntityActorSystem : ISystem
                                                 //LookRotationSafe防止direction==up
                                                 targetForward = math.mul(quaternion.LookRotationSafe(forward, up), Act.forward);
 
-                                                distance = action.info.distance/*forwardLength*/ * targetForward;// - offset;
+                                                distance = actionDistance/*forwardLength*/ * targetForward;// - offset;
                                             }
                                         }
                                     }
                                 }
                                 else
-                                    distance = math.mul(rotation, action.instance.direction) * action.info.distance;
+                                    distance = math.mul(rotation, action.instance.direction) * actionDistance;
                             }
 
                             if (math.lengthsq(distance) <= math.FLT_MIN_NORMAL)
