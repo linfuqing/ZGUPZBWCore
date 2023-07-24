@@ -508,7 +508,7 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
 
             actionEntity = instance.parentEntity;
 
-            asset.destroyTime = 0.0f;
+            //asset.destroyTime = 0.0f;
 
             destroyStatus = /*GameActionStatus.Status.Damage | */GameActionStatus.Status.Break;
         }
@@ -554,10 +554,13 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
                 if (isDisabled && target.destroyStatus == 0)
                 {
                     gameObject.transform.SetParent(parent);
-                    GameObject.Destroy(gameObject, target.destroyTime);
+                    //GameObject.Destroy(gameObject, target.destroyTime);
                 }
                 else
-                    GameObject.Destroy(gameObject);
+                    gameObject.SetActive(false);
+                    //GameObject.Destroy(gameObject);
+
+                GameObject.Destroy(gameObject, target.destroyTime);
             }
         }
 
