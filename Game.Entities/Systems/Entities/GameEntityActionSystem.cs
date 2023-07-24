@@ -726,13 +726,14 @@ public struct GameEntityActionSystemCore
 
                 value |= GameActionStatus.Status.Destroied;
             }
-            /*if (instance.time + instanceEx.info.performTime <= time)
+
+            if (instance.time + instanceEx.info.actionPerformTime <= time)
             {
-                if ((value & GameActionStatus.Status.Perform) == GameActionStatus.Status.Perform)
+                /*if ((value & GameActionStatus.Status.Perform) == GameActionStatus.Status.Perform)
                     value |= GameActionStatus.Status.Performed;
-                else
+                else*/
                     value |= GameActionStatus.Status.Perform;
-            }*/
+            }
 
             if (damageTime <= time && oldTime < maxDamageTime)
             {

@@ -76,7 +76,7 @@ public struct GameActionInfo
     [Tooltip("技能动作时间")]
     public float artTime;
 
-    [Tooltip("技能可被打断时间")]
+    [Tooltip("持有时长，释放者在这段时间内不可被自身打断")]
     public float performTime;
 
     [Tooltip("技能结算时间")]
@@ -136,6 +136,9 @@ public struct GameActionInfo
     [Tooltip("远程攻击时间")]
     public float actionMoveTime;
 
+    [Tooltip("技能可被打断时间，技能在该时间后不可被打断")]
+    public float actionPerformTime;
+
     [Tooltip("技能的最大距离，大于零时生效，否则使用攻击距离")]
     public float actionDistance;
 
@@ -184,8 +187,10 @@ public struct GameActionInfo
         x.actorMoveSpeedIndirect += y.actorMoveSpeedIndirect;
         x.actorMoveStartTimeIndirect += y.actorMoveStartTimeIndirect;
         x.actorMoveDurationIndirect += y.actorMoveDurationIndirect;
-        x.actionMoveTime += y.actionMoveTime;
         x.actionMoveSpeed += y.actionMoveSpeed;
+        x.actionMoveTime += y.actionMoveTime;
+        x.actionPerformTime += y.actionPerformTime;
+        x.actionDistance += y.actionDistance;
         x.radius += y.radius;
         x.distance += y.distance;
         x.impactForce += y.impactForce;
@@ -217,8 +222,10 @@ public struct GameActionInfo
         x.actorMoveDuration -= y.actorMoveDuration;
         x.actorMoveSpeedIndirect -= y.actorMoveSpeedIndirect;
         x.actorMoveStartTimeIndirect -= y.actorMoveStartTimeIndirect;
-        x.actionMoveTime -= y.actionMoveTime;
         x.actionMoveSpeed -= y.actionMoveSpeed;
+        x.actionMoveTime -= y.actionMoveTime;
+        x.actionPerformTime -= y.actionPerformTime;
+        x.actionDistance -= y.actionDistance;
         x.radius -= y.radius;
         x.distance -= y.distance;
         x.impactForce -= y.impactForce;

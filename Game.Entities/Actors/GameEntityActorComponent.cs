@@ -44,14 +44,14 @@ public struct GameActionStatus : IComponentData
     public enum Status
     {
         Created = 0x01,
-        //Perform = 0x02,
+        Perform = 0x02,
         //Performed = 0x04 | Perform,
-        Damage = 0x02,
-        Damaged = 0x04 | Damage, 
-        Break = 0x08,
-        Destroy = 0x10,
+        Damage = 0x04,
+        Damaged = 0x08 | Damage, 
+        Break = 0x10,
+        Destroy = 0x20 | Perform,
         Destroied = Break | Destroy,
-        Managed = 0x21//0x30
+        Managed = 0x40 | Created
     }
     
     public Status value;
@@ -110,7 +110,7 @@ public struct GameEntityAction : ICleanupBufferElementData
                 continue;
 
             status = states[entity];
-            if ((status.value & (GameActionStatus.Status.Damage | GameActionStatus.Status.Destroy)) != 0 && status.time < time)
+            if ((status.value & GameActionStatus.Status.Perform) != 0 && status.time < time)
                 continue;
 
             status.time = time;
