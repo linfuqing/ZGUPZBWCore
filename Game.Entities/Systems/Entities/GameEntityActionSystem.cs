@@ -727,7 +727,7 @@ public struct GameEntityActionSystemCore
                 value |= GameActionStatus.Status.Destroied;
             }
 
-            if (instance.time + instanceEx.info.actionPerformTime <= time)
+            if (instance.time + (instanceEx.info.actionPerformTime > math.FLT_MIN_NORMAL ? instanceEx.info.actionPerformTime : instanceEx.info.damageTime) <= time)
             {
                 /*if ((value & GameActionStatus.Status.Perform) == GameActionStatus.Status.Perform)
                     value |= GameActionStatus.Status.Performed;
