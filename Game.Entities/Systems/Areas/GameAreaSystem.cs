@@ -9,7 +9,6 @@ using Unity.Transforms;
 using Unity.Physics;
 using ZG;
 
-[assembly: RegisterGenericJobType(typeof(TimeManager<GameAreaInternalInstance>.Clear))]
 [assembly: RegisterGenericJobType(typeof(TimeManager<GameAreaInternalInstance>.UpdateEvents))]
 
 [assembly: RegisterGenericJobType(typeof(GameAreaInit<GameAreaNeighborEnumerable>))]

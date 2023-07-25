@@ -405,7 +405,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
 
     private GameEntityComponentEx __entityComponent;
 
-    private TimeEventSystem __timeEventSystem;
+    private SharedTimeManager __timeManager;
 
     public static ComponentType[] actionComponentTypes
     {
@@ -649,10 +649,10 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         {
             Debug.LogError("Force Command!");
 
-            if (__timeEventSystem == null)
-                __timeEventSystem = world.GetExistingSystemManaged<TimeEventSystem>();
+            if (!__timeManager.isCreated)
+                __timeManager = world.GetExistingSystemUnmanaged<TimeEventSystem>().manager;
 
-            __timeEventSystem.Cannel(command.handle);
+            __timeManager.Cannel(command.handle);
         }
 
         command.version = commandVersion;

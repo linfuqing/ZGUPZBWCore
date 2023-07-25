@@ -98,7 +98,8 @@ public partial struct GameEntityActionBeginEntityCommandSystemGroup : ISystem
 {
 }*/
 
-public partial class GameEntityTimeEventSystem : SystemBase
+[BurstCompile, CreateAfter(typeof(CallbackSystem)), CreateAfter(typeof(TimeEventSystem))]
+public partial struct GameEntityTimeEventSystem : ISystem
 {
     private struct Container : IEntityCommandContainer
     {
@@ -108,7 +109,7 @@ public partial class GameEntityTimeEventSystem : SystemBase
             [ReadOnly]
             public EntityCommandContainerReadOnly container;
 
-            public NativeRBTree<TimeEvent<CallbackHandle>> timeEvents;
+            public TimeManager<CallbackHandle>.Writer timeManager;
 
             public NativeList<CallbackHandle> callbackHandles;
 
@@ -118,21 +119,21 @@ public partial class GameEntityTimeEventSystem : SystemBase
                 var enumerator = container.GetEnumerator();
                 while (enumerator.MoveNext())
                 {
-                    callbackHandle = enumerator.As<TimeEventHandle>().Cannel(ref timeEvents);
+                    callbackHandle = enumerator.As<TimeEventHandle>().Cannel(ref timeManager);
                     if (!callbackHandle.Equals(CallbackHandle.Null))
                         callbackHandles.Add(callbackHandle);
                 }
             }
         }
 
-        public NativeRBTree<TimeEvent<CallbackHandle>> timeEvents;
+        public TimeManager<CallbackHandle>.Writer timeManager;
         public NativeList<CallbackHandle> callbackHandles;
 
         public JobHandle CopyFrom(in EntityCommandContainerReadOnly values, in JobHandle jobHandle)
         {
             Cannel cannel;
             cannel.container = values;
-            cannel.timeEvents = timeEvents;
+            cannel.timeManager = timeManager;
             cannel.callbackHandles = callbackHandles;
             return cannel.Schedule(jobHandle);
         }
@@ -141,43 +142,41 @@ public partial class GameEntityTimeEventSystem : SystemBase
         {
             Cannel cannel;
             cannel.container = values;
-            cannel.timeEvents = timeEvents;
+            cannel.timeManager = timeManager;
             cannel.callbackHandles = callbackHandles;
             cannel.Execute();
         }
     }
 
-    private TimeEventSystem __timeEventSystem;
+    private SharedTimeManager __timeManager;
 
-    private NativeList<CallbackHandle> __callbackHandles;
+    private SharedList<CallbackHandle> __callbackHandles;
 
     private EntityCommandPool<TimeEventHandle>.Context __commander;
 
     public EntityCommandPool<TimeEventHandle> pool => __commander.pool;
 
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        var world = state.WorldUnmanaged;
+        __timeManager = world.GetExistingSystemUnmanaged<TimeEventSystem>().manager;
 
-        __timeEventSystem = World.GetOrCreateSystemManaged<TimeEventSystem>();
-
-        __callbackHandles = new NativeList<CallbackHandle>(Allocator.Persistent);
+        __callbackHandles = world.GetExistingSystemUnmanaged<CallbackSystem>().handlesToUnregister;
 
         __commander = new EntityCommandPool<TimeEventHandle>.Context(Allocator.Persistent);
     }
 
-    protected override void OnDestroy()
+    //[BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        __callbackHandles.Dispose();
-
         __commander.Dispose();
-
-        base.OnDestroy();
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
-        bool result;
+        /*bool result;
         int length = __callbackHandles.Length;
         for (int i = 0; i < length; ++i)
         {
@@ -186,18 +185,25 @@ public partial class GameEntityTimeEventSystem : SystemBase
             UnityEngine.Assertions.Assert.IsTrue(result);
         }
 
-        __callbackHandles.Clear();
+        __callbackHandles.Clear();*/
 
         if (!__commander.isEmpty)
         {
+            ref var timeJobManager = ref __timeManager.lookupJobManager;
+            ref var callbackJobManager = ref __callbackHandles.lookupJobManager;
+
             Container container;
-            container.timeEvents = __timeEventSystem.events;
-            container.callbackHandles = __callbackHandles;
-            var jobHandle = __commander.MoveTo(container, JobHandle.CombineDependencies(__timeEventSystem.jobHandle, Dependency));
+            container.timeManager = __timeManager.value.writer;
+            container.callbackHandles = __callbackHandles.writer;
+            var jobHandle = __commander.MoveTo(container, JobHandle.CombineDependencies(
+                timeJobManager.readWriteJobHandle,
+                callbackJobManager.readWriteJobHandle, 
+                state.Dependency));
 
-            __timeEventSystem.AddDependency(jobHandle);
+            timeJobManager.readWriteJobHandle = jobHandle;
+            callbackJobManager.readWriteJobHandle = jobHandle;
 
-            Dependency = jobHandle;
+            state.Dependency = jobHandle;
         }
     }
 }
@@ -2871,7 +2877,7 @@ public partial struct GameEntityBreakSystem : ISystem
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(GameStatusSystemGroup))]
+[BurstCompile, CreateAfter(typeof(GameEntityTimeEventSystem)), UpdateInGroup(typeof(GameStatusSystemGroup))]
 public partial struct GameEntityStatusSystem : ISystem
 {
     private struct UpdateCommandVersions
@@ -3008,6 +3014,7 @@ public partial struct GameEntityStatusSystem : ISystem
 
     private EntityCommandPool<TimeEventHandle> __timeEventHandles;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
@@ -3033,7 +3040,7 @@ public partial struct GameEntityStatusSystem : ISystem
         __actorActionInfoType = state.GetBufferTypeHandle<GameEntityActorActionInfo>();
         __actionStates = state.GetComponentLookup<GameActionStatus>();
 
-        __timeEventHandles = state.World.GetOrCreateSystemManaged<GameEntityTimeEventSystem>().pool;
+        __timeEventHandles = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameEntityTimeEventSystem>().pool;
     }
 
     [BurstCompile]
@@ -3069,7 +3076,7 @@ public partial struct GameEntityStatusSystem : ISystem
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(TimeSystemGroup)), UpdateAfter(typeof(GameSyncSystemGroup))]
+[BurstCompile, CreateAfter(typeof(GameEntityTimeEventSystem)), UpdateInGroup(typeof(TimeSystemGroup)), UpdateAfter(typeof(GameSyncSystemGroup))]
 public partial struct GameEntityCannelEventsSystem : ISystem
 {
     private struct CannelEvents
@@ -3115,19 +3122,28 @@ public partial struct GameEntityCannelEventsSystem : ISystem
     }
 
     private EntityQuery __group;
+    private ComponentTypeHandle<GameEntityActorInfo> __actorInfoType;
+    private ComponentTypeHandle<GameEntityBreakInfo> __breakInfoType;
+
     private EntityCommandPool<TimeEventHandle> __timeEventHandles;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameEntityActorInfo>(),
-            ComponentType.ReadOnly<GameEntityBreakInfo>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameEntityActorInfo, GameEntityBreakInfo>()
+                    .Build(ref state);
 
-        __group.SetChangedVersionFilter(typeof(GameEntityBreakInfo));
+        __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameEntityBreakInfo>());
 
-        __timeEventHandles = state.World.GetOrCreateSystemManaged<GameEntityTimeEventSystem>().pool;
+        __actorInfoType = state.GetComponentTypeHandle<GameEntityActorInfo>(true);
+        __breakInfoType = state.GetComponentTypeHandle<GameEntityBreakInfo>(true);
+
+        __timeEventHandles = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameEntityTimeEventSystem>().pool;
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
     }
@@ -3138,11 +3154,11 @@ public partial struct GameEntityCannelEventsSystem : ISystem
         var timeEventHandles = __timeEventHandles.Create();
 
         CannelEventsEx cannelEvents;
-        cannelEvents.actorInfoType = state.GetComponentTypeHandle<GameEntityActorInfo>(true);
-        cannelEvents.breakInfoType = state.GetComponentTypeHandle<GameEntityBreakInfo>(true);
+        cannelEvents.actorInfoType = __actorInfoType.UpdateAsRef(ref state);
+        cannelEvents.breakInfoType = __breakInfoType.UpdateAsRef(ref state);
         cannelEvents.timeEventHandles = timeEventHandles.parallelWriter;
 
-        var jobHandle = cannelEvents.ScheduleParallel(__group, state.Dependency);
+        var jobHandle = cannelEvents.ScheduleParallelByRef(__group, state.Dependency);
 
         timeEventHandles.AddJobHandleForProducer<CannelEventsEx>(jobHandle);
 

@@ -6,7 +6,6 @@ using Unity.Mathematics;
 using Unity.Collections;
 using ZG;
 
-[assembly: RegisterGenericJobType(typeof(TimeManager<EntityData<float>>.Clear))]
 [assembly: RegisterGenericJobType(typeof(TimeManager<EntityData<float>>.UpdateEvents))]
 
 /*[assembly: RegisterGenericJobType(typeof(TimeManager<EntityData<GameCreatureFoodBuff>>.Clear))]

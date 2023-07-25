@@ -11,7 +11,6 @@ using Unity.Transforms;
 using ZG;
 using Random = Unity.Mathematics.Random;
 
-[assembly: RegisterGenericJobType(typeof(TimeManager<GameValhallaRespawnSystem.Command>.Clear))]
 [assembly: RegisterGenericJobType(typeof(TimeManager<GameValhallaRespawnSystem.Command>.UpdateEvents))]
 
 public abstract class GameValhallaCommander : IEntityCommander<GameValhallaCommand>
@@ -1031,8 +1030,9 @@ public partial class GameValhallaEvolutionSystem : SystemBase
     }
 }
 
-[AlwaysUpdateSystem]
-public partial class GameValhallaRespawnSystem : SystemBase
+//[AlwaysUpdateSystem]
+[BurstCompile, CreateAfter(typeof(GameItemSystem))]
+public partial struct GameValhallaRespawnSystem : ISystem
 {
     public struct Command
     {
@@ -1308,10 +1308,20 @@ public partial class GameValhallaRespawnSystem : SystemBase
     private EntityQuery __structChangeManagerGroup;
     private EntityQuery __identityTypeGroup;
     private EntityQuery __group;
+
+    private ComponentTypeHandle<Translation> __translationType;
+    private ComponentTypeHandle<Rotation> __rotationType;
+    private ComponentTypeHandle<GameValhallaData> __instanceType;
+    private ComponentTypeHandle<GameValhallaRespawnCommand> __commandType;
+    private ComponentTypeHandle<GameValhallaVersion> __versionType;
+    private ComponentTypeHandle<GameValhallaExp> __expType;
+    private BufferLookup<GameSoul> __souls;
+
     private NativeArray<RespawnLevelExp> __respawnLevelExps;
     private NativeParallelHashMap<int, int> __itemTypes;
     private NativeParallelHashMap<Entity, int> __soulIndicess;
-    private NativeQueue<TimeEvent<Command>> __commands;
+    private NativeQueue<TimeEvent<Command>> __timeEvents;
+    private NativeList<Command> __commands;
     private TimeManager<Command> __timeManager;
     private EntityCommandPool<GameValhallaCommand> __entityManager;
     private GameItemManagerShared __itemManager;
@@ -1323,7 +1333,7 @@ public partial class GameValhallaRespawnSystem : SystemBase
         private set;
     }
 
-    public void Create(RespawnLevelExp[] respawnLevelExps, KeyValuePair<int, int>[] itemTypes, GameValhallaCommander commander)
+    public void Create(World world, RespawnLevelExp[] respawnLevelExps, KeyValuePair<int, int>[] itemTypes, GameValhallaCommander commander)
     {
         __respawnLevelExps = new NativeArray<RespawnLevelExp>(respawnLevelExps, Allocator.Persistent);
 
@@ -1331,31 +1341,44 @@ public partial class GameValhallaRespawnSystem : SystemBase
         foreach (var pair in itemTypes)
             __itemTypes.Add(pair.Key, pair.Value);
 
-        __entityManager = World.GetOrCreateSystemManaged<EndFrameEntityCommandSystem>().Create<GameValhallaCommand, GameValhallaCommander>(EntityCommandManager.QUEUE_PRESENT, commander);
+        __entityManager = world.GetOrCreateSystemManaged<EndFrameEntityCommandSystem>().Create<GameValhallaCommand, GameValhallaCommander>(EntityCommandManager.QUEUE_PRESENT, commander);
     }
 
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        __structChangeManagerGroup = GameItemStructChangeManager.GetEntityQuery(ref state);
 
-        __structChangeManagerGroup = GameItemStructChangeManager.GetEntityQuery(ref this.GetState());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __identityTypeGroup = builder
+                    .WithAll<GameItemIdentityType>()
+                    .Build(ref state);
 
-        __identityTypeGroup = GetEntityQuery(ComponentType.ReadOnly<GameItemIdentityType>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                .WithAll<GameValhallaRespawnCommand>()
+                .WithAllRW<GameValhallaVersion, GameValhallaExp>()
+                .Build(ref state);
 
-        __group = GetEntityQuery(
-            ComponentType.ReadOnly<GameValhallaRespawnCommand>(),
-            ComponentType.ReadWrite<GameValhallaVersion>(),
-            ComponentType.ReadWrite<GameValhallaExp>());
+        __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameValhallaRespawnCommand>());
 
-        __group.SetChangedVersionFilter(typeof(GameValhallaRespawnCommand));
+        __translationType = state.GetComponentTypeHandle<Translation>(true);
+        __rotationType = state.GetComponentTypeHandle<Rotation>(true);
+        __instanceType = state.GetComponentTypeHandle<GameValhallaData>(true);
+        __commandType = state.GetComponentTypeHandle<GameValhallaRespawnCommand>(true);
+        __versionType = state.GetComponentTypeHandle<GameValhallaVersion>();
+        __expType = state.GetComponentTypeHandle<GameValhallaExp>();
+        __souls = state.GetBufferLookup<GameSoul>();
 
         __soulIndicess = new NativeParallelHashMap<Entity, int>(1, Allocator.Persistent);
 
-        __commands = new NativeQueue<TimeEvent<Command>>(Allocator.Persistent);
+        __timeEvents = new NativeQueue<TimeEvent<Command>>(Allocator.Persistent);
+
+        __commands = new NativeList<Command>(Allocator.Persistent);
 
         __timeManager = new TimeManager<Command>(Allocator.Persistent);
 
-        ref var itemSystem = ref World.GetOrCreateSystemUnmanaged<GameItemSystem>();
+        ref var itemSystem = ref state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>();
 
         __itemManager = itemSystem.manager;
 
@@ -1372,13 +1395,14 @@ public partial class GameValhallaRespawnSystem : SystemBase
             results.Add(ComponentType.ReadWrite<GameItemExp>());
             results.Add(ComponentType.ReadWrite<GameItemPower>());
 
-            itemEntityArchetype = EntityManager.CreateArchetype(results.AsArray().ToArray());
+            itemEntityArchetype = state.EntityManager.CreateArchetype(results.AsArray());
 
             results.Dispose();
         }
     }
 
-    protected override void OnDestroy()
+    //[BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
         if (__respawnLevelExps.IsCreated)
             __respawnLevelExps.Dispose();
@@ -1392,47 +1416,50 @@ public partial class GameValhallaRespawnSystem : SystemBase
 
         __commands.Dispose();
 
-        base.OnDestroy();
+        __timeEvents.Dispose();
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
         if (!__respawnLevelExps.IsCreated || !__identityTypeGroup.HasSingleton<GameItemIdentityType>())
             return;
 
         var entityCount = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
 
-        var jobHandle = __group.CalculateEntityCountAsync(entityCount, Dependency);
+        var jobHandle = __group.CalculateEntityCountAsync(entityCount, state.Dependency);
 
         ClearSoulIndicess clearSoulIndicess;
         clearSoulIndicess.capacity = entityCount;
         clearSoulIndicess.soulIndicess = __soulIndicess;
         jobHandle = clearSoulIndicess.Schedule(jobHandle);
 
-        double time = World.Time.ElapsedTime;
+        double time = state.WorldUnmanaged.Time.ElapsedTime;
+
+        var souls = __souls.UpdateAsRef(ref state);
 
         RespawnEx respawn;
         respawn.time = time;
-        respawn.souls = GetBufferLookup<GameSoul>(true);
+        respawn.souls = souls;
         respawn.respawnLevelExps = __respawnLevelExps;
-        respawn.translationType = GetComponentTypeHandle<Translation>(true);
-        respawn.rotationType = GetComponentTypeHandle<Rotation>(true);
-        respawn.instanceType = GetComponentTypeHandle<GameValhallaData>(true);
-        respawn.commandType = GetComponentTypeHandle<GameValhallaRespawnCommand>(true);
-        respawn.versionType = GetComponentTypeHandle<GameValhallaVersion>();
-        respawn.expType = GetComponentTypeHandle<GameValhallaExp>();
+        respawn.translationType = __translationType.UpdateAsRef(ref state);
+        respawn.rotationType = __rotationType.UpdateAsRef(ref state);
+        respawn.instanceType = __instanceType.UpdateAsRef(ref state);
+        respawn.commandType = __commandType.UpdateAsRef(ref state);
+        respawn.versionType = __versionType.UpdateAsRef(ref state);
+        respawn.expType = __expType.UpdateAsRef(ref state);
         respawn.soulIndicesToRemove = __soulIndicess.AsParallelWriter();
-        respawn.results = __commands.AsParallelWriter();
+        respawn.results = __timeEvents.AsParallelWriter();
         jobHandle = respawn.ScheduleParallel(__group, jobHandle);
 
         Add add;
-        add.inputs = __commands;
+        add.inputs = __timeEvents;
         add.outputs = __timeManager.writer;
-        var timeJobHandle = add.Schedule(jobHandle);
+        var timeJobHandle = add.ScheduleByRef(jobHandle);
 
-        __timeManager.Flush();
+        __commands.Clear();
 
-        timeJobHandle = __timeManager.Schedule(time, timeJobHandle);
+        timeJobHandle = __timeManager.Schedule(time, ref __commands, timeJobHandle);
 
         var itemStructChangeManager = __structChangeManagerGroup.GetSingleton<GameItemStructChangeManager>();
         var createItemCommander = itemStructChangeManager.createEntityCommander;
@@ -1446,7 +1473,7 @@ public partial class GameValhallaRespawnSystem : SystemBase
         apply.itemIdentityType = __identityTypeGroup.GetSingleton<GameItemIdentityType>().value;
         apply.itemEntityArchetype = itemEntityArchetype;
         apply.random = new Random(math.max(1, (uint)hash & (uint)(hash >> 32)));
-        apply.commands = __timeManager.values;
+        apply.commands = __commands.AsDeferredJobArray();
         apply.itemTypes = __itemTypes;
         apply.itemManager = __itemManager.value;
         apply.entityManager = entityManager.writer;
@@ -1472,9 +1499,9 @@ public partial class GameValhallaRespawnSystem : SystemBase
 
         Remove remove;
         remove.soulIndices = __soulIndicess;
-        remove.souls = GetBufferLookup<GameSoul>();
+        remove.souls = souls;
         jobHandle = remove.Schedule(jobHandle);
 
-        Dependency = JobHandle.CombineDependencies(jobHandle, timeJobHandle);
+        state.Dependency = JobHandle.CombineDependencies(jobHandle, timeJobHandle);
     }
 }

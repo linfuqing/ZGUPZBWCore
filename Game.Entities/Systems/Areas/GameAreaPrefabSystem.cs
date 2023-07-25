@@ -157,6 +157,8 @@ public struct GameAreaPrefabSystemCore
 
     private TimeManager<GameAreaInternalInstance> __timeManager;
 
+    private NativeList<GameAreaInternalInstance> __commands;
+
     private NativeParallelHashMap<int, int> __areaIndices;
     private NativeParallelHashMap<int, double> __areaCreatedTimes;
     private NativeFactory<GameAreaInternalInstance> __instances;
@@ -192,6 +194,8 @@ public struct GameAreaPrefabSystemCore
 
         __timeManager = new TimeManager<GameAreaInternalInstance>(Allocator.Persistent);
 
+        __commands = new NativeList<GameAreaInternalInstance>(Allocator.Persistent);
+
         __areaIndices = new NativeParallelHashMap<int, int>(1, Allocator.Persistent);
 
         __areaCreatedTimes = new NativeParallelHashMap<int, double>(1, Allocator.Persistent);
@@ -202,6 +206,8 @@ public struct GameAreaPrefabSystemCore
     public void Dispose()
     {
         __timeManager.Dispose();
+
+        __commands.Dispose();
 
         __areaIndices.Dispose();
 
@@ -320,9 +326,9 @@ public struct GameAreaPrefabSystemCore
         triggerCreateNodeEvents.entityManager = createEntityCommander.writer;
         inputDeps = triggerCreateNodeEvents.ScheduleByRef(jobHandle);
 
-        __timeManager.Flush();
+        __commands.Clear();
 
-        inputDeps = __timeManager.Schedule(time, inputDeps);
+        inputDeps = __timeManager.Schedule(time, ref __commands, inputDeps);
 
         long hash = math.aslong(time);
 
@@ -336,12 +342,12 @@ public struct GameAreaPrefabSystemCore
 
         invokeCommands.random = new Random((uint)hash ^ (uint)(hash >> 32));
         invokeCommands.definition = definition;
-        invokeCommands.commands = __timeManager.values;
+        invokeCommands.commands = __commands.AsDeferredJobArray();
         invokeCommands.instances = instancesParallelWriter;
         invokeCommands.entityManager = entityManager;
         invokeCommands.versions = versions.parallelWriter;
-        jobHandle = __timeManager.ScheduleParallel(
-            ref invokeCommands, 
+        jobHandle = invokeCommands.ScheduleByRef(
+            __commands, 
             innerloopBatchCount, 
             JobHandle.CombineDependencies(inputDeps, systemState.Dependency, versionJobManager.readWriteJobHandle));
 

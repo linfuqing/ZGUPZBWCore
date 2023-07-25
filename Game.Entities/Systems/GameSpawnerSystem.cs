@@ -6,7 +6,6 @@ using Unity.Collections;
 using Unity.Mathematics;
 using ZG;
 
-[assembly: RegisterGenericJobType(typeof(TimeManager<Entity>.Clear))]
 [assembly: RegisterGenericJobType(typeof(TimeManager<Entity>.UpdateEvents))]
 
 [BurstCompile, CreateAfter(typeof(EndFrameStructChangeSystem)), UpdateInGroup(typeof(TimeSystemGroup)), UpdateAfter(typeof(GameSyncSystemGroup))]
@@ -268,6 +267,8 @@ public partial struct GameSpawnerTimeSystem : ISystem
 
     private TimeManager<Entity> __timeManager;
 
+    private NativeList<Entity> __commands;
+
     private NativeArray<GameSpawnerAsset> __assets;
     private NativeQueue<TimeEvent<Entity>> __timeEvents;
 
@@ -310,6 +311,8 @@ public partial struct GameSpawnerTimeSystem : ISystem
         __entityManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<EndFrameStructChangeSystem>().addDataPool;//GetOrCreateSystemManaged<EndTimeSystemGroupEntityCommandSystem>().CreateAddComponentDataCommander<GameSpawnedInstanceInfo>();
 
         __timeManager = new TimeManager<Entity>(Allocator.Persistent);
+
+        __commands = new NativeList<Entity>(Allocator.Persistent);
 
         __timeEvents = new NativeQueue<TimeEvent<Entity>>(Allocator.Persistent);
     }
@@ -358,14 +361,14 @@ public partial struct GameSpawnerTimeSystem : ISystem
 
         var jobHandle = move.Schedule(inputDeps);
 
-        jobHandle = __timeManager.Schedule(time, jobHandle);
+        __commands.Clear();
+
+        jobHandle = __timeManager.Schedule(time, ref __commands, jobHandle);
 
         Die die;
-        die.entities = __timeManager.values;
+        die.entities = __commands.AsDeferredJobArray();
         die.states = __states.UpdateAsRef(ref state);
-        jobHandle = __timeManager.ScheduleParallel(ref die, InnerloopBatchCount, jobHandle);
-
-        jobHandle = __timeManager.Flush(jobHandle);
+        jobHandle = die.ScheduleByRef(__commands, InnerloopBatchCount, jobHandle);
 
         CountEx count;
         count.assets = __assets;
