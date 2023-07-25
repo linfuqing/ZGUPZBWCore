@@ -618,42 +618,16 @@ public struct GameEntityActionSystemCore
                 return;
             }
 
-            Entity entity = entityArray[index];
-            var rigidbodies = collisionWorld.Bodies;
-            int rigidbodyIndex = collisionWorld.GetRigidBodyIndex(entity);
-            var rigidbody = rigidbodies[rigidbodyIndex];
-            var transform = rigidbody.WorldFromBody;// math.RigidTransform(rotations[index].Value, translations[index].Value);
-
             var instance = instances[index];
             var instanceEx = instancesEx[index];
 
-            double time = now, damageTime = instance.time + instanceEx.info.damageTime,
-                maxDamageTime = damageTime + instanceEx.info.duration,
+            bool isSourceTransform = false;
+            double time = now, 
                 actorMoveStartTime = instance.time + instanceEx.info.actorMoveStartTime,
                 actorMoveTime = actorMoveStartTime + instanceEx.info.actorMoveDuration,
-                maxTime = math.max(actorMoveTime, maxDamageTime),
                 oldTime = time - deltaTime;
-            if ((value & GameActionStatus.Status.Created) != GameActionStatus.Status.Created &&
-                (handler.Create(
-                        index,
-                        time,
-                        entity,
-                        instanceEx.target,
-                        instanceEx.transform, 
-                        instance) ||
-                        (value & GameActionStatus.Status.Damage) == GameActionStatus.Status.Damage &&
-                        handler.Init(
-                        index,
-                        (float)(maxTime > oldTime ? oldTime - instance.time : maxTime - instance.time),
-                        time,
-                        entity,
-                        transform,
-                        instance)))
-                value |= /*GameActionStatus.Status.Created | */GameActionStatus.Status.Managed;
-
-            bool isSourceTransform = false;
-            //float actorMoveDistance = 0.0f;
             RigidTransform sourceTransform = RigidTransform.identity;
+            var rigidbodies = collisionWorld.Bodies;
             if (actorMoveStartTime <= time && oldTime < actorMoveTime)
             {
                 double max = math.min(time, actorMoveTime), min = math.max(oldTime, actorMoveStartTime);
@@ -716,6 +690,32 @@ public struct GameEntityActionSystemCore
                     directVelocities.Enqueue(directVelocity);*/
                 }
             }
+
+            Entity entity = entityArray[index];
+            int rigidbodyIndex = collisionWorld.GetRigidBodyIndex(entity);
+            var rigidbody = rigidbodies[rigidbodyIndex];
+            var transform = rigidbody.WorldFromBody;// math.RigidTransform(rotations[index].Value, translations[index].Value);
+
+            double damageTime = instance.time + instanceEx.info.damageTime,
+                maxDamageTime = damageTime + instanceEx.info.duration,
+                maxTime = math.max(actorMoveTime, maxDamageTime);
+            if ((value & GameActionStatus.Status.Created) != GameActionStatus.Status.Created &&
+                (handler.Create(
+                        index,
+                        time,
+                        entity,
+                        instanceEx.target,
+                        instanceEx.transform,
+                        instance) ||
+                        (value & GameActionStatus.Status.Damage) == GameActionStatus.Status.Damage &&
+                        handler.Init(
+                        index,
+                        (float)(maxTime > oldTime ? oldTime - instance.time : maxTime - instance.time),
+                        time,
+                        entity,
+                        transform,
+                        instance)))
+                value |= /*GameActionStatus.Status.Created | */GameActionStatus.Status.Managed;
 
             float elapsedTime;
             if (maxTime > time)
@@ -785,12 +785,31 @@ public struct GameEntityActionSystemCore
                         isTranslationDirty = true;
                     }*/
 
+                    if (instanceEx.value.trackType == GameActionRangeType.None && 
+                        instanceEx.value.rangeType == GameActionRangeType.Source)
+                    {
+                        if (!isSourceTransform)
+                        {
+                            int sourceRigidbodyIndex = collisionWorld.GetRigidBodyIndex(instance.entity);
+                            if (sourceRigidbodyIndex != -1)
+                            {
+                                var sourceRigidbody = rigidbodies[sourceRigidbodyIndex];
+                                sourceTransform = sourceRigidbody.WorldFromBody;
+
+                                isSourceTransform = true;
+                            }
+                        }
+
+                        if (isSourceTransform)
+                            transform.pos = math.transform(sourceTransform, instanceEx.value.offset) + __CalculateOffset(instance.entity);
+                    }
+
                     if (handler.Init(
                         index,
                         instanceEx.info.damageTime,
                         time,
                         entity,
-                        instanceEx.transform,
+                        transform,
                         instance))
                         value |= GameActionStatus.Status.Managed;
 
@@ -868,17 +887,7 @@ public struct GameEntityActionSystemCore
                                     {
                                         var destinationRigidbody = rigidbodies[destinationRigidbodyIndex];
 
-                                        result.pos = destinationRigidbody.WorldFromBody.pos;
-
-                                        var surfaceRotation = surfaces.HasComponent(instanceEx.target) ? surfaces[instanceEx.target].rotation : quaternion.identity;
-                                        if (directs.HasComponent(instanceEx.target))
-                                            result.pos += math.mul(surfaceRotation, directs[instanceEx.target].value);
-
-                                        if (indirects.HasComponent(instanceEx.target))
-                                        {
-                                            var indirect = indirects[instanceEx.target];
-                                            result.pos += indirect.value + indirect.velocity * deltaTime;
-                                        }
+                                        result.pos = destinationRigidbody.WorldFromBody.pos + __CalculateOffset(instanceEx.target);
 
                                         if (destinationRigidbody.Collider.IsCreated)
                                         {
@@ -938,18 +947,7 @@ public struct GameEntityActionSystemCore
                                 if(isSourceTransform)
                                 {
                                     result.rot = sourceTransform.rot;
-                                    result.pos = math.transform(sourceTransform, instanceEx.value.offset);
-
-                                    var surfaceRotation = surfaces.HasComponent(instance.entity) ? surfaces[instance.entity].rotation : quaternion.identity;
-                                    if (directs.HasComponent(instance.entity))
-                                        result.pos += math.mul(surfaceRotation, directs[instance.entity].value);
-
-                                    if (indirects.HasComponent(instance.entity))
-                                    {
-                                        var indirect = indirects[instance.entity];
-
-                                        result.pos += indirect.value + indirect.velocity * deltaTime;
-                                    }
+                                    result.pos = math.transform(sourceTransform, instanceEx.value.offset) + __CalculateOffset(instance.entity);
 
                                     //result.pos += actorMoveDistance * math.forward(result.rot);
 
@@ -1303,6 +1301,24 @@ public struct GameEntityActionSystemCore
                 status.time = instance.time + elapsedTime;
                 results[entity] = status;
             }
+        }
+
+        private float3 __CalculateOffset(in Entity entity)
+        {
+            float3 result = float3.zero;
+
+            var surfaceRotation = surfaces.HasComponent(entity) ? surfaces[entity].rotation : quaternion.identity;
+            if (directs.HasComponent(entity))
+                result += math.mul(surfaceRotation, directs[entity].value);
+
+            if (indirects.HasComponent(entity))
+            {
+                var indirect = indirects[entity];
+
+                result += indirect.value + indirect.velocity * deltaTime;
+            }
+
+            return result;
         }
 
         /*private bool __CalculateActorOffset(
