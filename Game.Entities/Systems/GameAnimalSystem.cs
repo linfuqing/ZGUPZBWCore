@@ -447,7 +447,8 @@ public partial class GameAnimalSystem : SystemBase
     }
 }
 
-[UpdateInGroup(typeof(TimeSystemGroup), OrderFirst = true), UpdateBefore(typeof(BeginTimeSystemGroupEntityCommandSystem))]
+//[UpdateInGroup(typeof(TimeSystemGroup), OrderFirst = true), UpdateBefore(typeof(BeginTimeSystemGroupEntityCommandSystem))]
+[UpdateInGroup(typeof(PresentationSystemGroup)), UpdateBefore(typeof(CallbackSystem))]
 public partial class GameAnimalEventSystem : SystemBase
 {
     private GameAnimalSystem __animalSystem;

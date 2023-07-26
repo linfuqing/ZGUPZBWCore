@@ -394,16 +394,20 @@ public partial struct GameAnimatorTransformSystem : ISystem
             }*/
 
             var forwardKeyframes = this.forwardKeyframes[index].Reinterpret<float>().AsNativeArray().Slice();
-            int level = CollectionUtilityEx.BinarySearch(forwardKeyframes, value.forwardAmount);
+            int maxLevel = forwardKeyframes.Length - 1, level = CollectionUtilityEx.BinarySearch(forwardKeyframes, value.forwardAmount);
             float minValue;
             if (level < 0)
                 minValue = forwardKeyframes[++level];
             else
             {
                 minValue = forwardKeyframes[level];
-                if (minValue == value.forwardAmount || level == forwardKeyframes.Length - 1)
+                if (minValue == value.forwardAmount || level == maxLevel)
                     --level;
             }
+
+            int nextLevel = level + 1;
+            while (nextLevel < maxLevel && forwardKeyframes[nextLevel] == forwardKeyframes[nextLevel + 1])
+                level = nextLevel++;
 
             float forwardAmount = math.smoothstep(minValue, forwardKeyframes[level + 1], value.forwardAmount);
             forwardAmount += level - CollectionUtilityEx.BinarySearch(forwardKeyframes, 0.0f);
