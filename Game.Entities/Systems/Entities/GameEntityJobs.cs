@@ -118,6 +118,7 @@ public static class GameEntityUtility
 
                 actionEntity.delta = value * count;
                 actionEntity.hit += actionEntity.delta;
+                actionEntity.normal += normal;
                 actionEntities[i] = actionEntity;
 
                 return count;

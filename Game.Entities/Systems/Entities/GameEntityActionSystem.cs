@@ -139,7 +139,7 @@ public struct GameEntityActionSystemCore
             float distance,
             float elpasedTime,
             double time,
-            in float3 up, 
+            in float3 up,
             in float3 position,
             in float3 direction,
             in Entity entity,
@@ -429,11 +429,11 @@ public struct GameEntityActionSystemCore
         }
 
         private void __Apply(
-            int count, 
-            in float3 normal, 
-            in float3 position, 
-            in GameEntityTransform transform, 
-            in Entity entity, 
+            int count,
+            in float3 normal,
+            in float3 position,
+            in GameEntityTransform transform,
+            in Entity entity,
             in NativeSlice<RigidBody> rigidbodies)
         {
             __handler.Hit(
@@ -497,7 +497,7 @@ public struct GameEntityActionSystemCore
                     __distance,
                     transform.elapsedTime,
                     __time,
-                    __up, 
+                    __up,
                     position,
                     __direction,
                     __entity,
@@ -622,7 +622,7 @@ public struct GameEntityActionSystemCore
             var instanceEx = instancesEx[index];
 
             bool isSourceTransform = false;
-            double time = now, 
+            double time = now,
                 actorMoveStartTime = instance.time + instanceEx.info.actorMoveStartTime,
                 actorMoveTime = actorMoveStartTime + instanceEx.info.actorMoveDuration,
                 oldTime = time - deltaTime;
@@ -643,7 +643,7 @@ public struct GameEntityActionSystemCore
                         {
                             var sourceRigidbody = rigidbodies[sourceRigidbodyIndex];
 
-                            float3 source = math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.actorOffset), 
+                            float3 source = math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.actorOffset),
                                 destination = (instanceEx.value.flag & GameActionFlag.ActorLocation) == GameActionFlag.ActorLocation ?
                                 instanceEx.value.actorLocation :
                                 source + math.forward(sourceRigidbody.WorldFromBody.rot) * instanceEx.info.distance;
@@ -732,7 +732,7 @@ public struct GameEntityActionSystemCore
                 /*if ((value & GameActionStatus.Status.Perform) == GameActionStatus.Status.Perform)
                     value |= GameActionStatus.Status.Performed;
                 else*/
-                    value |= GameActionStatus.Status.Perform;
+                value |= GameActionStatus.Status.Perform;
             }
 
             if (damageTime <= time && oldTime < maxDamageTime)
@@ -785,7 +785,7 @@ public struct GameEntityActionSystemCore
                         isTranslationDirty = true;
                     }*/
 
-                    if (instanceEx.value.trackType == GameActionRangeType.None && 
+                    if (instanceEx.value.trackType == GameActionRangeType.None &&
                         instanceEx.value.rangeType == GameActionRangeType.Source)
                     {
                         if (!isSourceTransform)
@@ -813,10 +813,11 @@ public struct GameEntityActionSystemCore
                         instance))
                         value |= GameActionStatus.Status.Managed;
 
+                    float3 velocity = instanceEx.direction * instanceEx.info.actionMoveSpeed;
+
                     physicsVelocity = default;
                     if (isMove)
                     {
-                        float3 velocity = instanceEx.direction * instanceEx.info.actionMoveSpeed;
                         physicsVelocity.Linear += velocity;
 
                         isVelocityDirty = instanceEx.info.actionMoveSpeed > math.FLT_MIN_NORMAL;
@@ -834,22 +835,22 @@ public struct GameEntityActionSystemCore
 
                             isVelocityDirty = true;
                         }
+                    }
 
-                        if (moveElapsedTime > math.FLT_MIN_NORMAL)
+                    if (moveElapsedTime > math.FLT_MIN_NORMAL)
+                    {
+                        if (instanceEx.info.actionMoveSpeed > math.FLT_MIN_NORMAL)
                         {
-                            if (instanceEx.info.actionMoveSpeed > math.FLT_MIN_NORMAL)
-                            {
-                                transform.pos += velocity * moveElapsedTime;
+                            transform.pos += velocity * moveElapsedTime;
 
-                                isTranslationDirty = true;
-                            }
+                            isTranslationDirty = true;
+                        }
 
-                            if ((instanceEx.value.flag & GameActionFlag.UseGravity) == GameActionFlag.UseGravity)
-                            {
-                                transform.pos += gravity * (moveElapsedTime * moveElapsedTime * 0.5f);
+                        if ((instanceEx.value.flag & GameActionFlag.UseGravity) == GameActionFlag.UseGravity)
+                        {
+                            transform.pos += gravity * (moveElapsedTime * moveElapsedTime * 0.5f);
 
-                                isTranslationDirty = true;
-                            }
+                            isTranslationDirty = true;
                         }
                     }
                 }
@@ -944,7 +945,7 @@ public struct GameEntityActionSystemCore
                                     }
                                 }
 
-                                if(isSourceTransform)
+                                if (isSourceTransform)
                                 {
                                     result.rot = sourceTransform.rot;
                                     result.pos = math.transform(sourceTransform, instanceEx.value.offset) + __CalculateOffset(instance.entity);
@@ -1162,7 +1163,7 @@ public struct GameEntityActionSystemCore
                             instanceEx.info.radius,
                             1.0f,
                             time,
-                            (instanceEx.value.flag & GameActionFlag.TargetInAir) == GameActionFlag.TargetInAir ? up : float3.zero, 
+                            (instanceEx.value.flag & GameActionFlag.TargetInAir) == GameActionFlag.TargetInAir ? up : float3.zero,
                             math.normalizesafe(end.value.pos - start.value.pos, instanceEx.direction),
                             entity,
                             start,
@@ -1207,7 +1208,7 @@ public struct GameEntityActionSystemCore
                             instanceEx.info.radius,
                             distance,
                             time,
-                            (instanceEx.value.flag & GameActionFlag.TargetInAir) == GameActionFlag.TargetInAir ? up : float3.zero, 
+                            (instanceEx.value.flag & GameActionFlag.TargetInAir) == GameActionFlag.TargetInAir ? up : float3.zero,
                             instanceEx.direction,
                             entity,
                             result,

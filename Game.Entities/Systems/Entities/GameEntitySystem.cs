@@ -197,7 +197,7 @@ public partial struct GameEntityTimeEventSystem : ISystem
             container.callbackHandles = __callbackHandles.writer;
             var jobHandle = __commander.MoveTo(container, JobHandle.CombineDependencies(
                 timeJobManager.readWriteJobHandle,
-                callbackJobManager.readWriteJobHandle, 
+                callbackJobManager.readWriteJobHandle,
                 state.Dependency));
 
             timeJobManager.readWriteJobHandle = jobHandle;
@@ -509,7 +509,7 @@ public partial struct GameEntityEventSystem : ISystem
 
             if (index < actorInfos.Length)
             {
-                GameEntityActorInfo actorInfo = actorInfos[index];
+                var actorInfo = actorInfos[index];
                 int version = ++actorInfo.version;
 
                 actorInfo.alertTime = command.time;
@@ -2234,9 +2234,16 @@ public partial struct GameEntityHitSystem : ISystem
         //public EntityCommandQueue<EntityCommandStructChange>.ParallelWriter entityManager;
         //public EntityComponentAssigner.ComponentDataParallelWriter<GameEntityBreakCommand> results;
 
+#if GAME_DEBUG_COMPARSION
+        public uint frameIndex;
+
+        [ReadOnly]
+        public NativeArray<GameEntityIndex> entityIndices;
+#endif
+
         public bool Execute(int index)
         {
-            if (/*hit.value > math.FLT_MIN_NORMAL && */actorHits[index].destinationHit > math.FLT_MIN_NORMAL)
+            //if (hit.value > math.FLT_MIN_NORMAL && actorHits[index].destinationHit > math.FLT_MIN_NORMAL)
             {
                 var hit = inputs[index];
                 var actorInfo = actorInfos[index];
@@ -2248,7 +2255,9 @@ public partial struct GameEntityHitSystem : ISystem
                     var actionInfo = actionInfos[index];
                     if (actionInfo.version != actorInfo.version || actionInfo.time < hit.time || actionInfo.hit < hit.value)
                     {
-                        //UnityEngine.Debug.LogError($"{entity} : {hit.value} : {actionInfo.hit} : {hit.time}");
+#if GAME_DEBUG_COMPARSION
+                        UnityEngine.Debug.LogError($"Break {entityIndices[index].value} : {frameIndex} : {entityArray[index]} : {hit.value} : {actionInfo.hit} : {hit.time} : {hit.normal}");
+#endif
 
                         var instance = instances[index];
 
@@ -2268,7 +2277,7 @@ public partial struct GameEntityHitSystem : ISystem
                     }
 
                     hit.value = 0.0f;
-                    hit.time = actionInfo.time;
+                    hit.time = actorInfo.alertTime;
                     hit.normal = float3.zero;
                     outputs[entityArray[index]] = hit;
                 }
@@ -2301,6 +2310,12 @@ public partial struct GameEntityHitSystem : ISystem
         [NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameEntityHit> hits;
 
+#if GAME_DEBUG_COMPARSION
+        public uint frameIndex;
+
+        [ReadOnly]
+        public ComponentTypeHandle<GameEntityIndex> entityIndexType;
+#endif
         //public EntityCommandQueue<EntityCommandStructChange>.ParallelWriter entityManager;
         //public EntityComponentAssigner.ComponentDataParallelWriter<GameEntityBreakCommand> results;
 
@@ -2318,6 +2333,11 @@ public partial struct GameEntityHitSystem : ISystem
             computeHits.outputs = hits;
             //computeHits.entityManager = entityManager;
             //computeHits.results = results;
+#if GAME_DEBUG_COMPARSION
+            computeHits.frameIndex = frameIndex;
+
+            computeHits.entityIndices = chunk.GetNativeArray(ref entityIndexType);
+#endif
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -2383,6 +2403,12 @@ public partial struct GameEntityHitSystem : ISystem
         computeHits.commandVersionType = __commandVersionType.UpdateAsRef(ref state);
         computeHits.commandType = __commandType.UpdateAsRef(ref state);
         computeHits.hits = __hits.UpdateAsRef(ref state);
+
+#if GAME_DEBUG_COMPARSION
+        computeHits.frameIndex = SystemAPI.GetSingleton<GameSyncManager>().SyncTime.frameIndex;
+        computeHits.entityIndexType = state.GetComponentTypeHandle<GameEntityIndex>(true);
+#endif
+
         state.Dependency = computeHits.ScheduleParallelByRef(__group, state.Dependency);
     }
 }
@@ -2447,6 +2473,8 @@ public partial struct GameEntityBreakSystem : ISystem
 
 #if GAME_DEBUG_COMPARSION
         public uint frameIndex;
+        public FixedString32Bytes angleName;
+        public FixedString32Bytes normalName;
         public FixedString32Bytes alertTimeName;
         public FixedString32Bytes commandTimeName;
         public FixedString32Bytes commandDelayTimeName;
@@ -2480,6 +2508,7 @@ public partial struct GameEntityBreakSystem : ISystem
 
 #if GAME_DEBUG_COMPARSION
             stream.Begin(entityIndices[index].value);
+            stream.Assert(normalName, command.normal);
             stream.Assert(alertTimeName, (double)actorInfo.alertTime);
             stream.Assert(commandTimeName, (double)command.time);
             stream.Assert(commandDelayTimeName, (double)command.delayTime);
@@ -2533,6 +2562,11 @@ public partial struct GameEntityBreakSystem : ISystem
 
                                     GameNodeAngle angle;
                                     angle.value = (half)math.atan2(forward.x, forward.z);
+
+#if GAME_DEBUG_COMPARSION
+                                    stream.Assert(angleName, angle.value);
+#endif
+
                                     this.angles[index] = angle;
                                 }
 
@@ -2691,6 +2725,8 @@ public partial struct GameEntityBreakSystem : ISystem
 
 #if GAME_DEBUG_COMPARSION
         public uint frameIndex;
+        public FixedString32Bytes angleName;
+        public FixedString32Bytes normalName;
         public FixedString32Bytes alertTimeName;
         public FixedString32Bytes commandTimeName;
         public FixedString32Bytes commandDelayTimeName;
@@ -2729,6 +2765,8 @@ public partial struct GameEntityBreakSystem : ISystem
 
 #if GAME_DEBUG_COMPARSION
             interrupt.frameIndex = frameIndex;
+            interrupt.angleName = angleName;
+            interrupt.normalName = normalName;
             interrupt.alertTimeName = alertTimeName;
             interrupt.commandTimeName = commandTimeName;
             interrupt.commandDelayTimeName = commandDelayTimeName;
@@ -2859,6 +2897,8 @@ public partial struct GameEntityBreakSystem : ISystem
 
 #if GAME_DEBUG_COMPARSION
         interrupt.frameIndex = SystemAPI.GetSingleton<GameSyncManager>().SyncTime.frameIndex;
+        interrupt.angleName = "angle";
+        interrupt.normalName = "normal";
         interrupt.alertTimeName = "alertTime";
         interrupt.commandTimeName = "commandTime";
         interrupt.commandDelayTimeName = "commandDelayTime";

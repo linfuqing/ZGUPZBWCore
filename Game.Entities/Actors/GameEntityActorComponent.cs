@@ -47,13 +47,13 @@ public struct GameActionStatus : IComponentData
         Perform = 0x02,
         //Performed = 0x04 | Perform,
         Damage = 0x04,
-        Damaged = 0x08 | Damage, 
+        Damaged = 0x08 | Damage,
         Break = 0x10,
         Destroy = 0x20 | Perform,
         Destroied = Break | Destroy,
         Managed = 0x40 | Created
     }
-    
+
     public Status value;
     public GameDeadline time;
 }
@@ -132,7 +132,7 @@ public struct GameEntityActionInfo : ICleanupComponentData, IEquatable<GameEntit
     public float hit;
 
     public GameDeadline time;
-    
+
     public float3 forward;
 
     public float3 distance;
@@ -146,7 +146,7 @@ public struct GameEntityActionInfo : ICleanupComponentData, IEquatable<GameEntit
         //Do not need commandVersion
         return version == other.version &&
             index == other.index &&
-            hit == other.hit && 
+            hit == other.hit &&
             time == other.time &&
             forward.Equals(other.forward) &&
             distance.Equals(other.distance) &&
@@ -184,7 +184,7 @@ public struct GameEntityBreakInfo : IComponentData, IEquatable<GameEntityBreakIn
     public int delayIndex;
 
     public double commandTime;
-    
+
     public TimeEventHandle timeEventHandle;
 
     public bool Equals(GameEntityBreakInfo other)
@@ -198,7 +198,6 @@ public struct GameEntityBreakInfo : IComponentData, IEquatable<GameEntityBreakIn
     }
 }
 
-//TODO: Sync
 public struct GameEntityActorInfo : IComponentData
 {
     public int version;
@@ -268,7 +267,7 @@ public struct GameEntityActorDelay : IBufferElementData
     public enum Flag
     {
         [Tooltip("打断后是否强制转向")]
-        ForceToTurn = 0x01, 
+        ForceToTurn = 0x01,
     }
 
     [Mask]
@@ -434,33 +433,33 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         }
     }
 
+    public GameEntityActorInfo actorInfo
+    {
+        get => this.GetComponentData<GameEntityActorInfo>();
+
+        set => this.SetComponentData(value);
+    }
+
     public GameEntityActorTime actorTime
     {
         get
         {
             return this.GetComponentData<GameEntityActorTime>();
         }
-        
+
         set
         {
             this.SetComponentData(value);
         }
     }
 
-    /*public GameDeadline delayTime
+    public GameEntityHit hit
     {
-        get
-        {
-            return this.GetComponentData<GameNodeDelay>().time;
-        }
+        get => this.GetComponentData<GameEntityHit>();
 
-        set
-        {
-            GameNodeDelay delay;
-            delay.time = value;
-            this.SetComponentData(delay);
-        }
-    }*/
+        set => this.SetComponentData(value);
+    }
+
     public GameNodeDelay delay
     {
         get
@@ -486,7 +485,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
             _actionIndices = value;
 
 #if UNITY_EDITOR
-            if(Application.isPlaying)
+            if (Application.isPlaying)
 #endif
                 this.SetBuffer(__GetActionIndices(value));
         }
@@ -551,10 +550,10 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
     }
 
     public int Do(
-        in GameDeadline time, 
+        in GameDeadline time,
         int index,
         in Entity target,
-        in float3 forward, 
+        in float3 forward,
         in float3 distance = default/*,
         in float3 offset = default*/)
     {
@@ -574,11 +573,11 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
     }
 
     public int Do(
-        EntityCommander commander, 
-        in GameDeadline time, 
-        int index, 
-        in Entity target, 
-        in float3 forward, 
+        EntityCommander commander,
+        in GameDeadline time,
+        int index,
+        in Entity target,
+        in float3 forward,
         in float3 distance = default/*, 
         in float3 offset = default*/)
     {
@@ -644,7 +643,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
     public int Do(in GameDeadline time, in TimeEventHandle timeEventHandle, float performTime, float coolDownTime)
     {
         GameEntityEventCommand command;
-        if (this.TryGetComponentData(out command) && !command.handle.Equals(timeEventHandle) && 
+        if (this.TryGetComponentData(out command) && !command.handle.Equals(timeEventHandle) &&
             command.handle.isVail)
         {
             Debug.LogError("Force Command!");
@@ -725,11 +724,11 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
 
         if (__entityComponent == null)
             __entityComponent = transform.GetComponentInParent<GameEntityComponentEx>(true);
-        
+
         GameEntityArchetype entityArchetype;
         entityArchetype.value = __entityComponent.actionEntityArchetype;
         assigner.SetComponentData(entity, entityArchetype);
-        
+
         GameEntityEventInfo eventInfo;
         eventInfo.version = 0;
         eventInfo.timeEventHandle = TimeEventHandle.Null;
@@ -755,7 +754,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         assigner.SetBuffer(true, entity, actionIndices);
         assigner.SetBuffer(true, entity, new GameEntityActorActionInfo[actionIndices.Length]);
     }
-    
+
     private GameEntityActorActionData[] __GetActionIndices(int[] values)
     {
         int numValues = values == null ? 0 : values.Length, actionIndex;
@@ -788,7 +787,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
 
         assigner.SetComponentData(entity, actionInfo);
 
-        if(_delay != null)
+        if (_delay != null)
             assigner.SetBuffer(true, entity, _delay);
     }
 }

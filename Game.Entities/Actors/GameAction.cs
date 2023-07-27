@@ -133,7 +133,7 @@ public struct GameActionInfo
     [Tooltip("远程攻击速度")]
     public float actionMoveSpeed;
 
-    [Tooltip("远程攻击时间")]
+    [Tooltip("技能移动时间，该时间从结算开始计算")]
     public float actionMoveTime;
 
     [Tooltip("技能可被打断时间，技能在该时间后不可被打断")]
