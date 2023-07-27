@@ -451,7 +451,7 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
         UnityEngine.Assertions.Assert.IsFalse(instance.index < 0 || instance.index >= __assets.Length);
 
         bool isAction = entityManager.HasComponent<GameActionData>(entity);
-        if (!isAction)
+        if (!isAction && instance.parentEntity != Entity.Null)
         {
             var children = entityManager.HasComponent<GameEntitySharedActionChild>(instance.parentEntity) ?
                 entityManager.GetBuffer<GameEntitySharedActionChild>(instance.parentEntity) : default;
@@ -500,6 +500,13 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
         {
             if (gameObject != null)
                 GameObject.Destroy(gameObject, asset.destroyTime);
+
+            if (instance.parentEntity == Entity.Null)
+            {
+                __endFrameBarrier.DestroyEntity(entity);
+
+                return;
+            }
 
             UnityEngine.Assertions.Assert.IsTrue(
                 (entityManager.GetComponentData<GameActionStatus>(instance.parentEntity).value & GameActionStatus.Status.Managed) == GameActionStatus.Status.Managed);
@@ -558,7 +565,7 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
                 }
                 else
                     gameObject.SetActive(false);
-                    //GameObject.Destroy(gameObject);
+                //GameObject.Destroy(gameObject);
 
                 GameObject.Destroy(gameObject, target.destroyTime);
             }
