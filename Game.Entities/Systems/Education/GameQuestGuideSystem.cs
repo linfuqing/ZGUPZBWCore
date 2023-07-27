@@ -694,6 +694,9 @@ public struct GameQuestGuideManager
         where TVariant : IGameQuestGuideVariant
         where TGuide : IGameQuestGuide<TVariant>
     {
+        if (__guideIndices.ContainsKey(questID))
+            return;
+
         guideIndex = Publish<TVariant, TGuide>(guides, guideIndex, -1);
 
         __guideIndices.Add(questID, guideIndex);
