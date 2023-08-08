@@ -53,12 +53,12 @@ public struct GameAnimalFoodTime : IComponentData
     public double value;
 }
 
-public struct GameAnimalInfo : IComponentData
+public struct GameAnimalInfo : IComponentData, IEnableableComponent
 {
     public float value;
 }
 
-public struct GameAnimalBuff : IComponentData, IBuff<float>
+public struct GameAnimalBuff : IComponentData, IEnableableComponent, IBuff<float>
 {
     public float value;
 
@@ -87,7 +87,7 @@ public struct GameAnimalFoodIndex : IBufferElementData
 [EntityComponent]
 [EntityComponent(typeof(GameAnimalFoodTime))]
 [EntityComponent(typeof(GameAnimalInfo))]
-//[EntityComponent(typeof(GameAnimalBuff))]
+[EntityComponent(typeof(GameAnimalBuff))]
 [EntityComponent(typeof(GameAnimalEntityCommandVersion))]
 [EntityComponent(typeof(GameAnimalFoodIndex))]
 public class GameAnimalComponent : ComponentDataProxy<GameAnimalData>
@@ -177,8 +177,8 @@ public class GameAnimalComponent : ComponentDataProxy<GameAnimalData>
             
             if (value)
             {
-                this.RemoveComponent<GameAnimalInfo>();
-                this.RemoveComponent<GameAnimalBuff>();
+                this.SetComponentEnabled<GameAnimalInfo>(false);
+                this.SetComponentEnabled<GameAnimalBuff>(false);
 
                 _tamedValue = 0;
             }
@@ -186,11 +186,13 @@ public class GameAnimalComponent : ComponentDataProxy<GameAnimalData>
             {
                 GameAnimalInfo info;
                 info.value = _tamedValue;
-                this.AddComponentData(info);
-                
+                this.SetComponentData(info);
+                this.SetComponentEnabled<GameAnimalInfo>(true);
+
                 GameAnimalBuff buff;
                 buff.value = _buff;
-                this.AddComponentData(buff);
+                this.SetComponentData(buff);
+                this.SetComponentEnabled<GameAnimalBuff>(true);
             }
 
             __isTamed = value;
@@ -268,7 +270,7 @@ public class GameAnimalComponent : ComponentDataProxy<GameAnimalData>
         }
     }
 
-    [EntityComponents]
+    /*[EntityComponents]
     public Type[] entityComponentTypesEx
     {
         get
@@ -278,7 +280,7 @@ public class GameAnimalComponent : ComponentDataProxy<GameAnimalData>
 
             return null;
         }
-    }
+    }*/
     
     public void SetBuff(float value, float time)
     {
@@ -296,26 +298,27 @@ public class GameAnimalComponent : ComponentDataProxy<GameAnimalData>
     {
         base.Init(entity, assigner);
 
-        /*if (__isTamed)
-        {
-            this.RemoveComponent<GameAnimalInfo>();
-            this.RemoveComponent<GameAnimalBuff>();
-        }
-        else*/
+        if (value.max > 0)
         {
             GameAnimalInfo info;
             info.value = _tamedValue;
-
             assigner.SetComponentData(entity, info);
+            assigner.SetComponentEnabled<GameAnimalInfo>(entity, true);
 
-            if (value.max > 0)
+            if (_buff > 0)
             {
                 GameAnimalBuff buff;
                 buff.value = _buff;
                 assigner.SetComponentData(entity, buff);
+                assigner.SetComponentEnabled<GameAnimalBuff>(entity, true);
             }
-            /*else
-                assigner.RemoveComponent<GameAnimalBuff>();*/
+            else
+                assigner.SetComponentEnabled<GameAnimalBuff>(entity, false);
+        }
+        else
+        {
+            assigner.SetComponentEnabled<GameAnimalInfo>(entity, false);
+            assigner.SetComponentEnabled<GameAnimalBuff>(entity, false);
         }
 
         assigner.SetBuffer(true, entity, __GetFoodIndices(_foodIndices));

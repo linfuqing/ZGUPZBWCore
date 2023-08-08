@@ -12,7 +12,7 @@ using System.Diagnostics;
 [assembly: RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameIDManagerShared.Serializer>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataContainerDeserialize<GameIDManagerShared.Deserializer>))]
 //[assembly: EntityDataSerialize(typeof(GameIDManager), typeof(GameDataIdSerializationSystem))]
-[assembly: EntityDataDeserialize(typeof(GameIDManager), typeof(GameDataIDDeserializationSystem), (int)GameDataConstans.Version)]
+//[assembly: EntityDataDeserialize(typeof(GameIDManager), typeof(GameDataIDDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
 [EntityDataTypeName("GameIdManager")]
@@ -91,7 +91,7 @@ public struct GameIDManager
         keyValueArrays.Dispose();
     }
 
-    public void Deserialize(in UnsafeBlock block, in NativeArray<Hash128>.ReadOnly guids)
+    public void Deserialize(in UnsafeBlock block, in NativeArray<EntityDataIdentity>.ReadOnly identities)
     {
         __ids.Clear();
         __guids.Clear();
@@ -111,7 +111,7 @@ public struct GameIDManager
             Hash128 guid;
             for (int i = 0; i < length; ++i)
             {
-                guid = guids[keys[i]];
+                guid = identities[keys[i]].guid;
                 id = values[i];
 
                 if (__ids.ContainsKey(guid))
@@ -186,7 +186,7 @@ public struct GameIDManagerShared
     [NativeContainer]
     public unsafe struct Deserializer : IEntityDataContainerDeserializer
     {
-        public readonly NativeArray<Hash128>.ReadOnly GUIDs;
+        public readonly SharedList<EntityDataIdentity>.Reader Identities;
 
         [NativeDisableUnsafePtrRestriction]
         private GameIDManager* __manager;
@@ -197,9 +197,9 @@ public struct GameIDManagerShared
         internal static readonly SharedStatic<int> StaticSafetyID = SharedStatic<int>.GetOrCreate<Deserializer>();
 #endif
 
-        public Deserializer(ref GameIDManagerShared manager, in NativeArray<Hash128>.ReadOnly guids)
+        public Deserializer(ref GameIDManagerShared manager, in SharedList<EntityDataIdentity>.Reader identities)
         {
-            GUIDs = guids;
+            Identities = identities;
 
             __manager = (GameIDManager*)UnsafeUtility.AddressOf(ref manager.__data->value);
 
@@ -214,7 +214,7 @@ public struct GameIDManagerShared
         {
             __CheckWrite();
 
-            __manager->Deserialize(block, GUIDs);
+            __manager->Deserialize(block, Identities.AsArray().AsReadOnly());
         }
 
         [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
@@ -296,7 +296,7 @@ public struct GameIDManagerShared
         return new Serializer(ref this, entityIndices);
     }
 
-    public Deserializer AsDeserializer(in NativeArray<Hash128>.ReadOnly guids)
+    public Deserializer AsDeserializer(in SharedList<EntityDataIdentity>.Reader guids)
     {
         return new Deserializer(ref this, guids);
     }
@@ -355,7 +355,7 @@ public partial struct GameDataIDSerializationContainerSystem : ISystem
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __typeHandle = EntityDataSerializationUtility.GetTypeHandle(ref state);
+        __typeHandle = new EntityDataSerializationTypeHandle(ref state);
 
         var world = state.WorldUnmanaged;
 
@@ -378,7 +378,7 @@ public partial struct GameDataIDSerializationContainerSystem : ISystem
 
         var serializer = __manager.AsSerializer(__entityIndices.reader);
 
-        EntityDataSerializationUtility.Update(__typeHandle, ref serializer, ref state);
+        __typeHandle.Update(ref serializer, ref state);
 
         var jobHandle = state.Dependency;
 
@@ -388,26 +388,53 @@ public partial struct GameDataIDSerializationContainerSystem : ISystem
     }
 }
 
-[DisableAutoCreation]
-public partial class GameDataIDDeserializationSystem : EntityDataDeserializationContainerSystem<GameIDManagerShared.Deserializer>
+[BurstCompile,
+    EntityDataDeserializationSystem(typeof(GameIDManager), (int)GameDataConstans.Version),
+    CreateAfter(typeof(EntityDataDeserializationInitializationSystem)),
+    CreateAfter(typeof(EntityDataDeserializationContainerSystem)),
+    CreateAfter(typeof(GameDataIDSystem)),
+    UpdateInGroup(typeof(EntityDataDeserializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataIDDeserializationContainerSystem : ISystem
 {
+    private SharedList<EntityDataIdentity> __identities;
+
     private GameIDManagerShared __manager;
 
-    protected override void OnCreate()
-    {
-        base.OnCreate();
+    private EntityDataDeserializationContainerSystemCore __core;
 
-        __manager = World.GetOrCreateSystemUnmanaged<GameDataIDSystem>().manager;
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        var world = state.WorldUnmanaged;
+
+        __identities = world.GetExistingSystemUnmanaged<EntityDataDeserializationInitializationSystem>().identities;
+
+        __manager = world.GetExistingSystemUnmanaged<GameDataIDSystem>().manager;
+
+        __core = new EntityDataDeserializationContainerSystemCore(ref state);
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        Dependency = JobHandle.CombineDependencies(Dependency, __manager.lookupJobManager.readWriteJobHandle);
-
-        base.OnUpdate();
-
-        __manager.lookupJobManager.readWriteJobHandle = Dependency;
+        __core.Dispose();
     }
 
-    protected override GameIDManagerShared.Deserializer _Create(ref JobHandle jobHandle) => __manager.AsDeserializer(systemGroup.initializationSystem.guids.AsReadOnly());
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        ref var identitiesJobManager = ref __identities.lookupJobManager;
+
+        ref var managerJobManager = ref __manager.lookupJobManager;
+
+        state.Dependency = JobHandle.CombineDependencies(identitiesJobManager.readOnlyJobHandle, managerJobManager.readWriteJobHandle, state.Dependency);
+
+        var deserializer = __manager.AsDeserializer(__identities.reader);
+
+        __core.Update(ref deserializer, ref state);
+
+        identitiesJobManager.AddReadOnlyDependency(state.Dependency);
+
+        managerJobManager.readWriteJobHandle = state.Dependency;
+    }
 }

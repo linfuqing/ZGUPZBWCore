@@ -81,10 +81,10 @@ public struct GameCreatureItemsDefinition
     }
 }
 
-public struct GameCreatureItemsSharedData : IComponentData
+/*public struct GameCreatureItemsSharedData : IComponentData
 {
     public BlobAssetReference<GameCreatureItemsDefinition> definition;
-}
+}*/
 
 public struct GameCreatureItemsData : IComponentData
 {
@@ -139,7 +139,7 @@ public partial struct GameCreatureBuffSystem : ISystem
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(EndFrameEntityCommandSystemGroup))]
+/*[BurstCompile, UpdateInGroup(typeof(EndFrameEntityCommandSystemGroup))]
 public partial struct GameCreatureStructChangeSystem : ISystem
 {
     [BurstCompile]
@@ -212,17 +212,19 @@ public partial struct GameCreatureStructChangeSystem : ISystem
             init.entityArray = instanceEntities;
             init.instances = state.GetComponentLookup<GameCreatureItemsData>();
 
-            state.Dependency = init.Schedule(instanceEntities.Length, InnerloopBatchCount, state.Dependency);
+            state.Dependency = init.ScheduleByRef(instanceEntities.Length, InnerloopBatchCount, state.Dependency);
         }
     }
-}
+}*/
 
-[BurstCompile, UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(GameEntityTorpiditySystem))]
+[BurstCompile, CreateAfter(typeof(GameItemSystem)), UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(GameEntityTorpiditySystem))]
 public partial struct GameCreatureSystem : ISystem
 { 
     private struct UpdateAttributes
     {
         public float deltaTime;
+
+        public BlobAssetReference<GameCreatureItemsDefinition> definition;
 
         [ReadOnly]
         public GameItemManager.Hierarchy hierarchy;
@@ -256,9 +258,6 @@ public partial struct GameCreatureSystem : ISystem
 
         [ReadOnly]
         public NativeArray<GameItemRoot> itemRoots;
-
-        [ReadOnly]
-        public NativeArray<GameCreatureItemsData> items;
 
         [ReadOnly]
         public NativeArray<GameCreatureData> instances;
@@ -369,7 +368,7 @@ public partial struct GameCreatureSystem : ISystem
             }
             else if (!isKnockedOut)
             {
-                var item = index < itemRoots.Length && index < items.Length ? items[index].definition.Value.Get(itemRoots[index].handle, hierarchy) : default;
+                var item = index < itemRoots.Length ? definition.Value.Get(itemRoots[index].handle, hierarchy) : default;
 
                 float health = maxHealthes[index].max - healthes[index].value;
                 if (water.value > 0.0f && health > 0.0f && item.waterToHealthScale > math.FLT_MIN_NORMAL)
@@ -436,6 +435,8 @@ public partial struct GameCreatureSystem : ISystem
     {
         public float deltaTime;
 
+        public BlobAssetReference<GameCreatureItemsDefinition> definition;
+
         [ReadOnly]
         public GameItemManager.Hierarchy hierarchy;
 
@@ -461,8 +462,6 @@ public partial struct GameCreatureSystem : ISystem
         [ReadOnly]
         public ComponentTypeHandle<GameItemRoot> itemRootType;
         [ReadOnly]
-        public ComponentTypeHandle<GameCreatureItemsData> itemsType;
-        [ReadOnly]
         public ComponentTypeHandle<GameCreatureData> instanceType;
         [ReadOnly]
         public ComponentTypeHandle<GameCreatureTemperature> temperatureType;
@@ -484,6 +483,7 @@ public partial struct GameCreatureSystem : ISystem
         {
             UpdateAttributes updateAttributes;
             updateAttributes.deltaTime = deltaTime;
+            updateAttributes.definition = definition;
             updateAttributes.hierarchy = hierarchy;
             updateAttributes.parents = parents;
             updateAttributes.entityArray = chunk.GetNativeArray(entityType);
@@ -495,7 +495,6 @@ public partial struct GameCreatureSystem : ISystem
             updateAttributes.maxTorpidities = chunk.GetNativeArray(ref maxTorpidityType);
             updateAttributes.torpidities = chunk.GetNativeArray(ref torpidityType);
             updateAttributes.itemRoots = chunk.GetNativeArray(ref itemRootType);
-            updateAttributes.items = chunk.GetNativeArray(ref itemsType);
             updateAttributes.instances = chunk.GetNativeArray(ref instanceType);
             updateAttributes.temperatures = chunk.GetNativeArray(ref temperatureType);
             updateAttributes.foodBuffFromTemperatures = chunk.GetNativeArray(ref foodBuffFromTemperatureType);
@@ -516,23 +515,64 @@ public partial struct GameCreatureSystem : ISystem
     private EntityQuery __group;
     private GameItemManagerShared __itemManager;
 
+    private ComponentLookup<GameNodeParent> __parents;
+
+    private EntityTypeHandle __entityType;
+    private ComponentTypeHandle<GameNodeStatus> __statusType;
+    private ComponentTypeHandle<GameNodeVelocity> __velocitieType;
+    private ComponentTypeHandle<GameNodeStaticThreshold> __staticThresholdType;
+    private ComponentTypeHandle<GameEntityHealthData> __maxHealthType;
+    private ComponentTypeHandle<GameEntityHealth> __healtheType;
+    private ComponentTypeHandle<GameEntityTorpidityData> __maxTorpidityType;
+    private ComponentTypeHandle<GameEntityTorpidity> __torpidityType;
+    private ComponentTypeHandle<GameItemRoot> __itemRootType;
+    private ComponentTypeHandle<GameCreatureData> __instanceType;
+    private ComponentTypeHandle<GameCreatureTemperature> __temperatureType;
+    private ComponentTypeHandle<GameCreatureFoodBuffFromTemperature> __foodBuffFromTemperatureType;
+    private ComponentTypeHandle<GameCreatureWaterBuffFromTemperature> __waterBuffFromTemperatureType;
+    private ComponentTypeHandle<GameCreatureFoodBuff> __foodBuffType;
+    private ComponentTypeHandle<GameCreatureWaterBuff> __waterBuffType;
+
+    private ComponentTypeHandle<GameCreatureFood> __foodType;
+    private ComponentTypeHandle<GameCreatureWater> __waterType;
+    private BufferTypeHandle<GameEntityHealthBuff> __healthBuffType;
+    private BufferTypeHandle<GameEntityTorpidityBuff> __torpidityBuffType;
+
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameNodeStatus>(),
-            ComponentType.ReadOnly<GameNodeVelocity>(),
-            ComponentType.ReadOnly<GameCreatureData>(),
-            ComponentType.ReadOnly<GameCreatureTemperature>(),
-            ComponentType.ReadOnly<GameCreatureFoodBuff>(),
-            ComponentType.ReadOnly<GameCreatureWaterBuff>(),
-            ComponentType.ReadWrite<GameCreatureFood>(),
-            ComponentType.ReadWrite<GameCreatureWater>(),
-            ComponentType.ReadWrite<GameEntityHealthBuff>(),
-            ComponentType.ReadWrite<GameEntityTorpidityBuff>(),
-            ComponentType.Exclude<GameCreatureDisabled>(), 
-            ComponentType.Exclude<Disabled>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                .WithAll<GameNodeStatus, GameNodeVelocity, GameCreatureData, GameCreatureTemperature, GameCreatureFoodBuff, GameCreatureWaterBuff>()
+                .WithAllRW<GameCreatureFood>()
+                .WithAllRW<GameCreatureWater>()
+                .WithAllRW<GameEntityHealthBuff>()
+                .WithAllRW<GameEntityTorpidityBuff>()
+                .WithNone<GameCreatureDisabled>()
+                .Build(ref state);
 
-        __itemManager = state.World.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
+        __parents = state.GetComponentLookup<GameNodeParent>(true);
+        __entityType = state.GetEntityTypeHandle();
+        __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
+        __velocitieType = state.GetComponentTypeHandle<GameNodeVelocity>(true);
+        __staticThresholdType = state.GetComponentTypeHandle<GameNodeStaticThreshold>(true);
+        __maxHealthType = state.GetComponentTypeHandle<GameEntityHealthData>(true);
+        __healtheType = state.GetComponentTypeHandle<GameEntityHealth>(true);
+        __maxTorpidityType = state.GetComponentTypeHandle<GameEntityTorpidityData>(true);
+        __torpidityType = state.GetComponentTypeHandle<GameEntityTorpidity>(true);
+        __itemRootType = state.GetComponentTypeHandle<GameItemRoot>(true);
+        __instanceType = state.GetComponentTypeHandle<GameCreatureData>(true);
+        __temperatureType = state.GetComponentTypeHandle<GameCreatureTemperature>(true);
+        __foodBuffFromTemperatureType = state.GetComponentTypeHandle<GameCreatureFoodBuffFromTemperature>(true);
+        __waterBuffFromTemperatureType = state.GetComponentTypeHandle<GameCreatureWaterBuffFromTemperature>(true);
+        __foodBuffType = state.GetComponentTypeHandle<GameCreatureFoodBuff>(true);
+        __waterBuffType = state.GetComponentTypeHandle<GameCreatureWaterBuff>(true);
+        __foodType = state.GetComponentTypeHandle<GameCreatureFood>();
+        __waterType = state.GetComponentTypeHandle<GameCreatureWater>();
+        __healthBuffType = state.GetBufferTypeHandle<GameEntityHealthBuff>();
+        __torpidityBuffType = state.GetBufferTypeHandle<GameEntityTorpidityBuff>();
+
+        __itemManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>().manager;
     }
 
     public void OnDestroy(ref SystemState state)
@@ -543,34 +583,37 @@ public partial struct GameCreatureSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
+        if (!SystemAPI.HasSingleton<GameCreatureItemsData>())
+            return;
+
         UpdateAttributesEx updateAttributes;
         updateAttributes.deltaTime = state.WorldUnmanaged.Time.DeltaTime;
+        updateAttributes.definition = SystemAPI.GetSingleton<GameCreatureItemsData>().definition;
         updateAttributes.hierarchy = __itemManager.value.hierarchy;
-        updateAttributes.parents = state.GetComponentLookup<GameNodeParent>(true);
-        updateAttributes.entityType = state.GetEntityTypeHandle();
-        updateAttributes.statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
-        updateAttributes.velocitieType = state.GetComponentTypeHandle<GameNodeVelocity>(true);
-        updateAttributes.staticThresholdType = state.GetComponentTypeHandle<GameNodeStaticThreshold>(true);
-        updateAttributes.maxHealthType = state.GetComponentTypeHandle<GameEntityHealthData>(true);
-        updateAttributes.healtheType = state.GetComponentTypeHandle<GameEntityHealth>(true);
-        updateAttributes.maxTorpidityType = state.GetComponentTypeHandle<GameEntityTorpidityData>(true);
-        updateAttributes.torpidityType = state.GetComponentTypeHandle<GameEntityTorpidity>(true);
-        updateAttributes.itemRootType = state.GetComponentTypeHandle<GameItemRoot>(true);
-        updateAttributes.itemsType = state.GetComponentTypeHandle<GameCreatureItemsData>(true);
-        updateAttributes.instanceType = state.GetComponentTypeHandle<GameCreatureData>(true);
-        updateAttributes.temperatureType = state.GetComponentTypeHandle<GameCreatureTemperature>(true);
-        updateAttributes.foodBuffFromTemperatureType = state.GetComponentTypeHandle<GameCreatureFoodBuffFromTemperature>(true);
-        updateAttributes.waterBuffFromTemperatureType = state.GetComponentTypeHandle<GameCreatureWaterBuffFromTemperature>(true);
-        updateAttributes.foodBuffType = state.GetComponentTypeHandle<GameCreatureFoodBuff>(true);
-        updateAttributes.waterBuffType = state.GetComponentTypeHandle<GameCreatureWaterBuff>(true);
-        updateAttributes.foodType = state.GetComponentTypeHandle<GameCreatureFood>();
-        updateAttributes.waterType = state.GetComponentTypeHandle<GameCreatureWater>();
-        updateAttributes.healthBuffType = state.GetBufferTypeHandle<GameEntityHealthBuff>();
-        updateAttributes.torpidityBuffType = state.GetBufferTypeHandle<GameEntityTorpidityBuff>();
+        updateAttributes.parents = __parents.UpdateAsRef(ref state);
+        updateAttributes.entityType = __entityType.UpdateAsRef(ref state);
+        updateAttributes.statusType = __statusType.UpdateAsRef(ref state);
+        updateAttributes.velocitieType = __velocitieType.UpdateAsRef(ref state);
+        updateAttributes.staticThresholdType = __staticThresholdType.UpdateAsRef(ref state);
+        updateAttributes.maxHealthType = __maxHealthType.UpdateAsRef(ref state);
+        updateAttributes.healtheType = __healtheType.UpdateAsRef(ref state);
+        updateAttributes.maxTorpidityType = __maxTorpidityType.UpdateAsRef(ref state);
+        updateAttributes.torpidityType = __torpidityType.UpdateAsRef(ref state);
+        updateAttributes.itemRootType = __itemRootType.UpdateAsRef(ref state);
+        updateAttributes.instanceType = __instanceType.UpdateAsRef(ref state);
+        updateAttributes.temperatureType = __temperatureType.UpdateAsRef(ref state);
+        updateAttributes.foodBuffFromTemperatureType = __foodBuffFromTemperatureType.UpdateAsRef(ref state);
+        updateAttributes.waterBuffFromTemperatureType = __waterBuffFromTemperatureType.UpdateAsRef(ref state);
+        updateAttributes.foodBuffType = __foodBuffType.UpdateAsRef(ref state);
+        updateAttributes.waterBuffType = __waterBuffType.UpdateAsRef(ref state);
+        updateAttributes.foodType = __foodType.UpdateAsRef(ref state);
+        updateAttributes.waterType = __waterType.UpdateAsRef(ref state);
+        updateAttributes.healthBuffType = __healthBuffType.UpdateAsRef(ref state);
+        updateAttributes.torpidityBuffType = __torpidityBuffType.UpdateAsRef(ref state);
 
         ref var itemJobManager = ref __itemManager.lookupJobManager;
 
-        var jobHandle = updateAttributes.ScheduleParallel(__group, JobHandle.CombineDependencies(state.Dependency, itemJobManager.readOnlyJobHandle));
+        var jobHandle = updateAttributes.ScheduleParallelByRef(__group, JobHandle.CombineDependencies(state.Dependency, itemJobManager.readOnlyJobHandle));
 
         itemJobManager.AddReadOnlyDependency(jobHandle);
 

@@ -181,7 +181,7 @@ public struct GameItemComponentChange<TValue, TInitializer> : IJob
     public TInitializer initializer;
 
     [ReadOnly]
-    public SharedHashMap<Entity, Entity>.Reader entities;
+    public SharedHashMap<Entity, Entity>.Reader handleEntities;
 
     [ReadOnly]
     public NativeArray<GameItemCommand> commands;
@@ -218,7 +218,7 @@ public struct GameItemComponentChange<TValue, TInitializer> : IJob
         if (TryGetValue(handle, isOrigin, out var value))
             return value;
 
-        return values[entities[GameItemStructChangeFactory.Convert(handle)]];
+        return values[handleEntities[GameItemStructChangeFactory.Convert(handle)]];
     }
 
     public void Execute()
@@ -245,7 +245,7 @@ public struct GameItemComponentChange<TValue, TInitializer> : IJob
                     result.handle = command.destinationHandle;
                     if (command.count == 0 || command.sourceHandle.Equals(Handle.Empty))
                     {
-                        if (entities.TryGetValue(GameItemStructChangeFactory.Convert(command.destinationHandle), out Entity entity) && 
+                        if (handleEntities.TryGetValue(GameItemStructChangeFactory.Convert(command.destinationHandle), out Entity entity) && 
                             values.HasComponent(entity) && 
                             !TryGetValue(command.destinationHandle, true, out _))
                             result.value = values[entity]; //Deserialize
@@ -383,16 +383,17 @@ public struct GameItemComponentInitSystemCore<T> where T : struct
 
     public GameItemComponentInitSystemCore(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameItemData>(),
-            ComponentType.Exclude<GameItemType>(),
-            ComponentType.Exclude<T>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameItemData>()
+                    .WithNone<GameItemType, T>()
+                    .Build(ref state);
 
-        World world = state.World;
+        var world = state.WorldUnmanaged;
 
-        __itemManager = world.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
+        __itemManager = world.GetExistingSystemUnmanaged<GameItemSystem>().manager;
 
-        __entityManager = world.GetOrCreateSystemUnmanaged<GameItemComponentStructChangeSystem>().manager.addComponentPool;
+        __entityManager = world.GetExistingSystemUnmanaged<GameItemComponentStructChangeSystem>().manager.addComponentPool;
     }
 
     public void Update<TInitializer>(in TInitializer initializer, ref SystemState state)
@@ -443,8 +444,7 @@ public struct GameItemComponentDataChangeSystemCore<TValue, TInitializer> : IDis
 
         __structChangeManagerGroup = GameItemStructChangeManager.GetEntityQuery(ref state);
 
-        World world = state.World;
-        __itemManager = world.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
+        __itemManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>().manager;
 
         results = new SharedList<GameItemChangeResult<TValue>>(Allocator.Persistent);
     }
@@ -463,7 +463,7 @@ public struct GameItemComponentDataChangeSystemCore<TValue, TInitializer> : IDis
 
         GameItemComponentChange<TValue, TInitializer> change;
         change.initializer = initializer;
-        change.entities = handleEntities.reader;
+        change.handleEntities = handleEntities.reader;
         change.commands = __itemManager.oldCommands;
         change.values = state.GetComponentLookup<TValue>();
         change.results = results.writer;
@@ -473,7 +473,7 @@ public struct GameItemComponentDataChangeSystemCore<TValue, TInitializer> : IDis
 
         var jobHandle = JobHandle.CombineDependencies(itemJobManager.readOnlyJobHandle, entityJobManager.readOnlyJobHandle, state.Dependency);
 
-        jobHandle = change.Schedule(jobHandle);
+        jobHandle = change.ScheduleByRef(jobHandle);
 
         itemJobManager.AddReadOnlyDependency(jobHandle);
 
@@ -510,7 +510,7 @@ public struct GameItemComponentDataApplySystemCore<T> where T : unmanaged, IGame
         ref var resultJobManager = ref results.lookupJobManager;
 
         JobHandle jobHandle = JobHandle.CombineDependencies(entityJobManager.readOnlyJobHandle, resultJobManager.readOnlyJobHandle, state.Dependency);
-        jobHandle = apply.Schedule(jobHandle);
+        jobHandle = apply.ScheduleByRef(jobHandle);
 
         entityJobManager.AddReadOnlyDependency(jobHandle);
         resultJobManager.AddReadOnlyDependency(jobHandle);
@@ -528,17 +528,17 @@ public struct GameItemComponentDataInitSystemCore<T> where T : struct, IComponen
     public GameItemComponentDataInitSystemCore(ref SystemState state)
     {
         //BurstUtility.InitializeJob<GameItemDiposeAll>();
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameItemData>()
+                    .WithNone<GameItemType, T>()
+                    .Build(ref state);
 
-        __group = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameItemData>(),
-            ComponentType.Exclude<GameItemType>(),
-            ComponentType.Exclude<T>());
+        var world = state.WorldUnmanaged;
 
-        World world = state.World;
+        __itemManager = world.GetExistingSystemUnmanaged<GameItemSystem>().manager;
 
-        __itemManager = world.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
-
-        __entityManager = world.GetOrCreateSystemUnmanaged<GameItemComponentStructChangeSystem>().addDataPool;
+        __entityManager = world.GetExistingSystemUnmanaged<GameItemComponentStructChangeSystem>().addDataPool;
     }
 
     public void Update<TInitializer, TFactory>(in TFactory factory, ref SystemState state)
@@ -564,7 +564,7 @@ public struct GameItemComponentDataInitSystemCore<T> where T : struct, IComponen
 
         ref var lookupJobManager = ref __itemManager.lookupJobManager;
 
-        jobHandle = init.ScheduleParallel(__group, JobHandle.CombineDependencies(lookupJobManager.readOnlyJobHandle, jobHandle));
+        jobHandle = init.ScheduleParallelByRef(__group, JobHandle.CombineDependencies(lookupJobManager.readOnlyJobHandle, jobHandle));
 
         lookupJobManager.AddReadOnlyDependency(jobHandle);
 

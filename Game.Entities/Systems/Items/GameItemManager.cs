@@ -13,6 +13,7 @@ using Info = GameItemInfo;
 using Child = GameItemChild;
 using Type = GameItemTypeDefinition;
 using Data = GameItemDataDefinition;
+using Unity.Burst;
 
 [Flags]
 public enum GameItemFindFlag
@@ -2411,6 +2412,28 @@ public struct GameItemManager
 
 public struct GameItemManagerShared : IDisposable
 {
+    [BurstCompile]
+    private struct Flush : IJob
+    {
+        public bool isClear;
+
+        public NativeList<Command> sources;
+
+        public NativeList<Command> destinations;
+
+        public void Execute()
+        {
+            if (isClear)
+                destinations.Clear();
+            else
+                UnityEngine.Assertions.Assert.IsTrue(destinations.IsEmpty);
+
+            destinations.AddRange(sources.AsArray());
+
+            sources.Clear();
+        }
+    }
+
     private struct SharedData
     {
         public GameItemManager value;
@@ -2451,11 +2474,15 @@ public struct GameItemManagerShared : IDisposable
 
     public unsafe void Rebuild(Data[] datas)
     {
+        lookupJobManager.CompleteReadWriteDependency();
+
         __data->value.Reset(datas);
     }
 
     public unsafe void Dispose()
     {
+        lookupJobManager.CompleteReadWriteDependency();
+
         var allocator = __data->value.allocator;
         if (__data->value.isCreated)
             __data->value.Dispose();
@@ -2463,6 +2490,29 @@ public struct GameItemManagerShared : IDisposable
         AllocatorManager.Free(allocator, __data);
 
         __data = null;
+    }
+
+    public GameItemManager AsReadOnly()
+    {
+        lookupJobManager.CompleteReadOnlyDependency();
+
+        return value;
+    }
+
+    public GameItemManager AsReadWrite()
+    {
+        lookupJobManager.CompleteReadWriteDependency();
+
+        return value;
+    }
+
+    public JobHandle ScheduleFlush(bool isClear, in JobHandle jobHandle)
+    {
+        Flush flush;
+        flush.isClear = isClear;
+        flush.sources = __commands;
+        flush.destinations = __oldCommands;
+        return flush.ScheduleByRef(jobHandle);
     }
 
     public JobHandle ScheduleParallelCommands<T>(ref T job, int innerloopBatchCount, in JobHandle inputDeps) where T : struct, IJobParallelForDefer

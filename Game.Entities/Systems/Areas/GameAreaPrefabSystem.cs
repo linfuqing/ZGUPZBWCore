@@ -61,35 +61,8 @@ public struct GameAreaCreateNodeCommand
     public RigidTransform transform;
 }
 
-public abstract class GameAreaCreateEntityCommander : IEntityCommander<GameAreaCreateNodeCommand>
+/*public abstract class GameAreaCreateEntityCommander : IEntityCommander<GameAreaCreateNodeCommand>
 {
-    private struct Initializer : IEntityDataInitializer
-    {
-        private int __areaIndex;
-        private int __prefabIndex;
-
-        public Initializer(int areaIndex, int prefabIndex)
-        {
-            __areaIndex = areaIndex;
-            __prefabIndex = prefabIndex;
-        }
-
-        public void Invoke<T>(ref T gameObjectEntity) where T : IGameObjectEntity
-        {
-            GameAreaNode node;
-            node.areaIndex = __areaIndex;
-            gameObjectEntity.AddComponentData(node);
-
-            GameAreaPrefab prefab;
-            prefab.areaIndex = __areaIndex;
-            gameObjectEntity.AddComponentData(prefab);
-            
-            GameAreaInstance instance;
-            instance.prefabIndex = __prefabIndex;
-            gameObjectEntity.AddComponentData(instance);
-        }
-    }
-
     private bool __isComplete;
 
     public virtual int createCountPerTime => 0;
@@ -141,6 +114,33 @@ public abstract class GameAreaCreateEntityCommander : IEntityCommander<GameAreaC
     void IDisposable.Dispose()
     {
 
+    }
+}*/
+
+public struct GameAreaInitializer : IEntityDataInitializer
+{
+    private int __areaIndex;
+    private int __prefabIndex;
+
+    public GameAreaInitializer(int areaIndex, int prefabIndex)
+    {
+        __areaIndex = areaIndex;
+        __prefabIndex = prefabIndex;
+    }
+
+    public void Invoke<T>(ref T gameObjectEntity) where T : IGameObjectEntity
+    {
+        GameAreaNode node;
+        node.areaIndex = __areaIndex;
+        gameObjectEntity.AddComponentData(node);
+
+        GameAreaPrefab prefab;
+        prefab.areaIndex = __areaIndex;
+        gameObjectEntity.AddComponentData(prefab);
+
+        GameAreaInstance instance;
+        instance.prefabIndex = __prefabIndex;
+        gameObjectEntity.AddComponentData(instance);
     }
 }
 
@@ -221,7 +221,7 @@ public struct GameAreaPrefabSystemCore
         int innerloopBatchCount,
         EntityCommandPool<EntityData<GameAreaPrefab>> addComponentCommanderPool,
         EntityCommandPool<Entity> removeComponentCommanderPool,
-        EntityCommandPool<GameAreaCreateNodeCommand> createEntityCommanderPool,
+        ref NativeList<GameAreaCreateNodeCommand> commands,
         ref THandler handler, 
         ref SystemState systemState)
         where TNeighborEnumerable : struct, IGameAreaNeighborEnumerable
@@ -315,22 +315,26 @@ public struct GameAreaPrefabSystemCore
             removeComponentCommander.AddJobHandleForProducer<GameAreaRecreateNodes>(jobHandle);
         }
 
-        var createEntityCommander = createEntityCommanderPool.Create();
-        var entityManager = createEntityCommander.parallelWriter;
+        //var createEntityCommander = createEntityCommanderPool.Create();
+        //var entityManager = createEntityCommander.parallelWriter;
 
         GameAreaTriggerCreateNodeEvents triggerCreateNodeEvents;
         triggerCreateNodeEvents.time = time;
         triggerCreateNodeEvents.definition = definition;
         triggerCreateNodeEvents.instances = __instances;
         triggerCreateNodeEvents.timeManager = __timeManager.writer;
-        triggerCreateNodeEvents.entityManager = createEntityCommander.writer;
         inputDeps = triggerCreateNodeEvents.ScheduleByRef(jobHandle);
 
         __commands.Clear();
 
         inputDeps = __timeManager.Schedule(time, ref __commands, inputDeps);
 
-        long hash = math.aslong(time);
+        GameAreaRecapacity recapacity;
+        recapacity.definition = definition;
+        recapacity.commands = __commands;
+        recapacity.results = commands;
+
+        inputDeps = recapacity.ScheduleByRef(inputDeps);
 
         systemState.Dependency = jobHandle;
 
@@ -340,18 +344,18 @@ public struct GameAreaPrefabSystemCore
 
         ref var versionJobManager = ref versions.lookupJobManager;
 
-        invokeCommands.random = new Random((uint)hash ^ (uint)(hash >> 32));
+        invokeCommands.hash = RandomUtility.Hash(time);
         invokeCommands.definition = definition;
         invokeCommands.commands = __commands.AsDeferredJobArray();
         invokeCommands.instances = instancesParallelWriter;
-        invokeCommands.entityManager = entityManager;
+        invokeCommands.results = commands.AsParallelWriter();
         invokeCommands.versions = versions.parallelWriter;
         jobHandle = invokeCommands.ScheduleByRef(
             __commands, 
             innerloopBatchCount, 
             JobHandle.CombineDependencies(inputDeps, systemState.Dependency, versionJobManager.readWriteJobHandle));
 
-        createEntityCommander.AddJobHandleForProducer<GameAreaInvokeCommands<TValidator>>(jobHandle);
+        //createEntityCommander.AddJobHandleForProducer<GameAreaInvokeCommands<TValidator>>(jobHandle);
 
         versionJobManager.readWriteJobHandle = jobHandle;
 

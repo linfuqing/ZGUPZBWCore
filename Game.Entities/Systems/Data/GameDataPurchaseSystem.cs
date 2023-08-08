@@ -12,7 +12,7 @@ using System.Diagnostics;
 [assembly: RegisterGenericJobType(typeof(EntityDataContainerSerialize<GamePurchaseManagerShared.Serializer>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataContainerDeserialize<GamePurchaseManagerShared.Deserializer>))]
 //[assembly: EntityDataSerialize(typeof(GamePurchaseManager), typeof(GameDataPurchaseSerializationSystem))]
-[assembly: EntityDataDeserialize(typeof(GamePurchaseManager), typeof(GameDataPurchaseDeserializationSystem), (int)GameDataConstans.Version)]
+//[assembly: EntityDataDeserialize(typeof(GamePurchaseManager), typeof(GameDataPurchaseDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
 public struct GamePurchaseManager
@@ -369,7 +369,7 @@ public partial struct GameDataPurchaseSerializationContainerSystem : ISystem
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __typeHandle = EntityDataSerializationUtility.GetTypeHandle(ref state);
+        __typeHandle = new EntityDataSerializationTypeHandle(ref state);
 
         var world = state.WorldUnmanaged;
 
@@ -389,7 +389,7 @@ public partial struct GameDataPurchaseSerializationContainerSystem : ISystem
 
         var serializer = __manager.serializer;
 
-        EntityDataSerializationUtility.Update(__typeHandle, ref serializer, ref state);
+        __typeHandle.Update(ref serializer, ref state);
 
         var jobHandle = state.Dependency;
 
@@ -397,26 +397,42 @@ public partial struct GameDataPurchaseSerializationContainerSystem : ISystem
     }
 }
 
-[DisableAutoCreation]
-public partial class GameDataPurchaseDeserializationSystem : EntityDataDeserializationContainerSystem<GamePurchaseManagerShared.Deserializer>
+[BurstCompile,
+    EntityDataDeserializationSystem(typeof(GamePurchaseManager), (int)GameDataConstans.Version),
+    CreateAfter(typeof(EntityDataDeserializationContainerSystem)),
+    CreateAfter(typeof(GamePurchaseSystem)),
+    UpdateInGroup(typeof(EntityDataDeserializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataPurchaseDeserializationContainerSystem : ISystem
 {
     private GamePurchaseManagerShared __manager;
 
-    protected override void OnCreate()
-    {
-        base.OnCreate();
+    private EntityDataDeserializationContainerSystemCore __core;
 
-        __manager = World.GetOrCreateSystemUnmanaged<GamePurchaseSystem>().manager;
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __manager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GamePurchaseSystem>().manager;
+
+        __core = new EntityDataDeserializationContainerSystemCore(ref state);
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        Dependency = JobHandle.CombineDependencies(Dependency, __manager.lookupJobManager.readWriteJobHandle);
-
-        base.OnUpdate();
-
-        __manager.lookupJobManager.readWriteJobHandle = Dependency;
+        __core.Dispose();
     }
 
-    protected override GamePurchaseManagerShared.Deserializer _Create(ref JobHandle jobHandle) => __manager.deserializer;
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        ref var managerJobManager = ref __manager.lookupJobManager;
+
+        state.Dependency = JobHandle.CombineDependencies(managerJobManager.readWriteJobHandle, state.Dependency);
+
+        var deserializer = __manager.deserializer;
+
+        __core.Update(ref deserializer, ref state);
+
+        managerJobManager.readWriteJobHandle = state.Dependency;
+    }
 }

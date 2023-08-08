@@ -1,6 +1,7 @@
 ﻿using Unity.Burst;
 using Unity.Burst.Intrinsics;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
@@ -73,6 +74,9 @@ public partial struct GameContainerChildSystem : ISystem
             for (i = 0; i < numChildren; ++i)
             {
                 child = children[i];
+                if (child.entity == Entity.Null)
+                    continue;
+
                 childIndex.value = child.index;
                 childIndex.entity = child.entity;
                 childIndices.Add(entity, childIndex);
@@ -201,7 +205,7 @@ public partial struct GameContainerChildSystem : ISystem
 
             int i;
             Entity entity;
-            var results = new NativeParallelHashMap<Entity, int>(length, Allocator.Temp);
+            var results = new UnsafeHashMap<Entity, int>(length, Allocator.Temp);
             if (length > 0)
             {
                 for (i = 0; i < length; ++i)
@@ -250,7 +254,7 @@ public partial struct GameContainerChildSystem : ISystem
             in Entity entity,
             //in Entity parent,
             //ref NativeParallelMultiHashMap<Entity, Entity> parents,
-            ref NativeParallelHashMap<Entity, int> results)
+            ref UnsafeHashMap<Entity, int> results)
         {
             if (results.TryGetValue(entity, out int bearing))
             {
@@ -348,7 +352,7 @@ public partial struct GameContainerChildSystem : ISystem
             return destination;
         }*/
 
-        private int __UpdateChildBearings(int bearing, int minBearing, Entity entity, ref NativeParallelHashMap<Entity, int> results)
+        private int __UpdateChildBearings(int bearing, int minBearing, Entity entity, ref UnsafeHashMap<Entity, int> results)
         {
             int destination = bearing > 0 ? math.clamp(bearing - (weights.HasComponent(entity) ? weights[entity].value : 0), minBearing, math.max(minBearing, bearing)) : 0,
                 source = results[entity];

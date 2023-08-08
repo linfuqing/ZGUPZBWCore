@@ -7,9 +7,9 @@ using ZG;
 
 #region GameStatus
 //[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<ComponentDataSerializationSystem<GameStatus>.Serializer, ComponentDataSerializationSystem<GameStatus>.SerializerFactory>))]
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<ComponentDataDeserializationSystem<GameStatus>.Deserializer, ComponentDataDeserializationSystem<GameStatus>.DeserializerFactory>))]
+//[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<ComponentDataDeserializationSystem<GameStatus>.Deserializer, ComponentDataDeserializationSystem<GameStatus>.DeserializerFactory>))]
 //[assembly: EntityDataSerialize(typeof(GameStatus))]
-[assembly: EntityDataDeserialize(typeof(GameStatus), (int)GameDataConstans.Version)]
+//[assembly: EntityDataDeserialize(typeof(GameStatus), (int)GameDataConstans.Version)]
 #endregion
 
 public struct GameStatus : IComponentData
@@ -127,6 +127,33 @@ public partial struct GameDataStatusSerializationSystem : ISystem
     public void OnCreate(ref SystemState state)
     {
         __core = EntityDataSerializationSystemCoreEx.Create<GameStatus>(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        __core.Update(ref state);
+    }
+}
+
+[BurstCompile,
+    EntityDataDeserializationSystem(typeof(GameStatus), (int)GameDataConstans.Version),
+    CreateAfter(typeof(EntityDataDeserializationComponentSystem)),
+    UpdateInGroup(typeof(EntityDataDeserializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataStatusDeserializationSystem : ISystem
+{
+    private EntityDataDeserializationSystemCoreEx __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = EntityDataDeserializationSystemCoreEx.Create<GameStatus>(ref state);
     }
 
     [BurstCompile]

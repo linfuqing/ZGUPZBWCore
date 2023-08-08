@@ -5,32 +5,27 @@ using ZG;
 using Unity.Collections;
 using System.Collections.Generic;
 
-[Serializable]
 public struct GameValhallaData : IComponentData
 {
     public float respawnTime;
     public float3 respawnOffset;
 }
 
-[Serializable]
 public struct GameValhallaExp : IComponentData
 {
     public float value;
 }
 
-[Serializable]
 public struct GameValhallaVersion : IComponentData
 {
     public int value;
 }
 
-[Serializable]
 public struct GameValhallaCollectCommand : IComponentData
 {
     public int version;
 }
 
-[Serializable]
 public struct GameValhallaUpgradeCommand : IComponentData
 {
     public int version;
@@ -39,7 +34,6 @@ public struct GameValhallaUpgradeCommand : IComponentData
     public Entity entity;
 }
 
-[Serializable]
 public struct GameValhallaRenameCommand : IComponentData
 {
     public int version;
@@ -48,7 +42,6 @@ public struct GameValhallaRenameCommand : IComponentData
     public FixedString32Bytes name;
 }
 
-[Serializable]
 public struct GameValhallaDestroyCommand : IComponentData
 {
     public int version;
@@ -56,7 +49,6 @@ public struct GameValhallaDestroyCommand : IComponentData
     public Entity entity;
 }
 
-[Serializable]
 public struct GameValhallaEvoluteCommand : IComponentData
 {
     public int version;
@@ -64,7 +56,6 @@ public struct GameValhallaEvoluteCommand : IComponentData
     public Entity entity;
 }
 
-[Serializable]
 public struct GameValhallaRespawnCommand : IComponentData
 {
     public int version;
@@ -72,13 +63,11 @@ public struct GameValhallaRespawnCommand : IComponentData
     public Entity entity;
 }
 
-[Serializable]
 public struct GameValhallaSacrificer : IBufferElementData
 {
     public int soulIndex;
 }
 
-[Serializable]
 public struct GameValhallaCommand
 {
     public int variant;

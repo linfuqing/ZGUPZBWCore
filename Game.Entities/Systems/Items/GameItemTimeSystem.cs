@@ -38,7 +38,8 @@ public struct GameItemTime : IGameItemComponentData<GameItemTime>
     }
 }
 
-public partial class GameItemTimeSystem : SystemBase
+[BurstCompile, CreateAfter(typeof(GameItemSystem)), CreateAfter(typeof(GameItemRootEntitySystem))]
+public partial struct GameItemTimeSystem : ISystem
 {
     private struct UpdateTime
     {
@@ -48,7 +49,7 @@ public partial class GameItemTimeSystem : SystemBase
         public GameItemManager.ReadOnlyInfos infos;
 
         [ReadOnly]
-        public UnsafeParallelHashMap<int, int> timeoutTypes;
+        public NativeHashMap<int, int> timeoutTypes;
 
         [ReadOnly]
         public SharedHashMap<GameItemHandle, Entity>.Reader rootEntities;
@@ -167,7 +168,7 @@ public partial class GameItemTimeSystem : SystemBase
         public GameItemManager.ReadOnlyInfos infos;
 
         [ReadOnly]
-        public UnsafeParallelHashMap<int, int> timeoutTypes;
+        public NativeHashMap<int, int> timeoutTypes;
 
         [ReadOnly]
         public SharedHashMap<GameItemHandle, Entity>.Reader rootEntities;
@@ -217,122 +218,98 @@ public partial class GameItemTimeSystem : SystemBase
     }
 
     private EntityQuery __group;
+    private ComponentLookup<GameItemTimeScale> __timeScales;
+    private ComponentTypeHandle<GameItemData> __instanceType;
+    private ComponentTypeHandle<GameItemTime> __timeType;
+    private ComponentTypeHandle<GameItemType> __typeType;
+
     private GameItemManagerShared __itemManager;
     private SharedHashMap<GameItemHandle, Entity> __rootEntities;
-    private UnsafeParallelHashMap<int, int> __timeoutTypes;
+    private NativeHashMap<int, int> __timeoutTypes;
     private NativeQueue<GameItemHandle> __handles;
 
     public void Create(Tuple<int, int>[] timeoutTypes)
     {
-        __timeoutTypes = new UnsafeParallelHashMap<int, int>(timeoutTypes.Length, Allocator.Persistent);
+        __timeoutTypes.Clear();
+
         foreach (var timeoutType in timeoutTypes)
             __timeoutTypes.Add(timeoutType.Item1, timeoutType.Item2);
     }
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        /*__group = state.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameItemRoot>()
-                },
-                None = new ComponentType[]
-                {
-                   typeof(GameItemDontDestroyOnDead)
-                }
-            },
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameItemRoot>(),
-                    ComponentType.ReadOnly<GameItemDontDestroyOnDead>()
-                }, 
-                Options = EntityQueryOptions.IncludeDisabled
-            });*/
-        __group = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameItemData>(),
-            ComponentType.ReadWrite<GameItemType>(),
-            ComponentType.ReadWrite<GameItemTime>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameItemData>()
+                    .WithAllRW<GameItemType>()
+                    .WithAllRW<GameItemTime>()
+                    .Build(ref state);
 
-        World world = state.World;
-        __itemManager = world.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
-        __rootEntities = world.GetOrCreateSystemManaged<GameItemRootEntitySystem>().entities;// world.GetOrCreateSystemUnmanaged<GameItemStructChangeSystem>().handleEntities;
+        __timeScales = state.GetComponentLookup<GameItemTimeScale>(true);
+        __instanceType = state.GetComponentTypeHandle<GameItemData>(true);
+        __timeType = state.GetComponentTypeHandle<GameItemTime>();
+        __typeType = state.GetComponentTypeHandle<GameItemType>();
 
+        var world = state.WorldUnmanaged;
+        __itemManager = world.GetExistingSystemUnmanaged<GameItemSystem>().manager;
+        __rootEntities = world.GetExistingSystemUnmanaged<GameItemRootEntitySystem>().entities;// world.GetOrCreateSystemUnmanaged<GameItemStructChangeSystem>().handleEntities;
+
+        __timeoutTypes = new NativeHashMap<int, int>(1, Allocator.Persistent);
         __handles = new NativeQueue<GameItemHandle>(Allocator.Persistent);
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
-        if (__timeoutTypes.IsCreated)
-            __timeoutTypes.Dispose();
+        __timeoutTypes.Dispose();
 
         __handles.Dispose();
     }
 
+    [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        if (!__timeoutTypes.IsCreated)
-            return;
-
         UpdateTimeEx updateTime;
         updateTime.deltaTime = state.WorldUnmanaged.Time.DeltaTime;
         updateTime.timeoutTypes = __timeoutTypes;
         updateTime.infos = __itemManager.readOnlyInfos;
         updateTime.rootEntities = __rootEntities.reader;
-        updateTime.timeScales = state.GetComponentLookup<GameItemTimeScale>(true);
-        updateTime.instanceType = state.GetComponentTypeHandle<GameItemData>(true);
-        updateTime.timeType = state.GetComponentTypeHandle<GameItemTime>();
-        updateTime.typeType = state.GetComponentTypeHandle<GameItemType>();
+        updateTime.timeScales = __timeScales.UpdateAsRef(ref state);
+        updateTime.instanceType = __instanceType.UpdateAsRef(ref state);
+        updateTime.timeType = __timeType.UpdateAsRef(ref state);
+        updateTime.typeType = __typeType.UpdateAsRef(ref state);
         updateTime.handlesToRemove = __handles.AsParallelWriter();
 
         ref var itemJobManager = ref __itemManager.lookupJobManager;
         ref var entityJobManager = ref __rootEntities.lookupJobManager;
 
         var jobHandle = JobHandle.CombineDependencies(itemJobManager.readOnlyJobHandle, entityJobManager.readOnlyJobHandle, state.Dependency);
-        jobHandle = updateTime.ScheduleParallel(__group, jobHandle);
+        jobHandle = updateTime.ScheduleParallelByRef(__group, jobHandle);
 
         entityJobManager.AddReadOnlyDependency(jobHandle);
 
         RemoveHandles removeHandles;
         removeHandles.manager = __itemManager.value;
         removeHandles.handles = __handles;
-        jobHandle = removeHandles.Schedule(JobHandle.CombineDependencies(jobHandle, itemJobManager.readWriteJobHandle));
+        jobHandle = removeHandles.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, itemJobManager.readWriteJobHandle));
 
         itemJobManager.readWriteJobHandle = jobHandle;
 
         state.Dependency = jobHandle;
     }
-
-    protected override void OnCreate()
-    {
-        base.OnCreate();
-
-        OnCreate(ref this.GetState());
-    }
-
-    protected override void OnDestroy()
-    {
-        OnDestroy(ref this.GetState());
-
-        base.OnDestroy();
-    }
-
-    protected override void OnUpdate()
-    {
-        OnUpdate(ref this.GetState());
-    }
 }
 
-[BurstCompile, UpdateInGroup(typeof(GameItemComponentInitSystemGroup), OrderFirst = true)]
+[BurstCompile,
+    CreateAfter(typeof(GameItemSystem)),
+    CreateAfter(typeof(GameItemComponentStructChangeSystem)),
+    UpdateInGroup(typeof(GameItemComponentInitSystemGroup), OrderFirst = true)]
 public struct GameItemTimeInitSystem : IGameItemInitializationSystem<GameItemTime, GameItemTimeInitSystem.Initializer>
 {
     public struct Initializer : IGameItemInitializer<GameItemTime>
     {
         [ReadOnly]
-        public UnsafeParallelHashMap<int, float> values;
+        public NativeHashMap<int, float> values;
 
         public bool IsVail(int type) => values.ContainsKey(type);
 
@@ -347,7 +324,7 @@ public struct GameItemTimeInitSystem : IGameItemInitializationSystem<GameItemTim
     }
 
     private GameItemComponentInitSystemCore<GameItemTime> __core;
-    private UnsafeParallelHashMap<int, float> __values;
+    private NativeHashMap<int, float> __values;
 
     public Initializer initializer
     {
@@ -367,10 +344,11 @@ public struct GameItemTimeInitSystem : IGameItemInitializationSystem<GameItemTim
         }
     }
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         __core = new GameItemComponentInitSystemCore<GameItemTime>(ref state);
-        __values = new UnsafeParallelHashMap<int, float>(1, Allocator.Persistent);
+        __values = new NativeHashMap<int, float>(1, Allocator.Persistent);
     }
 
     public void OnDestroy(ref SystemState state)
@@ -385,7 +363,10 @@ public struct GameItemTimeInitSystem : IGameItemInitializationSystem<GameItemTim
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(GameItemSystemGroup), OrderLast = true)]
+[BurstCompile,
+    CreateAfter(typeof(GameItemSystem)),
+    CreateAfter(typeof(GameItemTimeInitSystem)),
+    UpdateInGroup(typeof(GameItemSystemGroup), OrderLast = true)]
 public partial struct GameItemTimeChangeSystem : ISystem
 {
     private GameItemComponentDataChangeSystemCore<GameItemTime, GameItemTimeInitSystem.Initializer> __core;
@@ -393,13 +374,15 @@ public partial struct GameItemTimeChangeSystem : ISystem
 
     public SharedList<GameItemChangeResult<GameItemTime>> resutls => __core.results;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         __core = new GameItemComponentDataChangeSystemCore<GameItemTime, GameItemTimeInitSystem.Initializer>(ref state);
 
-        __initializer = state.World.GetOrCreateSystemUnmanaged<GameItemTimeInitSystem>().initializer;
+        __initializer = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemTimeInitSystem>().initializer;
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
         __core.Dispose();
@@ -412,19 +395,23 @@ public partial struct GameItemTimeChangeSystem : ISystem
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(GameItemInitSystemGroup), OrderLast = true)]
+[BurstCompile, 
+    CreateAfter(typeof(GameItemTimeChangeSystem)), 
+    UpdateInGroup(typeof(GameItemInitSystemGroup), OrderLast = true)]
 public partial struct GameItemTimeApplySystem : ISystem
 {
     private GameItemComponentDataApplySystemCore<GameItemTime> __core;
     private SharedList<GameItemChangeResult<GameItemTime>> __resutls;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         __core = new GameItemComponentDataApplySystemCore<GameItemTime>(ref state);
 
-        __resutls = state.World.GetOrCreateSystemUnmanaged<GameItemTimeChangeSystem>().resutls;
+        __resutls = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemTimeChangeSystem>().resutls;
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 

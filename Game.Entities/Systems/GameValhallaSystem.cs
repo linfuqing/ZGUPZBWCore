@@ -13,58 +13,8 @@ using Random = Unity.Mathematics.Random;
 
 [assembly: RegisterGenericJobType(typeof(TimeManager<GameValhallaRespawnSystem.Command>.UpdateEvents))]
 
-public abstract class GameValhallaCommander : IEntityCommander<GameValhallaCommand>
+/*public abstract class GameValhallaCommander : IEntityCommander<GameValhallaCommand>
 {
-    private struct Initializer : IEntityDataInitializer
-    {
-        //private GameSoulData __soul;
-        private GameItemHandle __itemHandle;
-        private FixedString32Bytes __nickname;
-        private Entity __owner;
-
-        public Initializer(in GameItemHandle itemHandle, in FixedString32Bytes nickname, Entity owner)
-        {
-            __itemHandle = itemHandle;
-            __nickname = nickname;
-            __owner = owner;
-        }
-
-        public void Invoke<T>(ref T gameObjectEntity) where T : IGameObjectEntity
-        {
-            /*GameLevel level;
-            level.handle = __soul.levelIndex + 1;
-            gameObjectEntity.SetComponentData(level);
-
-            GamePower power;
-            power.value = __soul.power;
-            gameObjectEntity.SetComponentData(power);
-
-            GameExp exp;
-            exp.value = __soul.exp;
-            gameObjectEntity.SetComponentData(exp);*/
-
-            GameItemRoot itemRoot;
-            itemRoot.handle = __itemHandle;
-            gameObjectEntity.SetComponentData(itemRoot);
-
-            GameNickname nickname;
-            nickname.value = __nickname;// __soul.nickname;
-            gameObjectEntity.SetComponentData(nickname);
-
-            /*GameVariant variant;
-            variant.value = __soul.variant;
-            gameObjectEntity.SetComponentData(variant);*/
-
-            GameOwner owner;
-            owner.entity = __owner;
-            gameObjectEntity.SetComponentData(owner);
-
-            GameActorMaster master;
-            master.entity = __owner;
-            gameObjectEntity.SetComponentData(master);
-        }
-    }
-
     public abstract void Create<T>(int type, int variant, in RigidTransform transform, in Entity ownerEntity, in T initializer) where T : IEntityDataInitializer;
 
     public void Execute(
@@ -90,9 +40,61 @@ public abstract class GameValhallaCommander : IEntityCommander<GameValhallaComma
     {
 
     }
+}*/
+
+public struct GameValhallaInitializer : IEntityDataInitializer
+{
+    //private GameSoulData __soul;
+    private GameItemHandle __itemHandle;
+    private FixedString32Bytes __nickname;
+    private Entity __owner;
+
+    public GameValhallaInitializer(in GameItemHandle itemHandle, in FixedString32Bytes nickname, Entity owner)
+    {
+        __itemHandle = itemHandle;
+        __nickname = nickname;
+        __owner = owner;
+    }
+
+    public void Invoke<T>(ref T gameObjectEntity) where T : IGameObjectEntity
+    {
+        /*GameLevel level;
+        level.handle = __soul.levelIndex + 1;
+        gameObjectEntity.SetComponentData(level);
+
+        GamePower power;
+        power.value = __soul.power;
+        gameObjectEntity.SetComponentData(power);
+
+        GameExp exp;
+        exp.value = __soul.exp;
+        gameObjectEntity.SetComponentData(exp);*/
+
+        GameItemRoot itemRoot;
+        itemRoot.handle = __itemHandle;
+        gameObjectEntity.SetComponentData(itemRoot);
+
+        GameNickname nickname;
+        nickname.value = __nickname;// __soul.nickname;
+        gameObjectEntity.SetComponentData(nickname);
+
+        /*GameVariant variant;
+        variant.value = __soul.variant;
+        gameObjectEntity.SetComponentData(variant);*/
+
+        GameOwner owner;
+        owner.entity = __owner;
+        gameObjectEntity.SetComponentData(owner);
+
+        GameActorMaster master;
+        master.entity = __owner;
+        gameObjectEntity.SetComponentData(master);
+    }
 }
 
-public partial class GameValhallaCollectSystem : SystemBase
+
+[BurstCompile, CreateAfter(typeof(GameItemSystem))]
+public partial struct GameValhallaCollectSystem : ISystem
 {
     public struct Exp
     {
@@ -108,7 +110,7 @@ public partial class GameValhallaCollectSystem : SystemBase
         public GameItemManager.Hierarchy hierarchy;
 
         [ReadOnly]
-        public NativeParallelHashMap<int, Exp> typeToExps;
+        public NativeHashMap<int, Exp> typeToExps;
 
         [ReadOnly]
         public NativeArray<Entity> entityArray;
@@ -171,13 +173,13 @@ public partial class GameValhallaCollectSystem : SystemBase
     [BurstCompile]
     private struct CollectEx : IJobChunk
     {
-        public long hash;
+        public uint hash;
 
         [ReadOnly]
         public GameItemManager.Hierarchy hierarchy;
 
         [ReadOnly]
-        public NativeParallelHashMap<int, Exp> typeToExps;
+        public NativeHashMap<int, Exp> typeToExps;
 
         [ReadOnly]
         public EntityTypeHandle entityType;
@@ -193,15 +195,15 @@ public partial class GameValhallaCollectSystem : SystemBase
 
         public ComponentTypeHandle<GameValhallaVersion> versionType;
 
-        public NativeQueue<GameItemHandle>.ParallelWriter handles;
-
         [NativeDisableContainerSafetyRestriction]
-        public ComponentLookup<GameValhallaExp> expMap;
+        public ComponentLookup<GameValhallaExp> exps;
+
+        public NativeQueue<GameItemHandle>.ParallelWriter handles;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             Collect collect;
-            collect.random = new Random((uint)hash ^ (uint)(hash >> 32) ^ (uint)unfilteredChunkIndex);
+            collect.random = new Random(hash ^ (uint)unfilteredChunkIndex);
             collect.hierarchy = hierarchy;
             collect.typeToExps = typeToExps;
             collect.entityArray = chunk.GetNativeArray(entityType);
@@ -209,8 +211,8 @@ public partial class GameValhallaCollectSystem : SystemBase
             collect.itemRoots = chunk.GetNativeArray(ref itemRootType);
             collect.commands = chunk.GetNativeArray(ref commandType);
             collect.versions = chunk.GetNativeArray(ref versionType);
+            collect.expMap = exps;
             collect.handles = handles;
-            collect.expMap = expMap;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -235,44 +237,62 @@ public partial class GameValhallaCollectSystem : SystemBase
     private EntityQuery __group;
     private GameItemManagerShared __itemManager;
 
-    private NativeParallelHashMap<int, Exp> __typeToExps;
+    private EntityTypeHandle __entityType;
+
+    private ComponentTypeHandle<GameValhallaExp> __expType;
+
+    private ComponentTypeHandle<GameItemRoot> __itemRootType;
+
+    private ComponentTypeHandle<GameValhallaCollectCommand> __commandType;
+
+    private ComponentTypeHandle<GameValhallaVersion> __versionType;
+
+    private ComponentLookup<GameValhallaExp> __exps;
+
+    private NativeHashMap<int, Exp> __typeToExps;
     private NativeQueue<GameItemHandle> __handles;
 
     public void Create(IReadOnlyCollection<KeyValuePair<int, Exp>> typeToExps)
     {
-        __typeToExps = new NativeParallelHashMap<int, Exp>(typeToExps.Count, Allocator.Persistent);
-
         foreach (var typeToExp in typeToExps)
             __typeToExps.Add(typeToExp.Key, typeToExp.Value);
     }
 
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameValhallaExp, GameItemRoot, GameValhallaCollectCommand>()
+                    .WithAllRW<GameValhallaVersion>()
+                    .Build(ref state);
+        __group.SetChangedVersionFilter(ComponentType.ReadWrite<GameValhallaCollectCommand>());
 
-        __group = GetEntityQuery(
-            ComponentType.ReadOnly<GameValhallaExp>(),
-            ComponentType.ReadOnly<GameItemRoot>(),
-            ComponentType.ReadOnly<GameValhallaCollectCommand>(),
-            ComponentType.ReadWrite<GameValhallaVersion>());
-        __group.SetChangedVersionFilter(typeof(GameValhallaCollectCommand));
+        __entityType = state.GetEntityTypeHandle();
+        __expType = state.GetComponentTypeHandle<GameValhallaExp>(true);
+        __itemRootType = state.GetComponentTypeHandle<GameItemRoot>(true);
+        __commandType = state.GetComponentTypeHandle<GameValhallaCollectCommand>(true);
+        __versionType = state.GetComponentTypeHandle<GameValhallaVersion>();
+        __exps = state.GetComponentLookup<GameValhallaExp>();
 
-        __itemManager = World.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
+        __typeToExps = new NativeHashMap<int, Exp>(1, Allocator.Persistent);
+
+        __itemManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>().manager;
 
         __handles = new NativeQueue<GameItemHandle>(Allocator.Persistent);
     }
 
-    protected override void OnDestroy()
+    //[BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
         if (__typeToExps.IsCreated)
             __typeToExps.Dispose();
 
         __handles.Dispose();
-
-        base.OnDestroy();
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
         if (!__typeToExps.IsCreated)
             return;
@@ -280,20 +300,20 @@ public partial class GameValhallaCollectSystem : SystemBase
         var manager = __itemManager.value;
 
         CollectEx collect;
-        collect.hash = math.aslong(World.Time.ElapsedTime);
+        collect.hash = RandomUtility.Hash(state.WorldUnmanaged.Time.ElapsedTime);
         collect.hierarchy = manager.hierarchy;
         collect.typeToExps = __typeToExps;
-        collect.entityType = GetEntityTypeHandle();
-        collect.expType = GetComponentTypeHandle<GameValhallaExp>(true);
-        collect.itemRootType = GetComponentTypeHandle<GameItemRoot>(true);
-        collect.commandType = GetComponentTypeHandle<GameValhallaCollectCommand>(true);
-        collect.versionType = GetComponentTypeHandle<GameValhallaVersion>();
+        collect.entityType = __entityType.UpdateAsRef(ref state);
+        collect.expType = __expType.UpdateAsRef(ref state);
+        collect.itemRootType = __itemRootType.UpdateAsRef(ref state);
+        collect.commandType = __commandType.UpdateAsRef(ref state);
+        collect.versionType = __versionType.UpdateAsRef(ref state);
+        collect.exps = __exps.UpdateAsRef(ref state);
         collect.handles = __handles.AsParallelWriter();
-        collect.expMap = GetComponentLookup<GameValhallaExp>();
 
         ref var lookupJobManager = ref __itemManager.lookupJobManager;
 
-        var jobHandle = collect.ScheduleParallel(__group, JobHandle.CombineDependencies(lookupJobManager.readWriteJobHandle,  Dependency));
+        var jobHandle = collect.ScheduleParallelByRef(__group, JobHandle.CombineDependencies(lookupJobManager.readWriteJobHandle, state.Dependency));
 
         Delete delete;
         delete.manager = manager;
@@ -302,7 +322,7 @@ public partial class GameValhallaCollectSystem : SystemBase
 
         lookupJobManager.readWriteJobHandle = jobHandle;
 
-        Dependency = jobHandle;
+        state.Dependency = jobHandle;
     }
 }
 
@@ -1072,7 +1092,7 @@ public partial struct GameValhallaRespawnSystem : ISystem
         [ReadOnly]
         public BufferLookup<GameSoul> souls;
         [ReadOnly]
-        public NativeArray<RespawnLevelExp> respawnLevelExps;
+        public NativeArray<RespawnLevelExp>.ReadOnly respawnLevelExps;
         [ReadOnly]
         public NativeArray<Translation> translations;
         [ReadOnly]
@@ -1143,7 +1163,7 @@ public partial struct GameValhallaRespawnSystem : ISystem
         [ReadOnly]
         public BufferLookup<GameSoul> souls;
         [ReadOnly]
-        public NativeArray<RespawnLevelExp> respawnLevelExps;
+        public NativeArray<RespawnLevelExp>.ReadOnly respawnLevelExps;
         [ReadOnly]
         public ComponentTypeHandle<Translation> translationType;
         [ReadOnly]
@@ -1215,7 +1235,7 @@ public partial struct GameValhallaRespawnSystem : ISystem
     }
 
     [BurstCompile]
-    private struct Apply : IJob, IEntityCommandProducerJob
+    private struct Apply : IJob//, IEntityCommandProducerJob
     {
         public int itemIdentityType;
         public EntityArchetype itemEntityArchetype;
@@ -1229,7 +1249,9 @@ public partial struct GameValhallaRespawnSystem : ISystem
 
         public GameItemManager itemManager;
 
-        public EntityCommandQueue<GameValhallaCommand>.Writer entityManager;
+        //public EntityCommandQueue<GameValhallaCommand>.Writer entityManager;
+
+        public NativeList<GameValhallaCommand> results;
 
         //public EntityCommandQueue<GameValhallaCommand>.ParallelWriter entityManager;
         public SharedHashMap<GameItemHandle, EntityArchetype>.Writer createItemCommander;
@@ -1251,7 +1273,7 @@ public partial struct GameValhallaRespawnSystem : ISystem
             result.nickname = new FixedString32Bytes(command.value.nickname);
             result.itemHandle = handle;
 
-            entityManager.Enqueue(result);
+            results.Add(result);
 
             createItemCommander.Add(handle, itemEntityArchetype);
 
@@ -1317,14 +1339,21 @@ public partial struct GameValhallaRespawnSystem : ISystem
     private ComponentTypeHandle<GameValhallaExp> __expType;
     private BufferLookup<GameSoul> __souls;
 
-    private NativeArray<RespawnLevelExp> __respawnLevelExps;
+    private NativeList<RespawnLevelExp> __respawnLevelExps;
     private NativeParallelHashMap<int, int> __itemTypes;
     private NativeParallelHashMap<Entity, int> __soulIndicess;
     private NativeQueue<TimeEvent<Command>> __timeEvents;
     private NativeList<Command> __commands;
     private TimeManager<Command> __timeManager;
-    private EntityCommandPool<GameValhallaCommand> __entityManager;
+    //private EntityCommandPool<GameValhallaCommand> __entityManager;
     private GameItemManagerShared __itemManager;
+
+    public SharedList<GameValhallaCommand> commands
+    {
+        get;
+
+        private set;
+    }
 
     public EntityArchetype itemEntityArchetype
     {
@@ -1333,15 +1362,19 @@ public partial struct GameValhallaRespawnSystem : ISystem
         private set;
     }
 
-    public void Create(World world, RespawnLevelExp[] respawnLevelExps, KeyValuePair<int, int>[] itemTypes, GameValhallaCommander commander)
+    public unsafe void Create(RespawnLevelExp[] respawnLevelExps, KeyValuePair<int, int>[] itemTypes)
     {
-        __respawnLevelExps = new NativeArray<RespawnLevelExp>(respawnLevelExps, Allocator.Persistent);
+        __respawnLevelExps.Clear();
+        fixed(void* ptr = respawnLevelExps)
+        {
+            __respawnLevelExps.AddRange(ptr, respawnLevelExps.Length);
+        }
 
-        __itemTypes = new NativeParallelHashMap<int, int>(itemTypes.Length, Allocator.Persistent);
+        __itemTypes.Clear();
         foreach (var pair in itemTypes)
             __itemTypes.Add(pair.Key, pair.Value);
 
-        __entityManager = world.GetOrCreateSystemManaged<EndFrameEntityCommandSystem>().Create<GameValhallaCommand, GameValhallaCommander>(EntityCommandManager.QUEUE_PRESENT, commander);
+        //__entityManager = world.GetOrCreateSystemManaged<EndFrameEntityCommandSystem>().Create<GameValhallaCommand, GameValhallaCommander>(EntityCommandManager.QUEUE_PRESENT, commander);
     }
 
     [BurstCompile]
@@ -1370,6 +1403,14 @@ public partial struct GameValhallaRespawnSystem : ISystem
         __expType = state.GetComponentTypeHandle<GameValhallaExp>();
         __souls = state.GetBufferLookup<GameSoul>();
 
+        ref var itemSystem = ref state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>();
+
+        __itemManager = itemSystem.manager;
+
+        __respawnLevelExps = new NativeList<RespawnLevelExp>(Allocator.Persistent);
+
+        __itemTypes = new NativeParallelHashMap<int, int>(1, Allocator.Persistent);
+
         __soulIndicess = new NativeParallelHashMap<Entity, int>(1, Allocator.Persistent);
 
         __timeEvents = new NativeQueue<TimeEvent<Command>>(Allocator.Persistent);
@@ -1378,9 +1419,7 @@ public partial struct GameValhallaRespawnSystem : ISystem
 
         __timeManager = new TimeManager<Command>(Allocator.Persistent);
 
-        ref var itemSystem = ref state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>();
-
-        __itemManager = itemSystem.manager;
+        commands = new SharedList<GameValhallaCommand>(Allocator.Persistent);
 
         using (var componentTypes = itemSystem.entityArchetype.GetComponentTypes(Allocator.Temp))
         {
@@ -1404,25 +1443,25 @@ public partial struct GameValhallaRespawnSystem : ISystem
     //[BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
-        if (__respawnLevelExps.IsCreated)
-            __respawnLevelExps.Dispose();
+        __respawnLevelExps.Dispose();
 
-        if (__itemTypes.IsCreated)
-            __itemTypes.Dispose();
+        __itemTypes.Dispose();
 
         __soulIndicess.Dispose();
 
-        __timeManager.Dispose();
+        __timeEvents.Dispose();
 
         __commands.Dispose();
 
-        __timeEvents.Dispose();
+        __timeManager.Dispose();
+
+        commands.Dispose();
     }
 
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        if (!__respawnLevelExps.IsCreated || !__identityTypeGroup.HasSingleton<GameItemIdentityType>())
+        if (/*!__respawnLevelExps.IsCreated || */!__identityTypeGroup.HasSingleton<GameItemIdentityType>())
             return;
 
         var entityCount = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
@@ -1441,7 +1480,7 @@ public partial struct GameValhallaRespawnSystem : ISystem
         RespawnEx respawn;
         respawn.time = time;
         respawn.souls = souls;
-        respawn.respawnLevelExps = __respawnLevelExps;
+        respawn.respawnLevelExps = __respawnLevelExps.AsArray().AsReadOnly();
         respawn.translationType = __translationType.UpdateAsRef(ref state);
         respawn.rotationType = __rotationType.UpdateAsRef(ref state);
         respawn.instanceType = __instanceType.UpdateAsRef(ref state);
@@ -1450,7 +1489,7 @@ public partial struct GameValhallaRespawnSystem : ISystem
         respawn.expType = __expType.UpdateAsRef(ref state);
         respawn.soulIndicesToRemove = __soulIndicess.AsParallelWriter();
         respawn.results = __timeEvents.AsParallelWriter();
-        jobHandle = respawn.ScheduleParallel(__group, jobHandle);
+        jobHandle = respawn.ScheduleParallelByRef(__group, jobHandle);
 
         Add add;
         add.inputs = __timeEvents;
@@ -1465,7 +1504,8 @@ public partial struct GameValhallaRespawnSystem : ISystem
         var createItemCommander = itemStructChangeManager.createEntityCommander;
         var itemAssigner = itemStructChangeManager.assigner;
 
-        var entityManager = __entityManager.Create();
+        //var entityManager = __entityManager.Create();
+        var commands = this.commands;
 
         long hash = math.aslong(time);
 
@@ -1476,31 +1516,32 @@ public partial struct GameValhallaRespawnSystem : ISystem
         apply.commands = __commands.AsDeferredJobArray();
         apply.itemTypes = __itemTypes;
         apply.itemManager = __itemManager.value;
-        apply.entityManager = entityManager.writer;
+        apply.results = commands.writer;
         apply.createItemCommander = createItemCommander.writer;
         apply.assigner = itemAssigner.writer;
 
         ref var itemJobManager = ref __itemManager.lookupJobManager;
+        ref var commandsJobManager = ref commands.lookupJobManager;
         ref var commanderJobManager = ref createItemCommander.lookupJobManager;
 
-        timeJobHandle = JobHandle.CombineDependencies(timeJobHandle, itemJobManager.readWriteJobHandle, commanderJobManager.readWriteJobHandle);
+        timeJobHandle = JobHandle.CombineDependencies(timeJobHandle, itemJobManager.readWriteJobHandle, commandsJobManager.readWriteJobHandle);
 
-        timeJobHandle = apply.Schedule(JobHandle.CombineDependencies(timeJobHandle, itemAssigner.jobHandle));
+        timeJobHandle = apply.ScheduleByRef(JobHandle.CombineDependencies(timeJobHandle, commanderJobManager.readWriteJobHandle, itemAssigner.jobHandle));
 
         itemAssigner.jobHandle = timeJobHandle;
 
-        itemJobManager.readWriteJobHandle = timeJobHandle;
-
         commanderJobManager.readWriteJobHandle = timeJobHandle;
 
-        entityManager.AddJobHandleForProducer<Apply>(timeJobHandle);
+        commandsJobManager.readWriteJobHandle = timeJobHandle;
+
+        itemJobManager.readWriteJobHandle = timeJobHandle;
 
         //timeJobHandle = _values.Clear(timeJobHandle);
 
         Remove remove;
         remove.soulIndices = __soulIndicess;
         remove.souls = souls;
-        jobHandle = remove.Schedule(jobHandle);
+        jobHandle = remove.ScheduleByRef(jobHandle);
 
         state.Dependency = JobHandle.CombineDependencies(jobHandle, timeJobHandle);
     }

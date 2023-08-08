@@ -1466,7 +1466,15 @@ public partial struct GameNodeCharacterSystem : ISystem
                         value = GameNodeCharacterStatus.Status.Supported;
 
                         if (area == GameNodeCharacterStatus.Area.Fix)
+                        {
                             isStep = false;
+
+                            if(isAngleChanged)
+                            {
+                                angle.value = characterAngle.value;
+                                angles[index] = angle;
+                            }
+                        }
                         else
                         {
                             var filter = input.Collider->Filter;
@@ -1479,7 +1487,7 @@ public partial struct GameNodeCharacterSystem : ISystem
                                     instance.waterMinHeight,
                                     depthOfWater,
                                     waterMask,
-                                    out uint layerMask, 
+                                    out uint layerMask,
                                     out float3 normal);
                             if (waterDistance > math.FLT_MIN_NORMAL)
                             {

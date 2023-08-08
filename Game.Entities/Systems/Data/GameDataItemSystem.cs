@@ -13,31 +13,31 @@ using ZG;
 #region GameItemManager
 //[assembly: RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameDataItemContainerSerializationSystem.Serializer>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataIndexComponentInit<GameItemData, GameItemDataSerializationWrapper>))]
-[assembly: RegisterGenericJobType(typeof(EntityDataContainerDeserialize<GameDataItemContainerDeserializationSystem.Deserializer>))]
+//[assembly: RegisterGenericJobType(typeof(EntityDataContainerDeserialize<GameDataItemContainerDeserializationSystem.Deserializer>))]
 
 //[assembly: EntityDataSerialize(typeof(GameItemManager), typeof(GameDataItemContainerSerializationSystem))]
-[assembly: EntityDataDeserialize(typeof(GameItemManager), typeof(GameDataItemContainerDeserializationSystem), (int)GameDataConstans.Version)]
+//[assembly: EntityDataDeserialize(typeof(GameItemManager), typeof(GameDataItemContainerDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
 #region GameItemRoot
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataItemRootSerializationSystem.Serializer, GameDataItemRootSerializationSystem.SerializerFactory>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataItemRootDeserializationSystem.Deserializer, GameDataItemRootDeserializationSystem.DeserializerFactory>))]
 //[assembly: EntityDataSerialize(typeof(GameItemRoot), typeof(GameDataItemRootSerializationSystem))]
-[assembly: EntityDataDeserialize(typeof(GameItemRoot), typeof(GameDataItemRootDeserializationSystem), (int)GameDataConstans.Version)]
+//[assembly: EntityDataDeserialize(typeof(GameItemRoot), typeof(GameDataItemRootDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
 #region GameItemSibling
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataItemSiblingSerializationSystem.Serializer, GameDataItemSiblingSerializationSystem.SerializerFactory>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataItemSiblingDeserializationSystem.Deserializer, GameDataItemSiblingDeserializationSystem.DeserializerFactory>))]
 //[assembly: EntityDataSerialize(typeof(GameItemSibling), typeof(GameDataItemSiblingSerializationSystem))]
-[assembly: EntityDataDeserialize(typeof(GameItemSibling), typeof(GameDataItemSiblingDeserializationSystem), (int)GameDataConstans.Version)]
+//[assembly: EntityDataDeserialize(typeof(GameItemSibling), typeof(GameDataItemSiblingDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
 #region GameItemData
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<EntityDataSerializationIndexComponentDataSystemCore<GameItemData, GameItemDataSerializationWrapper>.Serializer, EntityDataSerializationIndexComponentDataSystemCore<GameItemData, GameItemDataSerializationWrapper>.SerializerFactory>))]
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataItemDeserializationSystem.Deserializer, GameDataItemDeserializationSystem.DeserializerFactory>))]
+[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<EntityDataDeserializationIndexComponentDataSystemCore<GameItemData, GameItemDataDeserializationWrapper>.Deserializer, EntityDataDeserializationIndexComponentDataSystemCore<GameItemData, GameItemDataDeserializationWrapper>.DeserializerFactory>))]
 //[assembly: EntityDataSerialize(typeof(GameItemData), typeof(GameDataItemSerializationSystem))]
-[assembly: EntityDataDeserialize(typeof(GameItemData), typeof(GameDataItemDeserializationSystem), (int)GameDataConstans.Version)]
+//[assembly: EntityDataDeserialize(typeof(GameItemData), typeof(GameDataItemDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
 public struct GameDataItem
@@ -55,7 +55,7 @@ public struct GameDataItemContainer : IComponentData
     public NativeArray<Hash128>.ReadOnly typeGUIDs;
 }
 
-public struct GameItemDataSerializationWrapper : IEntityDataIndexReadOnlyWrapper<GameItemData>, IEntityDataIndexSerializationWrapper<GameItemData>
+public struct GameItemDataSerializationWrapper : IEntityDataIndexReadOnlyWrapper<GameItemData>, IEntityDataSerializationIndexWrapper<GameItemData>
 {
     [ReadOnly]
     public GameItemManager.ReadOnlyInfos infos;
@@ -90,22 +90,47 @@ public struct GameItemDataSerializationWrapper : IEntityDataIndexReadOnlyWrapper
     }
 }
 
-public struct GameItemDataDeserializationWrapper : IEntityDataIndexDeserializationWrapper<GameItemData>
+public struct GameItemDataDeserializationWrapper : IEntityDataDeserializationIndexWrapper<GameItemData>
 {
     public GameItemManager manager;
 
-    public GameItemData Deserialize(ref EntityDataReader reader, in NativeArray<int>.ReadOnly indices)
+    public SharedHashMap<Entity, Entity>.Writer entityHandles;
+
+    public SharedHashMap<Entity, Entity>.Writer handleEntities;
+
+    //public EntityCommandQueue<Entity>.Writer entityManager;
+
+    public GameItemData Deserialize(in Entity entity, in NativeArray<int>.ReadOnly guidIndices, ref EntityDataReader reader)
     {
-        int typeIndex = reader.Read<int>();
-        int count = reader.Read<int>();
-        count = math.max(count, 1);
+        GameItemData result;
+        int typeIndex = reader.Read<int>(), count = reader.Read<int>(), 
+            type = typeIndex == -1 ? -1 : guidIndices[typeIndex];
+        if (type == -1)
+        {
+            UnityEngine.Debug.LogError($"Error Item Type of {entity}");
 
-        int type = typeIndex == -1 ? -1 : indices[typeIndex];
+            result.handle = GameItemHandle.Empty;
+        }
+        else
+        {
+            /*Entity handle = GameItemStructChangeFactory.Convert(value.handle);
+            if (handleEntities.TryGetValue(handle, out Entity temp))
+            {
+                entityHandles.Remove(temp);
 
-        GameItemData instance;
-        instance.handle = type == -1 ? GameItemHandle.Empty : manager.Add(type, ref count);
+                entityManager.Enqueue(temp);
+            }*/
 
-        return instance;
+            count = math.max(count, 1);
+            result.handle = manager.Add(type, ref count);
+
+            var handle = GameItemStructChangeFactory.Convert(result.handle);
+
+            entityHandles.Add(entity, handle);
+            handleEntities.Add(handle, entity);
+        }
+
+        return result;
     }
 }
 
@@ -460,7 +485,7 @@ public partial struct GameDataItemSystem : ISystem
         public NativeArray<GameItemCommand> commands;
 
         [ReadOnly]
-        public SharedHashMap<Entity, Entity>.Reader entities;
+        public SharedHashMap<Entity, Entity>.Reader handleEntities;
 
         /*[ReadOnly]
         public SharedHashMap<GameItemHandle, Entity>.Reader rootEntities;*/
@@ -485,7 +510,7 @@ public partial struct GameDataItemSystem : ISystem
 
         public Entity GetRootEntitySerialized(in GameItemHandle handle)
         {
-            if (entities.TryGetValue(
+            if (handleEntities.TryGetValue(
                         GameItemStructChangeFactory.Convert(handle),
                         out Entity entity) &&
                         serializableEntities.TryGetValue(entity, out Entity rootEntity))
@@ -507,8 +532,8 @@ public partial struct GameDataItemSystem : ISystem
             bool isRemoved = rootEntity == Entity.Null;
 
             //bool isChanged = isRemoved == serializables.HasComponent(entity);
-            if (entities.TryGetValue(GameItemStructChangeFactory.Convert(handle), out Entity entity) &&
-                isRemoved ? serializableEntities.Remove(entity) : serializableEntities.TryAdd(entity, rootEntity))
+            if (handleEntities.TryGetValue(GameItemStructChangeFactory.Convert(handle), out Entity entity) &&
+                (isRemoved ? serializableEntities.Remove(entity) : serializableEntities.TryAdd(entity, rootEntity)))
             {
                 if (entitiesToRemove.TryGetValue(entity, out bool handleToRemove) && handleToRemove == isRemoved)
                 {
@@ -603,6 +628,8 @@ public partial struct GameDataItemSystem : ISystem
                 command.entity = entityToRemove.Key;
                 if (serializables.HasComponent(command.entity) == isRemoved)
                 {
+                    //UnityEngine.Assertions.Assert.AreNotEqual(Entity.Null, command.entity);
+
                     if (isRemoved)
                         removeComponentCommander.Enqueue(command);
                     else
@@ -780,7 +807,7 @@ public partial struct GameDataItemSystem : ISystem
         Change change;
         change.result = result;
         change.hierarchy = hierarchy;
-        change.entities = handleEntitiesReader;
+        change.handleEntities = handleEntitiesReader;
         //change.rootEntities = __rootEntities.reader;
         change.serializables = serializables;
         change.entitiesToRemove = __entitiesToRemove;
@@ -914,7 +941,7 @@ public struct GameDataItemSerializer
     public GameItemManager.Hierarchy hierarchy;
 
     [ReadOnly]
-    public SharedHashMap<Entity, Entity>.Reader entities;
+    public SharedHashMap<Entity, Entity>.Reader handleEntities;
 
     [ReadOnly]
     public ComponentLookup<EntityDataIdentity> identities;
@@ -924,7 +951,7 @@ public struct GameDataItemSerializer
 
     public int GetEntityIndex(in GameItemHandle handle, in SharedHashMap<Hash128, int>.Reader entityIndices)
     {
-        if (entities.TryGetValue(GameItemStructChangeFactory.Convert(handle), out Entity entity))
+        if (handleEntities.TryGetValue(GameItemStructChangeFactory.Convert(handle), out Entity entity))
         {
             if (entityIndices.TryGetValue(identities[entity].guid, out int entityIndex))
                 return entityIndex;
@@ -974,14 +1001,14 @@ public struct GameDataItemDeserializer
     public GameItemManager manager;
 
     [ReadOnly]
-    public NativeParallelHashMap<int, Entity> entities;
+    public SharedHashMap<int, Entity>.Reader identityEntities;
 
     [ReadOnly]
     public ComponentLookup<GameItemData> instances;
 
     public GameItemHandle GetHandle(int entityIndex)
     {
-        if (entities.TryGetValue(entityIndex, out var entity))
+        if (identityEntities.TryGetValue(entityIndex, out var entity))
         {
             if (!instances.HasComponent(entity))
             {
@@ -998,7 +1025,7 @@ public struct GameDataItemDeserializer
 
     public GameItemHandle Deserialize(in GameDataItem item)
     {
-        GameItemHandle handle = GetHandle(item.entityIndex);
+        var handle = GetHandle(item.entityIndex);
         if (item.parentEntityIndex != -1)
             manager.Move(handle, GetHandle(item.parentEntityIndex), item.parentChildIndex);
 
@@ -1105,9 +1132,6 @@ public partial struct GameDataItemContainerSerializationSystem : ISystem, IEntit
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        if (!__itemManager.isCreated)
-            return;
-
         GameItemDataSerializationWrapper wrapper;
         wrapper.infos = __itemManager.value.readOnlyInfos;
         
@@ -1195,7 +1219,7 @@ public partial struct GameDataItemRootSerializationSystem : ISystem
 
         SerializerFactory serializerFactory;
         serializerFactory.instance.hierarchy = __itemManager.value.hierarchy;
-        serializerFactory.instance.entities = handleEntities.reader;
+        serializerFactory.instance.handleEntities = handleEntities.reader;
         serializerFactory.instance.identities = __identities.UpdateAsRef(ref state);
         serializerFactory.instance.serializable = __serializable.UpdateAsRef(ref state);
         serializerFactory.rootType = __rootType.UpdateAsRef(ref state);
@@ -1287,7 +1311,7 @@ public partial struct GameDataItemSiblingSerializationSystem : ISystem
 
         SerializerFactory serializerFactory;
         serializerFactory.instance.hierarchy = __itemManager.value.hierarchy;
-        serializerFactory.instance.entities = handleEntities.reader;
+        serializerFactory.instance.handleEntities = handleEntities.reader;
         serializerFactory.instance.identities = __identities.UpdateAsRef(ref state);
         serializerFactory.instance.serializable = __serializable.UpdateAsRef(ref state);
         serializerFactory.siblingType = __siblingType.UpdateAsRef(ref state);
@@ -1390,252 +1414,112 @@ public partial struct GameDataItemSerializationSystem : ISystem//EntityDataSeria
     }
 }
 
-[DisableAutoCreation]
-public partial class GameDataItemContainerDeserializationSystem : EntityDataDeserializationContainerSystem<GameDataItemContainerDeserializationSystem.Deserializer>, IReadOnlyLookupJobManager
+[BurstCompile,
+    EntityDataDeserializationSystem(typeof(GameItemManager), (int)GameDataConstans.Version),
+    CreateAfter(typeof(EntityDataDeserializationContainerSystem)),
+    UpdateInGroup(typeof(EntityDataDeserializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataItemContainerDeserializationSystem : ISystem, IEntityDataDeserializationIndexContainerSystem
 {
-    public struct Deserializer : IEntityDataContainerDeserializer
+    private EntityDataDeserializationContainerSystemCoreEx __core;
+
+    public SharedList<int> guidIndices => __core.typeGUIDIndices;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        [ReadOnly]
-        public NativeArray<Hash128>.ReadOnly typeGuids;
-        public NativeList<int> types;
-
-        public void Deserialize(in UnsafeBlock block)
-        {
-            var typeGuids = block.AsArray<Hash128>();
-
-            int length = typeGuids.Length;
-            types.ResizeUninitialized(length);
-            for (int i = 0; i < length; ++i)
-            {
-                types[i] = this.typeGuids.IndexOf(typeGuids[i]);
-
-#if DEBUG
-                /*if (typeGuids[i].ToString() == "4b959ef3998812f82e760687c088b17e")
-                    UnityEngine.Debug.Log($"{types[i]}");*/
-
-                if (types[i] == -1)
-                    UnityEngine.Debug.LogError($"Item {typeGuids[i]} Deserialize Fail.");
-#endif
-            }
-        }
+        __core = new EntityDataDeserializationContainerSystemCoreEx(ref state);
     }
 
-    private LookupJobManager __lookupJobManager;
-
-    private NativeList<int> __types;
-
-    public NativeArray<int> types => __types.AsDeferredJobArray();
-
-    #region LookupJob
-    public JobHandle readOnlyJobHandle
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        get => __lookupJobManager.readOnlyJobHandle;
+        __core.Dispose();
     }
 
-    public void CompleteReadOnlyDependency() => __lookupJobManager.CompleteReadOnlyDependency();
-
-    public void AddReadOnlyDependency(in JobHandle inputDeps) => __lookupJobManager.AddReadOnlyDependency(inputDeps);
-    #endregion
-
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
-        base.OnCreate();
-
-        __types = new NativeList<int>(Allocator.Persistent);
-    }
-
-    protected override void OnDestroy()
-    {
-        __types.Dispose();
-
-        base.OnDestroy();
-    }
-
-    protected override void OnUpdate()
-    {
-        __lookupJobManager.CompleteReadWriteDependency();
-
-        base.OnUpdate();
-
-        var jobHandle = Dependency;
-
-        __lookupJobManager.readWriteJobHandle = jobHandle;
-    }
-
-    protected override Deserializer _Create(ref JobHandle jobHandle)
-    {
-        Deserializer deserializer;
-        deserializer.typeGuids = SystemAPI.GetSingleton<GameDataItemContainer>().typeGUIDs;
-        deserializer.types = __types;
-        return deserializer;
+        __core.Update(SystemAPI.GetSingleton<GameDataItemContainer>().typeGUIDs, ref state);
     }
 }
 
-[DisableAutoCreation, UpdateAfter(typeof(GameDataItemContainerDeserializationSystem))]
-public partial class GameDataItemDeserializationSystem : EntityDataDeserializationComponentSystem<
-    GameItemData,
-    GameDataItemDeserializationSystem.Deserializer,
-    GameDataItemDeserializationSystem.DeserializerFactory>, IEntityCommandProducerJob
+[BurstCompile,
+    EntityDataDeserializationSystem(typeof(GameItemData), (int)GameDataConstans.Version),
+    CreateAfter(typeof(GameItemSystem)),
+    //CreateAfter(typeof(EndFrameStructChangeSystem)),
+    CreateAfter(typeof(EntityDataDeserializationComponentSystem)), 
+    CreateAfter(typeof(GameDataItemContainerDeserializationSystem)),
+    UpdateInGroup(typeof(EntityDataDeserializationSystemGroup)),
+    UpdateAfter(typeof(GameDataItemContainerDeserializationSystem)), AutoCreateIn("Server")]
+public partial struct GameDataItemDeserializationSystem : ISystem
 {
-    public struct Deserializer : IEntityDataDeserializer
-    {
-        public GameItemManager manager;
-
-        [ReadOnly]
-        public NativeArray<int> types;
-
-        [ReadOnly]
-        public NativeArray<Entity> entityArray;
-
-        public NativeArray<GameItemData> instances;
-
-        public SharedHashMap<Entity, Entity>.Writer entityHandles;
-
-        public SharedHashMap<Entity, Entity>.Writer handleEntities;
-
-        public EntityCommandQueue<Entity>.Writer entityManager;
-
-        public void Deserialize(int index, ref EntityDataReader reader)
-        {
-            int typeIndex = reader.Read<int>();
-            if (typeIndex == -1)
-                return;
-
-            GameItemData instance;
-            int count = reader.Read<int>();
-            count = math.max(count, 1);
-
-            int type = types[typeIndex];
-            if (type == -1)
-            {
-                UnityEngine.Debug.LogError($"Error Item Type of {entityArray[index]}");
-
-                return;
-            }
-
-            instance.handle = manager.Add(type, ref count);
-            /*if(instance.handle.index == 461)
-            {
-                bool result = manager.TryGetValue(instance.handle, out var temp);
-
-                UnityEngine.Debug.LogError(result);
-            }*/
-
-            Entity handle = GameItemStructChangeFactory.Convert(instance.handle), entity = entityArray[index];
-            if (handleEntities.TryGetValue(handle, out Entity temp))
-            {
-                entityHandles.Remove(temp);
-
-                entityManager.Enqueue(temp);
-            }
-
-            entityHandles[entity] = handle;
-            handleEntities[handle] = entity;
-
-            instances[index] = instance;
-        }
-    }
-
-    public struct DeserializerFactory : IEntityDataFactory<Deserializer>
-    {
-        public GameItemManager manager;
-
-        [ReadOnly]
-        public NativeArray<int> types;
-
-        [ReadOnly]
-        public EntityTypeHandle entityType;
-
-        public ComponentTypeHandle<GameItemData> instanceType;
-
-        public SharedHashMap<Entity, Entity>.Writer entityHandles;
-
-        public SharedHashMap<Entity, Entity>.Writer handleEntities;
-
-        public EntityCommandQueue<Entity>.Writer entityManager;
-
-        public Deserializer Create(in ArchetypeChunk chunk, int unfilteredChunkIndex)
-        {
-            Deserializer deserializer;
-            deserializer.manager = manager;
-            deserializer.types = types;
-            deserializer.entityArray = chunk.GetNativeArray(entityType);
-            deserializer.instances = chunk.GetNativeArray(ref instanceType);
-            deserializer.entityHandles = entityHandles;
-            deserializer.handleEntities = handleEntities;
-            deserializer.entityManager = entityManager;
-
-            return deserializer;
-        }
-    }
-
     private EntityQuery __structChangeManagerGroup;
-    private GameDataItemContainerDeserializationSystem __containerSystem;
+
+    private EntityDataDeserializationIndexComponentDataSystemCore<GameItemData, GameItemDataDeserializationWrapper> __core;
     private GameItemManagerShared __itemManager;
 
-    private EntityCommandPool<Entity> __endFrameBarrier;
-    private EntityCommandQueue<Entity> __entityManager;
+    //private EntityCommandPool<Entity> __endFrameBarrier;
 
-    private SharedHashMap<Entity, Entity> __entityHandles;
-    private SharedHashMap<Entity, Entity> __handleEntities;
-
-    public override bool isSingle => true;
-
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        __structChangeManagerGroup = GameItemStructChangeManager.GetEntityQuery(ref state);
 
-        __structChangeManagerGroup = GameItemStructChangeManager.GetEntityQuery(ref this.GetState());
+        __core = EntityDataDeserializationIndexComponentDataSystemCore<GameItemData, GameItemDataDeserializationWrapper>.Create<GameDataItemContainerDeserializationSystem>(ref state);
 
-        World world = World;
-        __endFrameBarrier = world.GetOrCreateSystemUnmanaged<EndFrameStructChangeSystem>().manager.destoyEntityPool;
+        //var world = state.WorldUnmanaged;
+        //__endFrameBarrier = world.GetExistingSystemUnmanaged<EndFrameStructChangeSystem>().manager.destoyEntityPool;
 
-        __itemManager = world.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
-        __containerSystem = world.GetOrCreateSystemManaged<GameDataItemContainerDeserializationSystem>();
+        __itemManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>().manager;
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
         var sructChangeManager = __structChangeManagerGroup.GetSingleton<GameItemStructChangeManager>();
-        __entityHandles = sructChangeManager.entityHandles;
-        __handleEntities = sructChangeManager.handleEntities;
 
-        __entityManager = __endFrameBarrier.Create();
+        //var entityManager = __endFrameBarrier.Create();
 
-        base.OnUpdate();
+        ref var entityHandlesJobManager = ref sructChangeManager.entityHandles.lookupJobManager;
+        ref var handleEntitiesJobManager = ref sructChangeManager.handleEntities.lookupJobManager;
+        ref var itemManagerJobManager = ref __itemManager.lookupJobManager;
 
-        var jobHandle = Dependency;
+        var jobHandle = JobHandle.CombineDependencies(itemManagerJobManager.readWriteJobHandle, entityHandlesJobManager.readWriteJobHandle, handleEntitiesJobManager.readWriteJobHandle);
+        state.Dependency = JobHandle.CombineDependencies(jobHandle, state.Dependency);
 
-        __entityHandles.lookupJobManager.readWriteJobHandle = jobHandle;
-        __handleEntities.lookupJobManager.readWriteJobHandle = jobHandle;
+        GameItemDataDeserializationWrapper wrapper;
+        wrapper.manager = __itemManager.value;
+        wrapper.entityHandles = sructChangeManager.entityHandles.writer;
+        wrapper.handleEntities = sructChangeManager.handleEntities.writer;
+        //wrapper.entityManager = entityManager.writer;
+
+        __core.Update(ref wrapper, ref state, false);
+
+        jobHandle = state.Dependency;
+
+        sructChangeManager.entityHandles.lookupJobManager.readWriteJobHandle = jobHandle;
+        sructChangeManager.handleEntities.lookupJobManager.readWriteJobHandle = jobHandle;
 
         __itemManager.lookupJobManager.readWriteJobHandle = jobHandle;
 
-        __entityManager.AddJobHandleForProducer<GameDataItemDeserializationSystem>(jobHandle);
-
-        __containerSystem.AddReadOnlyDependency(jobHandle);
-    }
-
-    protected override DeserializerFactory _Get(ref JobHandle jobHandle)
-    {
-        jobHandle = JobHandle.CombineDependencies(jobHandle, __entityHandles.lookupJobManager.readWriteJobHandle, __handleEntities.lookupJobManager.readWriteJobHandle);
-        jobHandle = JobHandle.CombineDependencies(jobHandle, __itemManager.lookupJobManager.readWriteJobHandle, __containerSystem.readOnlyJobHandle);
-
-        DeserializerFactory deserializerFactory;
-        deserializerFactory.manager = __itemManager.value;
-        deserializerFactory.types = __containerSystem.types;
-        deserializerFactory.entityType = GetEntityTypeHandle();
-        deserializerFactory.instanceType = GetComponentTypeHandle<GameItemData>();
-        deserializerFactory.entityHandles = __entityHandles.writer;
-        deserializerFactory.handleEntities = __handleEntities.writer;
-        deserializerFactory.entityManager = __entityManager.writer;
-
-        return deserializerFactory;
+        //entityManager.AddJobHandleForProducer<GameDataItemDeserializationSystem>(jobHandle);
     }
 }
 
-[DisableAutoCreation, AlwaysUpdateSystem, UpdateAfter(typeof(GameDataItemDeserializationSystem))]
-public partial class GameDataItemRootDeserializationSystem : EntityDataDeserializationComponentSystem<GameItemRoot, GameDataItemRootDeserializationSystem.Deserializer, GameDataItemRootDeserializationSystem.DeserializerFactory>
+[BurstCompile,
+    EntityDataDeserializationSystem(typeof(GameItemRoot), (int)GameDataConstans.Version),
+    CreateAfter(typeof(GameItemSystem)),
+    CreateAfter(typeof(EntityDataDeserializationPresentationSystem)),
+    CreateAfter(typeof(EntityDataDeserializationComponentSystem)),
+    UpdateInGroup(typeof(EntityDataDeserializationSystemGroup)),
+    UpdateAfter(typeof(GameDataItemDeserializationSystem)), AutoCreateIn("Server")]
+public partial struct GameDataItemRootDeserializationSystem : ISystem
 {
     public struct Item
     {
@@ -1648,7 +1532,12 @@ public partial class GameDataItemRootDeserializationSystem : EntityDataDeseriali
         [ReadOnly]
         public NativeArray<Entity> entityArray;
 
-        public NativeParallelMultiHashMap<Entity, Item> items;
+        public NativeParallelMultiHashMap<Entity, Item>.ParallelWriter items;
+
+        public bool Fallback(int index)
+        {
+            return false;
+        }
 
         public void Deserialize(int index, ref EntityDataReader reader)
         {
@@ -1673,7 +1562,7 @@ public partial class GameDataItemRootDeserializationSystem : EntityDataDeseriali
         [ReadOnly]
         public EntityTypeHandle entityType;
 
-        public NativeParallelMultiHashMap<Entity, Item> items;
+        public NativeParallelMultiHashMap<Entity, Item>.ParallelWriter items;
 
         public Deserializer Create(in ArchetypeChunk chunk, int firstEntityIndex)
         {
@@ -1685,25 +1574,26 @@ public partial class GameDataItemRootDeserializationSystem : EntityDataDeseriali
         }
     }
 
-    public struct Build : IJob
+    private struct Build : IJob
     {
-        public int entityCount;
-
-        public GameDataItemDeserializer instance;
+        [ReadOnly]
+        public EntityDataDeserializationStatusQuery.Container status;
 
         [ReadOnly]
         public NativeParallelMultiHashMap<Entity, Item> items;
+
+        public GameDataItemDeserializer instance;
 
         public ComponentLookup<GameItemRoot> roots;
 
         public void Execute()
         {
-            if (entityCount > instance.entities.Count())
+            if (status.value != EntityDataDeserializationStatus.Value.Complete)
                 return;
 
             using (var keyValueArrays = items.GetKeyValueArrays(Allocator.Temp))
             {
-
+                Entity entity;
                 Item item;
                 GameItemRoot root;
                 GameItemHandle handle;
@@ -1714,77 +1604,128 @@ public partial class GameDataItemRootDeserializationSystem : EntityDataDeseriali
                     handle = instance.Deserialize(item.value);
                     if (item.index == 0)
                     {
+                        entity = keyValueArrays.Keys[i];
+                        root = roots[entity];
+
+                        instance.manager.Remove(root.handle, 0);
+
                         root.handle = handle;
 
-                        roots[keyValueArrays.Keys[i]] = root;
+                        roots[entity] = root;
                     }
                 }
             }
         }
     }
 
+    [BurstCompile]
+    private struct Recapacity : IJob
+    {
+        [ReadOnly]
+        public EntityDataDeserializationStatusQuery.Container status;
+
+        [ReadOnly, DeallocateOnJobCompletion]
+        public NativeArray<int> count;
+
+        public NativeParallelMultiHashMap<Entity, Item> items;
+
+        public void Execute()
+        {
+            if (status.value == EntityDataDeserializationStatus.Value.Created)
+                items.Clear();
+
+            items.Capacity = math.max(items.Capacity, items.Count() + count[0]);
+        }
+    }
+
+    private EntityTypeHandle __entityType;
+    private ComponentLookup<GameItemData> __instances;
+    private ComponentLookup<GameItemRoot> __roots;
+    private SharedHashMap<int, Entity> __identityEntities;
     private NativeParallelMultiHashMap<Entity, Item> __items;
+    private EntityDataDeserializationSystemCore __core;
+    private EntityDataDeserializationStatusQuery __statusQuery;
     private GameItemManagerShared __itemManager;
 
-    public override bool isSingle => true;
-
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        __entityType = state.GetEntityTypeHandle();
+        __instances = state.GetComponentLookup<GameItemData>(true);
+        __roots = state.GetComponentLookup<GameItemRoot>();
 
-        __itemManager = World.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
+        var world = state.WorldUnmanaged;
+        __identityEntities = world.GetExistingSystemUnmanaged<EntityDataDeserializationPresentationSystem>().identityEntities;
+        __itemManager = world.GetExistingSystemUnmanaged<GameItemSystem>().manager;
 
         __items = new NativeParallelMultiHashMap<Entity, Item>(1, Allocator.Persistent);
+
+        __core = EntityDataDeserializationSystemCore.Create<GameItemRoot>(ref state);
+
+        __statusQuery = new EntityDataDeserializationStatusQuery(ref state, true);
+
     }
 
-    protected override void OnDestroy()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
+        __core.Dispose();
+
         __items.Dispose();
-
-        base.OnDestroy();
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
-        base.OnUpdate();
+        var status = __statusQuery.AsContainer(ref state);
 
-        ref var lookupJobManager = ref __itemManager.lookupJobManager;
+        var count = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
+        __core.Count(ref count, ref state);
 
-        var jobHandle = Dependency;
+        Recapacity recapacity;
+        recapacity.count = count;
+        recapacity.status = status;
+        recapacity.items = __items;
+        state.Dependency = recapacity.ScheduleByRef(state.Dependency);
 
-        jobHandle = JobHandle.CombineDependencies(jobHandle, lookupJobManager.readWriteJobHandle);
+        DeserializerFactory factory;
+        factory.entityType = __entityType.UpdateAsRef(ref state);
+        factory.items = __items.AsParallelWriter();
 
-        var systemGroup = base.systemGroup;
-        var presentationSystem = systemGroup.presentationSystem;
-        jobHandle = JobHandle.CombineDependencies(jobHandle, presentationSystem.readOnlyJobHandle);
+        __core.Update<Deserializer, DeserializerFactory>(ref factory, ref state, true);
 
         Build build;
-        build.entityCount = systemGroup.initializationSystem.guids.Length;
-        build.instance.manager = __itemManager.value;
-        build.instance.entities = presentationSystem.entities;
-        build.instance.instances = GetComponentLookup<GameItemData>(true);
+        build.status = status;
         build.items = __items;
-        build.roots = GetComponentLookup<GameItemRoot>();
-        jobHandle = build.Schedule(jobHandle);
+        build.instance.manager = __itemManager.value;
+        build.instance.identityEntities = __identityEntities.reader;
+        build.instance.instances = __instances.UpdateAsRef(ref state);
+        build.roots = __roots.UpdateAsRef(ref state);
 
-        lookupJobManager.readWriteJobHandle = jobHandle;
+        ref var itemManagerJobManager = ref __itemManager.lookupJobManager;
 
-        presentationSystem.AddReadOnlyDependency(jobHandle);
+        ref var identityEntitiesJobManager = ref __identityEntities.lookupJobManager;
 
-        Dependency = jobHandle;
-    }
+        var jobHandle = JobHandle.CombineDependencies(itemManagerJobManager.readWriteJobHandle, identityEntitiesJobManager.readOnlyJobHandle, state.Dependency);
 
-    protected override DeserializerFactory _Get(ref JobHandle jobHandle)
-    {
-        DeserializerFactory deserializerFactory;
-        deserializerFactory.entityType = GetEntityTypeHandle();
-        deserializerFactory.items = __items;
-        return deserializerFactory;
+        jobHandle = build.ScheduleByRef(jobHandle);
+
+        itemManagerJobManager.readWriteJobHandle = jobHandle;
+
+        identityEntitiesJobManager.AddReadOnlyDependency(jobHandle);
+
+        state.Dependency = jobHandle;
     }
 }
 
-[DisableAutoCreation, AlwaysUpdateSystem, UpdateAfter(typeof(GameDataItemDeserializationSystem))]
-public partial class GameDataItemSiblingDeserializationSystem : EntityDataDeserializationComponentSystem<GameItemSibling, GameDataItemSiblingDeserializationSystem.Deserializer, GameDataItemSiblingDeserializationSystem.DeserializerFactory>
+[BurstCompile,
+    EntityDataDeserializationSystem(typeof(GameItemSibling), (int)GameDataConstans.Version),
+    CreateAfter(typeof(GameItemSystem)),
+    CreateAfter(typeof(EntityDataDeserializationPresentationSystem)),
+    CreateAfter(typeof(EntityDataDeserializationComponentSystem)),
+    UpdateInGroup(typeof(EntityDataDeserializationSystemGroup)),
+    UpdateAfter(typeof(GameDataItemDeserializationSystem)), AutoCreateIn("Server")]
+public partial struct GameDataItemSiblingDeserializationSystem : ISystem
 {
     public struct Key : IEquatable<Key>
     {
@@ -1814,9 +1755,16 @@ public partial class GameDataItemSiblingDeserializationSystem : EntityDataDeseri
         [ReadOnly]
         public NativeArray<Entity> entityArray;
 
-        public BufferAccessor<GameItemSibling> siblings;
+        public Unity.Entities.LowLevel.Unsafe.UnsafeUntypedBufferAccessor siblings;
 
         public NativeParallelMultiHashMap<Key, Item> items;
+
+        public NativeList<GameItemHandle> handlesToRemove;
+
+        public bool Fallback(int index)
+        {
+            return false;
+        }
 
         public void Deserialize(in Key key, ref EntityDataReader reader)
         {
@@ -1834,14 +1782,15 @@ public partial class GameDataItemSiblingDeserializationSystem : EntityDataDeseri
             }
         }
 
-        public void Deserialize(int index, ref EntityDataReader reader)
+        public unsafe void Deserialize(int index, ref EntityDataReader reader)
         {
             int length = reader.Read<int>();
             if (length < 1)
                 return;
 
-            var siblings = this.siblings[index];
-            siblings.ResizeUninitialized(length);
+            handlesToRemove.AddRange(siblings.GetUnsafeReadOnlyPtrAndLength(index, out int numSiblings), numSiblings * siblings.ElementSize);
+
+            siblings.ResizeUninitialized(index, length);
 
             Key key;
             key.entity = entityArray[index];
@@ -1859,36 +1808,46 @@ public partial class GameDataItemSiblingDeserializationSystem : EntityDataDeseri
         [ReadOnly]
         public EntityTypeHandle entityType;
 
-        public BufferTypeHandle<GameItemSibling> siblingType;
+        public DynamicComponentTypeHandle siblingType;
 
         public NativeParallelMultiHashMap<Key, Item> items;
+
+        public NativeList<GameItemHandle> handlesToRemove;
 
         public Deserializer Create(in ArchetypeChunk chunk, int firstEntityIndex)
         {
             Deserializer deserializer;
             deserializer.entityArray = chunk.GetNativeArray(entityType);
-            deserializer.siblings = chunk.GetBufferAccessor(ref siblingType);
-            deserializer.items = items;
+            deserializer.siblings = chunk.GetUntypedBufferAccessor(ref siblingType);
+            deserializer.items = items; 
+            deserializer.handlesToRemove = handlesToRemove;
 
             return deserializer;
         }
     }
 
-    public struct Build : IJob
+    private struct Build : IJob
     {
-        public int entityCount;
-
-        public GameDataItemDeserializer instance;
+        [ReadOnly]
+        public EntityDataDeserializationStatusQuery.Container status;
 
         [ReadOnly]
         public NativeParallelMultiHashMap<Key, Item> items;
+
+        [ReadOnly]
+        public NativeList<GameItemHandle> handlesToRemove;
+
+        public GameDataItemDeserializer instance;
 
         public BufferLookup<GameItemSibling> siblings;
 
         public void Execute()
         {
-            if (entityCount > instance.entities.Count())
+            if (status.value != EntityDataDeserializationStatus.Value.Complete)
                 return;
+
+            foreach (var handleToRemove in handlesToRemove)
+                instance.manager.Remove(handleToRemove, 0);
 
             using (var keyValueArrays = items.GetKeyValueArrays(Allocator.Temp))
             {
@@ -1917,63 +1876,168 @@ public partial class GameDataItemSiblingDeserializationSystem : EntityDataDeseri
         }
     }
 
+    /*[BurstCompile]
+    private struct Recapacity : IJob
+    {
+        [ReadOnly]
+        public EntityDataDeserializationStatusQuery.Container status;
+
+        [ReadOnly, DeallocateOnJobCompletion]
+        public NativeArray<int> count;
+
+        public NativeParallelMultiHashMap<Key, Item> items;
+
+        public void Execute()
+        {
+            if (status.value == EntityDataDeserializationStatus.Value.Created)
+                items.Clear();
+
+            items.Capacity = math.max(items.Capacity, items.Count() + count[0]);
+        }
+    }*/
+
+    [BurstCompile]
+    private struct Clear : IJob
+    {
+        [ReadOnly]
+        public EntityDataDeserializationStatusQuery.Container status;
+
+        public NativeParallelMultiHashMap<Key, Item> items;
+
+        public NativeList<GameItemHandle> handlesToRemove;
+
+        public void Execute()
+        {
+            if (status.value != EntityDataDeserializationStatus.Value.Created)
+                return;
+
+            items.Clear();
+            handlesToRemove.Clear();
+        }
+    }
+
+    private EntityTypeHandle __entityType;
+    private DynamicComponentTypeHandle __siblingType;
+    private BufferLookup<GameItemSibling> __siblings;
+    private ComponentLookup<GameItemData> __instances;
+    private SharedHashMap<int, Entity> __identityEntities;
     private NativeParallelMultiHashMap<Key, Item> __items;
+    private NativeList<GameItemHandle> __handlesToRemove;
+    private EntityDataDeserializationSystemCore __core;
+    private EntityDataDeserializationStatusQuery __statusQuery;
     private GameItemManagerShared __itemManager;
 
-    public override bool isSingle => true;
-
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        __entityType = state.GetEntityTypeHandle();
+        __siblingType = state.GetDynamicComponentTypeHandle(ComponentType.ReadWrite<GameItemSibling>());
+        __siblings = state.GetBufferLookup<GameItemSibling>();
+        __instances = state.GetComponentLookup<GameItemData>(true);
 
-        __itemManager = World.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
+        var world = state.WorldUnmanaged;
+        __identityEntities = world.GetExistingSystemUnmanaged<EntityDataDeserializationPresentationSystem>().identityEntities;
+        __itemManager = world.GetExistingSystemUnmanaged<GameItemSystem>().manager;
 
         __items = new NativeParallelMultiHashMap<Key, Item>(1, Allocator.Persistent);
+        __handlesToRemove = new NativeList<GameItemHandle>(Allocator.Persistent);
+
+        __core = EntityDataDeserializationSystemCore.Create<GameItemSibling>(ref state);
+        __statusQuery = new EntityDataDeserializationStatusQuery(ref state, true);
     }
 
-    protected override void OnDestroy()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
+        __core.Dispose();
+
+        __handlesToRemove.Dispose();
+
         __items.Dispose();
-
-        base.OnDestroy();
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
-        base.OnUpdate();
+        var status = __statusQuery.AsContainer(ref state);
 
-        ref var lookupJobManager = ref __itemManager.lookupJobManager;
+        /*var count = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
 
-        var jobHandle = Dependency;
+        __core.CountOfBuffer(__siblingType, ref count, ref state);
 
-        jobHandle = JobHandle.CombineDependencies(jobHandle, lookupJobManager.readWriteJobHandle);
+        Recapacity recapacity;
+        recapacity.status = status;
+        recapacity.count = count;
+        recapacity.items = __items;
 
-        var systemGroup = base.systemGroup;
-        var presentationSystem = systemGroup.presentationSystem;
-        jobHandle = JobHandle.CombineDependencies(jobHandle, presentationSystem.readOnlyJobHandle);
+        state.Dependency = recapacity.ScheduleByRef(state.Dependency);*/
+
+        Clear clear;
+        clear.status = status;
+        clear.handlesToRemove = __handlesToRemove;
+        clear.items = __items;
+
+        state.Dependency = clear.ScheduleByRef(state.Dependency);
+
+        DeserializerFactory factory;
+        factory.entityType = __entityType.UpdateAsRef(ref state);
+        factory.siblingType = __siblingType.UpdateAsRef(ref state);
+        factory.items = __items;
+        factory.handlesToRemove = __handlesToRemove;
+
+        __core.Update<Deserializer, DeserializerFactory>(ref factory, ref state, false);
 
         Build build;
-        build.entityCount = systemGroup.initializationSystem.guids.Length;
-        build.instance.manager = __itemManager.value;
-        build.instance.entities = presentationSystem.entities;
-        build.instance.instances = GetComponentLookup<GameItemData>(true);
-        build.siblings = GetBufferLookup<GameItemSibling>();
+        build.status = status;
         build.items = __items;
-        jobHandle = build.Schedule(jobHandle);
+        build.handlesToRemove = __handlesToRemove;
+        build.instance.manager = __itemManager.value;
+        build.instance.identityEntities = __identityEntities.reader;
+        build.instance.instances = __instances.UpdateAsRef(ref state);
+        build.siblings = __siblings.UpdateAsRef(ref state);
 
-        lookupJobManager.readWriteJobHandle = jobHandle;
+        ref var itemManagerJobManager = ref __itemManager.lookupJobManager;
+        ref var identityEntitiesJobManager = ref __identityEntities.lookupJobManager;
 
-        presentationSystem.AddReadOnlyDependency(jobHandle);
+        var jobHandle = JobHandle.CombineDependencies(itemManagerJobManager.readWriteJobHandle, identityEntitiesJobManager.readOnlyJobHandle, state.Dependency);
 
-        Dependency = jobHandle;
-    }
+        jobHandle = build.ScheduleByRef(jobHandle);
 
-    protected override DeserializerFactory _Get(ref JobHandle jobHandle)
-    {
-        DeserializerFactory deserializerFactory;
-        deserializerFactory.entityType = GetEntityTypeHandle();
-        deserializerFactory.siblingType = GetBufferTypeHandle<GameItemSibling>();
-        deserializerFactory.items = __items;
-        return deserializerFactory;
+        identityEntitiesJobManager.AddReadOnlyDependency(jobHandle);
+
+        itemManagerJobManager.readWriteJobHandle = jobHandle;
+
+        state.Dependency = jobHandle;
     }
 }
+
+/*[BurstCompile,
+    CreateAfter(typeof(GameItemSystem)),
+    UpdateInGroup(typeof(EntityDataDeserializationSystemGroup), OrderLast = true), AutoCreateIn("Server")]
+public partial struct GameDataItemPresentationSystem : ISystem
+{
+    private GameItemManagerShared __itemManager;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __itemManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>().manager;
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        ref var itemManagerJobManager = ref __itemManager.lookupJobManager;
+        var jobHandle = __itemManager.ScheduleFlush(false, JobHandle.CombineDependencies(itemManagerJobManager.readWriteJobHandle, state.Dependency));
+
+        itemManagerJobManager.readWriteJobHandle = jobHandle;
+
+        state.Dependency = jobHandle;
+    }
+}*/

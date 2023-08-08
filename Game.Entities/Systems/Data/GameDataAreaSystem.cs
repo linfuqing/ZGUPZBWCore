@@ -10,7 +10,7 @@ using Unity.Burst;
 [assembly: RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameAreaManager.Serializer>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataContainerDeserialize<GameAreaManager.Deserializer>))]
 //[assembly: EntityDataSerialize(typeof(GameAreaManager), typeof(GameDataAreaSerializationSystem))]
-[assembly: EntityDataDeserialize(typeof(GameAreaManager), typeof(GameDataAreaDeserializationSystem), (int)GameDataConstans.Version)]
+//[assembly: EntityDataDeserialize(typeof(GameAreaManager), typeof(GameDataAreaDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
 public struct GameAreaManager
@@ -74,7 +74,7 @@ public partial struct GameDataAreaSerializationContainerSystem : ISystem
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __typeHandle = EntityDataSerializationUtility.GetTypeHandle(ref state);
+        __typeHandle = new EntityDataSerializationTypeHandle(ref state);
 
         __versions = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameAreaPrefabSystem>().versions;
     }
@@ -92,34 +92,48 @@ public partial struct GameDataAreaSerializationContainerSystem : ISystem
         ref var lookupJobManager = ref __versions.lookupJobManager;
         state.Dependency = JobHandle.CombineDependencies(state.Dependency, lookupJobManager.readOnlyJobHandle);
 
-        EntityDataSerializationUtility.Update(__typeHandle, ref serializer, ref state);
+        __typeHandle.Update(ref serializer, ref state);
 
         lookupJobManager.AddReadOnlyDependency(state.Dependency);
     }
 }
 
-[DisableAutoCreation]
-public partial class GameDataAreaDeserializationSystem : EntityDataDeserializationContainerSystem<GameAreaManager.Deserializer>
+[BurstCompile,
+    EntityDataDeserializationSystem(typeof(GameAreaManager), (int)GameDataConstans.Version),
+    CreateAfter(typeof(EntityDataDeserializationContainerSystem)),
+    CreateAfter(typeof(GameAreaPrefabSystem)), 
+    UpdateInGroup(typeof(EntityDataDeserializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataAreaDeserializationContainerSystem : ISystem
 {
     private SharedHashMap<Hash128, int> __versions;
 
-    protected override void OnCreate()
+    private EntityDataDeserializationContainerSystemCore __core;
+    
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        __versions = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameAreaPrefabSystem>().versions;
 
-        __versions = World.GetOrCreateSystemUnmanaged<GameAreaPrefabSystem>().versions;
+        __core = new EntityDataDeserializationContainerSystemCore(ref state);
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        ref var lookupJobManager = ref __versions.lookupJobManager;
-
-        Dependency = JobHandle.CombineDependencies(Dependency, lookupJobManager.readWriteJobHandle);
-
-        base.OnUpdate();
-
-        lookupJobManager.readWriteJobHandle = Dependency;
+        __core.Dispose();
     }
 
-    protected override GameAreaManager.Deserializer _Create(ref JobHandle jobHandle) => new GameAreaManager.Deserializer(__versions.writer);
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        ref var versionsJobManager = ref __versions.lookupJobManager;
+
+        state.Dependency = JobHandle.CombineDependencies(versionsJobManager.readWriteJobHandle, state.Dependency);
+
+        var deserializer = new GameAreaManager.Deserializer(__versions.writer);
+
+        __core.Update(ref deserializer, ref state);
+
+        versionsJobManager.readWriteJobHandle = state.Dependency;
+    }
 }

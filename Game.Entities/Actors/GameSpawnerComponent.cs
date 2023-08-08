@@ -35,7 +35,7 @@ public struct GameSpawnData
     public RigidTransform transform;
 }
 
-public abstract class GameSpawnCommander : IEntityCommander<GameSpawnData>
+/*public abstract class GameSpawnCommander : IEntityCommander<GameSpawnData>
 {
     private struct Initializer : IEntityDataInitializer
     {
@@ -80,7 +80,7 @@ public abstract class GameSpawnCommander : IEntityCommander<GameSpawnData>
     {
 
     }
-}
+}*/
 
 [EntityComponent(typeof(GameSpawnerAssetCounter))]
 public class GameSpawnerComponent : EntityProxyComponent

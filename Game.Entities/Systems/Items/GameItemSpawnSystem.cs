@@ -9,63 +9,8 @@ using Unity.Transforms;
 using ZG;
 using Random = Unity.Mathematics.Random;
 
-public abstract class GameItemSpawnCommander : IEntityCommander<GameItemSpawnData>
+/*public abstract class GameItemSpawnCommander : IEntityCommander<GameItemSpawnData>
 {
-    public interface IInitializer : IEntityDataInitializer
-    {
-        public Entity owner { get; }
-    }
-
-    private struct Initializer : IInitializer
-    {
-        private GameItemHandle __itemHandle;
-
-        public Entity owner
-        {
-            get;
-        }
-
-        public Initializer(in GameItemHandle itemHandle, in Entity owner)
-        {
-            __itemHandle = itemHandle;
-
-            this.owner = owner;
-        }
-
-        public void Invoke<T>(ref T gameObjectEntity) where T : IGameObjectEntity
-        {
-            /*GameLevel level;
-            level.handle = __soul.levelIndex + 1;
-            gameObjectEntity.SetComponentData(level);
-
-            GamePower power;
-            power.value = __soul.power;
-            gameObjectEntity.SetComponentData(power);
-
-            GameExp exp;
-            exp.value = __soul.exp;
-            gameObjectEntity.SetComponentData(exp);*/
-
-            GameItemRoot itemRoot;
-            itemRoot.handle = __itemHandle;
-            gameObjectEntity.SetComponentData(itemRoot);
-
-            var entity = this.owner;
-
-            GameOwner owner;
-            owner.entity = entity;
-            gameObjectEntity.SetComponentData(owner);
-
-            GameActorMaster master;
-            master.entity = entity;
-            gameObjectEntity.SetComponentData(master);
-
-            /*GameVariant variant;
-            variant.value = __soul.variant;
-            gameObjectEntity.SetComponentData(variant);*/
-        }
-    }
-
     public abstract void Create<T>(int type, in RigidTransform transform, in T initializer) where T : IInitializer;
 
     public void Execute(
@@ -90,12 +35,62 @@ public abstract class GameItemSpawnCommander : IEntityCommander<GameItemSpawnDat
     {
 
     }
-}
+}*/
 
 public enum GameItemSpawnType
 {
     Drop, 
     Set
+}
+
+public struct GameItemSpawnInitializer : IEntityDataInitializer
+{
+    private GameItemHandle __itemHandle;
+
+    public Entity owner
+    {
+        get;
+    }
+
+    public GameItemSpawnInitializer(in GameItemHandle itemHandle, in Entity owner)
+    {
+        __itemHandle = itemHandle;
+
+        this.owner = owner;
+    }
+
+    public void Invoke<T>(ref T gameObjectEntity) where T : IGameObjectEntity
+    {
+        /*GameLevel level;
+        level.handle = __soul.levelIndex + 1;
+        gameObjectEntity.SetComponentData(level);
+
+        GamePower power;
+        power.value = __soul.power;
+        gameObjectEntity.SetComponentData(power);
+
+        GameExp exp;
+        exp.value = __soul.exp;
+        gameObjectEntity.SetComponentData(exp);*/
+
+        GameItemRoot itemRoot;
+        itemRoot.handle = __itemHandle;
+        gameObjectEntity.SetComponentData(itemRoot);
+
+        var entity = this.owner;
+
+        GameOwner owner;
+        owner.entity = entity;
+        gameObjectEntity.SetComponentData(owner);
+
+        GameActorMaster master;
+        master.entity = entity;
+        gameObjectEntity.SetComponentData(master);
+
+        /*GameVariant variant;
+        variant.value = __soul.variant;
+        gameObjectEntity.SetComponentData(variant);*/
+    }
 }
 
 public struct GameItemSpawnOffset : IComponentData
@@ -139,7 +134,7 @@ public struct GameItemSpawnData
     public GameItemHandle itemHandle;
 }
 
-[BurstCompile]
+[BurstCompile, CreateAfter(typeof(GameItemSystem))]
 public partial struct GameItemSpawnSystem : ISystem
 {
     public enum EntitySpwanType
@@ -193,7 +188,7 @@ public partial struct GameItemSpawnSystem : ISystem
 
         public BufferAccessor<GameItemSpawnHandleCommand> commands;
 
-        public EntityCommandQueue<GameItemSpawnData>.Writer results;
+        public SharedList<GameItemSpawnData>.Writer results;
 
         public void Execute(int index)
         {
@@ -233,14 +228,14 @@ public partial struct GameItemSpawnSystem : ISystem
                     case EntitySpwanType.ItemRoot:
                         result.itemHandle = command.handle;
 
-                        results.Enqueue(result);
+                        results.Add(result);
                         break;
                     default:
                         itemManager.Remove(command.handle, 0);
 
                         result.itemHandle = GameItemHandle.Empty;
                         for (j = 0; j < item.count; ++j)
-                            results.Enqueue(result);
+                            results.Add(result);
                         break;
                 }
             }
@@ -269,7 +264,7 @@ public partial struct GameItemSpawnSystem : ISystem
 
         public BufferAccessor<GameItemSpawnCommand> commands;
 
-        public EntityCommandQueue<GameItemSpawnData>.Writer results;
+        public SharedList<GameItemSpawnData>.Writer results;
 
         public void Execute(int index)
         {
@@ -302,12 +297,12 @@ public partial struct GameItemSpawnSystem : ISystem
                         count = command.itemCount;
                         result.itemHandle = itemManager.Add(command.itemType, ref count);
 
-                        results.Enqueue(result);
+                        results.Add(result);
                         break;
                     default:
                         result.itemHandle = GameItemHandle.Empty;
                         for (j = 0; j < command.itemCount; ++j)
-                            results.Enqueue(result);
+                            results.Add(result);
                         break;
                 }
             }
@@ -317,7 +312,7 @@ public partial struct GameItemSpawnSystem : ISystem
     }
 
     [BurstCompile]
-    public struct SpawnEx : IJobChunk, IEntityCommandProducerJob
+    public struct SpawnEx : IJobChunk//, IEntityCommandProducerJob
     {
         public uint hash;
 
@@ -342,7 +337,7 @@ public partial struct GameItemSpawnSystem : ISystem
 
         public BufferTypeHandle<GameItemSpawnHandleCommand> handleCommandType;
 
-        public EntityCommandQueue<GameItemSpawnData>.Writer results;
+        public SharedList<GameItemSpawnData>.Writer results;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -387,44 +382,66 @@ public partial struct GameItemSpawnSystem : ISystem
     }
 
     private EntityQuery __group;
+
+    private ComponentTypeHandle<Translation> __translationType;
+
+    private ComponentTypeHandle<Rotation> __rotationType;
+
+    private ComponentTypeHandle<GameItemSpawnOffset> __offsetType;
+
+    private BufferTypeHandle<GameItemSpawnCommand> __commandType;
+
+    private BufferTypeHandle<GameItemSpawnHandleCommand> __handleCommandType;
+
     private NativeHashMap<Key, Value> __values;
-    private EntityCommandPool<GameItemSpawnData> __entityManager;
     private GameItemManagerShared __itemManager;
 
-    public void Create(System.Collections.Generic.KeyValuePair<Key, Value>[] values, GameItemSpawnCommander commander, World world)
+    public SharedList<GameItemSpawnData> commands
     {
-        __values.Capacity = values.Length;
+        get;
+
+        private set;
+    }
+
+    public void Create(System.Collections.Generic.KeyValuePair<Key, Value>[] values)
+    {
         foreach (var value in values)
             __values.Add(value.Key, value.Value);
 
-        __entityManager = world.GetOrCreateSystemManaged<EndFrameEntityCommandSystem>().Create<GameItemSpawnData, GameItemSpawnCommander>(EntityCommandManager.QUEUE_PRESENT, commander);
+        //__entityManager = world.GetOrCreateSystemManaged<EndFrameEntityCommandSystem>().Create<GameItemSpawnData, GameItemSpawnCommander>(EntityCommandManager.QUEUE_PRESENT, commander);
     }
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<Translation>(),
-                    ComponentType.ReadOnly<Rotation>(),
-                    ComponentType.ReadOnly<GameItemSpawnCommandVersion>(),
-                    ComponentType.ReadWrite<GameItemSpawnCommand>()
-                }, 
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<Translation, Rotation, GameItemSpawnCommandVersion>()
+                    .WithAllRW<GameItemSpawnCommand>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
 
-        __group.SetChangedVersionFilter(typeof(GameItemSpawnCommandVersion));
+        __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameItemSpawnCommandVersion>());
+
+        __translationType = state.GetComponentTypeHandle<Translation>(true);
+        __rotationType = state.GetComponentTypeHandle<Rotation>(true);
+        __offsetType = state.GetComponentTypeHandle<GameItemSpawnOffset>(true);
+        __commandType = state.GetBufferTypeHandle<GameItemSpawnCommand>();
+        __handleCommandType = state.GetBufferTypeHandle<GameItemSpawnHandleCommand>();
+
+        __itemManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>().manager;
 
         __values = new NativeHashMap<Key, Value>(1, Allocator.Persistent);
 
-        __itemManager = state.World.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
+        commands = new SharedList<GameItemSpawnData>(Allocator.Persistent);
     }
 
+    //[BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
         __values.Dispose();
+
+        commands.Dispose();
     }
 
     [BurstCompile]
@@ -433,29 +450,28 @@ public partial struct GameItemSpawnSystem : ISystem
         if (__values.IsEmpty)
             return;
 
-        double time = state.WorldUnmanaged.Time.ElapsedTime;
-        long hash = math.aslong(time);
-
-        var entityManager = __entityManager.Create();
+        var commands = this.commands;
 
         SpawnEx spawn;
-        spawn.hash = (uint)hash ^ (uint)(hash >> 32);
+        spawn.hash = RandomUtility.Hash(state.WorldUnmanaged.Time.ElapsedTime);
         spawn.itemManager = __itemManager.value;
         spawn.values = __values;
-        spawn.translationType = state.GetComponentTypeHandle<Translation>(true);
-        spawn.rotationType = state.GetComponentTypeHandle<Rotation>(true);
-        spawn.offsetType = state.GetComponentTypeHandle<GameItemSpawnOffset>(true);
-        spawn.commandType = state.GetBufferTypeHandle<GameItemSpawnCommand>();
-        spawn.handleCommandType = state.GetBufferTypeHandle<GameItemSpawnHandleCommand>();
-        spawn.results = entityManager.writer;
+        spawn.translationType = __translationType.UpdateAsRef(ref state);
+        spawn.rotationType = __rotationType.UpdateAsRef(ref state);
+        spawn.offsetType = __offsetType.UpdateAsRef(ref state);
+        spawn.commandType = __commandType.UpdateAsRef(ref state);
+        spawn.handleCommandType = __handleCommandType.UpdateAsRef(ref state);
+        spawn.results = commands.writer;
+
+        ref var commandsJobManager = ref commands.lookupJobManager;
 
         ref var itemJobManager = ref __itemManager.lookupJobManager;
 
-        var jobHandle = spawn.Schedule(__group, JobHandle.CombineDependencies(itemJobManager.readWriteJobHandle, state.Dependency));
+        var jobHandle = spawn.ScheduleByRef(__group, JobHandle.CombineDependencies(commandsJobManager.readWriteJobHandle, itemJobManager.readWriteJobHandle, state.Dependency));
 
         itemJobManager.readWriteJobHandle = jobHandle;
 
-        entityManager.AddJobHandleForProducer<SpawnEx>(jobHandle);
+        commandsJobManager.readWriteJobHandle = jobHandle;
 
         state.Dependency = jobHandle;
     }

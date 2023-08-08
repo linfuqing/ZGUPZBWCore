@@ -11,27 +11,27 @@ using ZG;
 [assembly: RegisterGenericJobType(typeof(EntityDataIndexBufferInit<GameNPC, GameNPCWrapper>))]
 
 //[assembly: RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameDataNPCContainerSerializationSystem.Serializer>))]
-[assembly: RegisterGenericJobType(typeof(EntityDataContainerDeserialize<GameDataNPCContainerDeserializationSystem.Deserializer>))]
+//[assembly: RegisterGenericJobType(typeof(EntityDataContainerDeserialize<GameDataNPCContainerDeserializationSystem.Deserializer>))]
 
 //[assembly: EntityDataSerialize(typeof(GameNPCManager), typeof(GameDataNPCContainerSerializationSystem))]
-[assembly: EntityDataDeserialize(typeof(GameNPCManager), typeof(GameDataNPCContainerDeserializationSystem), (int)GameDataConstans.Version)]
+//[assembly: EntityDataDeserialize(typeof(GameNPCManager), typeof(GameDataNPCContainerDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
 #region GameNPCStageManager
 [assembly: RegisterGenericJobType(typeof(EntityDataIndexBufferInit<GameNPC, GameNPCStageWrapper>))]
 
 //[assembly: RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameDataNPCStageContainerSerializationSystem.Serializer>))]
-[assembly: RegisterGenericJobType(typeof(EntityDataContainerDeserialize<GameDataNPCStageContainerDeserializationSystem.Deserializer>))]
+//[assembly: RegisterGenericJobType(typeof(EntityDataContainerDeserialize<GameDataNPCStageContainerDeserializationSystem.Deserializer>))]
 
 //[assembly: EntityDataSerialize(typeof(GameNPCStageManager), typeof(GameDataNPCStageContainerSerializationSystem))]
-[assembly: EntityDataDeserialize(typeof(GameNPCStageManager), typeof(GameDataNPCStageContainerDeserializationSystem), (int)GameDataConstans.Version)]
+//[assembly: EntityDataDeserialize(typeof(GameNPCStageManager), typeof(GameDataNPCStageContainerDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
 #region GameNPC
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataNPCSerializationSystem.Serializer, GameDataNPCSerializationSystem.SerializerFactory>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataNPCDeserializationSystem.Deserializer, GameDataNPCDeserializationSystem.DeserializerFactory>))]
 //[assembly: EntityDataSerialize(typeof(GameNPC), typeof(GameDataNPCSerializationSystem))]
-[assembly: EntityDataDeserialize(typeof(GameNPC), typeof(GameDataNPCDeserializationSystem), (int)GameDataConstans.Version)]
+//[assembly: EntityDataDeserialize(typeof(GameNPC), typeof(GameDataNPCDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
 
@@ -247,38 +247,87 @@ public partial struct GameDataNPCSerializationSystem : ISystem
     }
 }
 
-[DisableAutoCreation]
-public partial class GameDataNPCContainerDeserializationSystem : EntityDataIndexContainerDeserializationSystem
+[BurstCompile,
+    EntityDataDeserializationSystem(typeof(GameNPCManager), (int)GameDataConstans.Version),
+    CreateAfter(typeof(EntityDataDeserializationContainerSystem)),
+    UpdateInGroup(typeof(EntityDataDeserializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataNPCContainerDeserializationSystem : ISystem, IEntityDataDeserializationIndexContainerSystem
 {
-    protected override NativeArray<Hash128>.ReadOnly _GetGuids()
+    private EntityDataDeserializationIndexContainerSystemCore __core;
+
+    public SharedList<int> guidIndices => __core.guidIndices;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        return SystemAPI.GetSingleton<GameDataNPCContainer>().guids;
+        __core = new EntityDataDeserializationIndexContainerSystemCore(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        __core.Update(SystemAPI.GetSingleton<GameDataNPCContainer>().guids, ref state);
     }
 }
 
-[DisableAutoCreation]
-public partial class GameDataNPCStageContainerDeserializationSystem : EntityDataIndexContainerDeserializationSystem
+[BurstCompile,
+    EntityDataDeserializationSystem(typeof(GameNPCStageManager), (int)GameDataConstans.Version),
+    CreateAfter(typeof(EntityDataDeserializationContainerSystem)),
+    UpdateInGroup(typeof(EntityDataDeserializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataNPCStageContainerDeserializationSystem : ISystem, IEntityDataDeserializationIndexContainerSystem
 {
-    protected override NativeArray<Hash128>.ReadOnly _GetGuids()
+    private EntityDataDeserializationIndexContainerSystemCore __core;
+
+    public SharedList<int> guidIndices => __core.guidIndices;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        return SystemAPI.GetSingleton<GameDataNPCStageContainer>().guids;
+        __core = new EntityDataDeserializationIndexContainerSystemCore(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        __core.Update(SystemAPI.GetSingleton<GameDataNPCStageContainer>().guids, ref state);
     }
 }
 
-[DisableAutoCreation, UpdateAfter(typeof(GameDataNPCContainerDeserializationSystem)), UpdateAfter(typeof(GameDataNPCStageContainerDeserializationSystem))]
-public partial class GameDataNPCDeserializationSystem : EntityDataDeserializationComponentSystem<
-        GameNPC,
-        GameDataNPCDeserializationSystem.Deserializer,
-        GameDataNPCDeserializationSystem.DeserializerFactory>
+[BurstCompile,
+    EntityDataDeserializationSystem(typeof(GameNPC), (int)GameDataConstans.Version),
+    CreateAfter(typeof(EntityDataDeserializationComponentSystem)),
+    CreateAfter(typeof(GameDataNPCContainerDeserializationSystem)),
+    CreateAfter(typeof(GameDataNPCStageContainerDeserializationSystem)),
+    UpdateInGroup(typeof(EntityDataDeserializationSystemGroup)),
+    UpdateAfter(typeof(GameDataNPCContainerDeserializationSystem)),
+    UpdateAfter(typeof(GameDataNPCStageContainerDeserializationSystem)), AutoCreateIn("Server")]
+public partial struct GameDataNPCDeserializationSystem : ISystem
 {
     public struct Deserializer : IEntityDataDeserializer
     {
         [ReadOnly]
-        public NativeArray<int> indices;
+        public SharedList<int>.Reader guidIndices;
         [ReadOnly]
-        public NativeArray<int> stages;
+        public SharedList<int>.Reader stageGUIDIndices;
 
         public BufferAccessor<GameNPC> instances;
+
+        public bool Fallback(int index)
+        {
+            return false;
+        }
 
         public void Deserialize(int index, ref EntityDataReader reader)
         {
@@ -287,20 +336,20 @@ public partial class GameDataNPCDeserializationSystem : EntityDataDeserializatio
             var destinations = instances[index];
             destinations.CopyFrom(sources);
 
-            int count = 0, numIndices = indices.Length;
+            int count = 0, numGUIDIndices = guidIndices.length;
             GameNPC instance;
             for (int i = 0; i < length; ++i)
             {
                 instance = destinations[i];
-                if(instance.index < 0 || instance.index >= numIndices)
+                if(instance.index < 0 || instance.index >= numGUIDIndices)
                 {
                     UnityEngine.Debug.LogError($"NPC Index {instance.index} Invail.");
 
                     continue;
                 }
 
-                instance.index = indices[instance.index];
-                instance.stage = stages[instance.stage];
+                instance.index = guidIndices[instance.index];
+                instance.stage = stageGUIDIndices[instance.stage];
 
                 destinations[count++] = instance;
             }
@@ -312,45 +361,66 @@ public partial class GameDataNPCDeserializationSystem : EntityDataDeserializatio
     public struct DeserializerFactory : IEntityDataFactory<Deserializer>
     {
         [ReadOnly]
-        public NativeArray<int> indices;
-
+        public SharedList<int>.Reader guidIndices;
         [ReadOnly]
-        public NativeArray<int> stages;
+        public SharedList<int>.Reader stageGUIDIndices;
 
         public BufferTypeHandle<GameNPC> instanceType;
 
         public Deserializer Create(in ArchetypeChunk chunk, int firstEntityIndex)
         {
             Deserializer deserializer;
-            deserializer.indices = indices;
-            deserializer.stages = stages;
+            deserializer.guidIndices = guidIndices;
+            deserializer.stageGUIDIndices = stageGUIDIndices;
             deserializer.instances = chunk.GetBufferAccessor(ref instanceType);
 
             return deserializer;
         }
     }
 
-    private GameDataNPCContainerDeserializationSystem __containerSystem;
-    private GameDataNPCStageContainerDeserializationSystem __stageContainerSystem;
+    private BufferTypeHandle<GameNPC> __instanceType;
 
-    protected override void OnCreate()
+    private SharedList<int> __guidIndices;
+    private SharedList<int> __stageGUIDIndices;
+
+    private EntityDataDeserializationSystemCore __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        __instanceType = state.GetBufferTypeHandle<GameNPC>();
 
-        World world = World;
-        __containerSystem = world.GetOrCreateSystemManaged<GameDataNPCContainerDeserializationSystem>();
-        __stageContainerSystem = world.GetOrCreateSystemManaged<GameDataNPCStageContainerDeserializationSystem>();
+        var world = state.WorldUnmanaged;
+        __guidIndices = world.GetExistingSystemUnmanaged<GameDataNPCContainerDeserializationSystem>().guidIndices;
+        __stageGUIDIndices = world.GetExistingSystemUnmanaged<GameDataNPCStageContainerDeserializationSystem>().guidIndices;
+
+        __core = EntityDataDeserializationSystemCore.Create<GameNPC>(ref state);
     }
 
-    protected override DeserializerFactory _Get(ref JobHandle jobHandle)
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        jobHandle = JobHandle.CombineDependencies(jobHandle, __containerSystem.readOnlyJobHandle, __stageContainerSystem.readOnlyJobHandle);
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        ref var guidIndicesJobManager = ref __guidIndices.lookupJobManager;
+        ref var stageGUIDIndicesJobManager = ref __stageGUIDIndices.lookupJobManager;
+
+        state.Dependency = JobHandle.CombineDependencies(guidIndicesJobManager.readOnlyJobHandle, stageGUIDIndicesJobManager.readOnlyJobHandle, state.Dependency);
 
         DeserializerFactory deserializerFactory;
-        deserializerFactory.indices = __containerSystem.indices;
-        deserializerFactory.stages = __stageContainerSystem.indices;
-        deserializerFactory.instanceType = GetBufferTypeHandle<GameNPC>();
+        deserializerFactory.guidIndices = __guidIndices.reader;
+        deserializerFactory.stageGUIDIndices = __stageGUIDIndices.reader;
+        deserializerFactory.instanceType = __instanceType.UpdateAsRef(ref state);
 
-        return deserializerFactory;
+        __core.Update<Deserializer, DeserializerFactory>(ref deserializerFactory, ref state, true);
+
+        var jobHandle = state.Dependency;
+
+        guidIndicesJobManager.AddReadOnlyDependency(jobHandle);
+        stageGUIDIndicesJobManager.AddReadOnlyDependency(jobHandle);
     }
 }

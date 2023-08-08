@@ -16,9 +16,9 @@ using ZG;
 
 [assembly: RegisterGenericJobType(typeof(EntityComponentContainerCopyComponentJob<GameAreaPrefab>))]
 
-#if DEBUG
+/*#if DEBUG
 [assembly: RegisterEntityCommandProducerJob(typeof(GameAreaInvokeCommands<GameAreaPrefabSystem.Validator>))]
-#endif
+#endif*/
 
 public struct GameAreaDefinition
 {
@@ -172,7 +172,7 @@ public partial struct GameAreaSystem : ISystem
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(GameRollbackSystemGroup), OrderLast = true)]
+[BurstCompile, UpdateInGroup(typeof(GameUpdateSystemGroup), OrderFirst = true)]//UpdateInGroup(typeof(GameRollbackSystemGroup), OrderLast = true)]
 public partial struct GameAreaStructChangeSystem : ISystem
 {
     public static readonly int InnerloopBatchCount = 1;
@@ -184,12 +184,14 @@ public partial struct GameAreaStructChangeSystem : ISystem
 
     public EntityCommandPool<Entity> removeComponentCommander => __removeComponentCommander.pool;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         __addComponentCommander = new EntityCommandPool<EntityData<GameAreaPrefab>>.Context(Allocator.Persistent);
         __removeComponentCommander = new EntityCommandPool<Entity>.Context(Allocator.Persistent);
     }
 
+    //[BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
         __addComponentCommander.Dispose();
@@ -445,7 +447,7 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
 
     private EntityCommandPool<EntityData<GameAreaPrefab>> __addComponentCommanderPool;
     private EntityCommandPool<Entity> __removeComponentCommanderPool;
-    private EntityCommandPool<GameAreaCreateNodeCommand> __createEntityCommanderPool;
+    //private EntityCommandPool<GameAreaCreateNodeCommand> __createEntityCommanderPool;
 
     //private EndTimeSystemGroupEntityCommandSystem __endFrameBarrier;
 
@@ -457,6 +459,13 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
 
     //public override double now => __syncSystemGourp.now;
 
+    public SharedList<GameAreaCreateNodeCommand> commands
+    {
+        get;
+
+        private set;
+    }
+
     public SharedHashMap<Hash128, int> versions
     {
         get;
@@ -464,13 +473,13 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
         private set;
     }
 
-    public void Create<U>(World world, U commander) where U : GameAreaCreateEntityCommander
+    /*public void Create<U>(World world, U commander) where U : GameAreaCreateEntityCommander
     {
         var endFrameBarrier = world.GetOrCreateSystemManaged<EndTimeSystemGroupEntityCommandSystem>();
         //__addComponentCommanderPool = endFrameBarrier.CreateAddComponentDataCommander<GameAreaPrefab>();
         //__destroyEntityCommanderPool = endFrameBarrier.CreateDestroyEntityCommander();
         __createEntityCommanderPool = endFrameBarrier.Create<GameAreaCreateNodeCommand, U>(EntityCommandManager.QUEUE_PRESENT, commander);
-    }
+    }*/
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
@@ -503,6 +512,8 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
 
         versions = new SharedHashMap<Hash128, int>(Allocator.Persistent);
 
+        commands = new SharedList<GameAreaCreateNodeCommand>(Allocator.Persistent);
+
         var world = state.WorldUnmanaged;
         ref var endFrameBarrier = ref world.GetExistingSystemUnmanaged<GameAreaStructChangeSystem>();
         __addComponentCommanderPool = endFrameBarrier.addComponentCommander;
@@ -522,6 +533,8 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
         __areaIndices.Dispose();
 
         versions.Dispose();
+
+        commands.Dispose();
     }
 
     [BurstCompile]
@@ -529,18 +542,28 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
     {
         __inputDeps = state.Dependency;
 
+        var commands = this.commands;
+        ref var commandsJobManager = ref commands.lookupJobManager;
+
+        state.Dependency = JobHandle.CombineDependencies(commandsJobManager.readWriteJobHandle, state.Dependency);
+
         __neighborEnumerable = __enumerableGroup.GetSingleton<GameAreaNeighborEnumerable>();
 
+        NativeList<GameAreaCreateNodeCommand> writer = commands.writer;
         __core.Update<GameAreaNeighborEnumerable, Validator, GameAreaPrefabSystem>(
             MAX_NEIGHBOR_COUNT, 
             InnerloopBatchCount, 
             __addComponentCommanderPool,
-            __removeComponentCommanderPool, 
-            __createEntityCommanderPool, 
+            __removeComponentCommanderPool,
+            ref writer, 
             ref this, 
             ref state);
 
-        __physicsWorld.lookupJobManager.AddReadOnlyDependency(state.Dependency);
+        var jobHandle = state.Dependency;
+
+        commandsJobManager.readWriteJobHandle = jobHandle;
+
+        __physicsWorld.lookupJobManager.AddReadOnlyDependency(jobHandle);
     }
 
     public void GetNeighborEnumerableAndPrefabIndices(

@@ -6,6 +6,7 @@ using Unity.Mathematics;
 using Unity.Collections;
 using Unity.Physics;
 using ZG;
+using Unity.Burst.Intrinsics;
 
 [assembly: RegisterGenericJobType(typeof(GameEntityActionSystemCore.PerformEx<GameEntityActionDataSystem.Handler, GameEntityActionDataSystem.Factory>))]
 
@@ -14,7 +15,7 @@ using ZG;
     CreateAfter(typeof(GamePhysicsWorldBuildSystem)),
     CreateAfter(typeof(GameItemSystem)), 
     UpdateInGroup(typeof(GameEntityActionSystemGroup))]
-public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProducerJob //GameEntityActionSystem<GameEntityActionDataSystem.Handler, GameEntityActionDataSystem.Factory>, IEntityCommandProducerJob
+public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProducerJob //GameEntityActionSystem<GameEntityActionDataSystem.Handler, GameEntityActionDataSystem.Factory>, IEntityCommandProducerJob
 {
     public struct Action
     {
@@ -74,6 +75,60 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
         public float power;
         public float max;
         public float chance;
+    }
+
+    private struct Count
+    {
+        public NativeArray<int> counter;
+
+        [ReadOnly]
+        public NativeArray<ActionData> actions;
+
+        [ReadOnly]
+        public NativeArray<GameActionData> instances;
+
+        public void Execute(int index)
+        {
+            counter[0] += actions[instances[index].actionIndex].spawnCount;
+        }
+    }
+
+    [BurstCompile]
+    private struct CountEx : IJobChunk
+    {
+        public NativeArray<int> counter;
+
+        [ReadOnly]
+        public NativeArray<ActionData> actions;
+
+        [ReadOnly]
+        public ComponentTypeHandle<GameActionData> instanceType;
+
+        public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+        {
+            Count count;
+            count.counter = counter;
+            count.actions = actions;
+            count.instances = chunk.GetNativeArray(ref instanceType);
+
+            var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+            while (iterator.NextEntityIndex(out int i))
+                count.Execute(i);
+        }
+    }
+
+    [BurstCompile]
+    public struct Recapcity : IJob
+    {
+        [ReadOnly, DeallocateOnJobCompletion]
+        public NativeArray<int> counter;
+
+        public NativeList<GameSpawnData> results;
+
+        public void Execute()
+        {
+            results.Capacity = math.max(results.Capacity, results.Length + counter[0]);
+        }
     }
 
     public struct Handler : IGameEntityActionHandler
@@ -147,7 +202,7 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
 
         public NativeFactory<BufferElementData<GameEntityTorpidityBuff>>.ParallelWriter torpidityBuffs;
 
-        public EntityCommandQueue<GameSpawnData>.ParallelWriter entityMananger;
+        public SharedList<GameSpawnData>.ParallelWriter results;
 
         public void CalculateProperties(bool isAttack, in Entity entity, NativeArray<float> properties)
         {
@@ -349,7 +404,7 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
                         destination.entity = entity;
                         destination.transform = transform;
 
-                        entityMananger.Enqueue(destination);
+                        results.AddNoResize(destination);
                     }
                 }
             }
@@ -736,7 +791,7 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
 
         public NativeFactory<BufferElementData<GameEntityTorpidityBuff>>.ParallelWriter torpidityBuffs;
 
-        public EntityCommandQueue<GameSpawnData>.ParallelWriter entityMananger;
+        public SharedList<GameSpawnData>.ParallelWriter results;
 
         public Handler Create(in ArchetypeChunk chunk)
         {
@@ -766,7 +821,7 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
             handler.healthDamages = healthDamages;
             handler.healthBuffs = healthBuffs;
             handler.torpidityBuffs = torpidityBuffs;
-            handler.entityMananger = entityMananger;
+            handler.results = results;
 
             return handler;
         }
@@ -811,8 +866,31 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
     private int __hitCount;
 
     private int __propertyCount;
-    
-    private EntityCommandPool<GameSpawnData> __spawnCommander;
+
+    private ComponentTypeHandle<GameActionData> __instanceType;
+
+    private ComponentLookup<GameNodeStatus> __nodeStates;
+
+    private ComponentLookup<GameItemRoot> __itemRoots;
+
+    private ComponentLookup<GameVariant> __entityVariants;
+
+    private ComponentLookup<GameExp> __entityExps;
+
+    private ComponentLookup<GamePower> __entityPowers;
+
+    private ComponentLookup<GameLevel> __entityLevels;
+
+    private BufferLookup<GameEntityDefence> __defences;
+
+    private BufferTypeHandle<GameActionAttack> __attackType;
+
+    private ComponentTypeHandle<GameActionBuff> __buffType;
+
+    private ComponentLookup<GameEntityHealthDamage> __healthDamages;
+
+    private BufferLookup<GameEntityHealthBuff> __healthOutputs;
+    private BufferLookup<GameEntityTorpidityBuff> __torpidityOutputs;
 
     private NativeArray<GameActionSpawn> __spawns;
     private NativeArray<ActionData> __actions;
@@ -831,13 +909,12 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
 
     private GameItemManagerShared __itemManager;
 
-    public void Create<T>(
+    public void Create(
         World world, 
         int hitCount, 
         IEnumerable<Action> actions, 
         IEnumerable<Item> items,
-        LevelData[] levels, 
-        T spawnCommander = default) where T : GameSpawnCommander
+        LevelData[] levels)
     {
         __hitCount = hitCount;
 
@@ -963,13 +1040,30 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
                 __properties[propertyIndex++] = sourceLevel.defences[j];
         }
 
-        __spawnCommander = world.GetExistingSystemManaged<EndTimeSystemGroupEntityCommandSystem>().Create<GameSpawnData, T>(EntityCommandManager.QUEUE_PRESENT, spawnCommander);
+        //__spawnCommander = world.GetExistingSystemManaged<EndTimeSystemGroupEntityCommandSystem>().Create<GameSpawnData, T>(EntityCommandManager.QUEUE_PRESENT, spawnCommander);
     }
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         BurstUtility.InitializeJob<Convert>();
+
+        __instanceType = state.GetComponentTypeHandle<GameActionData>(true);
+
+        __nodeStates = state.GetComponentLookup<GameNodeStatus>(true);
+        __itemRoots = state.GetComponentLookup<GameItemRoot>(true);
+        __entityVariants = state.GetComponentLookup<GameVariant>(true);
+        __entityExps = state.GetComponentLookup<GameExp>(true);
+        __entityPowers = state.GetComponentLookup<GamePower>(true);
+        __entityLevels = state.GetComponentLookup<GameLevel>(true);
+
+        __defences = state.GetBufferLookup<GameEntityDefence>(true);
+        __attackType = state.GetBufferTypeHandle<GameActionAttack>();
+        __buffType = state.GetComponentTypeHandle<GameActionBuff>();
+        __healthDamages = state.GetComponentLookup<GameEntityHealthDamage>();
+
+        __healthOutputs = state.GetBufferLookup<GameEntityHealthBuff>();
+        __torpidityOutputs = state.GetBufferLookup<GameEntityTorpidityBuff>();
 
         __healthBuffs = new NativeFactory<BufferElementData<GameEntityHealthBuff>>(Allocator.Persistent, true);
         __torpidityBuffs = new NativeFactory<BufferElementData<GameEntityTorpidityBuff>>(Allocator.Persistent, true);
@@ -1021,22 +1115,41 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
         if (__hitCount < 1)
             return;
 
-        ref var lookupJobManager = ref __itemManager.lookupJobManager;
+        if (!SystemAPI.HasSingleton<GameRandomSpawnerFactory>())
+            return;
 
-        state.Dependency = JobHandle.CombineDependencies(state.Dependency, lookupJobManager.readOnlyJobHandle);
+        var instanceType = __instanceType.UpdateAsRef(ref state);
 
-        var spawnCommandQueue = __spawnCommander.Create();
+        var counter = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
+
+        CountEx count;
+        count.counter = counter;
+        count.actions = __actions;
+        count.instanceType = instanceType;
+        var jobHandle = count.ScheduleByRef(__core.group, state.Dependency);
+
+        var commands = SystemAPI.GetSingleton<GameRandomSpawnerFactory>().commands;
+        ref var commandsJobManager = ref commands.lookupJobManager;
+
+        Recapcity recapcity;
+        recapcity.counter = counter;
+        recapcity.results = commands.writer;
+        jobHandle = recapcity.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, commandsJobManager.readWriteJobHandle));
+
+        ref var itemManagerJobManager = ref __itemManager.lookupJobManager;
+
+        state.Dependency = JobHandle.CombineDependencies(jobHandle, itemManagerJobManager.readOnlyJobHandle);
 
         Factory factory;
         factory.propertyCount = __propertyCount;
         factory.hitCount = __hitCount;
         factory.hierarchy = __itemManager.hierarchy;
-        factory.nodeStates = state.GetComponentLookup<GameNodeStatus>(true);
-        factory.itemRoots = state.GetComponentLookup<GameItemRoot>(true);
-        factory.entityVariants = state.GetComponentLookup<GameVariant>(true);
-        factory.entityExps = state.GetComponentLookup<GameExp>(true);
-        factory.entityPowers = state.GetComponentLookup<GamePower>(true);
-        factory.entityLevels = state.GetComponentLookup<GameLevel>(true);
+        factory.nodeStates = __nodeStates.UpdateAsRef(ref state);
+        factory.itemRoots = __itemRoots.UpdateAsRef(ref state);
+        factory.entityVariants = __entityVariants.UpdateAsRef(ref state);
+        factory.entityExps = __entityExps.UpdateAsRef(ref state);
+        factory.entityPowers = __entityPowers.UpdateAsRef(ref state);
+        factory.entityLevels = __entityLevels.UpdateAsRef(ref state);
         factory.levels = __levels;
         factory.properties = __properties;
         factory.spawns = __spawns;
@@ -1047,29 +1160,35 @@ public partial struct GameEntityActionDataSystem : ISystem, IEntityCommandProduc
         factory.itemDefences = __itemDefences;
         //factory.entityItems = GetBufferLookup<GameEntityItem>(true);
         factory.itemTypeIndices = __itemTypeIndices;
-        factory.defences = state.GetBufferLookup<GameEntityDefence>(true);
-        factory.attackType = state.GetBufferTypeHandle<GameActionAttack>();
-        factory.buffType = state.GetComponentTypeHandle<GameActionBuff>();
-        factory.healthDamages = state.GetComponentLookup<GameEntityHealthDamage>();
-        factory.healthBuffs = ((NativeFactory<BufferElementData<GameEntityHealthBuff>>)__healthBuffs).parallelWriter;
-        factory.torpidityBuffs = ((NativeFactory<BufferElementData<GameEntityTorpidityBuff>>)__torpidityBuffs).parallelWriter;
-        factory.entityMananger = spawnCommandQueue.parallelWriter;
+        factory.defences = __defences.UpdateAsRef(ref state);
+        factory.attackType = __attackType.UpdateAsRef(ref state);
+        factory.buffType = __buffType.UpdateAsRef(ref state);
+        factory.healthDamages = __healthDamages.UpdateAsRef(ref state);
+        factory.healthBuffs = __healthBuffs.parallelWriter;
+        factory.torpidityBuffs = __torpidityBuffs.parallelWriter;
+        factory.results = commands.parallelWriter;
 
         if (__core.Update<Handler, Factory>(factory, ref state))
         {
-            JobHandle jobHandle = state.Dependency, performJob = __core.performJob;
+            jobHandle = state.Dependency;
 
-            spawnCommandQueue.AddJobHandleForProducer<GameEntityActionDataSystem>(jobHandle);
+            var performJob = __core.performJob;
 
-            lookupJobManager.AddReadOnlyDependency(performJob);
+            //spawnCommandQueue.AddJobHandleForProducer<GameEntityActionDataSystem>(jobHandle);
+
+            itemManagerJobManager.AddReadOnlyDependency(performJob);
+
+            commandsJobManager.readWriteJobHandle = performJob;
 
             Convert convert;
             convert.healthInputs = __healthBuffs;
             convert.torpidityInputs = __torpidityBuffs;
-            convert.healthOutputs = state.GetBufferLookup<GameEntityHealthBuff>();
-            convert.torpidityOutputs = state.GetBufferLookup<GameEntityTorpidityBuff>();
+            convert.healthOutputs = __healthOutputs.UpdateAsRef(ref state);
+            convert.torpidityOutputs = __torpidityOutputs.UpdateAsRef(ref state);
 
-            state.Dependency = JobHandle.CombineDependencies(jobHandle, convert.Schedule(performJob));
+            state.Dependency = JobHandle.CombineDependencies(jobHandle, convert.ScheduleByRef(performJob));
         }
+        else
+            commandsJobManager.readWriteJobHandle = state.Dependency;
     }
 }

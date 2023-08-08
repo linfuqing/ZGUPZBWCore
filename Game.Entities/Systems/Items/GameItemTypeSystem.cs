@@ -14,7 +14,9 @@ public struct GameItemType : IComponentData
     public int value;
 }
 
-[BurstCompile, UpdateInGroup(typeof(GameItemComponentInitSystemGroup), OrderLast = true)]
+[BurstCompile, 
+    CreateAfter(typeof(GameItemSystem)), 
+    UpdateInGroup(typeof(GameItemComponentInitSystemGroup), OrderLast = true)]
 public partial struct GameItemTypeInitSystem : ISystem
 {
     [BurstCompile]
@@ -45,19 +47,27 @@ public partial struct GameItemTypeInitSystem : ISystem
     public static readonly int InnerloopBatchCount = 1;
 
     private EntityQuery __group;
+    private ComponentLookup<GameItemData> __instances;
+    private ComponentLookup<GameItemType> __outputs;
+
     private GameItemManagerShared __itemManager;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        BurstUtility.InitializeJobParallelFor<Init>();
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameItemData>()
+                    .WithNone<GameItemType>()
+                    .Build(ref state);
 
-        __group = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameItemData>(),
-            ComponentType.Exclude<GameItemType>());
+        __instances = state.GetComponentLookup<GameItemData>(true);
+        __outputs = state.GetComponentLookup<GameItemType>();
 
-        __itemManager = state.World.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
+        __itemManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>().manager;
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 
@@ -66,18 +76,18 @@ public partial struct GameItemTypeInitSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        var entities = __group.ToEntityArrayBurstCompatible(state.GetEntityTypeHandle(), Allocator.TempJob);
+        var entities = __group.ToEntityArray(Allocator.TempJob);
         state.EntityManager.AddComponent<GameItemType>(__group);
 
         Init init;
         init.inputs = __itemManager.value.readOnlyInfos;
         init.entities = entities;
-        init.instances = state.GetComponentLookup<GameItemData>(true);
-        init.outputs = state.GetComponentLookup<GameItemType>();
+        init.instances = __instances.UpdateAsRef(ref state);
+        init.outputs = __outputs.UpdateAsRef(ref state);
 
         ref var lookupJobManager = ref __itemManager.lookupJobManager;
 
-        var jobHandle = init.Schedule(entities.Length, InnerloopBatchCount, JobHandle.CombineDependencies(lookupJobManager.readOnlyJobHandle, state.Dependency));
+        var jobHandle = init.ScheduleByRef(entities.Length, InnerloopBatchCount, JobHandle.CombineDependencies(lookupJobManager.readOnlyJobHandle, state.Dependency));
 
         lookupJobManager.AddReadOnlyDependency(jobHandle);
 
@@ -85,7 +95,9 @@ public partial struct GameItemTypeInitSystem : ISystem
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(GameItemSystemGroup), OrderFirst = true)]
+[BurstCompile, 
+    CreateAfter(typeof(GameItemSystem)), 
+    UpdateInGroup(typeof(GameItemSystemGroup), OrderFirst = true)]
 public partial struct GameItemTypeChangeSystem : ISystem
 {
     private struct Result
@@ -188,19 +200,24 @@ public partial struct GameItemTypeChangeSystem : ISystem
     private GameItemManagerShared __itemManager;
     private NativeList<Result> __results;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         BurstUtility.InitializeJob<Resize>();
         BurstUtility.InitializeJob<ApplyChangedTypes>();
 
-        __group = state.GetEntityQuery(ComponentType.ReadOnly<GameItemData>(), ComponentType.ReadOnly<GameItemType>());
-        __group.SetChangedVersionFilter(typeof(GameItemType));
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameItemData, GameItemType>()
+                    .Build(ref state);
+        __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameItemType>());
 
-        __itemManager = state.World.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
+        __itemManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>().manager;
 
         __results = new NativeList<Result>(Allocator.Persistent);
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
         __results.Dispose();

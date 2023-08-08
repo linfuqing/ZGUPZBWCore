@@ -125,6 +125,8 @@ public class GameFormulaFactoryComponent : EntityProxyComponent, IEntityComponen
             time.value = _time;
             assigner.SetComponentData(entity, time);
         }
+        /*else
+            assigner.SetComponentEnabled<GameFormulaFactoryTime>(entity, false);*/
 
         if (_timeScale > 0.0f)
         {

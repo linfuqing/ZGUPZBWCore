@@ -8,13 +8,11 @@ using Unity.Mathematics;
 using ZG;
 using Handle = GameItemHandle;
 
-[Serializable]
 public struct GameItemIdentityType : IComponentData
 {
     public int value;
 }
 
-[Serializable]
 public struct GameItemData : IComponentData
 {
     public Handle handle;
@@ -135,6 +133,8 @@ public struct GameItemStructChangeFactory
 
         public void Execute(int index)
         {
+            UnityEngine.Assertions.Assert.AreNotEqual(Handle.Empty, items[index].Key);
+
             Entity source = Convert(items[index].Key), destination = entityArray[index];
 
             entityHandles[destination] = source;
@@ -415,7 +415,7 @@ public partial struct GameItemStructChangeSystem : ISystem
     }
 }
 
-[UpdateInGroup(typeof(PresentationSystemGroup))/*, UpdateBefore(typeof(EndFrameEntityCommandSystemGroup))*/, UpdateAfter(typeof(CallbackSystem))]
+[UpdateInGroup(typeof(PresentationSystemGroup)), UpdateAfter(typeof(EntityDataSystem))]
 public partial class GameItemSystemGroup : ComponentSystemGroup
 {
 
@@ -562,7 +562,7 @@ public partial struct GameItemEntitySystem : ISystem
     }
 }*/
 
-[/*AlwaysUpdateSystem, */BurstCompile, UpdateInGroup(typeof(GameItemSystemGroup))]
+[/*AlwaysUpdateSystem, */BurstCompile, CreateAfter(typeof(EntityDataSystem)), UpdateInGroup(typeof(GameItemSystemGroup))]
 public partial struct GameItemSystem : ISystem
 {
     /*private struct ChangeType
@@ -643,34 +643,67 @@ public partial struct GameItemSystem : ISystem
     }*/
 
     [BurstCompile]
-    private struct Command : IJob, IEntityCommandProducerJob
+    private struct Recapacity : IJob
+    {
+        [ReadOnly]
+        public NativeList<GameItemCommand> commands;
+
+        public NativeArray<int> typeCountAndBufferSize;
+
+        public SharedHashMap<Hash128, Entity>.Writer guidEntities;
+
+        public SharedHashMap<Handle, EntityArchetype>.Writer createCommander;
+
+        public void Execute()
+        {
+            int commandCount = commands.Length;
+
+            typeCountAndBufferSize[0] = 2;
+            typeCountAndBufferSize[1] = (UnsafeUtility.SizeOf<EntityDataIdentity>() + UnsafeUtility.SizeOf<GameItemData>()) * commandCount;
+
+            guidEntities.capacity = math.max(guidEntities.capacity, guidEntities.Count() + commandCount);
+            createCommander.capacity = math.max(createCommander.capacity, createCommander.Count() + commandCount);
+        }
+    }
+
+    [BurstCompile]
+    private struct Command : IJobParallelForDefer, IEntityCommandProducerJob
     {
         public int identityType;
-        public long hash;
         public EntityArchetype entityArchetype;
+        public long hash;
 
-        [ReadOnly]
+        /*[ReadOnly]
         public ComponentTypeHandle<EntityDataIdentity> identityComponentType;
 
         [ReadOnly]
-        public NativeList<ArchetypeChunk> identityComponentChunks;
+        public NativeList<ArchetypeChunk> identityComponentChunks;*/
 
         [ReadOnly]
-        public SharedHashMap<Entity, Entity>.Reader entities;
+        public SharedHashMap<Entity, Entity>.Reader handleEntities;
 
-        public NativeList<GameItemCommand> sources;
+        [ReadOnly]
+        public NativeArray<GameItemCommand> commands;
 
-        public NativeList<GameItemCommand> destinations;
+        public SharedHashMap<Hash128, Entity>.ParallelWriter guidEntities;
 
-        public EntityComponentAssigner.Writer assigner;
+        public EntityComponentAssigner.ParallelWriter assigner;
 
-        public SharedHashMap<Handle, EntityArchetype>.Writer createCommander;
-        public EntityCommandQueue<Entity>.Writer destroyCommander;
+        public SharedHashMap<Handle, EntityArchetype>.ParallelWriter createCommander;
+        public EntityCommandQueue<Entity>.ParallelWriter destroyCommander;
 
-        public Hash128 CreateGUID(ref Unity.Mathematics.Random random)
+        public Hash128 CreateGUID(int index, Entity entity)
         {
-            NativeArray<EntityDataIdentity> identities;
+            uint hash = RandomUtility.Hash(this.hash);
+            var random = new Unity.Mathematics.Random(hash ^ (uint)index);
+
             Hash128 result;
+            do
+            {
+                result.Value = random.NextUInt4();
+            } while (!guidEntities.TryAdd(result, entity));
+
+            /*NativeArray<EntityDataIdentity> identities;
             int i, j, numEntities, numidentityComponentChunks = identityComponentChunks.Length;
 
             do
@@ -689,110 +722,81 @@ public partial struct GameItemSystem : ISystem
                     if (j < numEntities)
                         break;
                 }
-            } while (i < numidentityComponentChunks);
+            } while (i < numidentityComponentChunks);*/
 
             return result;
         }
 
-        public void Execute()
+        public void Execute(int index)
         {
             EntityDataIdentity identity;
             identity.type = identityType;
 
-            GameItemData instance;
-
-            //long hash = math.aslong(time);
-            var random = new Unity.Mathematics.Random((uint)hash ^ (uint)(hash >> 32));
-            GameItemCommand command, temp;
-            Entity entity;
-            int numCommands = sources.Length, i, j;
-            for (i = 0; i < numCommands; ++i)
+            Entity handle;
+            int numCommands = commands.Length;
+            GameItemCommand command = commands[index], temp;
+            switch (command.commandType)
             {
-                command = sources[i];
-                switch (command.commandType)
-                {
-                    case GameItemCommandType.Create:
-                        bool isContains = false;
-                        for (j = i + 1; j < numCommands; ++j)
-                        {
-                            temp = sources[j];
-                            if (temp.commandType == GameItemCommandType.Destroy && temp.sourceHandle.Equals(command.destinationHandle))
-                            {
-                                sources.RemoveAt(j);
+                case GameItemCommandType.Create:
+                    UnityEngine.Assertions.Assert.AreNotEqual(Handle.Empty, command.destinationHandle);
 
-                                --numCommands;
+                    handle = GameItemStructChangeFactory.Convert(command.destinationHandle);
 
-                                isContains = true;
+                    if (handleEntities.ContainsKey(handle))
+                        return;
 
-                                break;
-                            }
-                        }
+                    for (int i = index + 1; i < numCommands; ++i)
+                    {
+                        temp = commands[i];
+                        if (temp.commandType == GameItemCommandType.Destroy && temp.sourceHandle.Equals(command.destinationHandle))
+                            return;
+                    }
 
-                        if (isContains)
-                        {
-                            sources.RemoveAt(i--);
+                    createCommander.TryAdd(command.destinationHandle, entityArchetype);
 
-                            --numCommands;
-                        }
-                        else
-                        {
-                            entity = GameItemStructChangeFactory.Convert(command.destinationHandle);
+                    identity.guid = CreateGUID(index, handle);// random.NextUInt4();
+                    /*if (identity.guid.ToString() == "4b959ef3998812f82e760687c088b17e")
+                        UnityEngine.Debug.Log($"dfgg {identity.type}");*/
 
-                            isContains = entities.ContainsKey(entity);
-                            if (isContains)
-                            {
-                                for (j = i - 1; j >= 0; --j)
-                                {
-                                    temp = sources[j];
-                                    if (temp.commandType == GameItemCommandType.Destroy && temp.sourceHandle.Equals(command.destinationHandle))
-                                    {
-                                        isContains = false;
+                    assigner.SetComponentData(handle, identity);
 
-                                        break;
-                                    }
-                                }
-                            }
+                    GameItemData instance;
+                    instance.handle = command.destinationHandle;
+                    assigner.SetComponentData(handle, instance);
+                    break;
+                case GameItemCommandType.Destroy:
+                    UnityEngine.Assertions.Assert.AreNotEqual(Handle.Empty, command.sourceHandle);
 
-                            if (!isContains)
-                            {
-                                createCommander.TryAdd(command.destinationHandle, entityArchetype);
+                    handle = GameItemStructChangeFactory.Convert(command.sourceHandle);
 
-                                identity.guid = CreateGUID(ref random);// random.NextUInt4();
-                                /*if (identity.guid.ToString() == "4b959ef3998812f82e760687c088b17e")
-                                    UnityEngine.Debug.Log($"dfgg {identity.type}");*/
+                    if (!handleEntities.TryGetValue(handle, out Entity entity))
+                        return;
 
-                                assigner.SetComponentData(entity, identity);
+                    for (int i = index + 1; i < numCommands; ++i)
+                    {
+                        temp = commands[i];
+                        if (temp.commandType == GameItemCommandType.Create && temp.destinationHandle.Equals(command.sourceHandle))
+                            return;
+                    }
 
-                                instance.handle = command.destinationHandle;
-                                assigner.SetComponentData(entity, instance);
-                            }
-                        }
-                        break;
-                    case GameItemCommandType.Destroy:
-                        if (!createCommander.Remove(command.sourceHandle))
-                            destroyCommander.Enqueue(entities[GameItemStructChangeFactory.Convert(command.sourceHandle)]);
+                    destroyCommander.Enqueue(entity);
 
-                        //entities.Remove(command.sourceHandle);
-                        break;
-                }
+                    //entities.Remove(command.sourceHandle);
+                    break;
             }
-
-            destinations.Clear();
-            destinations.AddRange(sources.AsArray());
-
-            sources.Clear();
         }
     }
 
     private long __seed;
     private EntityQuery __structChangeManagerGroup;
     private EntityQuery __identityTypeGroup;
-    private EntityQuery __identityGroup;
 
-    private ComponentTypeHandle<EntityDataIdentity> __identityType;
+    private SharedHashMap<Hash128, Entity> __guidEntities;
 
     private NativeList<GameItemCommand> __commandSources;
     private NativeList<GameItemCommand> __commandDestinations;
+
+    public static readonly int InnerloopBatchCount = 4;
 
     public EntityArchetype entityArchetype
     {
@@ -838,19 +842,16 @@ public partial struct GameItemSystem : ISystem
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        BurstUtility.InitializeJob<Command>();
-
         //state.SetAlwaysUpdateSystem(true);
 
         __structChangeManagerGroup = GameItemStructChangeManager.GetEntityQuery(ref state);
 
         __identityTypeGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameItemIdentityType>());
-        __identityGroup = state.GetEntityQuery(ComponentType.ReadOnly<EntityDataIdentity>());
-
-        __identityType = state.GetComponentTypeHandle<EntityDataIdentity>(true);
 
         /*__group = state.GetEntityQuery(ComponentType.ReadOnly<GameItemData>(), ComponentType.ReadOnly<GameItemType>());
         __group.SetChangedVersionFilter(typeof(GameItemType));*/
+
+        __guidEntities = state.WorldUnmanaged.GetExistingSystemUnmanaged<EntityDataSystem>().guidEntities;
 
         __commandSources = new NativeList<GameItemCommand>(Allocator.Persistent);
         __commandDestinations = new NativeList<GameItemCommand>(Allocator.Persistent);
@@ -881,48 +882,59 @@ public partial struct GameItemSystem : ISystem
 
         var manager = this.manager;
 
-        ref var lookupJobManager = ref manager.lookupJobManager;
+        ref var managerJobManager = ref manager.lookupJobManager;
+        ref var guidEntitiesJobManager = ref __guidEntities.lookupJobManager;
 
-        var jobHandle = state.Dependency;
+        var jobHandle = JobHandle.CombineDependencies(managerJobManager.readOnlyJobHandle, guidEntitiesJobManager.readWriteJobHandle, state.Dependency);
+
+        var typeCountAndBufferSize = CollectionHelper.CreateNativeArray<int>(2, state.WorldUpdateAllocator, NativeArrayOptions.UninitializedMemory);
 
         var structChangeManager = __structChangeManagerGroup.GetSingleton<GameItemStructChangeManager>();
 
+        var createCommander = structChangeManager.createEntityCommander;
+
+        Recapacity recapacity;
+        recapacity.commands = __commandSources;
+        recapacity.typeCountAndBufferSize = typeCountAndBufferSize;
+        recapacity.guidEntities = __guidEntities.writer;
+        recapacity.createCommander = createCommander.writer;
+        jobHandle = recapacity.ScheduleByRef(jobHandle);
+
         var handleEntities = structChangeManager.handleEntities;
         var assigner = structChangeManager.assigner;
-        var createCommander = structChangeManager.createEntityCommander;
         var destroyCommander = structChangeManager.destroyEntityCommander.Create();
 
         Command command;
-        command.hash = __seed + math.aslong(state.WorldUnmanaged.Time.ElapsedTime);
+        command.hash = __seed ^ math.aslong(state.WorldUnmanaged.Time.ElapsedTime);
         command.identityType = __identityTypeGroup.GetSingleton<GameItemIdentityType>().value;
         command.entityArchetype = entityArchetype;
-        command.identityComponentChunks = __identityGroup.ToArchetypeChunkListAsync(state.WorldUpdateAllocator, out var identityJobHandle);
-        command.identityComponentType = __identityType.UpdateAsRef(ref state);
-        command.sources = __commandSources;
-        command.destinations = __commandDestinations;
-        command.entities = handleEntities.reader;
-        command.assigner = assigner.writer;
-        command.createCommander = createCommander.writer;
-        command.destroyCommander = destroyCommander.writer;
+        command.handleEntities = handleEntities.reader;
+        command.commands = __commandSources.AsDeferredJobArray();
+        command.guidEntities = __guidEntities.parallelWriter;
+        command.assigner = assigner.AsParallelWriter(typeCountAndBufferSize, ref jobHandle);
+        command.createCommander = createCommander.parallelWriter;
+        command.destroyCommander = destroyCommander.parallelWriter;
 
-        ref var entityJobManager = ref handleEntities.lookupJobManager;
-
-        jobHandle = JobHandle.CombineDependencies(jobHandle, entityJobManager.readOnlyJobHandle, assigner.jobHandle);
-
+        ref var handleEntitiesJobManager = ref handleEntities.lookupJobManager;
         ref var commanderJobManager = ref createCommander.lookupJobManager;
 
-        jobHandle = JobHandle.CombineDependencies(jobHandle, commanderJobManager.readWriteJobHandle, identityJobHandle);
+        jobHandle = JobHandle.CombineDependencies(jobHandle, handleEntitiesJobManager.readOnlyJobHandle, commanderJobManager.readWriteJobHandle);
 
-        jobHandle = command.Schedule(JobHandle.CombineDependencies(jobHandle, lookupJobManager.readWriteJobHandle));
-
-        entityJobManager.AddReadOnlyDependency(jobHandle);
+        jobHandle = manager.ScheduleParallelCommands(ref command, InnerloopBatchCount, JobHandle.CombineDependencies(assigner.jobHandle, jobHandle));
 
         assigner.jobHandle = jobHandle;
 
         commanderJobManager.readWriteJobHandle = jobHandle;
+
+        guidEntitiesJobManager.readWriteJobHandle = jobHandle;
+
+        handleEntitiesJobManager.AddReadOnlyDependency(jobHandle);
+
         destroyCommander.AddJobHandleForProducer<Command>(jobHandle);
 
-        lookupJobManager.readWriteJobHandle = jobHandle;
+        jobHandle = manager.ScheduleFlush(true, JobHandle.CombineDependencies(jobHandle, managerJobManager.readWriteJobHandle));
+
+        managerJobManager.readWriteJobHandle = jobHandle;
 
         state.Dependency = jobHandle;
     }

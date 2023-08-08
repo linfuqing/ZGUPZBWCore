@@ -645,7 +645,7 @@ public struct GameEntityActionSystemCore
 
                             float3 source = math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.actorOffset),
                                 destination = (instanceEx.value.flag & GameActionFlag.ActorLocation) == GameActionFlag.ActorLocation ?
-                                instanceEx.value.actorLocation :
+                                instanceEx.targetPosition :
                                 source + math.forward(sourceRigidbody.WorldFromBody.rot) * instanceEx.info.distance;
 
                             ColliderCastInput colliderCastInput = default;
@@ -667,7 +667,7 @@ public struct GameEntityActionSystemCore
                     }
                     else if ((instanceEx.value.flag & GameActionFlag.ActorLocation) == GameActionFlag.ActorLocation)
                     {
-                        sourceTransform.pos = instanceEx.value.actorLocation;
+                        sourceTransform.pos = instanceEx.targetPosition;
                         int sourceRigidbodyIndex = collisionWorld.GetRigidBodyIndex(instance.entity);
                         if (sourceRigidbodyIndex != -1)
                         {

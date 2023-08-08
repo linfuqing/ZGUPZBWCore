@@ -174,8 +174,7 @@ public partial struct GameWarperSystem : ISystem
 
         __physicsWorld.lookupJobManager.CompleteReadOnlyDependency();
 
-        long hash = math.aslong(elapsedTime);
-        var random = new Random((uint)(((int)(hash >> 32)) ^ (int)hash));
+        var random = RandomUtility.Create(elapsedTime);
         return SamplePosition(
             instance.maxTimes,
             instance.ignoreMask,

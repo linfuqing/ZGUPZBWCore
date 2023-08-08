@@ -227,11 +227,13 @@ public partial struct GameRollbackSystemGroup : ISystem
         private set;
     }
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         manager = new GameRollbackManager(ref state);
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
     }

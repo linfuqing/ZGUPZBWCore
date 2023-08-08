@@ -101,7 +101,7 @@ public partial class GameItemRootSystem : SystemBase
     }
 }*/
 
-[BurstCompile, UpdateInGroup(typeof(GameItemSystemGroup), OrderFirst = true)/*, UpdateBefore(typeof(GameItemSystem))*/]
+[BurstCompile, CreateAfter(typeof(GameItemSystem)), UpdateInGroup(typeof(GameItemSystemGroup), OrderFirst = true)/*, UpdateBefore(typeof(GameItemSystem))*/]
 public partial struct GameItemRootStatusSystem : ISystem
 {
     private struct CollectRoots
@@ -199,47 +199,40 @@ public partial struct GameItemRootStatusSystem : ISystem
 
     private EntityQuery __rootGroup;
     private EntityQuery __siblingGroup;
+
+    private ComponentTypeHandle<GameItemRoot> __rootType;
+    private BufferTypeHandle<GameItemSibling> __siblingType;
+
     private GameItemManagerShared __itemManager;
     private NativeList<GameItemHandle> __handles;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        BurstUtility.InitializeJob<RemoveHandles>();
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __rootGroup = builder
+                    .WithAll<GameItemRoot>()
+                    .WithNone<GameNodeStatus>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
 
-        __rootGroup = state.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameItemRoot>()
-                },
-                None = new ComponentType[]
-                {
-                    typeof(GameNodeStatus)
-                }, 
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __siblingGroup = builder
+                .WithAll<GameItemSibling>()
+                .WithNone<GameNodeStatus>()
+                .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                .Build(ref state);
 
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
-        __siblingGroup = state.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameItemSibling>()
-                },
-                None = new ComponentType[]
-                {
-                    typeof(GameNodeStatus)
-                },
+        __rootType = state.GetComponentTypeHandle<GameItemRoot>(true);
 
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
+        __siblingType = state.GetBufferTypeHandle<GameItemSibling>(true);
 
-        __itemManager = state.World.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
+        __itemManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>().manager;
 
         __handles = new NativeList<GameItemHandle>(Allocator.Persistent);
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
         __handles.Dispose();
@@ -259,7 +252,7 @@ public partial struct GameItemRootStatusSystem : ISystem
 
             CollectRootsEx collect;
             collect.infos = __itemManager.readOnlyInfos;
-            collect.rootType = state.GetComponentTypeHandle<GameItemRoot>(true);
+            collect.rootType = __rootType.UpdateAsRef(ref state);
             collect.handles = handles;
             collect.Run(__rootGroup);
 
@@ -271,7 +264,7 @@ public partial struct GameItemRootStatusSystem : ISystem
             state.CompleteDependency();
 
             CollectSiblingsEx collect;
-            collect.siblingType = state.GetBufferTypeHandle<GameItemSibling>(true);
+            collect.siblingType = __siblingType.UpdateAsRef(ref state);
             collect.handles = handles;
             collect.Run(__siblingGroup);
 
@@ -282,7 +275,7 @@ public partial struct GameItemRootStatusSystem : ISystem
         removeHandles.handles = handles;
         removeHandles.manager = __itemManager.value;
 
-        var jobHandle = removeHandles.Schedule(JobHandle.CombineDependencies(lookupJobManager.readWriteJobHandle, state.Dependency));
+        var jobHandle = removeHandles.ScheduleByRef(JobHandle.CombineDependencies(lookupJobManager.readWriteJobHandle, state.Dependency));
 
         lookupJobManager.readWriteJobHandle = jobHandle;
 
@@ -290,8 +283,8 @@ public partial struct GameItemRootStatusSystem : ISystem
     }
 }
 
-[UpdateInGroup(typeof(GameItemInitSystemGroup), OrderFirst = true)/*, UpdateAfter(typeof(EntityObjectSystemGroup))*/]
-public partial class GameItemRootEntitySystem : ReadOnlyLookupSystem
+[BurstCompile, CreateAfter(typeof(GameItemSystem)), UpdateInGroup(typeof(GameItemInitSystemGroup), OrderFirst = true)/*, UpdateAfter(typeof(EntityObjectSystemGroup))*/]
+public partial struct GameItemRootEntitySystem : ISystem
 {
     private struct Result
     {
@@ -308,7 +301,7 @@ public partial class GameItemRootEntitySystem : ReadOnlyLookupSystem
         [ReadOnly]
         public NativeArray<GameItemCommand> commands;
 
-        public NativeParallelHashMap<Entity, GameItemHandle> handles;
+        public NativeHashMap<Entity, GameItemHandle> handles;
 
         public SharedHashMap<GameItemHandle, Entity>.Writer entities;
 
@@ -478,7 +471,7 @@ public partial class GameItemRootEntitySystem : ReadOnlyLookupSystem
         public NativeArray<GameItemRoot> roots;
 
         [ReadOnly]
-        public NativeParallelHashMap<Entity, GameItemHandle> handles;
+        public NativeHashMap<Entity, GameItemHandle> handles;
 
         public NativeQueue<Result>.ParallelWriter results;
 
@@ -543,7 +536,7 @@ public partial class GameItemRootEntitySystem : ReadOnlyLookupSystem
         public ComponentTypeHandle<GameItemRoot> rootType;
 
         [ReadOnly]
-        public NativeParallelHashMap<Entity, GameItemHandle> handles;
+        public NativeHashMap<Entity, GameItemHandle> handles;
 
         public NativeQueue<Result>.ParallelWriter results;
 
@@ -566,7 +559,7 @@ public partial class GameItemRootEntitySystem : ReadOnlyLookupSystem
     private struct Apply : IJob
     {
         public NativeQueue<Result> results;
-        public NativeParallelHashMap<Entity, GameItemHandle> handles;
+        public NativeHashMap<Entity, GameItemHandle> handles;
         public SharedHashMap<GameItemHandle, Entity>.Writer entities;
 
         public void Execute()
@@ -599,10 +592,19 @@ public partial class GameItemRootEntitySystem : ReadOnlyLookupSystem
     }
 
     private EntityQuery __group;
+
+    public EntityTypeHandle __entityType;
+
+    public ComponentTypeHandle<GameItemRoot> __rootType;
+
+    private ComponentLookup<GameItemRoot> __roots;
+
+    private ComponentLookup<GameNodeStatus> __states;
+
     private GameItemManagerShared __itemManager;
     private NativeQueue<Result> __results;
 
-    private NativeParallelHashMap<Entity, GameItemHandle> __handles;
+    private NativeHashMap<Entity, GameItemHandle> __handles;
 
     //根物品对应的实体
     public SharedHashMap<GameItemHandle, Entity> entities
@@ -612,50 +614,48 @@ public partial class GameItemRootEntitySystem : ReadOnlyLookupSystem
         private set;
     }
 
-    public GameItemRootEntitySystem()
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
         entities = new SharedHashMap<GameItemHandle, Entity>(Allocator.Persistent);
-    }
 
-    protected override void OnCreate()
-    {
-        base.OnCreate();
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameItemRoot, GameNodeStatus>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
 
-        __group = GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameItemRoot>(),
-                    ComponentType.ReadOnly<GameNodeStatus>()
-                },
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
-        __group.SetChangedVersionFilter(typeof(GameItemRoot));
+        __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameItemRoot>());
 
-        __itemManager = World.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
+        __entityType = state.GetEntityTypeHandle();
+        __rootType = state.GetComponentTypeHandle<GameItemRoot>();
+
+        __roots = state.GetComponentLookup<GameItemRoot>();
+        __states = state.GetComponentLookup<GameNodeStatus>();
+
+        __itemManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>().manager;
 
         __results = new NativeQueue<Result>(Allocator.Persistent);
-        __handles = new NativeParallelHashMap<Entity, GameItemHandle>(1, Allocator.Persistent);
+        __handles = new NativeHashMap<Entity, GameItemHandle>(1, Allocator.Persistent);
     }
 
-    protected override void OnDestroy()
+    //[BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
         __results.Dispose();
         __handles.Dispose();
         entities.Dispose();
-
-        base.OnDestroy();
     }
 
-    protected override void _Update()
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
         if (!__itemManager.isCreated)
             return;
 
         var entities = this.entities;
-        ref var entityJobManager = ref entities.lookupJobManager;
-        entityJobManager.CompleteReadWriteDependency();
+        ref var entitiesJobManager = ref entities.lookupJobManager;
+        entitiesJobManager.CompleteReadWriteDependency();
 
         var infos = __itemManager.value.readOnlyInfos;
         var writer = entities.writer;
@@ -665,34 +665,34 @@ public partial class GameItemRootEntitySystem : ReadOnlyLookupSystem
         change.commands = __itemManager.oldCommands;
         change.handles = __handles;
         change.entities = writer;
-        change.roots = GetComponentLookup<GameItemRoot>();
-        change.states = GetComponentLookup<GameNodeStatus>();
+        change.roots = __roots.UpdateAsRef(ref state);
+        change.states = __states.UpdateAsRef(ref state);
 
-        ref var itemJobManager = ref __itemManager.lookupJobManager;
+        ref var itemManagerJobManager = ref __itemManager.lookupJobManager;
 
-        JobHandle jobHandle = change.Schedule(JobHandle.CombineDependencies(itemJobManager.readOnlyJobHandle, Dependency)), result = jobHandle;
+        JobHandle jobHandle = change.Schedule(JobHandle.CombineDependencies(itemManagerJobManager.readOnlyJobHandle, state.Dependency)), result = jobHandle;
         if (!__group.IsEmptyIgnoreFilter)
         {
             RefreshEx refresh;
             refresh.infos = infos;
-            refresh.entityType = GetEntityTypeHandle();
-            refresh.rootType = GetComponentTypeHandle<GameItemRoot>();
+            refresh.entityType = __entityType.UpdateAsRef(ref state);
+            refresh.rootType = __rootType.UpdateAsRef(ref state);
             refresh.handles = __handles;
             refresh.results = __results.AsParallelWriter();
-            jobHandle = refresh.ScheduleParallel(__group, jobHandle);
+            jobHandle = refresh.ScheduleParallelByRef(__group, jobHandle);
 
             Apply apply;
             apply.results = __results;
             apply.handles = __handles;
             apply.entities = writer;
-            result = apply.Schedule(jobHandle);
+            result = apply.ScheduleByRef(jobHandle);
         }
 
-        itemJobManager.AddReadOnlyDependency(jobHandle);
+        itemManagerJobManager.AddReadOnlyDependency(jobHandle);
 
-        entityJobManager.readWriteJobHandle = result;
+        entitiesJobManager.readWriteJobHandle = result;
 
-        Dependency = result;
+        state.Dependency = result;
     }
 }
 

@@ -1058,13 +1058,13 @@ public partial struct GameActionActiveExecutorSystem : ISystem
                                 }
                                 else
                                 {
-                                    if (info.alertTime < time || distance < instance.minAlertDistance)
+                                    if (info.alertTime < time || distance < instance.minAlertDistance || distance > instance.maxAlertDistance)
                                     {
                                         info.alertTime = time + random.NextFloat(instance.minAlertTime, instance.maxAlertTime);
 
-                                        info.status = instance.alertChance > random.NextFloat() ?
-                                            (GameActionActiveInfo.Status)(int)math.sign(random.NextFloat() - 0.5f) :
-                                            (distance < instance.minAlertDistance ? GameActionActiveInfo.Status.Backward : GameActionActiveInfo.Status.Forward);
+                                        info.status = distance < instance.minAlertDistance ? GameActionActiveInfo.Status.Backward : 
+                                            (distance < instance.maxAlertDistance && instance.alertChance > random.NextFloat() ?
+                                            (GameActionActiveInfo.Status)(int)math.sign(random.NextFloat() - 0.5f) : GameActionActiveInfo.Status.Forward);
                                     }
 
                                     float3 value;

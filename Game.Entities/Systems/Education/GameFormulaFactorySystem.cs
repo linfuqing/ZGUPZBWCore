@@ -1,3 +1,4 @@
+using System;
 using Unity.Burst;
 using Unity.Burst.Intrinsics;
 using Unity.Collections;
@@ -140,10 +141,10 @@ public struct GameFormulaFactoryData : IComponentData
     public BlobAssetReference<GameFormulaFactoryDefinition> definition;
 }
 
-public struct GameFormulaFactorySharedData : IComponentData
+/*public struct GameFormulaFactorySharedData : IComponentData
 {
     public BlobAssetReference<GameFormulaFactoryDefinition> definition;
-}
+}*/
 
 public struct GameFormulaFactoryMode : IComponentData
 {
@@ -199,7 +200,7 @@ public struct GameFormulaFactoryStatus : IComponentData
     public Entity entity;
 }
 
-public struct GameFormulaFactoryTime : IComponentData
+public struct GameFormulaFactoryTime : IComponentData, IEnableableComponent
 {
     public float value;
 }
@@ -211,7 +212,7 @@ public struct GameFormulaFactoryCommand : IComponentData, IEnableableComponent
     public int formulaIndex;
 }
 
-[BurstCompile, UpdateInGroup(typeof(EndFrameEntityCommandSystemGroup))]
+/*[BurstCompile, UpdateInGroup(typeof(EndFrameEntityCommandSystemGroup))]
 public partial struct GameFormulaFactoryStructChangeSystem : ISystem
 {
     [BurstCompile]
@@ -315,9 +316,9 @@ public partial struct GameFormulaFactoryStructChangeSystem : ISystem
             state.Dependency = init.Schedule(instanceEntities.Length, InnerloopBatchCount, state.Dependency);
         }
     }
-}
+}*/
 
-[BurstCompile, CreateAfter(typeof(GameItemSystem)), CreateAfter(typeof(GameFormulaFactoryStructChangeSystem))]
+[BurstCompile, CreateAfter(typeof(GameItemSystem))/*, CreateAfter(typeof(GameFormulaFactoryStructChangeSystem))*/]
 public partial struct GameFormulaFactorySystem : ISystem
 {
     public struct Result
@@ -326,6 +327,13 @@ public partial struct GameFormulaFactorySystem : ISystem
         public GameItemHandle handle;
         public Entity entity;
         public Entity factory;
+    }
+
+    [Flags]
+    private enum RunningStatus
+    {
+        Command = 0x01, 
+        Stop = 0x02
     }
 
     private struct CompletedResult
@@ -380,6 +388,8 @@ public partial struct GameFormulaFactorySystem : ISystem
 
         public Random random;
 
+        public BlobAssetReference<GameFormulaFactoryDefinition> definition;
+
         [ReadOnly]
         public GameItemManager.ReadOnly itemManager;
 
@@ -392,8 +402,8 @@ public partial struct GameFormulaFactorySystem : ISystem
         [ReadOnly]
         public NativeArray<GameFormulaFactoryStorage> storages;
 
-        [ReadOnly]
-        public NativeArray<GameFormulaFactoryData> instances;
+        //[ReadOnly]
+        //public NativeArray<GameFormulaFactoryData> instances;
 
         [ReadOnly]
         public NativeArray<GameFormulaFactoryMode> modes;
@@ -416,16 +426,16 @@ public partial struct GameFormulaFactorySystem : ISystem
         [NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameFormulaFactoryStatus> statusMap;
 
-        public EntityCommandQueue<Entity>.ParallelWriter entityManager;
+        //public EntityCommandQueue<Entity>.ParallelWriter entityManager;
 
         public NativeList<CompletedResult>.ParallelWriter results;
 
-        public bool Execute(int index)
+        public RunningStatus Execute(int index)
         {
             float timeScale = 0.0f;// timeScales[index].value;
             var handle = itemRoots[index].handle;
             var hierarchy = itemManager.hierarchy;
-            ref var definition = ref instances[index].definition.Value;
+            ref var definition = ref this.definition.Value;
             if (hierarchy.TryGetValue(handle, out var item))
             {
                 var siblingHandle = item.siblingHandle;
@@ -461,7 +471,7 @@ public partial struct GameFormulaFactorySystem : ISystem
                 timeScaleMap[entity] = temp;
             }
 
-            bool result = false;
+            RunningStatus result = 0;
             var time = times[index];
             time.value -= deltaTime * timeScale;
             if (time.value > 0.0f)
@@ -482,13 +492,13 @@ public partial struct GameFormulaFactorySystem : ISystem
                             if (storages[index].status == GameFormulaFactoryStorage.Status.Active)
                             {
                                 if (!Complete(false, status.formulaIndex, status.level, entity, status.entity, handle, ref definition.values[status.formulaIndex]))
-                                    return false;
+                                    return 0;
 
                                 if (mode == GameFormulaFactoryMode.Mode.Auto)
                                 {
                                     Command(index, status.formulaIndex, entity);
 
-                                    result = true;
+                                    result = RunningStatus.Command;
                                 }
                             }
                             else
@@ -496,22 +506,22 @@ public partial struct GameFormulaFactorySystem : ISystem
                             break;
                         case GameFormulaFactoryMode.Mode.Once:
                             if (!Complete(true, status.formulaIndex, status.level, entity, status.entity, handle, ref definition.values[status.formulaIndex]))
-                                return false;
+                                return 0;
 
                             //factoryStatus = GameFactoryStatus.Complete;
                             break;
                         case GameFormulaFactoryMode.Mode.Repeat:
                             if (!Complete(false, status.formulaIndex, status.level, entity, status.entity, handle, ref definition.values[status.formulaIndex]))
-                                return false;
+                                return 0;
 
                             Command(index, status.formulaIndex, entity);
 
-                            result = true;
+                            result = RunningStatus.Command;
                             break;
                         case GameFormulaFactoryMode.Mode.Force:
                             ref var formula = ref definition.values[status.formulaIndex];
                             if (!Complete(true, status.formulaIndex, status.level, status.entity, entity, handle, ref formula))
-                                return false;
+                                return 0;
 
                             if (formula.Test(
                                 ref handle,
@@ -520,20 +530,21 @@ public partial struct GameFormulaFactorySystem : ISystem
                                 entity,
                                 default,
                                 default))
-                                return false;
+                                return 0;
 
                             Command(index, status.formulaIndex, entity);
 
-                            result = true;
+                            result = RunningStatus.Command;
                             break;
                         default:
-                            return false;// throw new InvalidOperationException();
+                            return 0;// throw new InvalidOperationException();
                     }
 
                     statusMap[entity] = status;
                 }
 
-                entityManager.Enqueue(entity);
+                result |= RunningStatus.Stop;
+                //entityManager.Enqueue(entity);
             }
 
             return result;
@@ -591,7 +602,9 @@ public partial struct GameFormulaFactorySystem : ISystem
     private struct RunEx : IJobChunk, IEntityCommandProducerJob
     {
         public float deltaTime;
-        public double time;
+        public uint hash;
+
+        public BlobAssetReference<GameFormulaFactoryDefinition> definition;
 
         public GameItemManager.ReadOnly itemManager;
 
@@ -603,9 +616,6 @@ public partial struct GameFormulaFactorySystem : ISystem
 
         [ReadOnly]
         public ComponentTypeHandle<GameFormulaFactoryStorage> storageType;
-
-        [ReadOnly]
-        public ComponentTypeHandle<GameFormulaFactoryData> instanceType;
 
         [ReadOnly]
         public ComponentTypeHandle<GameFormulaFactoryMode> modeType;
@@ -628,22 +638,20 @@ public partial struct GameFormulaFactorySystem : ISystem
         [NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameFormulaFactoryStatus> states;
 
-        public EntityCommandQueue<Entity>.ParallelWriter entityManager;
+        //public EntityCommandQueue<Entity>.ParallelWriter entityManager;
 
         public NativeList<CompletedResult>.ParallelWriter results;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
-            long hash = math.aslong(time);
-
             Run run;
             run.deltaTime = deltaTime;
-            run.random = new Random((uint)hash ^ (uint)(hash >> 32));
+            run.random = new Random(hash ^ (uint)(unfilteredChunkIndex));
+            run.definition = definition;
             run.itemManager = itemManager;
             run.entityArray = chunk.GetNativeArray(entityType);
             run.itemRoots = chunk.GetNativeArray(ref itemRootType);
             run.storages = chunk.GetNativeArray(ref storageType);
-            run.instances = chunk.GetNativeArray(ref instanceType);
             run.modes = chunk.GetNativeArray(ref modeType);
             run.states = chunk.GetNativeArray(ref statusType);
             run.timeScales = chunk.GetNativeArray(ref timeScaleType);
@@ -652,14 +660,19 @@ public partial struct GameFormulaFactorySystem : ISystem
             run.commands = chunk.GetNativeArray(ref commandType);
             run.timeScaleMap = timeScales;
             run.statusMap = states;
-            run.entityManager = entityManager;
+            //run.entityManager = entityManager;
             run.results = results;
 
+            RunningStatus runningStatus;
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
             {
-                if (run.Execute(i))
+                runningStatus = run.Execute(i);
+                if ((runningStatus & RunningStatus.Command) == RunningStatus.Command)
                     chunk.SetComponentEnabled(ref commandType, i, true);
+
+                if ((runningStatus & RunningStatus.Stop) == RunningStatus.Stop)
+                    chunk.SetComponentEnabled(ref timeType, i, false);
             }
         }
     }
@@ -667,6 +680,8 @@ public partial struct GameFormulaFactorySystem : ISystem
     private struct Complete
     {
         public Random random;
+
+        public BlobAssetReference<GameFormulaFactoryDefinition> definition;
 
         [ReadOnly]
         public GameItemManager.ReadOnly itemManager;
@@ -687,9 +702,6 @@ public partial struct GameFormulaFactorySystem : ISystem
         public NativeArray<GameItemRoot> itemRoots;
 
         [ReadOnly]
-        public NativeArray<GameFormulaFactoryData> instances;
-
-        [ReadOnly]
         public NativeArray<GameFormulaFactoryMode> modes;
 
         [ReadOnly]
@@ -701,35 +713,34 @@ public partial struct GameFormulaFactorySystem : ISystem
         [NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameFormulaFactoryStatus> statusMap;
 
-        public EntityCommandQueue<EntityData<GameFormulaFactoryTime>>.ParallelWriter entityManager;
+        //public EntityCommandQueue<EntityData<GameFormulaFactoryTime>>.ParallelWriter entityManager;
 
         public NativeList<RunningResult>.ParallelWriter runningResults;
 
         public NativeList<CompletedResult>.ParallelWriter completeResults;
 
-        public void Execute(int index)
+        public float Execute(int index)
         {
             var command = commands[index];
             if (command.entity == Entity.Null)
-                return;
+                return 0.0f;
+
+            ref var definition = ref this.definition.Value;
 
             Entity entity;
             GameFormula temp;
-            GameFormulaFactoryData instance;
             var status = states[index];
             if (command.formulaIndex == -1)
             {
                 if (status.value != GameFormulaFactoryStatus.Status.Completed)
-                    return;
+                    return 0.0f;
 
                 if (GameFormulaManager.IndexOf(status.formulaIndex, formulas[command.entity], out temp) == -1)
                     temp = default;
 
                 entity = entityArray[index];
 
-                instance = instances[index];
-
-                ref var formula = ref instance.definition.Value.values[status.formulaIndex];
+                ref var formula = ref definition.values[status.formulaIndex];
 
                 CompletedResult result;
                 result.resultIndex = formula.GetResultIndex(temp.level, random.NextFloat());
@@ -756,7 +767,7 @@ public partial struct GameFormulaFactorySystem : ISystem
                     status.entity = command.entity;
                     statusMap[entity] = status;
 
-                    return;
+                    return 0.0f;
                 }
 
                 command.formulaIndex = status.formulaIndex;
@@ -766,16 +777,14 @@ public partial struct GameFormulaFactorySystem : ISystem
                 if (GameFormulaManager.IndexOf(command.formulaIndex, this.formulas[command.entity], out temp) == -1)
                     temp = default;
 
-                instance = instances[index];
-
                 entity = entityArray[index];
             }
             else
-                return;
+                return 0.0f;
 
             {
                 var handle = itemRoots[index].handle;
-                ref var formula = ref instance.definition.Value.values[command.formulaIndex];
+                ref var formula = ref definition.values[command.formulaIndex];
                 if (!formula.Test(
                     ref handle,
                     itemManager,
@@ -783,12 +792,12 @@ public partial struct GameFormulaFactorySystem : ISystem
                     entity,
                     moneies,
                     itemRootMap))
-                    return;
+                    return 0.0f;
 
-                EntityData<GameFormulaFactoryTime> time;
+                /*EntityData<GameFormulaFactoryTime> time;
                 time.entity = entity;
                 time.value.value = formula.time;
-                entityManager.Enqueue(time);
+                entityManager.Enqueue(time);*/
 
                 RunningResult result;
                 result.entity = command.entity;
@@ -802,6 +811,8 @@ public partial struct GameFormulaFactorySystem : ISystem
                 status.level = temp.level;
                 status.entity = command.entity;
                 statusMap[entity] = status;
+
+                return math.max(formula.time, math.FLT_MIN_NORMAL);
             }
         }
     }
@@ -809,7 +820,9 @@ public partial struct GameFormulaFactorySystem : ISystem
     [BurstCompile]
     private struct CompleteEx : IJobChunk, IEntityCommandProducerJob
     {
-        public double time;
+        public uint hash;
+
+        public BlobAssetReference<GameFormulaFactoryDefinition> definition;
 
         [ReadOnly]
         public GameItemManager.ReadOnly itemManager;
@@ -830,20 +843,19 @@ public partial struct GameFormulaFactorySystem : ISystem
         public ComponentTypeHandle<GameItemRoot> itemRootType;
 
         [ReadOnly]
-        public ComponentTypeHandle<GameFormulaFactoryData> instanceType;
-
-        [ReadOnly]
         public ComponentTypeHandle<GameFormulaFactoryMode> modeType;
 
         [ReadOnly]
         public ComponentTypeHandle<GameFormulaFactoryStatus> statusType;
+
+        public ComponentTypeHandle<GameFormulaFactoryTime> timeType;
 
         public ComponentTypeHandle<GameFormulaFactoryCommand> commandType;
 
         [NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameFormulaFactoryStatus> states;
 
-        public EntityCommandQueue<EntityData<GameFormulaFactoryTime>>.ParallelWriter entityManager;
+        //public EntityCommandQueue<EntityData<GameFormulaFactoryTime>>.ParallelWriter entityManager;
 
         public NativeList<RunningResult>.ParallelWriter runningResults;
 
@@ -851,29 +863,35 @@ public partial struct GameFormulaFactorySystem : ISystem
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
-            long hash = math.aslong(time);
-
             Complete complete;
-            complete.random = new Random((uint)hash ^ (uint)(hash >> 32));
+            complete.random = new Random(hash ^ (uint)unfilteredChunkIndex);
+            complete.definition = definition;
             complete.itemManager = itemManager;
             complete.entityArray = chunk.GetNativeArray(entityType);
             complete.formulas = this.formulas;
             complete.moneies = moneies;
             complete.itemRootMap = itemRoots;
             complete.itemRoots = chunk.GetNativeArray(ref itemRootType);
-            complete.instances = chunk.GetNativeArray(ref instanceType);
             complete.modes = chunk.GetNativeArray(ref modeType);
             complete.states = chunk.GetNativeArray(ref statusType);
             complete.commands = chunk.GetNativeArray(ref commandType);
             complete.statusMap = states;
-            complete.entityManager = entityManager;
+            //complete.entityManager = entityManager;
             complete.runningResults = runningResults;
             complete.completeResults = completeResults;
 
+            var times = chunk.GetNativeArray(ref timeType);
+            GameFormulaFactoryTime time;
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
             {
-                complete.Execute(i);
+                time.value = complete.Execute(i);
+                if(time.value > 0.0f)
+                {
+                    times[i] = time;
+
+                    chunk.SetComponentEnabled(ref timeType, i, true);
+                }
 
                 chunk.SetComponentEnabled(ref commandType, i, false);
             }
@@ -883,6 +901,8 @@ public partial struct GameFormulaFactorySystem : ISystem
     [BurstCompile]
     private struct ApplyToRun : IJob
     {
+        public BlobAssetReference<GameFormulaFactoryDefinition> definition;
+
         public GameItemManager itemManager;
 
         public NativeList<RunningResult> results;
@@ -898,11 +918,9 @@ public partial struct GameFormulaFactorySystem : ISystem
         [ReadOnly]
         public ComponentLookup<GameItemRoot> roots;
 
-        [ReadOnly]
-        public ComponentLookup<GameFormulaFactoryData> instances;
-
         public void Execute()
         {
+            ref var definition = ref this.definition.Value;
             var itemSiblingHandles = new NativeList<GameItemHandle>(Allocator.Temp);
             var itemChildHandles = new NativeList<GameItemHandle>(Allocator.Temp);
 
@@ -913,7 +931,7 @@ public partial struct GameFormulaFactorySystem : ISystem
             for (i = 0; i < numResults; ++i)
             {
                 ref var result = ref results.ElementAt(i);
-                ref var formula = ref instances[result.factory].definition.Value.values[result.formulaIndex];
+                ref var formula = ref definition.values[result.formulaIndex];
                 numChildren = formula.children.Length;
                 if (numChildren > 0)
                 {
@@ -995,6 +1013,8 @@ public partial struct GameFormulaFactorySystem : ISystem
     [BurstCompile]
     private struct ApplyToComplete : IJob
     {
+        public BlobAssetReference<GameFormulaFactoryDefinition> definition;
+
         public GameItemManager itemManager;
 
         public BufferLookup<GameItemSibling> siblings;
@@ -1007,12 +1027,11 @@ public partial struct GameFormulaFactorySystem : ISystem
 
         public SharedList<Result>.Writer outputs;
 
-        [ReadOnly]
-        public ComponentLookup<GameFormulaFactoryData> instances;
-
         public void Execute()
         {
             outputs.Clear();
+
+            ref var definition = ref this.definition.Value;
 
             DynamicBuffer<GameItemSibling> siblings;
             Result output;
@@ -1027,7 +1046,7 @@ public partial struct GameFormulaFactorySystem : ISystem
                 output.entity = input.entity;
                 output.factory = input.factory;
 
-                ref var result = ref instances[input.factory].definition.Value.values[input.formulaIndex].results[input.resultIndex];
+                ref var result = ref definition.values[input.formulaIndex].results[input.resultIndex];
                 sourceItemCount = result.itemCount;
 
                 do
@@ -1127,12 +1146,10 @@ public partial struct GameFormulaFactorySystem : ISystem
 
     private EntityTypeHandle __entityType;
     private ComponentTypeHandle<GameItemRoot> __itemRootType;
-    private ComponentTypeHandle<GameFormulaFactoryData> __instanceType;
     private ComponentTypeHandle<GameFormulaFactoryMode> __modeType;
     private ComponentTypeHandle<GameFormulaFactoryStatus> __statusType;
     private ComponentLookup<GameFormulaFactoryStatus> __states;
 
-    private ComponentLookup<GameFormulaFactoryData> __instances;
     private ComponentLookup<GameItemSpawnCommandVersion> __versions;
     private BufferLookup<GameItemSibling> __siblings;
 
@@ -1158,8 +1175,8 @@ public partial struct GameFormulaFactorySystem : ISystem
 
     private GameItemManagerShared __itemManager;
 
-    private EntityCommandPool<Entity> __removeTimeComponentPool;
-    private EntityCommandPool<EntityData<GameFormulaFactoryTime>> __addTimeComponentPool;
+    /*private EntityCommandPool<Entity> __removeTimeComponentPool;
+    private EntityCommandPool<EntityData<GameFormulaFactoryTime>> __addTimeComponentPool;*/
 
     public SharedList<Result> results
     {
@@ -1177,7 +1194,7 @@ public partial struct GameFormulaFactorySystem : ISystem
 
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __groupToRun = builder
-                    .WithAll<GameItemRoot, GameFormulaFactoryData, GameFormulaFactoryMode>()
+                    .WithAll<GameItemRoot, GameFormulaFactoryMode>()
                     .WithAllRW<GameFormulaFactoryTimeScale>()
                     .WithAllRW<GameFormulaFactoryTime>()
                     .WithAllRW<GameFormulaFactoryStatus>()
@@ -1186,21 +1203,19 @@ public partial struct GameFormulaFactorySystem : ISystem
 
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __groupToComplete = builder
-                    .WithAll<GameItemRoot, GameFormulaFactoryData, GameFormulaFactoryMode>()
+                    .WithAll<GameItemRoot, GameFormulaFactoryMode>()
                     .WithAllRW<GameFormulaFactoryCommand, GameFormulaFactoryStatus>()
                     .Build(ref state);
         __groupToComplete.SetChangedVersionFilter(ComponentType.ReadWrite<GameFormulaFactoryCommand>());
 
         __entityType = state.GetEntityTypeHandle();
         __itemRootType = state.GetComponentTypeHandle<GameItemRoot>(true);
-        __instanceType = state.GetComponentTypeHandle<GameFormulaFactoryData>(true);
         __modeType = state.GetComponentTypeHandle<GameFormulaFactoryMode>(true);
         __statusType = state.GetComponentTypeHandle<GameFormulaFactoryStatus>(true);
         __states = state.GetComponentLookup<GameFormulaFactoryStatus>();
 
         __versions = state.GetComponentLookup<GameItemSpawnCommandVersion>();
 
-        __instances = state.GetComponentLookup<GameFormulaFactoryData>(true);
         __siblings = state.GetBufferLookup<GameItemSibling>();
 
         __storageType = state.GetComponentTypeHandle<GameFormulaFactoryStorage>(true);
@@ -1227,9 +1242,9 @@ public partial struct GameFormulaFactorySystem : ISystem
 
         __itemManager = world.GetExistingSystemUnmanaged<GameItemSystem>().manager;
 
-        ref var endFrameBarrier = ref world.GetExistingSystemUnmanaged<GameFormulaFactoryStructChangeSystem>();
+        /*ref var endFrameBarrier = ref world.GetExistingSystemUnmanaged<GameFormulaFactoryStructChangeSystem>();
         __removeTimeComponentPool = endFrameBarrier.removeTimeComponentPool;
-        __addTimeComponentPool = endFrameBarrier.addTimeComponentPool;
+        __addTimeComponentPool = endFrameBarrier.addTimeComponentPool;*/
 
         results = new SharedList<Result>(Allocator.Persistent);
     }
@@ -1246,6 +1261,9 @@ public partial struct GameFormulaFactorySystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
+        if (!SystemAPI.HasSingleton<GameFormulaFactoryData>())
+            return;
+
         ref readonly var time = ref state.WorldUnmanaged.Time;
 
         var itemManager = __itemManager.value;
@@ -1256,35 +1274,36 @@ public partial struct GameFormulaFactorySystem : ISystem
 
         var entityType = __entityType.UpdateAsRef(ref state);
         var itemRootType = __itemRootType.UpdateAsRef(ref state);
-        var instanceType = __instanceType.UpdateAsRef(ref state);
         var modeType = __modeType.UpdateAsRef(ref state);
         var commandType = __commandType.UpdateAsRef(ref state);
+        var timeType = __timeType.UpdateAsRef(ref state);
         var statusType = __statusType.UpdateAsRef(ref state);
         var states = __states.UpdateAsRef(ref state);
 
+        var definition = SystemAPI.GetSingleton<GameFormulaFactoryData>().definition;
         if (!__groupToRun.IsEmptyIgnoreFilter)
         {
             __completedResults.Capacity = math.max(__completedResults.Capacity, __completedResults.Length + __groupToRun.CalculateChunkCount());
 
-            var entityManager = __removeTimeComponentPool.Create();
+            //var entityManager = __removeTimeComponentPool.Create();
 
             RunEx run;
             run.deltaTime = time.DeltaTime;
-            run.time = time.ElapsedTime;
+            run.hash = RandomUtility.Hash(time.ElapsedTime);
+            run.definition = SystemAPI.GetSingleton<GameFormulaFactoryData>().definition;
             run.itemManager = itemManagerReadOnly;
             run.entityType = entityType;
             run.itemRootType = itemRootType;
             run.storageType = __storageType.UpdateAsRef(ref state);
-            run.instanceType = instanceType;
             run.modeType = modeType;
             run.statusType = statusType;
             run.timeScaleType = __timeScaleType.UpdateAsRef(ref state);
             run.itemTimeScaleType = __itemTimeScaleType.UpdateAsRef(ref state);
-            run.timeType = __timeType.UpdateAsRef(ref state);
+            run.timeType = timeType;
             run.commandType = commandType;
             run.timeScales = __timeScales.UpdateAsRef(ref state);
             run.states = states;
-            run.entityManager = entityManager.parallelWriter;
+            //run.entityManager = entityManager.parallelWriter;
             run.results = __completedResults.AsParallelWriter();
 
             itemJobHandle = itemJobManager.readWriteJobHandle;
@@ -1293,10 +1312,9 @@ public partial struct GameFormulaFactorySystem : ISystem
 
             //itemJobManager.AddReadOnlyDependency(jobHandle);
 
-            entityManager.AddJobHandleForProducer<RunEx>(jobHandle);
+            //entityManager.AddJobHandleForProducer<RunEx>(jobHandle);
         }
 
-        var instances = __instances.UpdateAsRef(ref state);
         var versions = __versions.UpdateAsRef(ref state);
         var siblings = __siblings.UpdateAsRef(ref state);
         if (!__groupToComplete.IsEmptyIgnoreFilter)
@@ -1314,22 +1332,24 @@ public partial struct GameFormulaFactorySystem : ISystem
             var monies = __moneies.UpdateAsRef(ref state); 
             var itemRoots = __itemRoots.UpdateAsRef(ref state);
 
-            var entityManager = __addTimeComponentPool.Create();
+            //var entityManager = __addTimeComponentPool.Create();
 
             CompleteEx complete;
-            complete.time = time.ElapsedTime;
+            //complete.time = time.ElapsedTime;
+            complete.hash = RandomUtility.Hash(time.ElapsedTime);
+            complete.definition = definition;
             complete.itemManager = itemManagerReadOnly;
             complete.entityType = entityType;
             complete.formulas = __formulas.UpdateAsRef(ref state);
             complete.moneies = monies;
             complete.itemRoots = itemRoots;
             complete.itemRootType = itemRootType;
-            complete.instanceType = instanceType;
             complete.modeType = modeType;
             complete.statusType = statusType;
+            complete.timeType = timeType;
             complete.commandType = commandType;
             complete.states = states;
-            complete.entityManager = entityManager.parallelWriter;
+            //complete.entityManager = entityManager.parallelWriter;
             complete.completeResults = __completedResults.AsParallelWriter();
             complete.runningResults = __runningResults.AsParallelWriter();
 
@@ -1344,16 +1364,16 @@ public partial struct GameFormulaFactorySystem : ISystem
 
             //itemJobManager.AddReadOnlyDependency(jobHandle);
 
-            entityManager.AddJobHandleForProducer<CompleteEx>(jobHandle);
+            //entityManager.AddJobHandleForProducer<CompleteEx>(jobHandle);
 
             ApplyToRun applyToRun;
+            applyToRun.definition = definition;
             applyToRun.itemManager = itemManager;
             applyToRun.roots = itemRoots;
             applyToRun.siblings = siblings;
             applyToRun.commands = __itemSpawnHandleCommands.UpdateAsRef(ref state);
             applyToRun.versions = versions;
             applyToRun.moneies = monies;
-            applyToRun.instances = instances;
             applyToRun.results = __runningResults;
 
             jobHandle = applyToRun.ScheduleByRef(jobHandle);
@@ -1368,13 +1388,13 @@ public partial struct GameFormulaFactorySystem : ISystem
         resultJobManager.CompleteReadWriteDependency();
 
         ApplyToComplete applyToComplete;
+        applyToComplete.definition = definition;
         applyToComplete.itemManager = itemManager;
         applyToComplete.siblings = siblings;
         applyToComplete.commands = __itemSpawnCommands.UpdateAsRef(ref state);
         applyToComplete.versions = versions;
         applyToComplete.inputs = __completedResults;
         applyToComplete.outputs = results.writer;
-        applyToComplete.instances = instances;
 
         if (itemJobHandle == null)
         {

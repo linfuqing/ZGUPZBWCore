@@ -9,8 +9,7 @@ using Unity.Jobs;
 using ZG;
 using System.Collections.Generic;
 
-[UpdateInGroup(typeof(GameItemSystemGroup), OrderFirst = true)/*, UpdateBefore(typeof(GameItemSystem))*/]
-public partial class GameItemCommandSystem : LookupSystem
+public struct GameItemCommandManager
 {
     public enum CommandType
     {
@@ -62,10 +61,9 @@ public partial class GameItemCommandSystem : LookupSystem
         [ReadOnly]
         public NativeParallelMultiHashMap<int, Adapter> adapters;
 
-        [ReadOnly, DeallocateOnJobCompletion]
-        public NativeArray<Command> commands;
+        public SharedList<Command>.Writer commands;
 
-        public NativeList<Result> results;
+        public SharedList<Result>.Writer results;
 
         public void Execute(int index)
         {
@@ -234,7 +232,7 @@ public partial class GameItemCommandSystem : LookupSystem
         {
             //results.Clear();
 
-            int numCommands = commands.Length;/*, count;
+            int numCommands = commands.length;/*, count;
             float source, destination;
             Entity entity;
             Command command;
@@ -325,116 +323,137 @@ public partial class GameItemCommandSystem : LookupSystem
                         break;
                 }*/
             }
+
+            commands.Clear();
         }
     }
 
     private EntityQuery __structChangeManagerGroup;
+    private ComponentLookup<GameItemDurability> __durabilities;
     private GameItemManagerShared __itemManager;
     private NativeHashMap<int, float> __maxDurabilities;
     private NativeParallelMultiHashMap<int, Adapter> __adapters;
 
-    public NativeList<Command> commands
+    public SharedList<Command> commands
     {
         get;
 
         private set;
     }
 
-    public NativeList<Result> results
+    public SharedList<Result> results
     {
         get;
 
         private set;
     }
 
-    public void Create(AdapterData[] datas, ICollection<KeyValuePair<int, float>> maxDurabilities)
+    public GameItemCommandManager(ref SystemState state)
     {
+        __structChangeManagerGroup = GameItemStructChangeManager.GetEntityQuery(ref state);
+
+        __durabilities = state.GetComponentLookup<GameItemDurability>(true);
+
+        __itemManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>().manager;
+
+        __maxDurabilities = new NativeHashMap<int, float>(1, Allocator.Persistent);
+
         __adapters = new NativeParallelMultiHashMap<int, Adapter>(1, Allocator.Persistent);
+
+        commands = new SharedList<Command>(Allocator.Persistent);
+
+        results = new SharedList<Result>(Allocator.Persistent);
+    }
+
+    public void Build(AdapterData[] datas, ICollection<KeyValuePair<int, float>> maxDurabilities)
+    {
+        __adapters.Clear();
         foreach (var data in datas)
         {
             foreach (var value in data.values)
                 __adapters.Add(data.type, value);
         }
 
-        __maxDurabilities = new NativeHashMap<int, float>(maxDurabilities.Count, Allocator.Persistent);
+        __maxDurabilities.Clear();
         foreach (var pair in maxDurabilities)
             __maxDurabilities.Add(pair.Key, pair.Value);
     }
 
-    protected override void OnCreate()
-    {
-        base.OnCreate();
-
-        __structChangeManagerGroup = GameItemStructChangeManager.GetEntityQuery(ref this.GetState());
-
-        World world = World;
-        __itemManager = world.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
-
-        commands = new NativeList<Command>(Allocator.Persistent);
-
-        results = new NativeList<Result>(Allocator.Persistent);
-    }
-
-    protected override void OnDestroy()
+    //[BurstCompile]
+    public void Dispose()
     {
         commands.Dispose();
 
         results.Dispose();
 
-        if (__adapters.IsCreated)
-        {
-            __adapters.Dispose();
+        __adapters.Dispose();
 
-            __maxDurabilities.Dispose();
-        }
-
-        base.OnDestroy();
+        __maxDurabilities.Dispose();
     }
 
-    protected override void _Update()
+    public void Update(ref SystemState state)
     {
-        if (!__adapters.IsCreated)
-            return;
-
-        if (commands.Length < 1)
-            return;
-
         var handleEntities = __structChangeManagerGroup.GetSingleton<GameItemStructChangeManager>().handleEntities;
 
         Apply apply;
         apply.manager = __itemManager.value;
-        apply.durabilities = GetComponentLookup<GameItemDurability>(true);
+        apply.durabilities = __durabilities.UpdateAsRef(ref state);
         apply.maxDurabilities = __maxDurabilities;
         apply.entities = handleEntities.reader;
         apply.adapters = __adapters;
-        apply.commands = commands.ToArray(Allocator.TempJob);
-        apply.results = results;
+        apply.commands = commands.writer;
+        apply.results = results.writer;
 
-        commands.Clear();
+        ref var handleEntityJobManager = ref handleEntities.lookupJobManager;
+        ref var itemManagerJobManager = ref __itemManager.lookupJobManager;
+        ref var commandsJobManager = ref commands.lookupJobManager;
+        ref var resultsJobManager = ref results.lookupJobManager;
 
-        ref var itemJobManager = ref __itemManager.lookupJobManager;
-        ref var entityHandleJobManager = ref handleEntities.lookupJobManager;
+        var jobHandle = JobHandle.CombineDependencies(handleEntityJobManager.readOnlyJobHandle, itemManagerJobManager.readWriteJobHandle, commandsJobManager.readWriteJobHandle);
+        jobHandle = JobHandle.CombineDependencies(jobHandle, resultsJobManager.readWriteJobHandle, state.Dependency);
 
-        var jobHandle = apply.Schedule(JobHandle.CombineDependencies(itemJobManager.readWriteJobHandle, entityHandleJobManager.readOnlyJobHandle, Dependency));
+        jobHandle = apply.ScheduleByRef(jobHandle);
 
-        itemJobManager.readWriteJobHandle = jobHandle;
+        resultsJobManager.readWriteJobHandle = jobHandle;
+        commandsJobManager.readWriteJobHandle = jobHandle;
+        itemManagerJobManager.readWriteJobHandle = jobHandle;
 
-        entityHandleJobManager.AddReadOnlyDependency(jobHandle);
+        handleEntityJobManager.AddReadOnlyDependency(jobHandle);
 
-        Dependency = jobHandle;
+        state.Dependency = jobHandle;
     }
 }
 
-[AutoCreateIn("Server"),
-    AlwaysUpdateSystem, 
-    UpdateInGroup(typeof(GameItemInitSystemGroup)), 
-    UpdateAfter(typeof(GameItemComponentInitSystemGroup))
-    //UpdateBefore(typeof(GameItemTimeApplySystem)),
-    //UpdateBefore(typeof(GameItemDurabilityApplySystem)),
-    //UpdateAfter(typeof(GameItemBeginSystem)),
-    /*UpdateAfter(typeof(GameDataItemSystem)),
-    UpdateAfter(typeof(GameDataSystemGroup))*/]
-public partial class GameItemResultSystem : LookupSystem
+[BurstCompile, CreateAfter(typeof(GameItemSystem)), UpdateInGroup(typeof(GameItemSystemGroup), OrderFirst = true)/*, UpdateBefore(typeof(GameItemSystem))*/]
+public struct GameItemCommandSystem : ISystem
+{
+    public GameItemCommandManager manager
+    {
+        get;
+
+        private set;
+    }
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        manager = new GameItemCommandManager(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        manager.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        manager.Update(ref state);
+    }
+}
+
+public struct GameItemResultManager
 {
     public interface IComponentMap<T> where T : struct, IComponentData
     {
@@ -447,7 +466,7 @@ public partial class GameItemResultSystem : LookupSystem
     public enum ComponentValueType
     {
         Add,
-        Remove, 
+        Remove,
         Override
     }
 
@@ -605,7 +624,7 @@ public partial class GameItemResultSystem : LookupSystem
             if (rootEntities.TryGetValue(handle, out entity) && serializables.HasComponent(entity))
                 return true;
 
-            if(hierarchy.TryGetValue(handle, out var item) && !item.parentHandle.Equals(GameItemHandle.Empty))
+            if (hierarchy.TryGetValue(handle, out var item) && !item.parentHandle.Equals(GameItemHandle.Empty))
             {
                 if (versions.TryGetValue(item.parentHandle.index, out var version))
                 {
@@ -624,12 +643,12 @@ public partial class GameItemResultSystem : LookupSystem
         public float GetDurability(ComponentValueType type, in GameItemHandle handle, int commandIndex, ref int durabilityIndex)
         {
             return GetComponentValue(
-                type, 
-                commandIndex, 
-                ref durabilityIndex, 
-                handle, 
-                durabilityResults, 
-                entities, 
+                type,
+                commandIndex,
+                ref durabilityIndex,
+                handle,
+                durabilityResults,
+                entities,
                 new ComponentDataMap<GameItemDurability>(durabilities)).value;
             /*GameItemChangeResult<GameItemDurability> result;
             int numDurabilityResults = durabilityResults.length;
@@ -679,17 +698,17 @@ public partial class GameItemResultSystem : LookupSystem
         public float GetTime(ComponentValueType type, in GameItemHandle handle, int commandIndex, ref int timeIndex)
         {
             return GetComponentValue(
-                type, 
-                commandIndex, 
-                ref timeIndex, 
-                handle, 
-                timeResults, 
-                entities, 
+                type,
+                commandIndex,
+                ref timeIndex,
+                handle,
+                timeResults,
+                entities,
                 new ComponentDataMap<GameItemTime>(times)).value;
         }
 
         public EntityData<Result> RemoveResult(
-            bool isDiff, 
+            bool isDiff,
             ref int durabilityIndex,
             ref int timeIndex,
             int commandIndex,
@@ -727,17 +746,17 @@ public partial class GameItemResultSystem : LookupSystem
         }
 
         public EntityData<Result> AddResult(
-            bool isDiff, 
+            bool isDiff,
             ref int durabilityIndex,
             ref int timeIndex,
             int commandIndex,
             int sourceParentChildIndex,
             int sourceParentHandle,
-            int sourceSiblingHandle, 
+            int sourceSiblingHandle,
             int destinationParentChildIndex,
             int destinationParentHandle,
             int destinationSiblingHandle,
-            int type, 
+            int type,
             int count,
             in Entity entity,
             in GameItemHandle handle)
@@ -765,10 +784,10 @@ public partial class GameItemResultSystem : LookupSystem
 
         public bool Remove(
             ref int durabilityIndex,
-            ref int timeIndex, 
+            ref int timeIndex,
             int commandIndex,
-            in GameItemHandle handle, 
-            out Version version, 
+            in GameItemHandle handle,
+            out Version version,
             ref UnsafeList<EntityData<Result>> results)
         {
             if (hierarchy.GetChildren(handle, out var enumerator, out var item))
@@ -776,10 +795,10 @@ public partial class GameItemResultSystem : LookupSystem
                 while (enumerator.MoveNext())
                 {
                     Remove(
-                        ref durabilityIndex, 
-                        ref timeIndex, 
-                        commandIndex, 
-                        enumerator.Current.handle, 
+                        ref durabilityIndex,
+                        ref timeIndex,
+                        commandIndex,
+                        enumerator.Current.handle,
                         out _,
                         ref results);
                 }
@@ -790,14 +809,14 @@ public partial class GameItemResultSystem : LookupSystem
                     ref durabilityIndex,
                     ref timeIndex,
                     commandIndex,
-                    item.siblingHandle, 
-                    out _, 
+                    item.siblingHandle,
+                    out _,
                     ref results);
 
                 if (versions.TryGetValue(handle.index, out version))
                 {
                     var result = RemoveResult(
-                        false, 
+                        false,
                         ref durabilityIndex,
                         ref timeIndex,
                         commandIndex,
@@ -832,22 +851,22 @@ public partial class GameItemResultSystem : LookupSystem
             ref int durabilityIndex,
             ref int timeIndex,
             int commandIndex,
-            int handle, 
-            int parentChildIndex, 
-            int parentHandle, 
-            int siblingHandle, 
-            bool isReadOnly, 
+            int handle,
+            int parentChildIndex,
+            int parentHandle,
+            int siblingHandle,
+            bool isReadOnly,
             out Version version)
         {
-            if(__Remove(
+            if (__Remove(
                 ref durabilityIndex,
                 ref timeIndex,
-                commandIndex, 
-                handle, 
-                parentChildIndex, 
-                parentHandle, 
-                siblingHandle, 
-                isReadOnly, 
+                commandIndex,
+                handle,
+                parentChildIndex,
+                parentHandle,
+                siblingHandle,
+                isReadOnly,
                 out version))
             {
                 if (!isReadOnly && children.TryGetFirstValue(version.parentHandle, out var child, out var iterator))
@@ -874,19 +893,19 @@ public partial class GameItemResultSystem : LookupSystem
         public bool Destroy(
             ref int durabilityIndex,
             ref int timeIndex,
-            int commandIndex, 
+            int commandIndex,
             in GameItemCommand command)
         {
             int parentHandle = command.destinationParentHandle.Equals(GameItemHandle.Empty) ? -1 : command.destinationParentHandle.index;
             if (Remove(
-                ref durabilityIndex, 
-                ref timeIndex, 
-                commandIndex, 
-                command.sourceHandle.index, 
+                ref durabilityIndex,
+                ref timeIndex,
+                commandIndex,
+                command.sourceHandle.index,
                 command.destinationParentChildIndex,
                 parentHandle,
                 command.destinationSiblingHandle.Equals(GameItemHandle.Empty) ? -1 : command.destinationSiblingHandle.index,
-                command.commandType != GameItemCommandType.Destroy && parentHandle != -1 && versions.ContainsKey(parentHandle), 
+                command.commandType != GameItemCommandType.Destroy && parentHandle != -1 && versions.ContainsKey(parentHandle),
                 out var version))
             {
                 UnityEngine.Assertions.Assert.AreEqual(version.value, command.sourceHandle.version);
@@ -907,7 +926,7 @@ public partial class GameItemResultSystem : LookupSystem
             ref int durabilityIndex,
             ref int timeIndex,
             int commandIndex,
-            int handle, 
+            int handle,
             int parentChildIndex,
             int parentHandle,
             int siblingHandle,
@@ -916,9 +935,9 @@ public partial class GameItemResultSystem : LookupSystem
             if (versions.TryGetValue(handle, out var version) && version.entity != entity)
             {
                 Update(
-                    ref durabilityIndex, 
-                    ref timeIndex, 
-                    commandIndex, 
+                    ref durabilityIndex,
+                    ref timeIndex,
+                    commandIndex,
                     version.siblingHandle,
                     -1,
                     -1,
@@ -1050,19 +1069,19 @@ public partial class GameItemResultSystem : LookupSystem
             int commandIndex,
             int commandStartIndex,
             int commandCount,
-            int sourceParentChildIndex, 
+            int sourceParentChildIndex,
             int sourceParentHandle,
             int sourceSiblingHandle,
             in Entity entity,
-            in GameItemHandle handle, 
+            in GameItemHandle handle,
             ref UnsafeList<EntityData<Result>> results)
         {
-            if(Remove(
-                ref durabilityIndex, 
-                ref timeIndex, 
-                commandIndex - 1, 
-                handle, 
-                out var version, 
+            if (Remove(
+                ref durabilityIndex,
+                ref timeIndex,
+                commandIndex - 1,
+                handle,
+                out var version,
                 ref results))
             {
                 if (children.TryGetFirstValue(version.parentHandle, out var child, out var iterator))
@@ -1085,8 +1104,8 @@ public partial class GameItemResultSystem : LookupSystem
                 ref durabilityIndex,
                 ref timeIndex,
                 commandIndex,
-                commandStartIndex, 
-                commandCount, 
+                commandStartIndex,
+                commandCount,
                 sourceParentChildIndex,
                 sourceParentHandle,
                 sourceSiblingHandle,
@@ -1096,7 +1115,7 @@ public partial class GameItemResultSystem : LookupSystem
         }
 
         public bool Apply(
-            in GameItemCommand command, 
+            in GameItemCommand command,
             int commandIndex,
             int commandStartIndex,
             int commandCount,
@@ -1112,15 +1131,15 @@ public partial class GameItemResultSystem : LookupSystem
                     return true;
             }
 
-            if (!command.destinationParentHandle.Equals(GameItemHandle.Empty) && 
-                versions.TryGetValue(command.destinationParentHandle.index, out var parentVersion) && 
+            if (!command.destinationParentHandle.Equals(GameItemHandle.Empty) &&
+                versions.TryGetValue(command.destinationParentHandle.index, out var parentVersion) &&
                 versions.TryGetValue(command.destinationHandle.index, out var version))
             {
                 UnityEngine.Assertions.Assert.AreEqual(parentVersion.value, command.destinationParentHandle.version);
                 UnityEngine.Assertions.Assert.AreEqual(version.value, command.destinationHandle.version);
 
                 int sourceParentHandle = command.sourceParentHandle.Equals(GameItemHandle.Empty) ? -1 : command.sourceParentHandle.index,
-                    sourceSiblingHandle = command.sourceSiblingHandle.Equals(GameItemHandle.Empty) ? -1 : command.sourceSiblingHandle.index, 
+                    sourceSiblingHandle = command.sourceSiblingHandle.Equals(GameItemHandle.Empty) ? -1 : command.sourceSiblingHandle.index,
                     destinationSiblingHandle = command.destinationSiblingHandle.Equals(GameItemHandle.Empty) ? -1 : command.destinationSiblingHandle.index;
 
                 if (command.destinationParentHandle.index != version.parentHandle)
@@ -1144,13 +1163,13 @@ public partial class GameItemResultSystem : LookupSystem
                 }
 
                 var result = AddResult(
-                    command.commandType != GameItemCommandType.Move, 
+                    command.commandType != GameItemCommandType.Move,
                     ref durabilityIndex,
                     ref timeIndex,
                     commandIndex,
                     command.sourceParentChildIndex,
                     sourceParentHandle,
-                    sourceSiblingHandle, 
+                    sourceSiblingHandle,
                     command.destinationParentChildIndex,
                     command.destinationParentHandle.index,
                     destinationSiblingHandle,
@@ -1191,8 +1210,8 @@ public partial class GameItemResultSystem : LookupSystem
                     ref durabilityIndex,
                     ref timeIndex,
                     commandIndex,
-                    commandStartIndex, 
-                    commandCount, 
+                    commandStartIndex,
+                    commandCount,
                     command.sourceParentChildIndex,
                     command.sourceParentHandle.Equals(GameItemHandle.Empty) ? -1 : command.sourceParentHandle.index,
                     command.sourceSiblingHandle.Equals(GameItemHandle.Empty) ? -1 : command.sourceSiblingHandle.index,
@@ -1213,7 +1232,7 @@ public partial class GameItemResultSystem : LookupSystem
             int commandStartIndex,
             int commandCount,
             in GameItemCommand command,
-            in GameItemHandle moveOrginHandle, 
+            in GameItemHandle moveOrginHandle,
             ref UnsafeList<EntityData<Result>> results)
         {
             bool moveResult = true;
@@ -1224,12 +1243,12 @@ public partial class GameItemResultSystem : LookupSystem
                 case GameItemCommandType.Create:
                 case GameItemCommandType.Add:
                     Apply(
-                        command, 
+                        command,
                         commandIndex,
                         commandStartIndex,
-                        commandCount, 
+                        commandCount,
                         ref durabilityIndex,
-                        ref timeIndex, 
+                        ref timeIndex,
                         ref results);
                     break;
                 case GameItemCommandType.Connect:
@@ -1252,7 +1271,7 @@ public partial class GameItemResultSystem : LookupSystem
                             Remove(
                                 ref durabilityIndex,
                                 ref timeIndex,
-                                commandIndex, 
+                                commandIndex,
                                 version.siblingHandle,
                                 -1,
                                 -1,
@@ -1273,8 +1292,8 @@ public partial class GameItemResultSystem : LookupSystem
                                 -1,
                                 -1,
                                 command.sourceSiblingHandle.Equals(GameItemHandle.Empty) ? -1 : command.sourceSiblingHandle.index,
-                                version.entity, 
-                                command.destinationSiblingHandle, 
+                                version.entity,
+                                command.destinationSiblingHandle,
                                 ref results);
 
                             version.siblingHandle = command.destinationSiblingHandle.index;
@@ -1284,10 +1303,10 @@ public partial class GameItemResultSystem : LookupSystem
                     }
                     break;
                 case GameItemCommandType.Move:
-                    if(command.sourceHandle.Equals(moveOrginHandle))
+                    if (command.sourceHandle.Equals(moveOrginHandle))
                         moveResult = false;
                     //else if (GetRoot(command.sourceParentHandle, out entity))
-                    else if (!command.sourceParentHandle.Equals(GameItemHandle.Empty) && 
+                    else if (!command.sourceParentHandle.Equals(GameItemHandle.Empty) &&
                         versions.TryGetValue(command.sourceParentHandle.index, out version))
                     {
                         UnityEngine.Assertions.Assert.AreEqual(version.value, command.sourceParentHandle.version);
@@ -1304,7 +1323,7 @@ public partial class GameItemResultSystem : LookupSystem
                             Destroy(
                                 ref durabilityIndex,
                                 ref timeIndex,
-                                commandIndex, 
+                                commandIndex,
                                 command);
                         /*{
                             var result = RemoveResult(
@@ -1337,10 +1356,10 @@ public partial class GameItemResultSystem : LookupSystem
                                 ref durabilityIndex,
                                 ref timeIndex,
                                 ref nextCommandIndex,
-                                commandStartIndex, 
-                                commandCount, 
-                                temp, 
-                                command.sourceHandle, 
+                                commandStartIndex,
+                                commandCount,
+                                temp,
+                                command.sourceHandle,
                                 ref results);
 
                             commandIndex = nextCommandIndex;
@@ -1351,12 +1370,12 @@ public partial class GameItemResultSystem : LookupSystem
                     }
 
                     Apply(
-                        command, 
-                        commandIndex, 
-                        commandStartIndex, 
-                        commandCount, 
-                        ref durabilityIndex, 
-                        ref timeIndex, 
+                        command,
+                        commandIndex,
+                        commandStartIndex,
+                        commandCount,
+                        ref durabilityIndex,
+                        ref timeIndex,
                         ref results);
 
                     break;
@@ -1383,7 +1402,7 @@ public partial class GameItemResultSystem : LookupSystem
                     if (i == numItemMasks)
                     {
                         var result = RemoveResult(
-                            true, 
+                            true,
                             ref durabilityIndex,
                             ref timeIndex,
                             commandIndex,
@@ -1409,9 +1428,9 @@ public partial class GameItemResultSystem : LookupSystem
                     break;
                 case GameItemCommandType.Destroy:
                     Destroy(
-                        ref durabilityIndex, 
-                        ref timeIndex, 
-                        commandIndex, 
+                        ref durabilityIndex,
+                        ref timeIndex,
+                        commandIndex,
                         command);
                     break;
             }
@@ -1424,18 +1443,18 @@ public partial class GameItemResultSystem : LookupSystem
             UnsafeList<EntityData<Result>> results = default;
             int startCommandIndex = this.commandCount[0],
                 oldCommandCount = oldCommands.Length,
-                commandCount = oldCommandCount + commands.Length, 
+                commandCount = oldCommandCount + commands.Length,
                 timeIndex = 0,
                 durabilityIndex = 0;
             for (int i = 0; i < oldCommandCount; ++i)
                 Execute(
-                    ref durabilityIndex, 
-                    ref timeIndex, 
+                    ref durabilityIndex,
+                    ref timeIndex,
                     ref i,
-                    startCommandIndex, 
-                    commandCount, 
-                    oldCommands[i], 
-                    GameItemHandle.Empty, 
+                    startCommandIndex,
+                    commandCount,
+                    oldCommands[i],
+                    GameItemHandle.Empty,
                     ref results);
 
             if (results.IsCreated)
@@ -1466,9 +1485,9 @@ public partial class GameItemResultSystem : LookupSystem
                     do
                     {
                         __Remove(
-                            ref durabilityIndex, 
-                            ref timeIndex, 
-                            commandIndex, 
+                            ref durabilityIndex,
+                            ref timeIndex,
+                            commandIndex,
                             child.handle,
                             -1,
                             -1,
@@ -1497,18 +1516,18 @@ public partial class GameItemResultSystem : LookupSystem
                 itemHandle.version = version.value;
 
                 var result = RemoveResult(
-                    true, 
-                    ref durabilityIndex, 
-                    ref timeIndex, 
+                    true,
+                    ref durabilityIndex,
+                    ref timeIndex,
                     commandIndex,
                     version.parentChildIndex,
                     version.parentHandle,
                     version.siblingHandle,
                     parentChildIndex,
                     parentHandle,
-                    siblingHandle, 
-                    version.type, 
-                    version.count, 
+                    siblingHandle,
+                    version.type,
+                    version.count,
                     version.entity,
                     itemHandle);
 
@@ -1527,8 +1546,8 @@ public partial class GameItemResultSystem : LookupSystem
             ref int durabilityIndex,
             ref int timeIndex,
             int commandIndex,
-            int commandStartIndex, 
-            int commandCount, 
+            int commandStartIndex,
+            int commandCount,
             int sourceParentChildIndex,
             int sourceParentHandle,
             int sourceSiblingHandle,
@@ -1544,7 +1563,7 @@ public partial class GameItemResultSystem : LookupSystem
                     ref timeIndex,
                     commandIndex,
                     commandStartIndex,
-                    commandCount, 
+                    commandCount,
                     -1,
                     -1,
                     -1,
@@ -1566,7 +1585,7 @@ public partial class GameItemResultSystem : LookupSystem
                 itemMasks.Add(itemMask);
 
                 var result = AddResult(
-                    false, 
+                    false,
                     ref durabilityIndex,
                     ref timeIndex,
                     commandIndex,
@@ -1606,7 +1625,7 @@ public partial class GameItemResultSystem : LookupSystem
                     __Append(
                         ref durabilityIndex,
                         ref timeIndex,
-                        commandIndex, 
+                        commandIndex,
                         commandStartIndex,
                         commandCount,
                         -1,
@@ -1779,7 +1798,7 @@ public partial class GameItemResultSystem : LookupSystem
         {
             if (hierarchy.GetChildren(handle, out var enumerator, out var item))
             {
-                while(enumerator.MoveNext())
+                while (enumerator.MoveNext())
                 {
                     Remove(enumerator.Current.handle);
                 }
@@ -1819,14 +1838,14 @@ public partial class GameItemResultSystem : LookupSystem
         public void Execute()
         {
             int numEntities = entityArray.Length;
-            for(int i = 0; i < numEntities; ++i)
+            for (int i = 0; i < numEntities; ++i)
                 Remove(roots[entityArray[i]].handle);
 
             int count = counter.count, commandCount = this.commandCount[0], numItemMasks = itemMasks.Length;
-            for(int i = 0; i < numItemMasks; ++i)
+            for (int i = 0; i < numItemMasks; ++i)
             {
                 ref readonly var itemMask = ref itemMasks.ElementAt(i);
-                if(itemMask.commandStartIndex + itemMask.commandCount <= commandCount)
+                if (itemMask.commandStartIndex + itemMask.commandCount <= commandCount)
                 {
                     itemMasks.RemoveAtSwapBack(i--);
 
@@ -1874,7 +1893,7 @@ public partial class GameItemResultSystem : LookupSystem
 
         public NativeList<ItemMask>.ParallelWriter itemMasks;
 
-        public NativeList<EntityData<Result>>.ParallelWriter results;
+        public SharedList<EntityData<Result>>.ParallelWriter results;
 
         public NativeParallelHashMap<int, Version>.ParallelWriter versions;
 
@@ -1897,17 +1916,17 @@ public partial class GameItemResultSystem : LookupSystem
         }
 
         public bool Execute(
-            int commandStartIndex, 
-            int commandCount, 
-            in Entity entity, 
+            int commandStartIndex,
+            int commandCount,
+            in Entity entity,
             in GameItemHandle handle)
         {
             if (hierarchy.GetChildren(handle, out var enumerator, out var item))
             {
                 Execute(
-                    commandStartIndex, 
-                    commandCount, 
-                    entity, 
+                    commandStartIndex,
+                    commandCount,
+                    entity,
                     item.siblingHandle);
 
                 GetValue(handle, out float durability, out float time);
@@ -1961,9 +1980,9 @@ public partial class GameItemResultSystem : LookupSystem
                         source = enumerator.Current;
 
                         if (Execute(
-                            commandStartIndex, 
-                            commandCount, 
-                            entity, 
+                            commandStartIndex,
+                            commandCount,
+                            entity,
                             source.handle))
                         {
                             destination.index = source.index;
@@ -1984,9 +2003,9 @@ public partial class GameItemResultSystem : LookupSystem
             Entity entity = entityArray[index];
 
             Execute(
-                commandCount[0], 
-                commands.Length, 
-                entity, 
+                commandCount[0],
+                commands.Length,
+                entity,
                 roots[entity].handle);
         }
     }
@@ -1994,10 +2013,19 @@ public partial class GameItemResultSystem : LookupSystem
     private EntityQuery __structChangeManagerGroup;
     private EntityQuery __group;
 
+    private EntityTypeHandle __entityType;
+    private ComponentTypeHandle<GameItemRoot> __rootType;
+    private ComponentLookup<GameItemRoot> __roots;
+    private ComponentLookup<GameItemDurability> __durabilities;
+    private ComponentLookup<GameItemTime> __times;
+    private ComponentLookup<EntityDataSerializable> __serializables;
+
     private GameItemManagerShared __itemManager;
     private SharedHashMap<GameItemHandle, Entity> __itemRootEntities;
     private SharedList<GameItemChangeResult<GameItemTime>> __timeResults;
     private SharedList<GameItemChangeResult<GameItemDurability>> __durabilityResults;
+
+    private SharedList<GameItemCommandManager.Command> __commands;
 
     private NativeCounter __counter;
     private NativeArray<int> __commandCount;
@@ -2006,9 +2034,7 @@ public partial class GameItemResultSystem : LookupSystem
     private NativeParallelHashMap<int, Version> __versions;
     private NativeParallelMultiHashMap<int, ItemChild> __children;
 
-    private GameItemCommandSystem __itemCommandSystem;
-
-    public NativeList<EntityData<Result>> results
+    public SharedList<EntityData<Result>> results
     {
         get;
 
@@ -2019,11 +2045,11 @@ public partial class GameItemResultSystem : LookupSystem
         ComponentValueType type,
         int commandIndex,
         ref int valueIndex,
-        in GameItemHandle handle, 
+        in GameItemHandle handle,
         in SharedList<GameItemChangeResult<TValue>>.Reader results,
-        in SharedHashMap<Entity, Entity>.Reader entities, 
-        in TMap values) 
-        where TValue : unmanaged, IGameItemComponentData<TValue> 
+        in SharedHashMap<Entity, Entity>.Reader entities,
+        in TMap values)
+        where TValue : unmanaged, IGameItemComponentData<TValue>
         where TMap : struct, IComponentMap<TValue>
     {
         GameItemChangeResult<TValue> result;
@@ -2055,7 +2081,7 @@ public partial class GameItemResultSystem : LookupSystem
         if (type == ComponentValueType.Add)
             return default;
 
-        for(int i = valueIndex; i < numResults; ++i)
+        for (int i = valueIndex; i < numResults; ++i)
         {
             result = results[i];
             if (result.handle.Equals(handle))
@@ -2069,9 +2095,58 @@ public partial class GameItemResultSystem : LookupSystem
         return values[entity];
     }
 
+    public GameItemResultManager(ref SystemState state)
+    {
+        __structChangeManagerGroup = GameItemStructChangeManager.GetEntityQuery(ref state);
+
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameItemRoot, EntityDataSerializable>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
+        __group.AddChangedVersionFilter(ComponentType.ReadOnly<GameItemRoot>());
+        __group.AddChangedVersionFilter(ComponentType.ReadOnly<EntityDataSerializable>());
+
+        __entityType = state.GetEntityTypeHandle();
+        __rootType = state.GetComponentTypeHandle<GameItemRoot>(true);
+        __roots = state.GetComponentLookup<GameItemRoot>(true);
+
+        __durabilities = state.GetComponentLookup<GameItemDurability>(true);
+        __times = state.GetComponentLookup<GameItemTime>(true);
+        __serializables = state.GetComponentLookup<EntityDataSerializable>(true);
+
+        var world = state.WorldUnmanaged;
+        __itemManager = world.GetExistingSystemUnmanaged<GameItemSystem>().manager;
+        __itemRootEntities = world.GetExistingSystemUnmanaged<GameItemRootEntitySystem>().entities;
+        __timeResults = world.GetExistingSystemUnmanaged<GameItemTimeChangeSystem>().resutls;
+        __durabilityResults = world.GetExistingSystemUnmanaged<GameItemDurabilityChangeSystem>().results;
+        __commands = world.GetExistingSystemUnmanaged<GameItemCommandSystem>().manager.commands;
+
+        __counter = new NativeCounter(Allocator.Persistent);
+        __commandCount = new NativeArray<int>(1, Allocator.Persistent, NativeArrayOptions.ClearMemory);
+        __itemMasks = new NativeList<ItemMask>(Allocator.Persistent);
+        __entities = new NativeList<Entity>(Allocator.Persistent);
+        __versions = new NativeParallelHashMap<int, Version>(1, Allocator.Persistent);
+        __children = new NativeParallelMultiHashMap<int, ItemChild>(1, Allocator.Persistent);
+
+        results = new SharedList<EntityData<Result>>(Allocator.Persistent);
+    }
+
+    public void Dispose()
+    {
+        __counter.Dispose();
+        __commandCount.Dispose();
+        __itemMasks.Dispose();
+        __entities.Dispose();
+        __versions.Dispose();
+        __children.Dispose();
+
+        results.Dispose();
+    }
+
     public bool TryGetVersion(int handle, out int version)
     {
-        CompleteReadOnlyDependency();
+        results.lookupJobManager.CompleteReadOnlyDependency();
 
         if (__versions.TryGetValue(handle, out var temp))
         {
@@ -2104,7 +2179,7 @@ public partial class GameItemResultSystem : LookupSystem
         __itemRootEntities.lookupJobManager.CompleteReadOnlyDependency();
 
         return __itemRootEntities.reader.TryGetValue(key, out entity);*/
-        CompleteReadOnlyDependency();
+        results.lookupJobManager.CompleteReadOnlyDependency();
 
         if (__versions.TryGetValue(handle, out var temp))
         {
@@ -2136,7 +2211,13 @@ public partial class GameItemResultSystem : LookupSystem
         return itemEntities.reader.TryGetValue(GameItemStructChangeFactory.Convert(key), out entity);
     }
 
-    public bool TryGetValue(int handle, out int version, out int type, out float durability, out float time)
+    public bool TryGetValue(
+        int handle, 
+        out int version, 
+        out int type, 
+        out float durability, 
+        out float time, 
+        ref EntityManager entityManager)
     {
         type = -1;
         durability = 0.0f;
@@ -2144,7 +2225,6 @@ public partial class GameItemResultSystem : LookupSystem
         if (!TryGetEntity(handle, out Entity entity, out version))
             return false;
 
-        var entityManager = EntityManager;
         type = entityManager.GetComponentData<GameItemType>(entity).value;
 
         if (entityManager.HasComponent<GameItemDurability>(entity))
@@ -2156,13 +2236,16 @@ public partial class GameItemResultSystem : LookupSystem
         return true;
     }
 
-    public bool TryGetDurability(int handle, out float value, out int version)
+    public bool TryGetDurability(
+        int handle, 
+        out float value, 
+        out int version,
+        ref EntityManager entityManager)
     {
         value = 0.0f;
         if (!TryGetEntity(handle, out Entity entity, out version))
             return false;
 
-        var entityManager = EntityManager;
         if (!entityManager.HasComponent<GameItemDurability>(entity))
             return false;
 
@@ -2171,12 +2254,15 @@ public partial class GameItemResultSystem : LookupSystem
         return true;
     }
 
-    public bool SetTime(int handle, float value, out int version)
+    public bool SetTime(
+        int handle, 
+        float value, 
+        out int version,
+        ref EntityManager entityManager)
     {
         if (!TryGetEntity(handle, out Entity entity, out version))
             return false;
 
-        var entityManager = EntityManager;
         if (!entityManager.HasComponent<GameItemTime>(entity))
             return false;
 
@@ -2187,12 +2273,15 @@ public partial class GameItemResultSystem : LookupSystem
         return true;
     }
 
-    public bool SetDurability(int handle, float value, out int version)
+    public bool SetDurability(
+        int handle, 
+        float value, 
+        out int version,
+        ref EntityManager entityManager)
     {
         if (!TryGetEntity(handle, out Entity entity, out version))
             return false;
 
-        var entityManager = EntityManager;
         if (!entityManager.HasComponent<GameItemDurability>(entity))
             return false;
 
@@ -2203,12 +2292,15 @@ public partial class GameItemResultSystem : LookupSystem
         return true;
     }
 
-    public bool SetDurability(int handle, ref float destination, out int version)
+    public bool SetDurability(
+        int handle, 
+        ref float destination, 
+        out int version,
+        ref EntityManager entityManager)
     {
         if (!TryGetEntity(handle, out Entity entity, out version))
             return false;
 
-        var entityManager = EntityManager;
         if (!entityManager.HasComponent<GameItemDurability>(entity))
             return false;
 
@@ -2223,11 +2315,14 @@ public partial class GameItemResultSystem : LookupSystem
         return true;
     }
 
-    public bool Move(int handle, int parentHandle, int parentChildIndex)
+    public bool Move(
+        int handle, 
+        int parentHandle, 
+        int parentChildIndex)
     {
-        CompleteReadOnlyDependency();
+        results.lookupJobManager.CompleteReadOnlyDependency();
 
-        GameItemCommandSystem.Command command;
+        GameItemCommandManager.Command command;
 
         if (!__versions.TryGetValue(handle, out var version))
             return false;
@@ -2239,21 +2334,26 @@ public partial class GameItemResultSystem : LookupSystem
 
         command.parentHandle.version = version.value;
 
-        command.type = GameItemCommandSystem.CommandType.Move;
+        command.type = GameItemCommandManager.CommandType.Move;
         command.handle.index = handle;
         command.parentHandle.index = parentHandle;
         command.parentChildIndex = parentChildIndex;
 
-        __itemCommandSystem.commands.Add(command);
+        __commands.lookupJobManager.CompleteReadWriteDependency();
+
+        __commands.writer.Add(command);
 
         return true;
     }
 
-    public bool Split(int handle, int parentHandle, int parentChildIndex)
+    public bool Split(
+        int handle, 
+        int parentHandle, 
+        int parentChildIndex)
     {
-        CompleteReadOnlyDependency();
+        results.lookupJobManager.CompleteReadOnlyDependency();
 
-        GameItemCommandSystem.Command command;
+        GameItemCommandManager.Command command;
 
         if (!__versions.TryGetValue(handle, out var version))
             return false;
@@ -2273,16 +2373,21 @@ public partial class GameItemResultSystem : LookupSystem
 
         command.parentChildIndex = parentChildIndex;
         command.handle.index = handle;
-        command.type = GameItemCommandSystem.CommandType.Split;
+        command.type = GameItemCommandManager.CommandType.Split;
 
-        __itemCommandSystem.commands.Add(command);
+        __commands.lookupJobManager.CompleteReadWriteDependency();
+
+        __commands.writer.Add(command);
 
         return true;
     }
 
-    public bool Convert(int handle, Action<int, GameItem> handler)
+    public bool Convert(
+        int handle, 
+        Action<int, GameItem> handler,
+        ref EntityManager entityManager)
     {
-        CompleteReadOnlyDependency();
+        results.lookupJobManager.CompleteReadOnlyDependency();
 
         __durabilityResults.lookupJobManager.CompleteReadOnlyDependency();
         __timeResults.lookupJobManager.CompleteReadOnlyDependency();
@@ -2292,83 +2397,30 @@ public partial class GameItemResultSystem : LookupSystem
         itemEntities.lookupJobManager.CompleteReadOnlyDependency();
 
         int durabilityIndex = 0, timeIndex = 0;
-        var entityManager = EntityManager;
         return __Convert(
-            handle, 
-            ref durabilityIndex, 
-            ref timeIndex, 
+            handle,
+            ref durabilityIndex,
+            ref timeIndex,
             new ComponentManager<GameItemDurability>(entityManager),
             new ComponentManager<GameItemTime>(entityManager),
-            itemEntities.reader, 
+            itemEntities.reader,
             handler);
     }
 
-    protected override void OnCreate()
-    {
-        base.OnCreate();
-
-        __structChangeManagerGroup = GameItemStructChangeManager.GetEntityQuery(ref this.GetState());
-
-        __group = GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameItemRoot>(),
-                    ComponentType.ReadOnly<EntityDataSerializable>()
-                },
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
-        __group.SetChangedVersionFilter(new ComponentType[] { typeof(GameItemRoot), typeof(EntityDataSerializable) });
-
-        World world = World;
-        __itemManager = world.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
-        __itemRootEntities = world.GetOrCreateSystemManaged<GameItemRootEntitySystem>().entities;
-        __timeResults = world.GetOrCreateSystemUnmanaged<GameItemTimeChangeSystem>().resutls;
-        __durabilityResults = world.GetOrCreateSystemUnmanaged<GameItemDurabilityChangeSystem>().results;
-
-        __itemCommandSystem = world.GetOrCreateSystemManaged<GameItemCommandSystem>();
-
-        __counter = new NativeCounter(Allocator.Persistent);
-        __commandCount = new NativeArray<int>(1, Allocator.Persistent, NativeArrayOptions.ClearMemory);
-        __itemMasks = new NativeList<ItemMask>(Allocator.Persistent);
-        __entities = new NativeList<Entity>(Allocator.Persistent);
-        __versions = new NativeParallelHashMap<int, Version>(1, Allocator.Persistent);
-        __children = new NativeParallelMultiHashMap<int, ItemChild>(1, Allocator.Persistent);
-
-        results = new NativeList<EntityData<Result>>(Allocator.Persistent);
-    }
-
-    protected override void OnDestroy()
-    {
-        __counter.Dispose();
-        __commandCount.Dispose();
-        __itemMasks.Dispose();
-        __entities.Dispose();
-        __versions.Dispose();
-        __children.Dispose();
-
-        results.Dispose();
-
-        base.OnDestroy();
-    }
-
-    protected override void _Update()
+    public void Update(ref SystemState state)
     {
         if (!__itemManager.isCreated)
             return;
 
-        var inputDeps = Dependency;
-
-        ref var itemJobManager = ref __itemManager.lookupJobManager;
+        var inputDeps = state.Dependency;
 
         var itemEntities = __structChangeManagerGroup.GetSingleton<GameItemStructChangeManager>().handleEntities;
-        ref var entityJobManager = ref itemEntities.lookupJobManager;
-
         var itemEntitiesReader = itemEntities.reader;
 
-        var durabilities = GetComponentLookup<GameItemDurability>(true);
-        var times = GetComponentLookup<GameItemTime>(true);
+        var results = this.results;
+
+        var durabilities = __durabilities.UpdateAsRef(ref state);
+        var times = __times.UpdateAsRef(ref state);
 
         Change change;
         change.hierarchy = __itemManager.value.hierarchy;
@@ -2381,23 +2433,28 @@ public partial class GameItemResultSystem : LookupSystem
         change.timeResults = __timeResults.reader;
         change.durabilities = durabilities;
         change.times = times;
-        change.serializables = GetComponentLookup<EntityDataSerializable>(true);
+        change.serializables = __serializables.UpdateAsRef(ref state);
         change.itemMasks = __itemMasks;
-        change.results = results;
+        change.results = results.writer;
         change.versions = __versions;
         change.children = __children;
 
-        ref var rootEntityJobManager = ref __itemRootEntities.lookupJobManager;
-        ref var timeResultJobManager = ref __timeResults.lookupJobManager;
-        ref var durabilityJobManager = ref __durabilityResults.lookupJobManager;
+        ref var itemManageJobManager = ref __itemManager.lookupJobManager;
+        ref var itemEntitiesJobManager = ref itemEntities.lookupJobManager;
 
-        var jobHandle = JobHandle.CombineDependencies(itemJobManager.readOnlyJobHandle, entityJobManager.readOnlyJobHandle, rootEntityJobManager.readOnlyJobHandle);
-        jobHandle = JobHandle.CombineDependencies(jobHandle, timeResultJobManager.readOnlyJobHandle, durabilityJobManager.readOnlyJobHandle);
-        jobHandle = change.Schedule(JobHandle.CombineDependencies(jobHandle, inputDeps));
+        ref var itemRootEntitiesJobManager = ref __itemRootEntities.lookupJobManager;
+        ref var timeResultsJobManager = ref __timeResults.lookupJobManager;
+        ref var durabilityResultsJobManager = ref __durabilityResults.lookupJobManager;
 
-        rootEntityJobManager.AddReadOnlyDependency(jobHandle);
-        timeResultJobManager.AddReadOnlyDependency(jobHandle);
-        durabilityJobManager.AddReadOnlyDependency(jobHandle);
+        ref var resultsJobManager = ref results.lookupJobManager;
+
+        var jobHandle = JobHandle.CombineDependencies(itemManageJobManager.readOnlyJobHandle, itemEntitiesJobManager.readOnlyJobHandle, itemRootEntitiesJobManager.readOnlyJobHandle);
+        jobHandle = JobHandle.CombineDependencies(jobHandle, timeResultsJobManager.readOnlyJobHandle, durabilityResultsJobManager.readOnlyJobHandle);
+        jobHandle = change.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, resultsJobManager.readWriteJobHandle, inputDeps));
+
+        itemRootEntitiesJobManager.AddReadOnlyDependency(jobHandle);
+        timeResultsJobManager.AddReadOnlyDependency(jobHandle);
+        durabilityResultsJobManager.AddReadOnlyDependency(jobHandle);
 
         var count = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
         var temp = __group.CalculateEntityCountAsync(count, inputDeps);
@@ -2405,7 +2462,7 @@ public partial class GameItemResultSystem : LookupSystem
         Clear clear;
         clear.count = count;
         clear.entities = __entities;
-        temp = clear.Schedule(temp);
+        temp = clear.ScheduleByRef(temp);
 
         var hierarchy = __itemManager.hierarchy;
 
@@ -2413,13 +2470,13 @@ public partial class GameItemResultSystem : LookupSystem
         reset.hierarchy = hierarchy;
         reset.itemEntities = itemEntitiesReader;
         reset.versions = __versions;
-        reset.entityType = GetEntityTypeHandle();
-        reset.rootType = GetComponentTypeHandle<GameItemRoot>(true);
+        reset.entityType = __entityType.UpdateAsRef(ref state);
+        reset.rootType = __rootType.UpdateAsRef(ref state);
         reset.entities = __entities.AsParallelWriter();
         reset.counter = __counter;
-        jobHandle = reset.ScheduleParallel(__group, JobHandle.CombineDependencies(temp, jobHandle));
+        jobHandle = reset.ScheduleParallelByRef(__group, JobHandle.CombineDependencies(temp, jobHandle));
 
-        var roots = GetComponentLookup<GameItemRoot>(true);
+        var roots = __roots.UpdateAsRef(ref state);
         var entities = __entities.AsDeferredJobArray();
 
         Resize resize;
@@ -2432,39 +2489,41 @@ public partial class GameItemResultSystem : LookupSystem
         resize.commandCount = __commandCount;
         resize.counter = __counter;
         resize.itemMasks = __itemMasks;
-        resize.results = results;
+        resize.results = results.writer;
         resize.versions = __versions;
         resize.children = __children;
-        jobHandle = resize.Schedule(jobHandle);
+        jobHandle = resize.ScheduleByRef(jobHandle);
 
         Apply apply;
         apply.hierarchy = hierarchy;
         apply.entityArray = entities;
         apply.commandCount = __commandCount;
         apply.commands = __itemManager.commands;
-        apply.roots = GetComponentLookup<GameItemRoot>(true);
+        apply.roots = roots;
         apply.durabilities = durabilities;
         apply.times = times;
         apply.entities = itemEntitiesReader;
-        apply.results = results.AsParallelWriter();
+        apply.results = results.parallelWriter;
         apply.itemMasks = __itemMasks.AsParallelWriter();
         apply.versions = __versions.AsParallelWriter();
         apply.children = __children.AsParallelWriter();
-        jobHandle = apply.Schedule(__entities, 1, jobHandle);
+        jobHandle = apply.ScheduleByRef(__entities, 1, jobHandle);
 
-        itemJobManager.AddReadOnlyDependency(jobHandle);
-        entityJobManager.AddReadOnlyDependency(jobHandle);
+        itemManageJobManager.AddReadOnlyDependency(jobHandle);
+        itemEntitiesJobManager.AddReadOnlyDependency(jobHandle);
 
-        Dependency = jobHandle;
+        resultsJobManager.readWriteJobHandle = jobHandle;
+
+        state.Dependency = jobHandle;
     }
 
     private bool __Convert(
-        int handle, 
-        ref int durabilityIndex, 
-        ref int timeIndex, 
+        int handle,
+        ref int durabilityIndex,
+        ref int timeIndex,
         in ComponentManager<GameItemDurability> durabilities,
         in ComponentManager<GameItemTime> times,
-        in SharedHashMap<Entity, Entity>.Reader itemEntities, 
+        in SharedHashMap<Entity, Entity>.Reader itemEntities,
         Action<int, GameItem> handler)
     {
         if (!__versions.TryGetValue(handle, out var version))
@@ -2476,7 +2535,7 @@ public partial class GameItemResultSystem : LookupSystem
             ref timeIndex,
             durabilities,
             times,
-            itemEntities, 
+            itemEntities,
             handler);
 
         GameItemHandle itemHandle;
@@ -2503,7 +2562,7 @@ public partial class GameItemResultSystem : LookupSystem
                     ref timeIndex,
                     durabilities,
                     times,
-                    itemEntities, 
+                    itemEntities,
                     handler);
 
             } while (__children.TryGetNextValue(out child, ref iterator));
@@ -2531,5 +2590,45 @@ public partial class GameItemResultSystem : LookupSystem
 
         return true;
     }
+}
 
+[BurstCompile, AutoCreateIn("Server"),
+    CreateAfter(typeof(GameItemCommandSystem)), 
+    CreateAfter(typeof(GameItemSystem)),
+    CreateAfter(typeof(GameItemRootEntitySystem)),
+    CreateAfter(typeof(GameItemTimeChangeSystem)),
+    CreateAfter(typeof(GameItemDurabilityChangeSystem)),
+    UpdateInGroup(typeof(GameItemInitSystemGroup)), 
+    UpdateAfter(typeof(GameItemComponentInitSystemGroup))
+    //UpdateBefore(typeof(GameItemTimeApplySystem)),
+    //UpdateBefore(typeof(GameItemDurabilityApplySystem)),
+    //UpdateAfter(typeof(GameItemBeginSystem)),
+    /*UpdateAfter(typeof(GameDataItemSystem)),
+    UpdateAfter(typeof(GameDataSystemGroup))*/]
+public partial struct GameItemResultSystem : ISystem
+{
+    public GameItemResultManager manager
+    {
+        get;
+
+        private set;
+    }
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        manager = new GameItemResultManager(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        manager.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        manager.Update(ref state);
+    }
 }

@@ -31,7 +31,10 @@ public struct GameItemPower : ICleanupComponentData
     public float value;
 }
 
-[BurstCompile, UpdateInGroup(typeof(GameItemComponentInitSystemGroup), OrderFirst = true)]
+[BurstCompile, 
+    CreateAfter(typeof(GameItemSystem)), 
+    CreateAfter(typeof(GameItemComponentStructChangeSystem)), 
+    UpdateInGroup(typeof(GameItemComponentInitSystemGroup), OrderFirst = true)]
 public partial struct GameItemLevelInitSystem : IGameItemInitializationSystem<GameItemLevel, GameItemLevelInitSystem.Initializer>
 {
     public struct Initializer : IGameItemInitializer<GameItemLevel>, IGameItemComponentInitializer<GameItemLevel>
@@ -39,7 +42,7 @@ public partial struct GameItemLevelInitSystem : IGameItemInitializationSystem<Ga
         public Random random;
 
         [ReadOnly]
-        public UnsafeParallelMultiHashMap<int, int> values;
+        public NativeParallelMultiHashMap<int, int> values;
 
         public bool IsVail(int type) => values.ContainsKey(type);
 
@@ -91,7 +94,7 @@ public partial struct GameItemLevelInitSystem : IGameItemInitializationSystem<Ga
         public double time;
 
         [ReadOnly]
-        public UnsafeParallelMultiHashMap<int, int> values;
+        public NativeParallelMultiHashMap<int, int> values;
 
         public Initializer Create(in GameItemManager.ReadOnlyInfos infos, in ArchetypeChunk chunk, int unfilteredChunkIndex)
         {
@@ -103,7 +106,7 @@ public partial struct GameItemLevelInitSystem : IGameItemInitializationSystem<Ga
     }
 
     private double __time;
-    private UnsafeParallelMultiHashMap<int, int> __values;
+    private NativeParallelMultiHashMap<int, int> __values;
     private GameItemComponentDataInitSystemCore<GameItemLevel> __core;
 
     public Initializer initializer
@@ -125,13 +128,15 @@ public partial struct GameItemLevelInitSystem : IGameItemInitializationSystem<Ga
         }
     }
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __values = new UnsafeParallelMultiHashMap<int, int>(1, Allocator.Persistent);
+        __values = new NativeParallelMultiHashMap<int, int>(1, Allocator.Persistent);
 
         __core = new GameItemComponentDataInitSystemCore<GameItemLevel>(ref state);
     }
 
+    //[BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
         __values.Dispose();
@@ -155,7 +160,11 @@ public partial struct GameItemLevelInitSystem : IGameItemInitializationSystem<Ga
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(GameItemComponentInitSystemGroup), OrderFirst = true)]
+[BurstCompile, 
+    CreateAfter(typeof(GameItemSystem)), 
+    CreateAfter(typeof(GameItemComponentStructChangeSystem)),
+    CreateAfter(typeof(GameItemLevelInitSystem)),
+    UpdateInGroup(typeof(GameItemComponentInitSystemGroup), OrderFirst = true)]
 public struct GameItemExpInitSystem : IGameItemInitializationSystem<GameItemExp, GameItemExpInitSystem.Initializer>
 {
     public struct Initializer : IGameItemInitializer<GameItemExp>
@@ -173,8 +182,8 @@ public struct GameItemExpInitSystem : IGameItemInitializationSystem<GameItemExp,
         }
     }
 
-    private GameItemComponentInitSystemCore<GameItemExp> __core;
     private GameItemLevelInitSystem.Initializer __initializer;
+    private GameItemComponentInitSystemCore<GameItemExp> __core;
 
     public Initializer initializer
     {
@@ -186,11 +195,12 @@ public struct GameItemExpInitSystem : IGameItemInitializationSystem<GameItemExp,
         }
     }
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __core = new GameItemComponentInitSystemCore<GameItemExp>(ref state);
+        __initializer = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemLevelInitSystem>().initializer;
 
-        __initializer = state.World.GetOrCreateSystemUnmanaged<GameItemLevelInitSystem>().initializer;
+        __core = new GameItemComponentInitSystemCore<GameItemExp>(ref state);
     }
 
     public void OnDestroy(ref SystemState state)
@@ -204,7 +214,11 @@ public struct GameItemExpInitSystem : IGameItemInitializationSystem<GameItemExp,
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(GameItemComponentInitSystemGroup), OrderFirst = true)]
+[BurstCompile, 
+    CreateAfter(typeof(GameItemSystem)), 
+    CreateAfter(typeof(GameItemComponentStructChangeSystem)), 
+    CreateAfter(typeof(GameItemLevelInitSystem)), 
+    UpdateInGroup(typeof(GameItemComponentInitSystemGroup), OrderFirst = true)]
 public struct GameItemPowerInitSystem : IGameItemInitializationSystem<GameItemPower, GameItemPowerInitSystem.Initializer>
 {
     public struct Initializer : IGameItemInitializer<GameItemPower>
@@ -222,8 +236,8 @@ public struct GameItemPowerInitSystem : IGameItemInitializationSystem<GameItemPo
         }
     }
 
-    private GameItemComponentInitSystemCore<GameItemPower> __core;
     private GameItemLevelInitSystem.Initializer __initializer;
+    private GameItemComponentInitSystemCore<GameItemPower> __core;
 
     public Initializer initializer
     {
@@ -235,11 +249,12 @@ public struct GameItemPowerInitSystem : IGameItemInitializationSystem<GameItemPo
         }
     }
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __core = new GameItemComponentInitSystemCore<GameItemPower>(ref state);
+        __initializer = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemLevelInitSystem>().initializer;
 
-        __initializer = state.World.GetOrCreateSystemUnmanaged<GameItemLevelInitSystem>().initializer;
+        __core = new GameItemComponentInitSystemCore<GameItemPower>(ref state);
     }
 
     public void OnDestroy(ref SystemState state)

@@ -9,12 +9,110 @@ using ZG;
 
 public struct GameRandomSpawnerFactory : IComponentData
 {
-    public EntityCommandPool<GameSpawnData> pool;
+    public SharedList<GameSpawnData> commands;
+}
+
+public struct GameSpawnInitializer : IEntityDataInitializer
+{
+    private int __assetIndex;
+
+    //private double __time;
+
+    public GameSpawnInitializer(int assetIndex)
+    {
+        __assetIndex = assetIndex;
+
+        //__time = time;
+    }
+
+    public void Invoke<T>(ref T gameObjectEntity) where T : IGameObjectEntity
+    {
+        GameSpawnedInstanceData instance;
+        instance.assetIndex = __assetIndex;
+        //instance.time = __time;
+
+        gameObjectEntity.AddComponentData(instance);
+    }
 }
 
 [BurstCompile, UpdateInGroup(typeof(TimeSystemGroup)), UpdateAfter(typeof(GameSyncSystemGroup))]
 public partial struct GameRandomSpawnerSystem : ISystem
 {
+    private struct Count
+    {
+        [NativeDisableParallelForRestriction]
+        public NativeArray<int> counter;
+
+        [ReadOnly]
+        public BufferAccessor<GameRandomSpawnerSlice> slices;
+
+        [ReadOnly]
+        public BufferAccessor<GameRandomSpawnerGroup> groups;
+
+        [ReadOnly]
+        public BufferAccessor<GameRandomSpawnerNode> nodes;
+
+        public void Execute(int index)
+        {
+            var nodes = this.nodes[index];
+            int length = nodes.Length;
+            if (length < 1)
+                return;
+
+            var groups = this.groups[index].Reinterpret<RandomGroup>().AsNativeArray();
+            var slices = this.slices[index];
+            GameRandomSpawnerSlice slice;
+            for (int i = 0; i < length; ++i)
+            {
+                slice = slices[nodes[i].sliceIndex];
+                counter.Add(0, RandomUtility.CountOf(groups.Slice(slice.groupStartIndex, slice.groupCount)));
+            }
+        }
+    }
+
+    [BurstCompile]
+    private struct CountEx : IJobChunk
+    {
+        [NativeDisableParallelForRestriction]
+        public NativeArray<int> counter;
+
+        [ReadOnly]
+        public BufferTypeHandle<GameRandomSpawnerSlice> sliceType;
+
+        [ReadOnly]
+        public BufferTypeHandle<GameRandomSpawnerGroup> groupType;
+
+        [ReadOnly]
+        public BufferTypeHandle<GameRandomSpawnerNode> nodeType;
+
+        public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+        {
+            Count count;
+            count.counter = counter;
+            count.slices = chunk.GetBufferAccessor(ref sliceType);
+            count.groups = chunk.GetBufferAccessor(ref groupType);
+            count.nodes = chunk.GetBufferAccessor(ref nodeType);
+
+            var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+            while (iterator.NextEntityIndex(out int i))
+                count.Execute(i);
+        }
+    }
+
+    [BurstCompile]
+    public struct Recapcity : IJob
+    {
+        [ReadOnly, DeallocateOnJobCompletion]
+        public NativeArray<int> counter;
+
+        public NativeList<GameSpawnData> results;
+
+        public void Execute()
+        {
+            results.Capacity = math.max(results.Capacity, results.Length + counter[0]);
+        }
+    }
+
     private struct Spawn
     {
         private struct AssetHandler : IRandomItemHandler
@@ -34,7 +132,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
             [ReadOnly]
             public DynamicBuffer<GameRandomSpawnerAsset> assets;
 
-            public EntityCommandQueue<GameSpawnData>.ParallelWriter entityManager;
+            public SharedList<GameSpawnData>.ParallelWriter results;
 
             public RandomResult Set(int startIndex, int count)
             {
@@ -53,7 +151,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
                     spawnData.transform.rot = asset.offset.rot;// quaternion.LookRotationSafe(-math.normalize(spawnData.transform.pos), math.up());
                     spawnData.transform = math.mul(transform, spawnData.transform);
 
-                    entityManager.Enqueue(spawnData);
+                    results.AddNoResize(spawnData);
                 }
 
                 return RandomResult.Pass;
@@ -74,17 +172,17 @@ public partial struct GameRandomSpawnerSystem : ISystem
         public NativeArray<Rotation> rotations;
 
         [ReadOnly]
+        public BufferAccessor<GameRandomSpawnerAsset> assets;
+
+        [ReadOnly]
         public BufferAccessor<GameRandomSpawnerSlice> slices;
 
         [ReadOnly]
         public BufferAccessor<GameRandomSpawnerGroup> groups;
 
-        [ReadOnly]
-        public BufferAccessor<GameRandomSpawnerAsset> assets;
-        
         public BufferAccessor<GameRandomSpawnerNode> nodes;
         
-        public EntityCommandQueue<GameSpawnData>.ParallelWriter entityManager;
+        public SharedList<GameSpawnData>.ParallelWriter results;
 
         public void Execute(int index)
         {
@@ -101,9 +199,9 @@ public partial struct GameRandomSpawnerSystem : ISystem
             assetHandler.random = random;
             assetHandler.transform = math.RigidTransform(rotations[index].Value, translations[index].Value);
             assetHandler.assets = assets[index];
-            assetHandler.entityManager = entityManager;
-            
-            var groups = this.groups[index];
+            assetHandler.results = results;
+
+            var groups = this.groups[index].Reinterpret<RandomGroup>().AsNativeArray();
             var slices = this.slices[index];
             GameRandomSpawnerSlice slice;
             for (int i = 0; i < length; ++i)
@@ -112,7 +210,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
                 /*assetHandler.vertical = slice.vertical;
                 assetHandler.horizontal = slice.horizontal;
                 assetHandler.transform = math.mul(transform, slice.offset);*/
-                random.Next(ref assetHandler, groups.Reinterpret<RandomGroup>().AsNativeArray().Slice(slice.groupStartIndex, slice.groupCount));
+                random.Next(ref assetHandler, groups.Slice(slice.groupStartIndex, slice.groupCount));
             }
 
             nodes.Clear();
@@ -120,7 +218,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
     }
 
     [BurstCompile]
-    private struct SpawnEx : IJobChunk, IEntityCommandProducerJob
+    private struct SpawnEx : IJobChunk//, IEntityCommandProducerJob
     {
         public double time;
 
@@ -132,22 +230,22 @@ public partial struct GameRandomSpawnerSystem : ISystem
 
         [ReadOnly]
         public ComponentTypeHandle<Translation> translationType;
-        
+
+        [ReadOnly]
+        public BufferTypeHandle<GameRandomSpawnerAsset> assetType;
+
         [ReadOnly]
         public BufferTypeHandle<GameRandomSpawnerSlice> sliceType;
 
         [ReadOnly]
         public BufferTypeHandle<GameRandomSpawnerGroup> groupType;
 
-        [ReadOnly]
-        public BufferTypeHandle<GameRandomSpawnerAsset> assetType;
-        
         public BufferTypeHandle<GameRandomSpawnerNode> nodeType;
 
         [NativeDisableParallelForRestriction]
         public ComponentLookup<GameEntityActionCommand> commands;
 
-        public EntityCommandQueue<GameSpawnData>.ParallelWriter entityManager;
+        public SharedList<GameSpawnData>.ParallelWriter results;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -162,7 +260,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
             spawn.groups = chunk.GetBufferAccessor(ref groupType);
             spawn.assets = chunk.GetBufferAccessor(ref assetType);
             spawn.nodes = chunk.GetBufferAccessor(ref nodeType);
-            spawn.entityManager = entityManager;
+            spawn.results = results;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -175,7 +273,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
     }
 
     private EntityQuery __group;
-    private EntityQuery __factoryGroup;
+    //private EntityQuery __factoryGroup;
     private GameSyncTime __time;
 
     private EntityTypeHandle __entityType;
@@ -194,7 +292,12 @@ public partial struct GameRandomSpawnerSystem : ISystem
 
     private ComponentLookup<GameEntityActionCommand> __commands;
 
-    private EntityCommandPool<GameSpawnData> __entityManager;
+    public SharedList<GameSpawnData> commands
+    {
+        get;
+
+        private set;
+    }
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
@@ -208,12 +311,10 @@ public partial struct GameRandomSpawnerSystem : ISystem
 
         __group.SetChangedVersionFilter(ComponentType.ReadWrite<GameRandomSpawnerNode>());
 
-        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+        /*using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __factoryGroup = builder
                 .WithAll<GameRandomSpawnerFactory>()
-                .Build(ref state);
-
-        __time = new GameSyncTime(ref state);
+                .Build(ref state);*/
 
         __entityType = state.GetEntityTypeHandle();
         __rotationType = state.GetComponentTypeHandle<Rotation>(true);
@@ -223,36 +324,63 @@ public partial struct GameRandomSpawnerSystem : ISystem
         __assetType = state.GetBufferTypeHandle<GameRandomSpawnerAsset>(true);
         __nodeType = state.GetBufferTypeHandle<GameRandomSpawnerNode>();
         __commands = state.GetComponentLookup<GameEntityActionCommand>();
+
+        __time = new GameSyncTime(ref state);
+
+        commands = new SharedList<GameSpawnData>(Allocator.Persistent);
+
+        GameRandomSpawnerFactory factory;
+        factory.commands = commands;
+        state.EntityManager.AddComponentData(state.SystemHandle, factory);
     }
 
     [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
+        commands.Dispose();
     }
 
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        if (__factoryGroup.IsEmpty)
-            return;
+        var sliceType = __sliceType.UpdateAsRef(ref state);
+        var groupType = __groupType.UpdateAsRef(ref state);
+        var nodeType = __nodeType.UpdateAsRef(ref state);
 
-        var entityManager = __factoryGroup.GetSingleton<GameRandomSpawnerFactory>().pool.Create();
+        var counter = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
+
+        CountEx count;
+        count.counter = counter;
+        count.sliceType = sliceType;
+        count.groupType = groupType;
+        count.nodeType = nodeType;
+        var jobHandle = count.ScheduleParallelByRef(__group, state.Dependency);
+
+        var commands = this.commands;
+        ref var commandsJobManager = ref commands.lookupJobManager;
+
+        Recapcity recapcity;
+        recapcity.counter = counter;
+        recapcity.results = commands.writer;
+        jobHandle = recapcity.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, commandsJobManager.readWriteJobHandle));
 
         SpawnEx spawn;
         spawn.time = __time.nextTime;
         spawn.entityType = __entityType.UpdateAsRef(ref state);
         spawn.rotationType = __rotationType.UpdateAsRef(ref state);
         spawn.translationType = __translationType.UpdateAsRef(ref state);
-        spawn.sliceType = __sliceType.UpdateAsRef(ref state);
-        spawn.groupType = __groupType.UpdateAsRef(ref state);
         spawn.assetType = __assetType.UpdateAsRef(ref state);
-        spawn.nodeType = __nodeType.UpdateAsRef(ref state);
+        spawn.sliceType = sliceType;
+        spawn.groupType = groupType;
+        spawn.nodeType = nodeType;
         spawn.commands = __commands.UpdateAsRef(ref state);
-        spawn.entityManager = entityManager.parallelWriter;
+        spawn.results = commands.parallelWriter;
 
-        var jobHandle = spawn.ScheduleParallelByRef(__group, state.Dependency);
+        jobHandle = spawn.ScheduleParallelByRef(__group, jobHandle);
 
-        entityManager.AddJobHandleForProducer<SpawnEx>(jobHandle);
+        commandsJobManager.readWriteJobHandle = jobHandle;
+
+        //entityManager.AddJobHandleForProducer<SpawnEx>(jobHandle);
 
         state.Dependency = jobHandle;
     }

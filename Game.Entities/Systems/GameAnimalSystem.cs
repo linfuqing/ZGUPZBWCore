@@ -41,7 +41,7 @@ public partial struct GameAnimalBuffSystem : ISystem
     }
 }
 
-[UpdateInGroup(typeof(TimeSystemGroup)), UpdateAfter(typeof(GameEntityHealthSystem)), UpdateAfter(typeof(GameWeaponSystem))]
+[CreateAfter(typeof(GameItemSystem)), UpdateInGroup(typeof(TimeSystemGroup)), UpdateAfter(typeof(GameEntityHealthSystem)), UpdateAfter(typeof(GameWeaponSystem))]
 public partial class GameAnimalSystem : SystemBase
 {
     [Serializable]
@@ -380,7 +380,7 @@ public partial class GameAnimalSystem : SystemBase
 
         World world = World;
 
-        __itemManager = world.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
+        __itemManager = world.GetExistingSystemUnmanaged<GameItemSystem>().manager;
     }
 
     protected override void OnDestroy()

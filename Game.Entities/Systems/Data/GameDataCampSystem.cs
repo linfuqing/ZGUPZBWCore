@@ -13,14 +13,14 @@ using Unity.Transforms;
 [assembly: RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameCampManagerShared.Serializer>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataContainerDeserialize<GameCampManagerShared.Deserializer>))]
 //[assembly: EntityDataSerialize(typeof(GameCampManager), typeof(GameDataCampSerializationSystem))]
-[assembly: EntityDataDeserialize(typeof(GameCampManager), typeof(GameDataCampDeserializationSystem), (int)GameDataConstans.Version)]
+//[assembly: EntityDataDeserialize(typeof(GameCampManager), typeof(GameDataCampDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
 #region GameEntityCamp
 //[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<ComponentDataSerializationSystem<GameEntityCamp>.Serializer, ComponentDataSerializationSystem<GameEntityCamp>.SerializerFactory>))]
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<ComponentDataDeserializationSystem<GameEntityCamp>.Deserializer, ComponentDataDeserializationSystem<GameEntityCamp>.DeserializerFactory>))]
+//[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<ComponentDataDeserializationSystem<GameEntityCamp>.Deserializer, ComponentDataDeserializationSystem<GameEntityCamp>.DeserializerFactory>))]
 //[assembly: EntityDataSerialize(typeof(GameEntityCamp))]
-[assembly: EntityDataDeserialize(typeof(GameEntityCamp), (int)GameDataConstans.Version)]
+//[assembly: EntityDataDeserialize(typeof(GameEntityCamp), (int)GameDataConstans.Version)]
 #endregion
 
 public struct GameCampManager
@@ -469,7 +469,7 @@ public partial struct GameDataCampSerializationContainerSystem : ISystem
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __typeHandle = EntityDataSerializationUtility.GetTypeHandle(ref state);
+        __typeHandle = new EntityDataSerializationTypeHandle(ref state);
 
         __manager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameDataCampSystem>().manager;
     }
@@ -487,7 +487,7 @@ public partial struct GameDataCampSerializationContainerSystem : ISystem
 
         var serializer = __manager.serializer;
 
-        EntityDataSerializationUtility.Update(__typeHandle, ref serializer, ref state);
+        __typeHandle.Update(ref serializer, ref state);
 
         lookupJobManager.AddReadOnlyDependency(state.Dependency);
     }
@@ -520,26 +520,65 @@ public partial struct GameDataEntityCampSerializationSystem : ISystem
     }
 }
 
-[DisableAutoCreation]
-public partial class GameDataCampDeserializationSystem : EntityDataDeserializationContainerSystem<GameCampManagerShared.Deserializer>
+[BurstCompile,
+    EntityDataDeserializationSystem(typeof(GameCampManager), (int)GameDataConstans.Version),
+    CreateAfter(typeof(EntityDataDeserializationContainerSystem)),
+    CreateAfter(typeof(GameDataCampSystem)),
+    UpdateInGroup(typeof(EntityDataDeserializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataCampDeserializationContainerSystem : ISystem
 {
     private GameCampManagerShared __manager;
+    private EntityDataDeserializationContainerSystemCore __core;
 
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        __manager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameDataCampSystem>().manager;
 
-        __manager = World.GetOrCreateSystemUnmanaged<GameDataCampSystem>().manager;
+        __core = new EntityDataDeserializationContainerSystemCore(ref state);
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        Dependency = JobHandle.CombineDependencies(Dependency, __manager.lookupJobManager.readWriteJobHandle);
-
-        base.OnUpdate();
-
-        __manager.lookupJobManager.readWriteJobHandle = Dependency;
+        __core.Dispose();
     }
 
-    protected override GameCampManagerShared.Deserializer _Create(ref JobHandle jobHandle) => __manager.deserializer;
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        state.Dependency = JobHandle.CombineDependencies(__manager.lookupJobManager.readWriteJobHandle, state.Dependency);
+
+        var deserializer = __manager.deserializer;
+        __core.Update(ref deserializer, ref state);
+
+        __manager.lookupJobManager.readWriteJobHandle = state.Dependency;
+    }
+}
+
+[BurstCompile,
+    EntityDataDeserializationSystem(typeof(GameEntityCamp), (int)GameDataConstans.Version),
+    CreateAfter(typeof(EntityDataDeserializationComponentSystem)),
+    UpdateInGroup(typeof(EntityDataDeserializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataCampDeserializationSystem : ISystem
+{
+    private EntityDataDeserializationSystemCoreEx __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = EntityDataDeserializationSystemCoreEx.Create<GameEntityCamp>(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        __core.Update(ref state);
+    }
 }

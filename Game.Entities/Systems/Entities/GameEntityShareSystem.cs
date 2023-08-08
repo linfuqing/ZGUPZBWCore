@@ -14,7 +14,7 @@ using Unity.Jobs;
 
 [assembly: RegisterGenericJobType(typeof(GameEntityActionSharedFactorySytem.Apply<GameActionSharedObjectData>))]
 [assembly: RegisterGenericJobType(typeof(GameEntityActionSharedFactorySytem.Apply<GameActionSharedObjectParent>))]
-[assembly: RegisterGenericJobType(typeof(GameEntityActionSystemCore.PerformEx<GameEntitySharedActionSystem.Handler, GameEntitySharedActionSystem.Factory>))]
+[assembly: RegisterGenericJobType(typeof(GameEntityActionSystemCore.PerformEx<GameEntityActionSharedSystem.Handler, GameEntityActionSharedSystem.Factory>))]
 
 /*[UpdateBefore(typeof(GameTransformSystem))]
 public class GameEntityActionSharedCommandSytem : EntityCommandSystemHybrid
@@ -22,7 +22,40 @@ public class GameEntityActionSharedCommandSytem : EntityCommandSystemHybrid
 
 }*/
 
-[BurstCompile, UpdateInGroup(typeof(EndTimeSystemGroupEntityCommandSystemGroup))]
+public struct GameEntityActionSharedDefinition
+{
+    public struct Item
+    {
+        public uint negativeActionMask;
+        public uint positiveActionMask;
+    }
+
+    public struct ActionObject
+    {
+        public GameEntitySharedActionObjectFlag flag;
+
+        public GameSharedActionType sourceType;
+        public GameSharedActionType destinationType;
+
+        public uint mask;
+    }
+
+    public struct Action
+    {
+        public BlobArray<int> objectIndices;
+    }
+
+    public BlobArray<Item> items;
+    public BlobArray<Action> actions;
+    public BlobArray<ActionObject> actionObjects;
+}
+
+public struct GameEntityActionSharedData : IComponentData
+{
+    public BlobAssetReference<GameEntityActionSharedDefinition> definition;
+}
+
+[BurstCompile, UpdateInGroup(typeof(EndFrameEntityCommandSystemGroup))]//UpdateInGroup(typeof(EndTimeSystemGroupEntityCommandSystemGroup))]
 public partial struct GameEntityActionSharedFactorySytem : ISystem
 {
     public struct Command
@@ -906,7 +939,7 @@ public partial class GameEntityActionSharedStatusSystem : JobComponentSystem
 }*/
 
 [BurstCompile, UpdateInGroup(typeof(GameUpdateSystemGroup)), UpdateAfter(typeof(GameEntityActionSystemGroup))]
-public partial struct GameEntitySharedActionUpdateSystem : ISystem
+public partial struct GameEntityActionSharedUpdateSystem : ISystem
 {
     private struct UpdateActions
     {
@@ -1064,9 +1097,9 @@ public partial struct GameEntitySharedActionUpdateSystem : ISystem
     CreateAfter(typeof(GamePhysicsWorldBuildSystem)),
     CreateAfter(typeof(GameEntityActionSharedFactorySytem)),
     UpdateInGroup(typeof(GameEntityActionSystemGroup))]
-public partial struct GameEntitySharedActionSystem : ISystem
+public partial struct GameEntityActionSharedSystem : ISystem
 {
-    public struct Item
+    /*public struct Item
     {
         public uint negativeActionMask;
         public uint positiveActionMask;
@@ -1087,18 +1120,20 @@ public partial struct GameEntitySharedActionSystem : ISystem
     {
         public int startIndex;
         public int count;
-    }
+    }*/
 
     public struct Handler : IGameEntityActionHandler
     {
-        [ReadOnly]
+        /*[ReadOnly]
         public NativeArray<ActionObject> actionObjects;
 
         [ReadOnly]
         public NativeArray<ActionObjectRange> actionObjectRanges;
 
         [ReadOnly]
-        public NativeArray<Item> items;
+        public NativeArray<Item> items;*/
+
+        public BlobAssetReference<GameEntityActionSharedDefinition> definition;
 
         [ReadOnly]
         public BufferLookup<GameEntityItem> entityItems;
@@ -1155,14 +1190,13 @@ public partial struct GameEntitySharedActionSystem : ISystem
             return true;
         }
 
-        public uint ComputeActionMask(in Entity target)
+        public uint ComputeActionMask(in Entity target, ref BlobArray<GameEntityActionSharedDefinition.Item> items)
         {
             uint actionMask = actionMasks.HasComponent(target) ? actionMasks[target].value : 0u,
                 negativeActionMask = 0,
                 positiveActionMask = 0;
             if (entityItems.HasBuffer(target))
             {
-                Item item;
                 var entityItems = this.entityItems[target];
                 int numEntityItems = entityItems.Length, numItems = items.Length, itemIndex;
                 for (int i = 0; i < numEntityItems; ++i)
@@ -1171,7 +1205,7 @@ public partial struct GameEntitySharedActionSystem : ISystem
                     if (itemIndex < 0 || itemIndex >= numItems)
                         continue;
 
-                    item = items[itemIndex];
+                    ref var item = ref items[itemIndex];
 
                     negativeActionMask |= item.negativeActionMask;
                     positiveActionMask |= item.positiveActionMask;
@@ -1195,6 +1229,9 @@ public partial struct GameEntitySharedActionSystem : ISystem
             if (!Check(data.index, data.version, (float)(time - data.time), data.entity))
                 return false;
 
+            ref var definition = ref this.definition.Value;
+            ref var action = ref definition.actions[data.actionIndex];
+
             GameEntityActionSharedFactorySytem.Command command;
             command.entity = Entity.Null;
             command.instance.time = data.time;
@@ -1205,14 +1242,12 @@ public partial struct GameEntitySharedActionSystem : ISystem
 
             bool result = false, isSourceTransformed = false, isDestinationTransformed = false;
             var actionType = actionTypes.HasComponent(data.entity) ? actionTypes[data.entity].value : 0;
-            int actionObjectIndex;
-            ActionObject actionObject;
-            ActionObjectRange actionObjectRange = actionObjectRanges[data.actionIndex];
+            int actionObjectIndex, numActionObjects = action.objectIndices.Length;
             RigidTransform sourceTransform = RigidTransform.identity, destaintionTransform = RigidTransform.identity;
-            for (int i = 0; i < actionObjectRange.count; ++i)
+            for (int i = 0; i < numActionObjects; ++i)
             {
-                actionObjectIndex = actionObjectRange.startIndex + i;
-                actionObject = actionObjects[actionObjectIndex];
+                actionObjectIndex = action.objectIndices[i];
+                ref var actionObject = ref definition.actionObjects[actionObjectIndex];
                 if ((actionObject.flag & GameEntitySharedActionObjectFlag.Create) == GameEntitySharedActionObjectFlag.Create &&
                     ((actionObject.sourceType & actionType) == actionType))
                 {
@@ -1278,6 +1313,9 @@ public partial struct GameEntitySharedActionSystem : ISystem
             if (!Check(data.index, data.version, (float)(time - data.time), data.entity))
                 return false;
 
+            ref var definition = ref this.definition.Value;
+            ref var action = ref definition.actions[data.actionIndex];
+
             GameEntityActionSharedFactorySytem.Command command;
             command.entity = entity;
             command.instance.time = data.time + elapsedTime;
@@ -1285,14 +1323,12 @@ public partial struct GameEntitySharedActionSystem : ISystem
 
             bool result = false, isSourceTransformed = false;
             var actionType = actionTypes.HasComponent(data.entity) ? actionTypes[data.entity].value : 0;
-            int actionObjectIndex;
-            ActionObject actionObject;
-            ActionObjectRange actionObjectRange = actionObjectRanges[data.actionIndex];
+            int actionObjectIndex, numActionObjects = action.objectIndices.Length;
             RigidTransform sourceTransform = RigidTransform.identity;
-            for (int i = 0; i < actionObjectRange.count; ++i)
+            for (int i = 0; i < numActionObjects; ++i)
             {
-                actionObjectIndex = actionObjectRange.startIndex + i;
-                actionObject = actionObjects[actionObjectIndex];
+                actionObjectIndex = action.objectIndices[i];
+                ref var actionObject = ref definition.actionObjects[actionObjectIndex];
                 if ((actionObject.flag & GameEntitySharedActionObjectFlag.Init) == GameEntitySharedActionObjectFlag.Init &&
                     ((actionObject.sourceType & actionType) == actionType))
                 {
@@ -1347,23 +1383,25 @@ public partial struct GameEntitySharedActionSystem : ISystem
             if (!Check(data.index, data.version, (float)(time - data.time), data.entity))
                 return;
 
+            ref var definition = ref this.definition.Value;
+            ref var action = ref definition.actions[data.actionIndex];
+
             GameEntityActionSharedFactorySytem.Command command;
             command.entity = Entity.Null;
             command.instance.time = data.time + elapsedTime;
             command.instance.parentEntity = Entity.Null;// (actionObject.flag & GameEntitySharedActionObjectFlag.Init) == GameEntitySharedActionObjectFlag.Init ? entity : Entity.Null;
 
             bool isSourceTransformed = false, isDestinationTransformed = false;
-            int actionObjectIndex;
-            uint actionMask = ComputeActionMask(target);
+            int actionObjectIndex, numActionObjects = action.objectIndices.Length;
+            uint actionMask = ComputeActionMask(target, ref definition.items);
             GameSharedActionType sourceActionType = actionTypes.HasComponent(data.entity) ? actionTypes[data.entity].value : 0,
                 destinationActionType = actionTypes.HasComponent(target) ? actionTypes[target].value : 0;
-            ActionObject actionObject;
-            ActionObjectRange actionObjectRange = actionObjectRanges[data.actionIndex];
             RigidTransform sourceTransform = RigidTransform.identity, destinationTranform = RigidTransform.identity;
-            for (int i = 0; i < actionObjectRange.count; ++i)
+            for (int i = 0; i < numActionObjects; ++i)
             {
-                actionObjectIndex = actionObjectRange.startIndex + i;
-                actionObject = actionObjects[actionObjectIndex];
+                actionObjectIndex = action.objectIndices[i];
+
+                ref var actionObject = ref definition.actionObjects[actionObjectIndex];
                 if ((actionObject.flag & GameEntitySharedActionObjectFlag.Hit) == GameEntitySharedActionObjectFlag.Hit &&
                     (actionObject.sourceType & sourceActionType) == sourceActionType &&
                     (actionObject.destinationType & destinationActionType) == destinationActionType &&
@@ -1444,6 +1482,9 @@ public partial struct GameEntitySharedActionSystem : ISystem
             if (!Check(data.index, data.version, (float)(time - data.time), data.entity))
                 return;
 
+            ref var definition = ref this.definition.Value;
+            ref var action = ref definition.actions[data.actionIndex];
+
             EntityData<GameEntitySharedHit> hit;
             hit.value.version = data.version;
             hit.value.actionIndex = data.actionIndex;
@@ -1458,18 +1499,17 @@ public partial struct GameEntitySharedActionSystem : ISystem
             command.instance.parentEntity = Entity.Null;
 
             bool isTransformed = false, isSourceTransformed = false, isDestinationTransformed = false;
-            int actionObjectIndex;
-            uint actionMask = ComputeActionMask(target);
+            int actionObjectIndex, numActionObjects = action.objectIndices.Length;
+            uint actionMask = ComputeActionMask(target, ref definition.items);
             GameSharedActionType sourceActionType = actionTypes.HasComponent(data.entity) ? actionTypes[data.entity].value : 0,
                 destinationActionType = actionTypes.HasComponent(target) ? actionTypes[target].value : 0;
             float3 up = math.up();
-            ActionObject actionObject;
-            ActionObjectRange actionObjectRange = actionObjectRanges[data.actionIndex];
             RigidTransform transform = RigidTransform.identity, sourceTransform = RigidTransform.identity, destinationTranform = RigidTransform.identity;
-            for (int i = 0; i < actionObjectRange.count; ++i)
+            for (int i = 0; i < numActionObjects; ++i)
             {
-                actionObjectIndex = actionObjectRange.startIndex + i;
-                actionObject = actionObjects[actionObjectIndex];
+                actionObjectIndex = action.objectIndices[i];
+
+                ref var actionObject = ref definition.actionObjects[actionObjectIndex];
                 if (((actionObject.flag & GameEntitySharedActionObjectFlag.Damage) == GameEntitySharedActionObjectFlag.Damage/* || 
                     actionObject.flag == 0*/) &&
                     (actionObject.sourceType & sourceActionType) == sourceActionType &&
@@ -1582,14 +1622,16 @@ public partial struct GameEntitySharedActionSystem : ISystem
 
     public struct Factory : IGameEntityActionFactory<Handler>, IEntityCommandProducerJob
     {
-        [ReadOnly]
+        /*[ReadOnly]
         public NativeArray<ActionObject> actionObjects;
 
         [ReadOnly]
         public NativeArray<ActionObjectRange> actionObjectRanges;
 
         [ReadOnly]
-        public NativeArray<Item> items;
+        public NativeArray<Item> items;*/
+
+        public BlobAssetReference<GameEntityActionSharedDefinition> definition;
 
         [ReadOnly]
         public BufferLookup<GameEntityItem> entityItems;
@@ -1616,9 +1658,10 @@ public partial struct GameEntitySharedActionSystem : ISystem
         public Handler Create(in ArchetypeChunk chunk)
         {
             Handler handler;
-            handler.actionObjects = actionObjects;
+            /*handler.actionObjects = actionObjects;
             handler.actionObjectRanges = actionObjectRanges;
-            handler.items = items;
+            handler.items = items;*/
+            handler.definition = definition;
             handler.entityItems = entityItems;
             handler.translations = translations;
             handler.rotations = rotations;
@@ -1673,9 +1716,9 @@ public partial struct GameEntitySharedActionSystem : ISystem
 
     private EntityQuery __hitGroup;
 
-    private NativeArray<ActionObject> __actionObjects;
+    /*private NativeArray<ActionObject> __actionObjects;
     private NativeArray<ActionObjectRange> __actionObjectRanges;
-    private NativeArray<Item> __items;
+    private NativeArray<Item> __items;*/
     private NativeFactory<EntityData<GameEntitySharedHit>> __hits;
     //private EntityCommandQueue<GameEntityActionSharedFactorySytem.Command> __entityManager;
     private EntityCommandPool<GameEntityActionSharedFactorySytem.Command> __endFrameBarrier;
@@ -1691,7 +1734,7 @@ public partial struct GameEntitySharedActionSystem : ISystem
     private BufferTypeHandle<GameEntitySharedHit> __hitType;
     private BufferLookup<GameEntitySharedHit> __hitResults;
 
-    public void Create(
+    /*public void Create(
         NativeArray<Item> items,
         NativeArray<ActionObject> actionObjects,
         NativeArray<ActionObjectRange> actionObjectRanges)
@@ -1716,7 +1759,7 @@ public partial struct GameEntitySharedActionSystem : ISystem
         __actionObjectRanges = new NativeArray<ActionObjectRange>(actionObjectRanges.Length, Allocator.Persistent);
 
         NativeArray<ActionObjectRange>.Copy(actionObjectRanges, __actionObjectRanges);
-    }
+    }*/
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
@@ -1751,14 +1794,14 @@ public partial struct GameEntitySharedActionSystem : ISystem
 
     public void OnDestroy(ref SystemState state)
     {
-        if (__items.IsCreated)
+        /*if (__items.IsCreated)
             __items.Dispose();
 
         if (__actionObjects.IsCreated)
             __actionObjects.Dispose();
 
         if (__actionObjectRanges.IsCreated)
-            __actionObjectRanges.Dispose();
+            __actionObjectRanges.Dispose();*/
 
         __hits.Dispose();
 
@@ -1768,7 +1811,9 @@ public partial struct GameEntitySharedActionSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        if (!__actionObjects.IsCreated)
+        /*if (!__actionObjects.IsCreated)
+            return;*/
+        if (!SystemAPI.HasSingleton<GameEntityActionSharedData>())
             return;
 
         ClearHits clearHits;
@@ -1780,9 +1825,10 @@ public partial struct GameEntitySharedActionSystem : ISystem
         NativeFactory<EntityData<GameEntitySharedHit>> hits = __hits;
 
         Factory factory;
-        factory.actionObjects = __actionObjects;
+        /*factory.actionObjects = __actionObjects;
         factory.actionObjectRanges = __actionObjectRanges;
-        factory.items = __items;
+        factory.items = __items;*/
+        factory.definition = SystemAPI.GetSingleton<GameEntityActionSharedData>().definition;
         factory.entityItems = __entityItems.UpdateAsRef(ref state);
         factory.translations = __translations.UpdateAsRef(ref state);
         factory.rotations = __rotations.UpdateAsRef(ref state);

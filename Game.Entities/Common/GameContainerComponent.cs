@@ -18,6 +18,15 @@ public struct GameContainerChild : IBufferElementData, IGameDataEntityCompoent
         writer.Write(entityIndex);
     }
 
+    public int Deserialize(ref EntityDataReader reader)
+    {
+        index = reader.Read<int>();
+
+        entity = Entity.Null;
+
+        return reader.Read<int>();
+    }
+
     Entity IGameDataEntityCompoent.entity
     {
         get => entity;

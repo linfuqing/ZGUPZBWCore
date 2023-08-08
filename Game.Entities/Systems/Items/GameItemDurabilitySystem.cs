@@ -40,8 +40,8 @@ public struct GameItemDurability : IGameItemComponentData<GameItemDurability>
     }
 }
 
-[UpdateInGroup(typeof(TimeSystemGroup)), UpdateAfter(typeof(GameSyncSystemGroup))]
-public partial class GameWeaponSystem : LookupSystem
+[BurstCompile, CreateAfter(typeof(GameItemSystem)), UpdateInGroup(typeof(TimeSystemGroup)), UpdateAfter(typeof(GameSyncSystemGroup))]
+public partial struct GameWeaponSystem : ISystem
 {
     [Serializable]
     public struct Result
@@ -224,7 +224,7 @@ public partial class GameWeaponSystem : LookupSystem
 
         public NativeQueue<Result> inputs;
 
-        public NativeParallelHashMap<GameItemHandle, Value> outputs;
+        public SharedHashMap<GameItemHandle, Value>.Writer outputs;
 
         [ReadOnly]
         public SharedHashMap<Entity, Entity>.Reader handleEntities;
@@ -267,13 +267,21 @@ public partial class GameWeaponSystem : LookupSystem
     private EntityQuery __structChangeManagerGroup;
     private EntityQuery __group;
     private GameUpdateTime __time;
+
+    private EntityTypeHandle __entityType;
+
+    private ComponentLookup<GameItemDurability> __durabilities;
+
+    private ComponentTypeHandle<GameItemRoot> __itemRootType;
+    private ComponentTypeHandle<GameEntityActorHit> __actorHitType;
+
     private GameItemManagerShared __itemManager;
 
     private NativeQueue<Result> __results;
 
     private NativeParallelHashMap<int, Weapon> __weapons;
 
-    public NativeParallelHashMap<GameItemHandle, Value> values
+    public SharedHashMap<GameItemHandle, Value> values
     {
         get;
 
@@ -282,11 +290,6 @@ public partial class GameWeaponSystem : LookupSystem
 
     public bool Create(IEnumerable<KeyValuePair<int, Weapon>> weapons)
     {
-        if (__weapons.IsCreated)
-            return false;
-
-        __weapons = new NativeParallelHashMap<int, Weapon>(1, Allocator.Persistent);
-
         bool result;
         foreach (KeyValuePair<int, Weapon> pair in weapons)
         {
@@ -298,45 +301,45 @@ public partial class GameWeaponSystem : LookupSystem
         return true;
     }
 
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        __structChangeManagerGroup = GameItemStructChangeManager.GetEntityQuery(ref state);
 
-        __structChangeManagerGroup = GameItemStructChangeManager.GetEntityQuery(ref this.GetState());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameItemRoot, GameEntityActorHit>()
+                    .Build(ref state);
 
-        __group = GetEntityQuery(
-            ComponentType.ReadOnly<GameItemRoot>(),
-            ComponentType.ReadOnly<GameEntityActorHit>(),
-            ComponentType.Exclude<Disabled>());
+        __time = new GameUpdateTime(ref state);
 
-        __time = new GameUpdateTime(ref this.GetState());
+        __entityType = state.GetEntityTypeHandle();
+        __itemRootType = state.GetComponentTypeHandle<GameItemRoot>(true);
+        __actorHitType = state.GetComponentTypeHandle<GameEntityActorHit>(true);
+        __durabilities = state.GetComponentLookup<GameItemDurability>(true);
 
-        World world = World;
-
-        __itemManager = world.GetOrCreateSystemUnmanaged<GameItemSystem>().manager;
+        __itemManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>().manager;
 
         __results = new NativeQueue<Result>(Allocator.Persistent);
 
-        values = new NativeParallelHashMap<GameItemHandle, Value>(1, Allocator.Persistent);
+        __weapons = new NativeParallelHashMap<int, Weapon>(1, Allocator.Persistent);
+
+        values = new SharedHashMap<GameItemHandle, Value>(Allocator.Persistent);
     }
 
-    protected override void OnDestroy()
+    //[BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        if (__weapons.IsCreated)
-            __weapons.Dispose();
+        __weapons.Dispose();
 
         __results.Dispose();
 
         values.Dispose();
-
-        base.OnDestroy();
     }
 
-    protected override void _Update()
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
-        if (!__weapons.IsCreated)
-            return;
-
         if (!__itemManager.isCreated)
             return;
 
@@ -350,7 +353,7 @@ public partial class GameWeaponSystem : LookupSystem
 
         var hierarchy = __itemManager.value.hierarchy;
         var handleEntitiesReader = handleEntities.reader;
-        var durabilities = GetComponentLookup<GameItemDurability>(true);
+        var durabilities = __durabilities.UpdateAsRef(ref state);
 
         UpdateDurabilityEx updateDurability;
         updateDurability.deltaTime = __time.delta;
@@ -358,40 +361,45 @@ public partial class GameWeaponSystem : LookupSystem
         updateDurability.weapons = __weapons;
         updateDurability.handleEntities = handleEntitiesReader;
         updateDurability.durabilities = durabilities;
-        updateDurability.entityType = GetEntityTypeHandle();
-        updateDurability.itemRootType = GetComponentTypeHandle<GameItemRoot>(true);
-        updateDurability.actorHitType = GetComponentTypeHandle<GameEntityActorHit>(true);
+        updateDurability.entityType = __entityType.UpdateAsRef(ref state);
+        updateDurability.itemRootType = __itemRootType.UpdateAsRef(ref state);
+        updateDurability.actorHitType = __actorHitType.UpdateAsRef(ref state);
         updateDurability.results = __results.AsParallelWriter();
 
         ref var itemJobManager = ref __itemManager.lookupJobManager;
         ref var entityHandleJobManager = ref handleEntities.lookupJobManager;
 
-        var jobHandle = JobHandle.CombineDependencies(itemJobManager.readOnlyJobHandle, entityHandleJobManager.readOnlyJobHandle, Dependency);
-        jobHandle = updateDurability.ScheduleParallel(__group, jobHandle);
+        var jobHandle = JobHandle.CombineDependencies(itemJobManager.readOnlyJobHandle, entityHandleJobManager.readOnlyJobHandle, state.Dependency);
+        jobHandle = updateDurability.ScheduleParallelByRef(__group, jobHandle);
+
+        var values = this.values;
+        ref var valuesJobManager = ref values.lookupJobManager;
 
         Collect collect;
         collect.hierarchy = hierarchy;
         collect.inputs = __results;
-        collect.outputs = values;
+        collect.outputs = values.writer;
         collect.handleEntities = handleEntitiesReader;
         collect.weapons = __weapons;
         collect.durabilities = durabilities;
-        jobHandle = collect.Schedule(jobHandle);
+        jobHandle = collect.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, valuesJobManager.readWriteJobHandle));
+
+        valuesJobManager.readWriteJobHandle = jobHandle;
 
         itemJobManager.AddReadOnlyDependency(jobHandle);
         entityHandleJobManager.AddReadOnlyDependency(jobHandle);
 
-        Dependency = jobHandle;
+        state.Dependency = jobHandle;
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(GameItemComponentInitSystemGroup), OrderFirst = true)]
+[BurstCompile, CreateAfter(typeof(GameItemSystem)), CreateAfter(typeof(GameItemComponentStructChangeSystem)), UpdateInGroup(typeof(GameItemComponentInitSystemGroup), OrderFirst = true)]
 public struct GameItemDurabilityInitSystem : IGameItemInitializationSystem<GameItemDurability, GameItemDurabilityInitSystem.Initializer>
 {
     public struct Initializer : IGameItemInitializer<GameItemDurability>
     {
         [ReadOnly]
-        public UnsafeParallelHashMap<int, float> values;
+        public NativeHashMap<int, float> values;
 
         public bool IsVail(int type) => values.ContainsKey(type);
 
@@ -406,7 +414,7 @@ public struct GameItemDurabilityInitSystem : IGameItemInitializationSystem<GameI
     }
 
     private GameItemComponentInitSystemCore<GameItemDurability> __core;
-    private UnsafeParallelHashMap<int, float> __values;
+    private NativeHashMap<int, float> __values;
 
     public Initializer initializer
     {
@@ -420,21 +428,21 @@ public struct GameItemDurabilityInitSystem : IGameItemInitializationSystem<GameI
 
     public void Create(Tuple<int, float>[] values)
     {
+        __values.Clear();
+
         foreach (var value in values)
             __values.Add(value.Item1, value.Item2);
     }
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         __core = new GameItemComponentInitSystemCore<GameItemDurability>(ref state);
 
-        __values = new UnsafeParallelHashMap<int, float>(1, Allocator.Persistent);
-
-#if DEBUG
-        EntityCommandUtility.RegisterProducerJobType<GameItemComponentInit<GameItemDurability, Initializer>>();
-#endif
+        __values = new NativeHashMap<int, float>(1, Allocator.Persistent);
     }
 
+    //[BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
         __values.Dispose();
@@ -447,7 +455,10 @@ public struct GameItemDurabilityInitSystem : IGameItemInitializationSystem<GameI
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(GameItemSystemGroup), OrderLast = true)]
+[BurstCompile, 
+    CreateAfter(typeof(GameItemSystem)),
+    CreateAfter(typeof(GameItemDurabilityInitSystem)),
+    UpdateInGroup(typeof(GameItemSystemGroup), OrderLast = true)]
 public partial struct GameItemDurabilityChangeSystem : ISystem
 {
     private GameItemComponentDataChangeSystemCore<GameItemDurability, GameItemDurabilityInitSystem.Initializer> __core;
@@ -455,13 +466,15 @@ public partial struct GameItemDurabilityChangeSystem : ISystem
 
     public SharedList<GameItemChangeResult<GameItemDurability>> results => __core.results;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         __core = new GameItemComponentDataChangeSystemCore<GameItemDurability, GameItemDurabilityInitSystem.Initializer>(ref state);
 
-        __initializer = state.World.GetOrCreateSystemUnmanaged<GameItemDurabilityInitSystem>().initializer;
+        __initializer = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemDurabilityInitSystem>().initializer;
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
         __core.Dispose();
@@ -474,19 +487,23 @@ public partial struct GameItemDurabilityChangeSystem : ISystem
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(GameItemInitSystemGroup), OrderLast = true)]
+[BurstCompile, 
+    CreateAfter(typeof(GameItemDurabilityChangeSystem)), 
+    UpdateInGroup(typeof(GameItemInitSystemGroup), OrderLast = true)]
 public partial struct GameItemDurabilityApplySystem : ISystem
 {
     private GameItemComponentDataApplySystemCore<GameItemDurability> __core;
     private SharedList<GameItemChangeResult<GameItemDurability>> __results;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         __core = new GameItemComponentDataApplySystemCore<GameItemDurability>(ref state);
 
-        __results = state.World.GetOrCreateSystemUnmanaged<GameItemDurabilityChangeSystem>().results;
+        __results = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemDurabilityChangeSystem>().results;
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
     }
@@ -498,28 +515,37 @@ public partial struct GameItemDurabilityApplySystem : ISystem
     }
 }
 
-[AlwaysUpdateSystem, UpdateInGroup(typeof(PresentationSystemGroup))]//UpdateInGroup(typeof(InitializationSystemGroup)), UpdateAfter(typeof(EntityObjectSystemGroup))]
-public partial class GameWeaponCallbackSystem : SystemBase
+[BurstCompile, CreateAfter(typeof(GameWeaponSystem)), UpdateInGroup(typeof(PresentationSystemGroup))]//UpdateInGroup(typeof(InitializationSystemGroup)), UpdateAfter(typeof(EntityObjectSystemGroup))]
+public partial struct GameWeaponCallbackSystem : ISystem
 {
     private EntityQuery __group;
-    private GameWeaponSystem __system;
+    private SharedHashMap<GameItemHandle, GameWeaponSystem.Value> __values;
 
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        using(var builder = new EntityQueryBuilder(Allocator.Temp))
+        __group = builder
+                .WithAll<GameWeaponCallback>()
+                .WithNone<GameItemRoot>()
+                .Build(ref state);
 
-        __group = GetEntityQuery(ComponentType.ReadOnly<GameWeaponCallback>(), ComponentType.Exclude<GameItemRoot>());
-
-        __system = World.GetOrCreateSystemManaged<GameWeaponSystem>();
+        __values = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameWeaponSystem>().values;
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        var entityManager = EntityManager;
+
+    }
+
+    public void OnUpdate(ref SystemState state)
+    {
+        var entityManager = state.EntityManager;
         if (!__group.IsEmptyIgnoreFilter)
         {
             //TODO: 
-            CompleteDependency();
+            state.CompleteDependency();
 
             using(var callbacks = __group.ToComponentDataArray<GameWeaponCallback>(Allocator.Temp))
             {
@@ -530,9 +556,9 @@ public partial class GameWeaponCallbackSystem : SystemBase
             entityManager.RemoveComponent<GameWeaponCallback>(__group);
         }
 
-        __system.CompleteReadWriteDependency();
+        __values.lookupJobManager.CompleteReadWriteDependency();
 
-        var values = __system.values;
+        var values = __values.writer;
         using (var keyValueArrays = values.GetKeyValueArrays(Allocator.Temp))
         {
             int length = keyValueArrays.Length;

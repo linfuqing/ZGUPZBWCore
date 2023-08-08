@@ -67,10 +67,12 @@ public partial struct GameDataSystemGroup : ISystem
     //UpdateBefore(typeof(GameItemInitSystemGroup)), 
     UpdateBefore(typeof(GameDataSystemGroup)),
     UpdateAfter(typeof(BeginFrameEntityCommandSystem))]
-public partial class GameDataDeserializationSystemGroup : EntityDataDeserializationSystemGroup
+public partial class GameDataDeserializationSystemGroup : EntityDataDeserializationManagedSystem
 {
     private string __filePath;
-    private EntityDataDeserializationCommander __commander;
+    private SystemHandle __system;
+    private EntityDataDeserializationBuilder __builder;
+    //private EntityDataDeserializationCommander __commander;
 
     public bool isDone => path != null && !Enabled;
 
@@ -81,9 +83,9 @@ public partial class GameDataDeserializationSystemGroup : EntityDataDeserializat
         private set;
     }
 
-    public override NativeArray<Hash128>.ReadOnly types => SystemAPI.GetSingleton<EntityDataCommon>().typesGUIDs;
+    //public override NativeArray<Hash128>.ReadOnly types => SystemAPI.GetSingleton<EntityDataCommon>().typesGUIDs;
 
-    public bool Activate(string path, EntityDataDeserializationCommander commander/*, Hash128[] types, ref Entity entity*/)
+    public bool Activate(string path/*, EntityDataDeserializationCommander commander, Hash128[] types, ref Entity entity*/)
     {
         path = Path.Combine(UnityEngine.Application.persistentDataPath, path);
         this.path = path;
@@ -103,23 +105,46 @@ public partial class GameDataDeserializationSystemGroup : EntityDataDeserializat
         if (i < 0)
             return false;
 
-        __commander = commander;
+        //__commander = commander;
 
-        Enabled = true;
-
-        return true;
+        return Build(out _, out _);
     }
 
-    public override EntityDataDeserializationCommander CreateCommander() => __commander;
+    //public override EntityDataDeserializationCommander CreateCommander() => __commander;
 
     protected override void OnCreate()
     {
         base.OnCreate();
 
-        Enabled = false;
+        __system = World.GetOrCreateSystem<EntityDataDeserializationSystemGroup>();
     }
 
-    protected override byte[] _GetBytes()
+    protected override void OnUpdate()
+    {
+        switch(EntityManager.GetComponentData<EntityDataDeserializationStatus>(__system).value)
+        {
+            case EntityDataDeserializationStatus.Value.None:
+                if (SystemAPI.TryGetSingleton(out GameDataCommon common))
+                {
+                    bool result = Activate(common.path.ToString());
+
+                    if(result)
+                        __system.Update(World.Unmanaged);
+
+                    Enabled = result;
+                }
+
+                break;
+            case EntityDataDeserializationStatus.Value.Complete:
+                Enabled = false;
+                break;
+            default:
+                __system.Update(World.Unmanaged);
+                break;
+        }
+    }
+
+    public override byte[] GetBytes()
     {
         return File.ReadAllBytes(__filePath);
     }

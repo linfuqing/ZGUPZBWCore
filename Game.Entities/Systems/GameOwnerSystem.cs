@@ -18,6 +18,11 @@ public struct GameOwner : IGameDataEntityCompoent, IComponentData
         writer.Write(entityIndex);
     }
 
+    public int Deserialize(ref EntityDataReader reader)
+    {
+        return reader.Read<int>();
+    }
+
     Entity IGameDataEntityCompoent.entity
     {
         get => entity;

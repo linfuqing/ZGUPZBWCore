@@ -157,7 +157,7 @@ public struct GameAreaCollectInstanceAreaIndices : IJobChunk, IEntityCommandProd
             int areaIndex = nodes[index].areaIndex;
             bool result = areaIndices.TryAdd(instances[index].prefabIndex, areaIndex);
 
-            UnityEngine.Assertions.Assert.IsTrue(result);
+            UnityEngine.Assertions.Assert.IsTrue(result, $"Prefab Index {instances[index].prefabIndex} Error");
 
             EntityData<GameAreaPrefab> prefab;
             prefab.entity = entityArray[index];
@@ -298,7 +298,6 @@ public struct GameAreaTriggerCreateNodeEvents : IJob
     public BlobAssetReference<GameAreaPrefabDefinition> definition;
     public NativeFactory<GameAreaInternalInstance> instances;
     public TimeManager<GameAreaInternalInstance>.Writer timeManager;
-    public EntityCommandQueue<GameAreaCreateNodeCommand>.Writer entityManager;
 
     public void Execute()
     {
@@ -319,7 +318,43 @@ public struct GameAreaTriggerCreateNodeEvents : IJob
 }
 
 [BurstCompile]
-public struct GameAreaInvokeCommands<T> : IJobParallelForDefer, IEntityCommandProducerJob where T : IGameAreaValidator
+public struct GameAreaRecapacity : IJob
+{
+    public BlobAssetReference<GameAreaPrefabDefinition> definition;
+    [ReadOnly]
+    public NativeList<GameAreaInternalInstance> commands;
+    public NativeList<GameAreaCreateNodeCommand> results;
+
+    public int CountOf(int index)
+    {
+        ref var definition = ref this.definition.Value;
+
+        var command = commands[index];
+        /*if (!validator.Check(command.areaIndex))
+            return;*/
+
+        ref var prefab = ref definition.prefabs[command.prefabIndex];
+
+        ref var asset = ref definition.assets[prefab.assetIndex];
+
+        var randomGroups = definition.randomGroups.AsArray().Slice(asset.groupStartIndex, asset.groupCount);
+
+        return RandomUtility.CountOf(randomGroups);
+    }
+
+    public void Execute()
+    {
+        int count = 0, length = commands.Length;
+        for (int i = 0; i < length; ++i)
+            count += CountOf(i);
+
+        results.Capacity = math.max(results.Capacity, commands.Length + count);
+    }
+}
+
+[BurstCompile]
+public struct GameAreaInvokeCommands<T> : IJobParallelForDefer//, IEntityCommandProducerJob 
+    where T : IGameAreaValidator
 {
     public struct RandomItemHandler : IRandomItemHandler
     {
@@ -328,7 +363,7 @@ public struct GameAreaInvokeCommands<T> : IJobParallelForDefer, IEntityCommandPr
         public int areaIndex;
         public RigidTransform transform;
 
-        public EntityCommandQueue<GameAreaCreateNodeCommand>.ParallelWriter entityManager;
+        public NativeList<GameAreaCreateNodeCommand>.ParallelWriter commands;
 
         public T validator;
 
@@ -343,7 +378,7 @@ public struct GameAreaInvokeCommands<T> : IJobParallelForDefer, IEntityCommandPr
                 command.typeIndex = startIndex + i;
                 if (validator.Check(index, ref command))
                 {
-                    entityManager.Enqueue(command);
+                    commands.AddNoResize(command);
 
                     return RandomResult.Success;
                 }
@@ -353,7 +388,8 @@ public struct GameAreaInvokeCommands<T> : IJobParallelForDefer, IEntityCommandPr
         }
     }
 
-    public Random random;
+    public uint hash;
+
     public BlobAssetReference<GameAreaPrefabDefinition> definition;
     [ReadOnly]
     public NativeArray<GameAreaInternalInstance> commands;
@@ -362,7 +398,7 @@ public struct GameAreaInvokeCommands<T> : IJobParallelForDefer, IEntityCommandPr
 
     public SharedHashMap<Hash128, int>.ParallelWriter versions;
 
-    public EntityCommandQueue<GameAreaCreateNodeCommand>.ParallelWriter entityManager;
+    public NativeList<GameAreaCreateNodeCommand>.ParallelWriter results;
 
     public T validator;
 
@@ -379,14 +415,14 @@ public struct GameAreaInvokeCommands<T> : IJobParallelForDefer, IEntityCommandPr
         randomItemHandler.areaIndex = command.areaIndex;
         randomItemHandler.prefabIndex = command.prefabIndex;
 
-        var prefab = definition.prefabs[command.prefabIndex];
+        ref var prefab = ref definition.prefabs[command.prefabIndex];
         randomItemHandler.transform = prefab.transform;
 
-        randomItemHandler.entityManager = entityManager;
+        randomItemHandler.commands = results;
 
         randomItemHandler.validator = validator;
 
-        var asset = definition.assets[prefab.assetIndex];
+        ref var asset = ref definition.assets[prefab.assetIndex];
         /*if (!random.Next(
                 ref randomItemHandler,
                 randomGroups.Slice(asset.groupStartIndex, asset.groupCount),
@@ -400,6 +436,7 @@ public struct GameAreaInvokeCommands<T> : IJobParallelForDefer, IEntityCommandPr
             instances.Enqueue(instance);
         }*/
 
+        var random = new Random(hash ^ (uint)index);
         GameAreaInternalInstance instance;
         var randomGroups = definition.randomGroups.AsArray();
         if ((command.flag & GameAreaInternalInstance.Flag.Random) == GameAreaInternalInstance.Flag.Random)

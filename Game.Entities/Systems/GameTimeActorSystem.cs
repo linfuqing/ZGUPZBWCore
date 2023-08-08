@@ -9,9 +9,56 @@ using Unity.Transforms;
 using ZG;
 using Random = Unity.Mathematics.Random;
 
-[AutoCreateIn("Server"), UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(StateMachineSchedulerGroup))/*, UpdateAfter(typeof(GameNodeEventSystem))*/]
-public partial class GameTimeActorSystem : SystemBase
+[BurstCompile, AutoCreateIn("Server"), UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(StateMachineSchedulerGroup))/*, UpdateAfter(typeof(GameNodeEventSystem))*/]
+public partial struct GameTimeActorSystem : ISystem
 {
+    private struct Count
+    {
+        public NativeArray<int> counter;
+
+        [ReadOnly]
+        public BufferAccessor<GameTimeAction> actions;
+
+        public void Execute(int index)
+        {
+            counter[0] += actions[index].Length;
+        }
+    }
+
+    [BurstCompile]
+    private struct CountEx : IJobChunk
+    {
+        public NativeArray<int> counter;
+
+        [ReadOnly]
+        public BufferTypeHandle<GameTimeAction> actionType;
+
+        public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+        {
+            Count count;
+            count.counter = counter;
+            count.actions = chunk.GetBufferAccessor(ref actionType);
+
+            var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+            while (iterator.NextEntityIndex(out int i))
+                count.Execute(i);
+        }
+    }
+
+    [BurstCompile]
+    public struct Recapcity : IJob
+    {
+        [ReadOnly, DeallocateOnJobCompletion]
+        public NativeArray<int> counter;
+
+        public NativeList<GameSpawnData> results;
+
+        public void Execute()
+        {
+            results.Capacity = math.max(results.Capacity, results.Length + counter[0]);
+        }
+    }
+
     private struct Act
     {
         public float elapsedTime;
@@ -51,7 +98,7 @@ public partial class GameTimeActorSystem : SystemBase
         [NativeDisableParallelForRestriction]
         public ComponentLookup<GameEntityActionCommand> commands;
 
-        public EntityCommandQueue<GameSpawnData>.ParallelWriter entityManager;
+        public SharedList<GameSpawnData>.ParallelWriter results;
         
         public void Execute(int index)
         {
@@ -131,7 +178,7 @@ public partial class GameTimeActorSystem : SystemBase
                                 spawnData.entity = entity;
                                 spawnData.transform = math.RigidTransform(transform.rot, math.transform(transform, action.spawnOffset));
 
-                                entityManager.Enqueue(spawnData);
+                                results.AddNoResize(spawnData);
                             }
                             else
                             {
@@ -161,7 +208,7 @@ public partial class GameTimeActorSystem : SystemBase
     }
 
     [BurstCompile]
-    private struct ActEx : IJobChunk, IEntityCommandProducerJob
+    private struct ActEx : IJobChunk//, IEntityCommandProducerJob
     {
         public float elapsedTime;
         public GameTime time;
@@ -190,7 +237,7 @@ public partial class GameTimeActorSystem : SystemBase
         [NativeDisableParallelForRestriction]
         public ComponentLookup<GameEntityActionCommand> commands;
 
-        public EntityCommandQueue<GameSpawnData>.ParallelWriter entityManager;
+        public SharedList<GameSpawnData>.ParallelWriter results;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -210,7 +257,7 @@ public partial class GameTimeActorSystem : SystemBase
             act.counters = chunk.GetBufferAccessor(ref counterType);
             act.elpasedTimes = chunk.GetBufferAccessor(ref elpasedTimeType);
             act.commands = commands;
-            act.entityManager = entityManager;
+            act.results = results;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -219,8 +266,23 @@ public partial class GameTimeActorSystem : SystemBase
     }
 
     private EntityQuery __group;
+
+    private EntityTypeHandle __entityType;
+    private ComponentTypeHandle<Translation> __translationType;
+    private ComponentTypeHandle<Rotation> __rotationType;
+    private ComponentTypeHandle<GameNodeStatus> __statusType;
+    private ComponentTypeHandle<GameNodeDelay> __delayType;
+    private ComponentTypeHandle<GameEntityCommandVersion> __versionType;
+    private ComponentTypeHandle<GameTimeActionFactor> __factorType;
+    private BufferTypeHandle<GameTimeAction> __actionType;
+    private BufferTypeHandle<GameSpawnerAssetCounter> __counterType;
+
+    private BufferTypeHandle<GameTimeActionElapsedTime> __elpasedTimeType;
+    private ComponentLookup<GameEntityActionCommand> __commands;
+
     private GameSyncTime __time;
-    private EntityCommandPool<GameSpawnData> __entityManager;
+
+    /*private EntityCommandPool<GameSpawnData> __entityManager;
 
     public void Create<T>(T instance) where T : GameSpawnCommander
     {
@@ -232,48 +294,83 @@ public partial class GameTimeActorSystem : SystemBase
     {
         ///Why EndFrameSyncSystemGroupEntityCommandSystem ???
         __entityManager = World.GetExistingSystemManaged<EndTimeSystemGroupEntityCommandSystem>().GetOrCreate<GameSpawnData, T>(EntityCommandManager.QUEUE_PRESENT);
+    }*/
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameNodeStatus, GameTimeAction>()
+                    .WithAllRW<GameTimeActionElapsedTime>()
+                    .Build(ref state);
+
+        __entityType = state.GetEntityTypeHandle();
+        __translationType = state.GetComponentTypeHandle<Translation>(true);
+        __rotationType = state.GetComponentTypeHandle<Rotation>(true);
+        __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
+        __delayType = state.GetComponentTypeHandle<GameNodeDelay>(true);
+        __versionType = state.GetComponentTypeHandle<GameEntityCommandVersion>(true);
+        __factorType = state.GetComponentTypeHandle<GameTimeActionFactor>(true);
+        __actionType = state.GetBufferTypeHandle<GameTimeAction>(true);
+        __counterType = state.GetBufferTypeHandle<GameSpawnerAssetCounter>(true);
+        __elpasedTimeType = state.GetBufferTypeHandle<GameTimeActionElapsedTime>();
+        __commands = state.GetComponentLookup<GameEntityActionCommand>();
+
+        __time = new GameSyncTime(ref state);
     }
 
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        base.OnCreate();
 
-        __group = GetEntityQuery(
-            ComponentType.ReadOnly<GameNodeStatus>(),
-            ComponentType.ReadOnly<GameTimeAction>(),
-            ComponentType.ReadWrite<GameTimeActionElapsedTime>(),
-            ComponentType.Exclude<Disabled>());
-
-        __time = new GameSyncTime(ref this.GetState());
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
-        if (!__entityManager.isCreated)
+        if (!SystemAPI.HasSingleton<GameRandomSpawnerFactory>())
             return;
 
-        var entityMananger = __entityManager.Create();
+        var actionType = __actionType.UpdateAsRef(ref state);
+
+        var counter = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
+
+        CountEx count;
+        count.counter = counter;
+        count.actionType = actionType;
+        var jobHandle = count.ScheduleByRef(__group, state.Dependency);
+
+        var commands = SystemAPI.GetSingleton<GameRandomSpawnerFactory>().commands;
+        ref var commandsJobManager = ref commands.lookupJobManager;
+
+        Recapcity recapcity;
+        recapcity.counter = counter;
+        recapcity.results = commands.writer;
+        jobHandle = recapcity.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, commandsJobManager.readWriteJobHandle));
 
         ActEx act;
         act.elapsedTime = __time.frameDelta;
         act.time = __time.nextTime;
-        act.entityType = GetEntityTypeHandle();
-        act.translationType = GetComponentTypeHandle<Translation>(true);
-        act.rotationType = GetComponentTypeHandle<Rotation>(true);
-        act.statusType = GetComponentTypeHandle<GameNodeStatus>(true);
-        act.delayType = GetComponentTypeHandle<GameNodeDelay>(true);
-        act.versionType = GetComponentTypeHandle<GameEntityCommandVersion>(true);
-        act.factorType = GetComponentTypeHandle<GameTimeActionFactor>(true);
-        act.actionType = GetBufferTypeHandle<GameTimeAction>(true);
-        act.counterType = GetBufferTypeHandle<GameSpawnerAssetCounter>(true);
-        act.elpasedTimeType = GetBufferTypeHandle<GameTimeActionElapsedTime>();
-        act.commands = GetComponentLookup<GameEntityActionCommand>();
-        act.entityManager = entityMananger.parallelWriter;
+        act.entityType = __entityType.UpdateAsRef(ref state);
+        act.translationType = __translationType.UpdateAsRef(ref state);
+        act.rotationType = __rotationType.UpdateAsRef(ref state);
+        act.statusType = __statusType.UpdateAsRef(ref state);
+        act.delayType = __delayType.UpdateAsRef(ref state);
+        act.versionType = __versionType.UpdateAsRef(ref state);
+        act.factorType = __factorType.UpdateAsRef(ref state);
+        act.actionType = actionType;
+        act.counterType = __counterType.UpdateAsRef(ref state);
+        act.elpasedTimeType = __elpasedTimeType.UpdateAsRef(ref state);
+        act.commands = __commands.UpdateAsRef(ref state);
+        act.results = commands.parallelWriter;
 
-        var jobHandle = act.ScheduleParallel(__group, Dependency);
+        jobHandle = act.ScheduleParallelByRef(__group, jobHandle);
 
-        entityMananger.AddJobHandleForProducer<ActEx>(jobHandle);
+        //entityMananger.AddJobHandleForProducer<ActEx>(jobHandle);
 
-        Dependency = jobHandle;
+        commandsJobManager.readWriteJobHandle = jobHandle;
+
+        state.Dependency = jobHandle;
     }
 }
