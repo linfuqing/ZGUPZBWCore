@@ -17,7 +17,7 @@ using ZG;
 #region GameActorMaster
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataEntityComponentDataSerializationSystemCore<GameActorMaster>.Serializer, GameDataEntityComponentDataSerializationSystemCore<GameActorMaster>.SerializerFactory>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataEntityComponentDataDeserializationSystemCore<GameActorMaster>.Deserializer, GameDataEntityComponentDataDeserializationSystemCore<GameActorMaster>.DeserializerFactory>))]
-[assembly: RegisterGenericJobType(typeof(GameDataEntityComponentDataDeserializationSystemCore<GameOwner>.Build))]
+[assembly: RegisterGenericJobType(typeof(GameDataEntityComponentDataDeserializationSystemCore<GameActorMaster>.Build))]
 //[assembly: EntityDataSerialize(typeof(GameActorMaster), typeof(GameDataEntityCompoentDataSerializationSystem<GameActorMaster>))]
 //[assembly: EntityDataDeserialize(typeof(GameActorMaster), typeof(GameDataEntityCompoentDataDeserializationSystem<GameActorMaster>), (int)GameDataConstans.Version)]
 #endregion
