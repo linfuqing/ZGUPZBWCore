@@ -179,20 +179,13 @@ public struct GameRollbackManager
     }
 #endif
 
-    public static readonly ComponentType[] ComponentTypes = new ComponentType[]
-    {
-        ComponentType.ReadOnly<GameRollbackFrameDelta>(),
-        ComponentType.ReadOnly<GameRollbackFrameOffset>()//,
-        //ComponentType.ReadOnly<GameRollbackManager>()
-    };
-
     public GameRollbackManager(ref SystemState systemState)
     {
         __frameSyncSystemGroup = new FrameSyncSystemGroup(ref systemState);
 
         var entityManager = systemState.EntityManager;
         var systemHandle = systemState.SystemHandle;
-        entityManager.AddComponent(systemHandle, new ComponentTypeSet(ComponentTypes));
+        entityManager.AddComponent(systemHandle, new ComponentTypeSet(ComponentType.ReadOnly<GameRollbackFrameDelta>(), ComponentType.ReadOnly<GameRollbackFrameOffset>()));
 
         GameRollbackFrameDelta delta;
         delta.value = UnityEngine.Time.fixedDeltaTime;
@@ -227,7 +220,7 @@ public partial struct GameRollbackSystemGroup : ISystem
         private set;
     }
 
-    [BurstCompile]
+    //[BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         manager = new GameRollbackManager(ref state);
