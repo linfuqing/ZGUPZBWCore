@@ -500,6 +500,16 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
         GameActionStatus.Status destroyStatus = 0;
         Entity actionEntity;
         var asset = __assets[instance.index];
+        if(asset.gameObject == null)
+        {
+            if (isAction)
+                __endFrameBarrier.RemoveComponent<GameActionSharedObjectData>(entity);
+            else
+                __endFrameBarrier.DestroyEntity(entity);
+
+            return;
+        }
+
         var gameObject = UnityEngine.Object.Instantiate(
             asset.gameObject,
             instance.transform.pos,

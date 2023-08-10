@@ -59,14 +59,17 @@ public partial struct GameRandomSpawnerSystem : ISystem
             if (length < 1)
                 return;
 
+            int count = 0;
             var groups = this.groups[index].Reinterpret<RandomGroup>().AsNativeArray();
             var slices = this.slices[index];
             GameRandomSpawnerSlice slice;
             for (int i = 0; i < length; ++i)
             {
                 slice = slices[nodes[i].sliceIndex];
-                counter.Add(0, RandomUtility.CountOf(groups.Slice(slice.groupStartIndex, slice.groupCount)));
+                count += RandomUtility.CountOf(groups.Slice(slice.groupStartIndex, slice.groupCount));
             }
+
+            counter.Add(0, count);
         }
     }
 

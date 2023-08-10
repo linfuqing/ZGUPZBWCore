@@ -3,8 +3,6 @@ using Unity.Entities;
 using Unity.Collections;
 using ZG;
 using Unity.Burst;
-using Unity.Burst.Intrinsics;
-using Unity.Collections.LowLevel.Unsafe;
 
 #region GameItemTime
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<
@@ -84,6 +82,10 @@ using Unity.Collections.LowLevel.Unsafe;
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<
     EntityDataSerializationIndexComponentDataSystemCore<GameItemLevel, GameItemLevelWrapper>.Serializer,
     EntityDataSerializationIndexComponentDataSystemCore<GameItemLevel, GameItemLevelWrapper>.SerializerFactory>))]
+
+[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<
+    EntityDataDeserializationIndexComponentDataSystemCore<GameItemLevel, GameItemLevelWrapper>.Deserializer,
+    EntityDataDeserializationIndexComponentDataSystemCore<GameItemLevel, GameItemLevelWrapper>.DeserializerFactory>))]
 
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<
     GameDataItemLevelDeserializationSystem.Deserializer,

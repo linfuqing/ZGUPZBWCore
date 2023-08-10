@@ -6,6 +6,7 @@ using ZG;
 
 #region GameLevelManager
 [assembly: RegisterGenericJobType(typeof(EntityDataIndexComponentInit<GameLevel, GameLevelWrapper>))]
+[assembly: RegisterGenericJobType(typeof(EntityDataIndexComponentInit<GameItemLevel, GameItemLevelWrapper>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataIndexBufferInit<GameSoul, GameSoulLevelWrapper>))]
 
 //[assembly: RegisterGenericJobType(typeof(EntityDataContainerSerialize<GameDataLevelContainerSerializationSystem.Serializer>))]
@@ -190,18 +191,20 @@ public partial struct GameDataLevelContainerSerializationSystem : ISystem, IEnti
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        var jobHandle = __core.Clear(state.Dependency);
+        var jobHandle = __core.CommandBegin(state.Dependency);
 
         var guids = SystemAPI.GetSingleton<GameDataSoulContainer>().guids;
 
         GameLevelWrapper instanceWrapper;
-        jobHandle = __core.Update(__instanceGroup, guids, __instanceType.UpdateAsRef(ref state), ref instanceWrapper, jobHandle);
+        jobHandle = __core.CommandUpdate(__instanceGroup, guids, __instanceType.UpdateAsRef(ref state), ref instanceWrapper, jobHandle);
 
         GameItemLevelWrapper itemWrapper;
-        jobHandle = __core.Update(__itemGroup, guids, __itemType.UpdateAsRef(ref state), ref itemWrapper, jobHandle);
+        jobHandle = __core.CommandUpdate(__itemGroup, guids, __itemType.UpdateAsRef(ref state), ref itemWrapper, jobHandle);
 
         GameSoulLevelWrapper soulWrapper;
-        state.Dependency = __core.Update(__soulGroup, guids, __soulType.UpdateAsRef(ref state), ref soulWrapper, jobHandle);
+        state.Dependency = __core.CommandUpdate(__soulGroup, guids, __soulType.UpdateAsRef(ref state), ref soulWrapper, jobHandle);
+
+        __core.CommandEnd(ref state);
     }
 }
 
