@@ -412,6 +412,9 @@ public partial struct GameShapeRollbackSystem : ISystem, IRollbackCore
 
     private EntityQuery __group;
 
+    private ComponentLookup<GameNodeShpaeDefault> __shapes;
+    private ComponentLookup<PhysicsExclude> __physicsExcludes;
+
     private EntityCommandPool<EntityCommandStructChange> __addComponentCommander;
     private EntityCommandPool<EntityCommandStructChange> __removeComponentCommander;
 
@@ -446,6 +449,9 @@ public partial struct GameShapeRollbackSystem : ISystem, IRollbackCore
                 }
             }*/;
 
+        __shapes = state.GetComponentLookup<GameNodeShpaeDefault>(true);
+        __physicsExcludes = state.GetComponentLookup<PhysicsExclude>(true);
+
         var world = state.WorldUnmanaged;
         var manager = world.GetExistingSystemUnmanaged<EndRollbackSystemGroupStructChangeSystem>().manager;
         __addComponentCommander = manager.addComponentPool;
@@ -477,8 +483,8 @@ public partial struct GameShapeRollbackSystem : ISystem, IRollbackCore
         var entityManager = __removeComponentCommander.Create();
 
         Restore restore;
-        restore.shapes = state.GetComponentLookup<GameNodeShpaeDefault>(true);
-        restore.physicsExcludes = state.GetComponentLookup<PhysicsExclude>(true);
+        restore.shapes = __shapes.UpdateAsRef(ref state);
+        restore.physicsExcludes = __physicsExcludes.UpdateAsRef(ref state);
         //restore.physicsColliders = __manager.DelegateRestore(__physicsColliders, ref state);
         restore.entityManager = entityManager.parallelWriter;
 
@@ -676,6 +682,12 @@ public partial struct GameRollbackObjectSystem : ISystem, IRollbackCore
 
     private EntityQuery __group;
 
+    private EntityTypeHandle __entityType;
+
+    private ComponentLookup<RollbackObject> __rollbackObjects;
+
+    private ComponentLookup<Disabled> __disabled;
+
     private EntityCommandPool<EntityCommandStructChange> __addComponentCommander;
     private EntityCommandPool<EntityCommandStructChange> __removeComponentCommander;
 
@@ -685,6 +697,11 @@ public partial struct GameRollbackObjectSystem : ISystem, IRollbackCore
     public void OnCreate(ref SystemState state)
     {
         __group = state.GetEntityQuery(ComponentType.ReadOnly<RollbackObject>());
+
+        __entityType = state.GetEntityTypeHandle();
+
+        __rollbackObjects = state.GetComponentLookup<RollbackObject>(true);
+        __disabled = state.GetComponentLookup<Disabled>(true);
 
         var world = state.WorldUnmanaged;
 
@@ -711,25 +728,27 @@ public partial struct GameRollbackObjectSystem : ISystem, IRollbackCore
 
     public void ScheduleRestore(uint frameIndex, ref SystemState state)
     {
-        var jobHandle = state.Dependency;
-        __manager.AddComponentIfNotSaved<Disabled>(
+        var inputDeps = __manager.GetChunk(frameIndex, state.Dependency);
+
+        var jobHandle = __manager.AddComponentIfNotSaved<Disabled>(
             frameIndex, 
             __group, 
-            __addComponentCommander, 
-            ref state);
+            __entityType.UpdateAsRef(ref state), 
+            __addComponentCommander,
+            inputDeps);
 
         var removeComponentCommander = __removeComponentCommander.Create();
 
         Restore restore;
-        restore.rollbackObjects = state.GetComponentLookup<RollbackObject>(true);
-        restore.disabled = state.GetComponentLookup<Disabled>(true);
+        restore.rollbackObjects = __rollbackObjects.UpdateAsRef(ref state);
+        restore.disabled = __disabled.UpdateAsRef(ref state);
         restore.entityManager = removeComponentCommander.parallelWriter;
 
         jobHandle = __manager.ScheduleParallel(restore, frameIndex, jobHandle);
 
         removeComponentCommander.AddJobHandleForProducer<Restore>(jobHandle);
 
-        state.Dependency = JobHandle.CombineDependencies(state.Dependency, jobHandle);
+        state.Dependency = jobHandle;
     }
 
     public void ScheduleSave(uint frameIndex, in EntityTypeHandle entityType, ref SystemState state)

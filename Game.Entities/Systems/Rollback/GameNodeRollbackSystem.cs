@@ -1443,10 +1443,12 @@ public partial struct GameNodeChildRollbackSystem : ISystem, IRollbackCore
 
         var jobHandle = state.Dependency;
 
+        jobHandle = __manager.GetChunk(frameIndex, jobHandle);
+
         Restore restore;
         restore.instances = state.GetComponentLookup<GameNodeSpeed>(true);
         restore.parents = __manager.DelegateRestore(__parents, ref state);
-        restore.entityManager = entityManager.AsComponentParallelWriter<GameNodeParent>(__manager.GetEntityCount(frameIndex));
+        restore.entityManager = entityManager.AsComponentParallelWriter<GameNodeParent>(__manager.countAndStartIndex, ref jobHandle);
 
         jobHandle = __manager.ScheduleParallel(restore, frameIndex, jobHandle);
 

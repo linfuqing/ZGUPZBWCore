@@ -1345,6 +1345,23 @@ public partial class GameEntityActorRollbackSystem : SystemBase
     AutoCreateIn("Client")]
 public partial struct GameActionRollbackSystem : ISystem, IRollbackCore
 {
+    [BurstCompile]
+    private struct Recapcity : IJob
+    {
+        [ReadOnly]
+        public NativeArray<int> count;
+
+        public SharedMultiHashMap<EntityArchetype, GameActionRollbackCreateCommand> entityManager;
+
+        public void Execute()
+        {
+            int entityCount = entityManager.Count() + count[0];
+
+            if (entityManager.capacity < entityCount)
+                entityManager.capacity = entityCount;
+        }
+    }
+
     public struct Restore : IRollbackRestore
     {
         //[ReadOnly]
@@ -1518,6 +1535,10 @@ public partial struct GameActionRollbackSystem : ISystem, IRollbackCore
     private EntityQuery __group;
     //private EntityQuery __actionSetGroup;
 
+    private BufferLookup<GameEntityAction> __entityActions;
+
+    private ComponentLookup<GameEntityActionInfo> __actionInfos;
+
     private SharedMultiHashMap<EntityArchetype, GameActionRollbackCreateCommand> __entityManager;
 
     private RollbackManager<Restore, Save, Clear> __manager;
@@ -1540,6 +1561,9 @@ public partial struct GameActionRollbackSystem : ISystem, IRollbackCore
                     .Build(ref state);
 
         //__actionSetGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameActionSetData>());
+
+        __entityActions = state.GetBufferLookup<GameEntityAction>(true);
+        __actionInfos = state.GetComponentLookup<GameEntityActionInfo>(true);
 
         var world = state.WorldUnmanaged;
         ref var endFrameBarrier = ref world.GetExistingSystemUnmanaged<GameActionRollbackFactroySystem>();
@@ -1573,16 +1597,19 @@ public partial struct GameActionRollbackSystem : ISystem, IRollbackCore
 
     public void ScheduleRestore(uint frameIndex, ref SystemState state)
     {
-        __entityManager.lookupJobManager.CompleteReadWriteDependency();
-        int entityCount = __entityManager.Count() + __manager.GetEntityCount(frameIndex);
+        Recapcity recapcity;
+        recapcity.count = __manager.countAndStartIndex;
+        recapcity.entityManager = __entityManager;
 
-        if (__entityManager.capacity < entityCount)
-            __entityManager.capacity = entityCount;
+        ref var entityManagerJobManager = ref __entityManager.lookupJobManager;
+        var jobHandle = recapcity.ScheduleByRef(JobHandle.CombineDependencies(
+            entityManagerJobManager.readWriteJobHandle, 
+            __manager.GetChunk(frameIndex, state.Dependency)));
 
         Restore restore;
         //restore.actions = __actions;
-        restore.entityActions = state.GetBufferLookup<GameEntityAction>(true);
-        restore.actionInfos = state.GetComponentLookup<GameEntityActionInfo>(true);
+        restore.entityActions = __entityActions.UpdateAsRef(ref state);
+        restore.actionInfos = __actionInfos.UpdateAsRef(ref state);
         //restore.disabled = GetComponentLookup<GameActionDisabled>(true);
         restore.translations = __manager.DelegateRestore(__translations, ref state);
         restore.rotations = __manager.DelegateRestore(__rotations, ref state);
@@ -1594,7 +1621,7 @@ public partial struct GameActionRollbackSystem : ISystem, IRollbackCore
         restore.entities = __manager.DelegateRestore(__entities, ref state);
         restore.entityManager = __entityManager.parallelWriter;
 
-        var jobHandle = __manager.ScheduleParallel(restore, frameIndex, state.Dependency);
+        jobHandle = __manager.ScheduleParallel(restore, frameIndex, jobHandle);
 
         __entityManager.lookupJobManager.readWriteJobHandle = jobHandle;
 

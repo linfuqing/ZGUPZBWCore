@@ -236,6 +236,7 @@ public partial struct GameDreamerRollbackSystem : ISystem, IRollbackCore
     }
 
     private EntityQuery __group;
+    private EntityTypeHandle __entityType;
     private EntityCommandPool<EntityCommandStructChange> __removeComponentCommander;
     private EntityAddDataPool __addComponentCommander;
 
@@ -254,6 +255,8 @@ public partial struct GameDreamerRollbackSystem : ISystem, IRollbackCore
                     .WithAll<RollbackObject>()
                     .WithAllRW<GameDreamer>()
                     .Build(ref state);
+
+        __entityType = state.GetEntityTypeHandle();
 
         var world = state.WorldUnmanaged;
         ref var endFrameBarrier = ref world.GetExistingSystemUnmanaged<EndRollbackSystemGroupStructChangeSystem>();
@@ -284,8 +287,14 @@ public partial struct GameDreamerRollbackSystem : ISystem, IRollbackCore
 
     public void ScheduleRestore(uint frameIndex, ref SystemState state)
     {
-        var jobHandle = state.Dependency;
-        __manager.RemoveComponentIfNotSaved<GameDreamer>(frameIndex, __group, __removeComponentCommander, ref state);
+        var inputDeps = __manager.GetChunk(frameIndex, state.Dependency);
+
+        var jobHandle = __manager.RemoveComponentIfNotSaved<GameDreamer>(
+            frameIndex, 
+            __group, 
+            __entityType.UpdateAsRef(ref state), 
+            __removeComponentCommander, 
+            inputDeps);
 
         var entityManager = __addComponentCommander.Create();
 
@@ -294,13 +303,13 @@ public partial struct GameDreamerRollbackSystem : ISystem, IRollbackCore
         restore.dreamerInfos = __manager.DelegateRestore(__dreamerInfos, ref state);
         restore.versions = __manager.DelegateRestore(__versions, ref state);
         restore.events = __manager.DelegateRestore(__events, ref state);
-        restore.entityManager = entityManager.AsComponentParallelWriter<GameDreamer>(__manager.GetEntityCount(frameIndex));
+        restore.entityManager = entityManager.AsComponentParallelWriter<GameDreamer>(__manager.countAndStartIndex, ref inputDeps);
 
-        jobHandle = __manager.ScheduleParallel(restore, frameIndex, jobHandle);
+        jobHandle = __manager.ScheduleParallel(restore, frameIndex, JobHandle.CombineDependencies(jobHandle, inputDeps));
 
         entityManager.AddJobHandleForProducer<Restore>(jobHandle);
 
-        state.Dependency = JobHandle.CombineDependencies(state.Dependency, jobHandle);
+        state.Dependency = jobHandle;
     }
 
     public void ScheduleSave(uint frameIndex, in EntityTypeHandle entityType, ref SystemState state)
