@@ -1351,7 +1351,7 @@ public partial struct GameActionRollbackSystem : ISystem, IRollbackCore
         [ReadOnly]
         public NativeArray<int> count;
 
-        public SharedMultiHashMap<EntityArchetype, GameActionRollbackCreateCommand> entityManager;
+        public SharedMultiHashMap<EntityArchetype, GameActionRollbackCreateCommand>.Writer entityManager;
 
         public void Execute()
         {
@@ -1599,7 +1599,7 @@ public partial struct GameActionRollbackSystem : ISystem, IRollbackCore
     {
         Recapcity recapcity;
         recapcity.count = __manager.countAndStartIndex;
-        recapcity.entityManager = __entityManager;
+        recapcity.entityManager = __entityManager.writer;
 
         ref var entityManagerJobManager = ref __entityManager.lookupJobManager;
         var jobHandle = recapcity.ScheduleByRef(JobHandle.CombineDependencies(
@@ -1621,7 +1621,7 @@ public partial struct GameActionRollbackSystem : ISystem, IRollbackCore
         restore.entities = __manager.DelegateRestore(__entities, ref state);
         restore.entityManager = __entityManager.parallelWriter;
 
-        jobHandle = __manager.ScheduleParallel(restore, frameIndex, jobHandle);
+        jobHandle = __manager.ScheduleParallel(restore, frameIndex, jobHandle, false);
 
         __entityManager.lookupJobManager.readWriteJobHandle = jobHandle;
 

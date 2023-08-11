@@ -488,7 +488,7 @@ public partial struct GameShapeRollbackSystem : ISystem, IRollbackCore
         //restore.physicsColliders = __manager.DelegateRestore(__physicsColliders, ref state);
         restore.entityManager = entityManager.parallelWriter;
 
-        JobHandle jobHandle = __manager.ScheduleParallel(restore, frameIndex, state.Dependency);
+        JobHandle jobHandle = __manager.ScheduleParallel(restore, frameIndex, state.Dependency, true);
 
         entityManager.AddJobHandleForProducer<Restore>(jobHandle);
 
@@ -564,6 +564,8 @@ public partial struct GameColliderRollbackSystem : ISystem, IRollbackCore
 
     private EntityQuery __group;
 
+    private ComponentLookup<PhysicsHierarchyData> __instances;
+
     private RollbackManager<Restore, Save, Clear> __manager;
 
     private RollbackBuffer<PhysicsHierarchyInactiveColliders> __inactiveColliders;
@@ -576,6 +578,8 @@ public partial struct GameColliderRollbackSystem : ISystem, IRollbackCore
                     .WithAll<GameRollbackCollider, PhysicsHierarchyInactiveColliders>()
                     .WithNone<PhysicsExclude>()
                     .Build(ref state);
+
+        __instances = state.GetComponentLookup<PhysicsHierarchyData>(true);
 
         var containerManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<RollbackSystemGroup>().containerManager;
 
@@ -599,10 +603,10 @@ public partial struct GameColliderRollbackSystem : ISystem, IRollbackCore
     public void ScheduleRestore(uint frameIndex, ref SystemState state)
     {
         Restore restore;
-        restore.instances = state.GetComponentLookup<PhysicsHierarchyData>(true);
+        restore.instances = __instances.UpdateAsRef(ref state);
         restore.inactiveColliders = __manager.DelegateRestore(__inactiveColliders, ref state);
 
-        state.Dependency = __manager.ScheduleParallel(restore, frameIndex, state.Dependency);
+        state.Dependency = __manager.ScheduleParallel(restore, frameIndex, state.Dependency, true);
     }
 
     public void ScheduleSave(uint frameIndex, in EntityTypeHandle entityType, ref SystemState state)
@@ -728,14 +732,15 @@ public partial struct GameRollbackObjectSystem : ISystem, IRollbackCore
 
     public void ScheduleRestore(uint frameIndex, ref SystemState state)
     {
-        var inputDeps = __manager.GetChunk(frameIndex, state.Dependency);
+        //var inputDeps = __manager.GetChunk(frameIndex, state.Dependency);
 
         var jobHandle = __manager.AddComponentIfNotSaved<Disabled>(
             frameIndex, 
             __group, 
             __entityType.UpdateAsRef(ref state), 
             __addComponentCommander,
-            inputDeps);
+            state.Dependency, 
+            true);
 
         var removeComponentCommander = __removeComponentCommander.Create();
 
@@ -744,7 +749,7 @@ public partial struct GameRollbackObjectSystem : ISystem, IRollbackCore
         restore.disabled = __disabled.UpdateAsRef(ref state);
         restore.entityManager = removeComponentCommander.parallelWriter;
 
-        jobHandle = __manager.ScheduleParallel(restore, frameIndex, jobHandle);
+        jobHandle = __manager.ScheduleParallel(restore, frameIndex, jobHandle, false);
 
         removeComponentCommander.AddJobHandleForProducer<Restore>(jobHandle);
 

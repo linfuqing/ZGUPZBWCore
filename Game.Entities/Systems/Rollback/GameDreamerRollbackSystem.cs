@@ -294,7 +294,8 @@ public partial struct GameDreamerRollbackSystem : ISystem, IRollbackCore
             __group, 
             __entityType.UpdateAsRef(ref state), 
             __removeComponentCommander, 
-            inputDeps);
+            inputDeps, 
+            false);
 
         var entityManager = __addComponentCommander.Create();
 
@@ -305,7 +306,7 @@ public partial struct GameDreamerRollbackSystem : ISystem, IRollbackCore
         restore.events = __manager.DelegateRestore(__events, ref state);
         restore.entityManager = entityManager.AsComponentParallelWriter<GameDreamer>(__manager.countAndStartIndex, ref inputDeps);
 
-        jobHandle = __manager.ScheduleParallel(restore, frameIndex, JobHandle.CombineDependencies(jobHandle, inputDeps));
+        jobHandle = __manager.ScheduleParallel(restore, frameIndex, JobHandle.CombineDependencies(jobHandle, inputDeps), false);
 
         entityManager.AddJobHandleForProducer<Restore>(jobHandle);
 
