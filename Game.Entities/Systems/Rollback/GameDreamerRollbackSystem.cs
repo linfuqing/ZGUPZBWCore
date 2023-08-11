@@ -158,7 +158,11 @@ public partial class GameDreamerRollbackSystem : RollbackSystemEx
         return _Schedule(clear, maxFrameIndex, frameIndex, frameCount, inputDeps);
     }
 }*/
-[BurstCompile, AutoCreateIn("Client"), UpdateInGroup(typeof(RollbackSystemGroup))]
+[BurstCompile,
+    CreateAfter(typeof(EndRollbackSystemGroupStructChangeSystem)),
+    CreateAfter(typeof(RollbackSystemGroup)),
+    UpdateInGroup(typeof(RollbackSystemGroup)),
+    AutoCreateIn("Client")]
 public partial struct GameDreamerRollbackSystem : ISystem, IRollbackCore
 {
     public struct Restore : IRollbackRestore, IEntityCommandProducerJob
@@ -242,17 +246,21 @@ public partial struct GameDreamerRollbackSystem : ISystem, IRollbackCore
     private RollbackComponent<GameDreamerVersion> __versions;
     private RollbackBuffer<GameDreamerEvent> __events;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            ComponentType.ReadOnly<RollbackObject>(),
-            ComponentType.ReadWrite<GameDreamer>());
+        using (var builder = new EntityQueryBuilder(Unity.Collections.Allocator.Temp))
+            __group = builder
+                    .WithAll<RollbackObject>()
+                    .WithAllRW<GameDreamer>()
+                    .Build(ref state);
 
-        ref var endFrameBarrier = ref state.World.GetOrCreateSystemUnmanaged<EndRollbackSystemGroupStructChangeSystem>();
+        var world = state.WorldUnmanaged;
+        ref var endFrameBarrier = ref world.GetExistingSystemUnmanaged<EndRollbackSystemGroupStructChangeSystem>();
         __removeComponentCommander = endFrameBarrier.manager.removeComponentPool;
         __addComponentCommander = endFrameBarrier.addDataCommander;
 
-        var containerManager = state.World.GetOrCreateSystemManaged<GameRollbackManagedSystem>().containerManager;
+        var containerManager = world.GetExistingSystemUnmanaged<RollbackSystemGroup>().containerManager;
 
         __manager = containerManager.CreateManager<Restore, Save, Clear>(ref state);
 
@@ -262,6 +270,7 @@ public partial struct GameDreamerRollbackSystem : ISystem, IRollbackCore
         __events = containerManager.CreateBuffer<GameDreamerEvent>(ref state);
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 

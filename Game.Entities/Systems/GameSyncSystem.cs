@@ -459,7 +459,9 @@ public struct GameSyncManager : IComponentData
     }
 }
 
-[UpdateInGroup(typeof(TimeSystemGroup))/*, UpdateAfter(typeof(StateMachineExecutorGroup))*/]
+[CreateAfter(typeof(GameRollbackSystemGroup)), 
+    CreateAfter(typeof(RollbackSystemGroup)),
+    UpdateInGroup(typeof(TimeSystemGroup))/*, UpdateAfter(typeof(StateMachineExecutorGroup))*/]
 public partial class GameSyncSystemGroup : SystemBase
 {
     private GameSyncManager __manager;
@@ -564,9 +566,9 @@ public partial class GameSyncSystemGroup : SystemBase
 
         EntityManager.AddComponent<GameAnimationElapsedTime>(SystemHandle);
 
-        rollbackManager = World.GetOrCreateSystemUnmanaged<GameRollbackSystemGroup>().manager;
-
-        containerManager = World.GetOrCreateSystemManaged<GameRollbackManagedSystem>().containerManager;
+        var world = World;
+        rollbackManager = world.GetExistingSystemUnmanaged<GameRollbackSystemGroup>().manager;
+        containerManager = world.GetExistingSystemUnmanaged<RollbackSystemGroup>().containerManager;
     }
 
     protected override void OnUpdate()

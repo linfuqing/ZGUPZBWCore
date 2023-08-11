@@ -33,7 +33,7 @@ public partial class GameLocationClipTargetWeightSystem : SystemBase, IEntityCom
             while (iterator.NextEntityIndex(out int i))
                 count += distanceHits[i].Length;
 
-            System.Threading.Interlocked.Add(ref counter.ElementAt(0), count);
+            counter.Add(0, count);
         }
     }
 

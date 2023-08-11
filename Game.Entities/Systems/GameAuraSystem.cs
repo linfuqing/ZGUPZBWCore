@@ -8,7 +8,7 @@ using Unity.Physics;
 using ZG;
 using System.Collections.Generic;
 
-[BurstCompile, UpdateInGroup(typeof(GameUpdateSystemGroup)), UpdateAfter(typeof(GameNodeCharacterSystemGroup))]
+[BurstCompile, CreateAfter(typeof(GamePhysicsWorldBuildSystem)), UpdateInGroup(typeof(GameUpdateSystemGroup)), UpdateAfter(typeof(GameNodeCharacterSystemGroup))]
 public partial struct GameAuraSystem : ISystem
 {
     public struct Item
@@ -289,17 +289,33 @@ public partial struct GameAuraSystem : ISystem
 
     private EntityQuery __originGroup;
     private EntityQuery __itemGroup;
+
+    private EntityTypeHandle __entityType;
+
+    private ComponentTypeHandle<Translation> __translationType;
+
+    private BufferTypeHandle<GameEntityItem> __entityItemType;
+
+    private ComponentTypeHandle<GameEntityCamp> __campType;
+
+    private ComponentLookup<GameEntityCamp> __camps;
+
+    private BufferLookup<GameAuraOrigin> __origins;
+
+    private BufferTypeHandle<GameAuraOrigin> __originType;
+
     private SharedPhysicsWorld __physicsWorld;
     private NativeHashMap<int, Item> __items;
-    private NativeFactory<EntityData<GameAuraOrigin>> __origins;
+    private NativeFactory<EntityData<GameAuraOrigin>> __results;
 
     public void Create(IEnumerable<KeyValuePair<int, Item>> items)
     {
-        __items = new NativeHashMap<int, Item>(1, Allocator.Persistent);
-        foreach(var item in items)
+        __items.Clear();
+        foreach (var item in items)
             __items.Add(item.Key, item.Value);
     }
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         BurstUtility.InitializeJob<MoveTo>();
@@ -307,22 +323,30 @@ public partial struct GameAuraSystem : ISystem
         __originGroup = state.GetEntityQuery(
             ComponentType.ReadWrite<GameAuraOrigin>());
 
-        __itemGroup = state.GetEntityQuery(
-            ComponentType.ReadOnly<Translation>(), 
-            ComponentType.ReadOnly<GameEntityCamp>(), 
-            ComponentType.ReadOnly<GameEntityItem>());
+        using(var builder = new EntityQueryBuilder(Allocator.Temp))
+            __itemGroup = builder
+                    .WithAll<Translation, GameEntityCamp, GameEntityItem>()
+                    .Build(ref state);
 
-        __physicsWorld = state.World.GetOrCreateSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
+        __entityType = state.GetEntityTypeHandle();
+        __translationType = state.GetComponentTypeHandle<Translation>(true);
+        __entityItemType = state.GetBufferTypeHandle<GameEntityItem>(true);
+        __campType = state.GetComponentTypeHandle<GameEntityCamp>(true);
+        __camps = state.GetComponentLookup<GameEntityCamp>(true);
+        __origins = state.GetBufferLookup<GameAuraOrigin>();
+        __originType = state.GetBufferTypeHandle<GameAuraOrigin>();
 
-        __origins = new NativeFactory<EntityData<GameAuraOrigin>>(Allocator.Persistent, true);
+        __physicsWorld = state.WorldUnmanaged.GetExistingSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
+
+        __items = new NativeHashMap<int, Item>(1, Allocator.Persistent);
+        __results = new NativeFactory<EntityData<GameAuraOrigin>>(Allocator.Persistent, true);
     }
 
     public void OnDestroy(ref SystemState state)
     {
-        if (__items.IsCreated)
-            __items.Dispose();
+        __items.Dispose();
 
-        __origins.Dispose();
+        __results.Dispose();
     }
 
     [BurstCompile]
@@ -332,36 +356,37 @@ public partial struct GameAuraSystem : ISystem
             return;
 
         double time = state.WorldUnmanaged.Time.ElapsedTime;
-        NativeFactory<EntityData<GameAuraOrigin>> origins = __origins;
+
+        var origins = __origins.UpdateAsRef(ref state);
 
         ClearEx clear;
         clear.time = time;
-        clear.originType = state.GetBufferTypeHandle<GameAuraOrigin>();
+        clear.originType = __originType.UpdateAsRef(ref state);
 
-        var jobHandle = clear.ScheduleParallel(__originGroup, state.Dependency);
+        var jobHandle = clear.ScheduleParallelByRef(__originGroup, state.Dependency);
 
         ApplyEx apply;
         apply.time = time;
         apply.collisionWorld = __physicsWorld.collisionWorld;
         apply.items = __items;
-        apply.entityType = state.GetEntityTypeHandle();
-        apply.translationType = state.GetComponentTypeHandle<Translation>(true);
-        apply.campType = state.GetComponentTypeHandle<GameEntityCamp>(true);
-        apply.entityItemType = state.GetBufferTypeHandle<GameEntityItem>(true);
-        apply.camps = state.GetComponentLookup<GameEntityCamp>(true);
-        apply.inputs = state.GetBufferLookup<GameAuraOrigin>(true);
-        apply.outputs = origins.parallelWriter;
+        apply.entityType = __entityType.UpdateAsRef(ref state);
+        apply.translationType = __translationType.UpdateAsRef(ref state);
+        apply.campType = __campType.UpdateAsRef(ref state);
+        apply.entityItemType = __entityItemType.UpdateAsRef(ref state);
+        apply.camps = __camps.UpdateAsRef(ref state);
+        apply.inputs = origins;
+        apply.outputs = __results.parallelWriter;
 
         ref var lookupJobManager = ref __physicsWorld.lookupJobManager;
 
-        jobHandle = apply.ScheduleParallel(__itemGroup, JobHandle.CombineDependencies(lookupJobManager.readOnlyJobHandle, jobHandle));
+        jobHandle = apply.ScheduleParallelByRef(__itemGroup, JobHandle.CombineDependencies(lookupJobManager.readOnlyJobHandle, jobHandle));
 
         lookupJobManager.AddReadOnlyDependency(jobHandle);
 
         MoveTo moveTo;
-        moveTo.inputs = origins;
-        moveTo.outputs = state.GetBufferLookup<GameAuraOrigin>();
+        moveTo.inputs = __results;
+        moveTo.outputs = origins;
 
-        state.Dependency = moveTo.Schedule(jobHandle);
+        state.Dependency = moveTo.ScheduleByRef(jobHandle);
     }
 }

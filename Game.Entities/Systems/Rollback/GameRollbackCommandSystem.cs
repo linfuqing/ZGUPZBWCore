@@ -131,7 +131,11 @@ public struct GameRollbackEntryTester : IRollbackEntryTester
     }
 }
 
-[BurstCompile, AutoCreateIn("Client"), UpdateInGroup(typeof(TimeSystemGroup)), /*UpdateAfter(typeof(GameRollbackCommandSystemHybrid)), */UpdateBefore(typeof(GameSyncSystemGroup))]
+[AutoCreateIn("Client"), 
+    BurstCompile, 
+    CreateAfter(typeof(RollbackCommandSystem)),
+    CreateAfter(typeof(GameBVHRollbackSystem)),
+    UpdateInGroup(typeof(TimeSystemGroup)), /*UpdateAfter(typeof(GameRollbackCommandSystemHybrid)), */UpdateBefore(typeof(GameSyncSystemGroup))]
 public partial struct GameRollbackCommandSystem : ISystem
 {
     public static readonly int InnerloopBatchCount = 1;
@@ -144,36 +148,44 @@ public partial struct GameRollbackCommandSystem : ISystem
 #endif*/
     private EntityQuery __frameGroup;
 
+    private ComponentLookup<Translation> __translations;
+
+    private ComponentLookup<Rotation> __rotations;
+
+    private ComponentLookup<PhysicsCollider> __colliders;
+
     private RollbackCommanderManaged __commander;
 
     private SharedHashMap<uint, GameRollbackBVH> __bvhs;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         //BurstUtility.InitializeJobParalledForDefer<RollbackEntryTest<GameRollbackEntryTester>>();
 
-/*#if GAME_DEBUG_COMPARSION
-#else
-        __frameSyncFlagGroup = state.GetEntityQuery(ComponentType.ReadOnly<FrameSyncFlag>());
-#endif*/
-        __frameGroup = state.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<RollbackFrame>(),
+        /*#if GAME_DEBUG_COMPARSION
+        #else
+                __frameSyncFlagGroup = state.GetEntityQuery(ComponentType.ReadOnly<FrameSyncFlag>());
+        #endif*/
 
-                    ComponentType.ReadOnly<RollbackFrameClear>()
-                },
-                Options = EntityQueryOptions.IncludeSystems
-            });
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __frameGroup = builder
+                    .WithAll<RollbackFrame, RollbackFrameClear>()
+                    .WithOptions(EntityQueryOptions.IncludeSystems)
+                    .Build(ref state);
+
         //__frameClearGroup = state.GetEntityQuery(ComponentType.ReadOnly<RollbackFrameClear>());
 
-        var world = state.World;
-        __commander = world.GetOrCreateSystemUnmanaged<RollbackCommandSystem>().commander;
-        __bvhs = world.GetOrCreateSystemUnmanaged<GameBVHRollbackSystem>().bvhs;
+        __translations = state.GetComponentLookup<Translation>(true);
+        __rotations = state.GetComponentLookup<Rotation>(true);
+        __colliders = state.GetComponentLookup<PhysicsCollider>(true);
+
+        var world = state.WorldUnmanaged;
+        __commander = world.GetExistingSystemUnmanaged<RollbackCommandSystem>().commander;
+        __bvhs = world.GetExistingSystemUnmanaged<GameBVHRollbackSystem>().bvhs;
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 
@@ -188,9 +200,9 @@ public partial struct GameRollbackCommandSystem : ISystem
         GameRollbackEntryTester tester;
         tester.collisionTolerance = CollisionTolerance;
         tester.bvhs = __bvhs.reader;
-        tester.translations = state.GetComponentLookup<Translation>(true);
-        tester.rotations = state.GetComponentLookup<Rotation>(true);
-        tester.colliders = state.GetComponentLookup<PhysicsCollider>(true);
+        tester.translations = __translations.UpdateAsRef(ref state);
+        tester.rotations = __rotations.UpdateAsRef(ref state);
+        tester.colliders = __colliders.UpdateAsRef(ref state);
 
         ref var lookupJobManager = ref __bvhs.lookupJobManager;
 
@@ -211,36 +223,12 @@ public partial struct GameRollbackCommandSystem : ISystem
     }
 }
 
-[BurstCompile, AutoCreateIn("Client"), UpdateInGroup(typeof(RollbackSystemGroup))]
+[BurstCompile, 
+    CreateAfter(typeof(GamePhysicsWorldBuildSystem)),
+    CreateAfter(typeof(RollbackSystemGroup)),
+    UpdateInGroup(typeof(RollbackSystemGroup)), AutoCreateIn("Client")]
 public partial struct GameBVHRollbackSystem : ISystem, IRollbackCore
 {
-    private class Container : IRollbackContainer
-    {
-        private SharedHashMap<uint, GameRollbackBVH> __bvhs;
-
-        public Container(SharedHashMap<uint, GameRollbackBVH> bvhs)
-        {
-            __bvhs = bvhs;
-        }
-
-        public void Clear()
-        {
-            __bvhs.lookupJobManager.CompleteReadWriteDependency();
-
-            foreach(var bvh in __bvhs)
-                bvh.Value.Dispose();
-
-            __bvhs.writer.Clear();
-        }
-
-        public void Dispose()
-        {
-            __bvhs.lookupJobManager.CompleteReadWriteDependency();
-
-            __bvhs.Dispose();
-        }
-    }
-
     [BurstCompile]
     private struct Save : IJob
     {
@@ -296,26 +284,28 @@ public partial struct GameBVHRollbackSystem : ISystem, IRollbackCore
         private set;
     }
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         BurstUtility.InitializeJob<Save>();
         BurstUtility.InitializeJob<Clear>();
 
-        World world = state.World;
+        var world = state.WorldUnmanaged;
 
-        __physicsWorld = world.GetOrCreateSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
+        __physicsWorld = world.GetExistingSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
 
-        var containerManager = world.GetOrCreateSystemManaged<GameRollbackManagedSystem>().containerManager;
+        var containerManager = world.GetExistingSystemUnmanaged<RollbackSystemGroup>().containerManager;
 
         __manager = containerManager.CreateManager(ref state);
 
         var bvhs = new SharedHashMap<uint, GameRollbackBVH>(Allocator.Persistent);
 
-        containerManager.Register(new Container(bvhs));
+        containerManager.Manage(new GameBVHRollbackUtility.Container(bvhs), GameBVHRollbackUtility.ClearContainerFunction.Data, GameBVHRollbackUtility.DisposeContainerFunction.Data);
 
         this.bvhs = bvhs;
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 
@@ -381,6 +371,73 @@ public partial struct GameBVHRollbackSystem : ISystem, IRollbackCore
         }
 
         return ref lookupJobManager;
+    }
+}
+
+[BurstCompile]
+internal static class GameBVHRollbackUtility
+{
+    private class ContainerClear
+    {
+
+    }
+
+    private class ContainerDispose
+    {
+
+    }
+
+    public struct Container : IRollbackContainer
+    {
+        private SharedHashMap<uint, GameRollbackBVH> __bvhs;
+
+        public Container(SharedHashMap<uint, GameRollbackBVH> bvhs)
+        {
+            __bvhs = bvhs;
+        }
+
+        public void Clear()
+        {
+            __bvhs.lookupJobManager.CompleteReadWriteDependency();
+
+            foreach (var bvh in __bvhs)
+                bvh.Value.Dispose();
+
+            __bvhs.writer.Clear();
+        }
+
+        public void Dispose()
+        {
+            __bvhs.lookupJobManager.CompleteReadWriteDependency();
+
+            __bvhs.Dispose();
+        }
+    }
+
+    public static readonly SharedStatic<FunctionPointer<RollbackContainerDelegate>> ClearContainerFunction = SharedStatic<FunctionPointer<RollbackContainerDelegate>>.GetOrCreate<ContainerClear>();
+
+    public static readonly SharedStatic<FunctionPointer<RollbackContainerDelegate>> DisposeContainerFunction = SharedStatic<FunctionPointer<RollbackContainerDelegate>>.GetOrCreate<ContainerDispose>();
+    
+
+    [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.AfterAssembliesLoaded)]
+    public static void Init()
+    {
+        ClearContainerFunction.Data = FunctionWrapperUtility.CompileManagedFunctionPointer<RollbackContainerDelegate>(__ClearContainer);
+        DisposeContainerFunction.Data = FunctionWrapperUtility.CompileManagedFunctionPointer<RollbackContainerDelegate>(__DisposeContainer);
+    }
+
+    //[BurstCompile]
+    [AOT.MonoPInvokeCallback(typeof(RollbackContainerDelegate))]
+    private static void __ClearContainer(in UnsafeBlock value)
+    {
+        value.As<Container>().Clear();
+    }
+
+    //[BurstCompile]
+    [AOT.MonoPInvokeCallback(typeof(RollbackContainerDelegate))]
+    private static void __DisposeContainer(in UnsafeBlock value)
+    {
+        value.As<Container>().Dispose();
     }
 }
 

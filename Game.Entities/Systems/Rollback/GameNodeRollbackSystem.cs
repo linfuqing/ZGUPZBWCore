@@ -784,7 +784,10 @@ public partial class GameNodePhysicsRollbackSystem : RollbackSystemEx
     }
 }*/
 
-[BurstCompile, AutoCreateIn("Client"), UpdateInGroup(typeof(RollbackSystemGroup))]
+[BurstCompile,
+    CreateAfter(typeof(RollbackSystemGroup)),
+    UpdateInGroup(typeof(RollbackSystemGroup)),
+    AutoCreateIn("Client")]
 public partial struct GameNodeTransformRollbackSystem : ISystem, IRollbackCore
 {
     public struct Restore : IRollbackRestore
@@ -889,18 +892,21 @@ public partial struct GameNodeTransformRollbackSystem : ISystem, IRollbackCore
         return __translations[index];
     }
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = GameRollbackObjectIncludeDisabled.GetEntityQuery(
-            ref state, 
+        using(var componentTypes = new NativeList<ComponentType>(Allocator.Temp)
+        {
             ComponentType.ReadOnly<RollbackObject>(),
             ComponentType.ReadOnly<Translation>(),
             ComponentType.ReadOnly<Rotation>(),
             ComponentType.ReadOnly<GameNodeStatus>(),
             ComponentType.ReadOnly<GameNodeOldStatus>(),
-            ComponentType.ReadOnly<GameNodeDelay>());
+            ComponentType.ReadOnly<GameNodeDelay>()
+        })
+            __group = GameRollbackObjectIncludeDisabled.GetEntityQuery(componentTypes.AsArray(), ref state);
 
-        var containerManager = state.World.GetOrCreateSystemManaged<GameRollbackManagedSystem>().containerManager;
+        var containerManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<RollbackSystemGroup>().containerManager;
 
         __manager = containerManager.CreateManager<Restore, Save, Clear>(ref state);
 
@@ -911,6 +917,7 @@ public partial struct GameNodeTransformRollbackSystem : ISystem, IRollbackCore
         __delay = containerManager.CreateComponent<GameNodeDelay>(ref state);
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 
@@ -963,7 +970,10 @@ public partial struct GameNodeTransformRollbackSystem : ISystem, IRollbackCore
 
 //TODO: Why Before GameNodeTransformRollbackSystem?
 //[AutoCreateIn("Client"), UpdateBefore(typeof(GameNodeTransformRollbackSystem))]
-[BurstCompile, AutoCreateIn("Client"), UpdateInGroup(typeof(RollbackSystemGroup))]
+[BurstCompile,
+    CreateAfter(typeof(RollbackSystemGroup)),
+    UpdateInGroup(typeof(RollbackSystemGroup)),
+    AutoCreateIn("Client")]
 public partial struct GameNodeActorRollbackSystem : ISystem, IRollbackCore
 {
     public struct Restore : IRollbackRestore
@@ -1111,15 +1121,18 @@ public partial struct GameNodeActorRollbackSystem : ISystem, IRollbackCore
     private RollbackBuffer<GameNodeVelocityComponent> __velocityComponents;
     private RollbackBuffer<GameNodeSpeedScaleComponent> __speedScaleComponents;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = GameRollbackObjectIncludeDisabled.GetEntityQuery(
-            ref state, 
+        using (var componentTypes = new NativeList<ComponentType>(Allocator.Temp)
+        {
             ComponentType.ReadOnly<RollbackObject>(),
             ComponentType.ReadOnly<GameNodeActorData>()/*,
-            ComponentType.Exclude<GameNodeParent>()*/);
+            ComponentType.Exclude<GameNodeParent>()*/
+        })
+            __group = GameRollbackObjectIncludeDisabled.GetEntityQuery(componentTypes.AsArray(), ref state);
 
-        var containerManager = state.World.GetOrCreateSystemManaged<GameRollbackManagedSystem>().containerManager;
+        var containerManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<RollbackSystemGroup>().containerManager;
 
         __manager = containerManager.CreateManager<Restore, Save, Clear>(ref state);
 
@@ -1136,6 +1149,7 @@ public partial struct GameNodeActorRollbackSystem : ISystem, IRollbackCore
         __speedScaleComponents = containerManager.CreateBuffer<GameNodeSpeedScaleComponent>(ref state);
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 
@@ -1210,7 +1224,11 @@ public partial struct GameNodeActorRollbackSystem : ISystem, IRollbackCore
     }
 }
 
-[BurstCompile, AutoCreateIn("Client"), UpdateInGroup(typeof(RollbackSystemGroup))]
+[BurstCompile,
+    CreateAfter(typeof(EndRollbackSystemGroupStructChangeSystem)),
+    CreateAfter(typeof(RollbackSystemGroup)),
+    UpdateInGroup(typeof(RollbackSystemGroup)),
+    AutoCreateIn("Client")]
 public partial struct GameNodeRootRollbackSystem : ISystem, IRollbackCore
 {
     public struct Restore : IRollbackRestore, IEntityCommandProducerJob
@@ -1262,20 +1280,25 @@ public partial struct GameNodeRootRollbackSystem : ISystem, IRollbackCore
 
     private RollbackManager<Restore, Save, Clear> __manager;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            ComponentType.ReadOnly<RollbackObject>(),
-            ComponentType.ReadOnly<GameNodeSpeed>(),
-            ComponentType.Exclude<GameNodeParent>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<RollbackObject, GameNodeSpeed>()
+                    .WithNone<GameNodeParent>()
+                    .Build(ref state);
 
-        __removeComponentCommander = state.World.GetOrCreateSystemUnmanaged<EndRollbackSystemGroupStructChangeSystem>().manager.removeComponentPool;
+        var world = state.WorldUnmanaged;
 
-        var containerManager = state.World.GetOrCreateSystemManaged<GameRollbackManagedSystem>().containerManager;
+        __removeComponentCommander = world.GetExistingSystemUnmanaged<EndRollbackSystemGroupStructChangeSystem>().manager.removeComponentPool;
+
+        var containerManager = world.GetExistingSystemUnmanaged<RollbackSystemGroup>().containerManager;
 
         __manager = containerManager.CreateManager<Restore, Save, Clear>(ref state);
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 
@@ -1323,7 +1346,11 @@ public partial struct GameNodeRootRollbackSystem : ISystem, IRollbackCore
     }
 }
 
-[BurstCompile, AutoCreateIn("Client"), UpdateInGroup(typeof(RollbackSystemGroup))]
+[BurstCompile,
+    CreateAfter(typeof(EndRollbackSystemGroupStructChangeSystem)),
+    CreateAfter(typeof(RollbackSystemGroup)),
+    UpdateInGroup(typeof(RollbackSystemGroup)),
+    AutoCreateIn("Client")]
 public partial struct GameNodeChildRollbackSystem : ISystem, IRollbackCore
 {
     public struct Restore : IRollbackRestore, IEntityCommandProducerJob
@@ -1381,22 +1408,25 @@ public partial struct GameNodeChildRollbackSystem : ISystem, IRollbackCore
     private RollbackComponent<GameNodeParent> __parents;
     private RollbackManager<Restore, Save, Clear> __manager;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            ComponentType.ReadOnly<RollbackObject>(),
-            ComponentType.ReadOnly<GameNodeSpeed>(),
-            ComponentType.ReadOnly<GameNodeParent>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                .WithAll<RollbackObject, GameNodeSpeed, GameNodeParent>()
+                .Build(ref state);
 
-        __entityManager = state.World.GetOrCreateSystemUnmanaged<EndRollbackSystemGroupStructChangeSystem>().addDataCommander;
+        var world = state.WorldUnmanaged;
+        __entityManager = world.GetExistingSystemUnmanaged<EndRollbackSystemGroupStructChangeSystem>().addDataCommander;
 
-        var containerManager = state.World.GetOrCreateSystemManaged<GameRollbackManagedSystem>().containerManager;
+        var containerManager = world.GetExistingSystemUnmanaged<RollbackSystemGroup>().containerManager;
 
         __manager = containerManager.CreateManager<Restore, Save, Clear>(ref state);
 
         __parents = containerManager.CreateComponent<GameNodeParent>(ref state);
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
     }
@@ -1444,7 +1474,10 @@ public partial struct GameNodeChildRollbackSystem : ISystem, IRollbackCore
     }
 }
 
-[BurstCompile, AutoCreateIn("Client"), UpdateInGroup(typeof(RollbackSystemGroup))]
+[BurstCompile,
+    CreateAfter(typeof(RollbackSystemGroup)),
+    UpdateInGroup(typeof(RollbackSystemGroup)),
+    AutoCreateIn("Client")]
 public partial struct GameNodeCharacterRollbackSystem : ISystem, IRollbackCore
 {
     public struct Restore : IRollbackRestore
@@ -1493,19 +1526,22 @@ public partial struct GameNodeCharacterRollbackSystem : ISystem, IRollbackCore
 
     private RollbackManager<Restore, Save, Clear> __manager;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            ComponentType.ReadOnly<RollbackObject>(),
-            ComponentType.ReadOnly<GameNodeCharacterVelocity>());
+        using(var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<RollbackObject, GameNodeCharacterVelocity>()
+                    .Build(ref state);
 
-        var containerManager = state.World.GetOrCreateSystemManaged<GameRollbackManagedSystem>().containerManager;
+        var containerManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<RollbackSystemGroup>().containerManager;
 
         __manager = containerManager.CreateManager<Restore, Save, Clear>(ref state);
 
         __characterVelocities = containerManager.CreateComponent<GameNodeCharacterVelocity>(ref state);
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 
@@ -1544,7 +1580,10 @@ public partial struct GameNodeCharacterRollbackSystem : ISystem, IRollbackCore
     }
 }
 
-[BurstCompile, AutoCreateIn("Client"), UpdateInGroup(typeof(RollbackSystemGroup))]
+[BurstCompile,
+    CreateAfter(typeof(RollbackSystemGroup)),
+    UpdateInGroup(typeof(RollbackSystemGroup)),
+    AutoCreateIn("Client")]
 public partial struct GameNodePhysicsRollbackSystem : ISystem, IRollbackCore
 {
     public struct Restore : IRollbackRestore
@@ -1593,19 +1632,22 @@ public partial struct GameNodePhysicsRollbackSystem : ISystem, IRollbackCore
 
     private RollbackComponent<PhysicsVelocity> __physicsVelocities;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            ComponentType.ReadOnly<RollbackObject>(),
-            ComponentType.ReadOnly<PhysicsVelocity>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<RollbackObject, PhysicsVelocity>()
+                    .Build(ref state);
 
-        var containerManager = state.World.GetOrCreateSystemManaged<GameRollbackManagedSystem>().containerManager;
+        var containerManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<RollbackSystemGroup>().containerManager;
 
         __manager = containerManager.CreateManager<Restore, Save, Clear>(ref state);
 
         __physicsVelocities = containerManager.CreateComponent<PhysicsVelocity>(ref state);
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 

@@ -34,43 +34,56 @@ public struct GameRollbackCollider : IComponentData
 
 public struct GameRollbackObjectIncludeDisabled : IComponentData
 {
-    public static EntityQuery GetEntityQuery(ref SystemState state, params ComponentType[] componentTypes)
+    public unsafe static EntityQuery GetEntityQuery(NativeArray<ComponentType> componentTypes, ref SystemState state)
     {
-        ComponentType excludeType;
-        List<ComponentType> all = new List<ComponentType>(componentTypes.Length), none = null;
-        foreach(var componentType in componentTypes)
+        var builder = new EntityQueryBuilder(Allocator.Temp);
         {
-            if (componentType.AccessModeType == ComponentType.AccessMode.Exclude)
+            NativeList<ComponentType> all = new NativeList<ComponentType>(Allocator.Temp), none = default;
+            ComponentType excludeType;
+            foreach (var componentType in componentTypes)
             {
-                excludeType.TypeIndex = componentType.TypeIndex;
-                excludeType.AccessModeType = ComponentType.AccessMode.ReadWrite;
+                if (componentType.AccessModeType == ComponentType.AccessMode.Exclude)
+                {
+                    excludeType.TypeIndex = componentType.TypeIndex;
+                    excludeType.AccessModeType = ComponentType.AccessMode.ReadWrite;
 
-                if (none == null)
-                    none = new List<ComponentType>();
+                    if (!none.IsCreated)
+                        none = new NativeList<ComponentType>(Allocator.Temp);
 
-                none.Add(excludeType);
+                    none.Add(excludeType);
+                }
+                else
+                    all.Add(componentType);
             }
-            else
-                all.Add(componentType);
-        }
 
-        var noneTypes = none == null ? System.Array.Empty<ComponentType>() : none.ToArray();
-        var desc = new EntityQueryDesc()
-        {
-            All = all.ToArray(),
-            None = noneTypes
-        };
+            builder = builder.WithAll(ref all);
 
-        all.Add(ComponentType.ReadOnly<GameRollbackObjectIncludeDisabled>());
+            if (none.IsCreated)
+                builder = builder.WithNone(ref none);
 
-        return state.GetEntityQuery(
-            desc, 
-            new EntityQueryDesc()
+            all.Add(ComponentType.ReadOnly<GameRollbackObjectIncludeDisabled>());
+
+            builder = builder
+                .AddAdditionalQuery()
+                .WithAll(ref all);
+
+            all.Dispose();
+
+            if (none.IsCreated)
             {
-                All = all.ToArray(), 
-                None = noneTypes, 
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
+                builder = builder.WithNone(ref none);
+
+                none.Dispose();
+            }
+
+            var result = builder
+                .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                .Build(ref state);
+
+            builder.Dispose();
+
+            return result;
+        }
     }
 }
 
@@ -324,7 +337,11 @@ public partial class GameRollbackObjectSystem : RollbackSystemEx
         return _Schedule(clear, maxFrameIndex, frameIndex, frameCount, inputDeps);
     }
 }*/
-[BurstCompile, AutoCreateIn("Client"), UpdateInGroup(typeof(RollbackSystemGroup))]
+[BurstCompile,
+    CreateAfter(typeof(EndRollbackSystemGroupStructChangeSystem)),
+    CreateAfter(typeof(RollbackSystemGroup)),
+    UpdateInGroup(typeof(RollbackSystemGroup)),
+    AutoCreateIn("Client")]
 public partial struct GameShapeRollbackSystem : ISystem, IRollbackCore
 {
     public struct Restore : IRollbackRestore, IEntityCommandProducerJob
@@ -402,25 +419,15 @@ public partial struct GameShapeRollbackSystem : ISystem, IRollbackCore
 
     //private RollbackComponent<PhysicsCollider> __physicsColliders;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<RollbackObject>(),
-                    //ComponentType.ReadOnly<PhysicsShapeChild>(),
-                    ComponentType.ReadOnly<GameNodeShpaeDefault>(),
-                    ComponentType.ReadOnly<PhysicsCollider>()
-                },
-
-                None = new ComponentType[]
-                {
-                    typeof(Disabled),
-                    typeof(PhysicsExclude)
-                }
-            }/*,
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<RollbackObject, GameNodeShpaeDefault, PhysicsCollider>()
+                    .WithNone<Disabled, PhysicsExclude>()
+                    .Build(ref state);
+        /*,
             new EntityQueryDesc()
             {
                 All = new ComponentType[]
@@ -437,19 +444,21 @@ public partial struct GameShapeRollbackSystem : ISystem, IRollbackCore
                     typeof(PhysicsVelocity),
                     typeof(GameNodeShpaeDefault)
                 }
-            }*/);
+            }*/;
 
-        var manager = state.World.GetOrCreateSystemUnmanaged<EndRollbackSystemGroupStructChangeSystem>().manager;
+        var world = state.WorldUnmanaged;
+        var manager = world.GetExistingSystemUnmanaged<EndRollbackSystemGroupStructChangeSystem>().manager;
         __addComponentCommander = manager.addComponentPool;
         __removeComponentCommander = manager.removeComponentPool;
 
-        var containerManager = state.World.GetOrCreateSystemManaged<GameRollbackManagedSystem>().containerManager;
+        var containerManager = world.GetExistingSystemUnmanaged<RollbackSystemGroup>().containerManager;
 
         __manager = containerManager.CreateManager<Restore, Save, Clear>(ref state);
 
         //__physicsColliders = containerManager.CreateComponent<PhysicsCollider>();
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 
@@ -495,7 +504,10 @@ public partial struct GameShapeRollbackSystem : ISystem, IRollbackCore
     }
 }
 
-[BurstCompile, AutoCreateIn("Client"), UpdateInGroup(typeof(RollbackSystemGroup))]
+[BurstCompile,
+    CreateAfter(typeof(RollbackSystemGroup)),
+    UpdateInGroup(typeof(RollbackSystemGroup)),
+    AutoCreateIn("Client")]
 public partial struct GameColliderRollbackSystem : ISystem, IRollbackCore
 {
     public struct Restore : IRollbackRestore
@@ -550,20 +562,23 @@ public partial struct GameColliderRollbackSystem : ISystem, IRollbackCore
 
     private RollbackBuffer<PhysicsHierarchyInactiveColliders> __inactiveColliders;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameRollbackCollider>(),
-            ComponentType.ReadOnly<PhysicsHierarchyInactiveColliders>(),
-            ComponentType.Exclude<PhysicsExclude>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameRollbackCollider, PhysicsHierarchyInactiveColliders>()
+                    .WithNone<PhysicsExclude>()
+                    .Build(ref state);
 
-        var containerManager = state.World.GetOrCreateSystemManaged<GameRollbackManagedSystem>().containerManager;
+        var containerManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<RollbackSystemGroup>().containerManager;
 
         __manager = containerManager.CreateManager<Restore, Save, Clear>(ref state);
 
         __inactiveColliders = containerManager.CreateBuffer<PhysicsHierarchyInactiveColliders>(ref state);
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 
@@ -603,7 +618,11 @@ public partial struct GameColliderRollbackSystem : ISystem, IRollbackCore
     }
 }
 
-[BurstCompile, AutoCreateIn("Client"), UpdateInGroup(typeof(RollbackSystemGroup))]
+[BurstCompile,
+    CreateAfter(typeof(EndRollbackSystemGroupStructChangeSystem)),
+    CreateAfter(typeof(RollbackSystemGroup)),
+    UpdateInGroup(typeof(RollbackSystemGroup)),
+    AutoCreateIn("Client")]
 public partial struct GameRollbackObjectSystem : ISystem, IRollbackCore
 {
     public struct Restore : IRollbackRestore, IEntityCommandProducerJob
@@ -662,19 +681,23 @@ public partial struct GameRollbackObjectSystem : ISystem, IRollbackCore
 
     private RollbackManager<Restore, Save, Clear> __manager;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         __group = state.GetEntityQuery(ComponentType.ReadOnly<RollbackObject>());
 
-        var manager = state.World.GetOrCreateSystemUnmanaged<EndRollbackSystemGroupStructChangeSystem>().manager;
+        var world = state.WorldUnmanaged;
+
+        var manager = world.GetExistingSystemUnmanaged<EndRollbackSystemGroupStructChangeSystem>().manager;
         __addComponentCommander = manager.addComponentPool;
         __removeComponentCommander = manager.removeComponentPool;
 
-        var containerManager = state.World.GetOrCreateSystemManaged<GameRollbackManagedSystem>().containerManager;
+        var containerManager = world.GetExistingSystemUnmanaged<RollbackSystemGroup>().containerManager;
 
         __manager = containerManager.CreateManager<Restore, Save, Clear>(ref state);
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 

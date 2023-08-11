@@ -37,16 +37,11 @@ public struct GameRollbackFrame
 
     public GameRollbackFrame(ref SystemState systemState)
     {
-        group = systemState.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<RollbackFrame>(), 
-                    ComponentType.ReadOnly<GameRollbackFrameOffset>()
-                },
-                Options = EntityQueryOptions.IncludeSystems
-            });
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            group = builder
+                    .WithAll<RollbackFrame, GameRollbackFrameOffset>()
+                    .WithOptions(EntityQueryOptions.IncludeSystems)
+                    .Build(ref systemState);
     }
 }
 
@@ -210,7 +205,7 @@ public struct GameRollbackManager
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(GameSyncSystemGroup)), SystemGroupInherit(typeof(FrameSyncSystemGroup))]
+[BurstCompile, CreateAfter(typeof(RollbackCommandSystem)), UpdateInGroup(typeof(GameSyncSystemGroup)), SystemGroupInherit(typeof(FrameSyncSystemGroup))]
 public partial struct GameRollbackSystemGroup : ISystem
 {
     public GameRollbackManager manager
