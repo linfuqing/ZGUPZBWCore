@@ -398,11 +398,13 @@ public struct GameItemStructChangeManager : IComponentData
 [BurstCompile, UpdateInGroup(typeof(EndFrameEntityCommandSystemGroup))]
 public partial struct GameItemStructChangeSystem : ISystem
 {
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         state.EntityManager.AddComponentData(state.SystemHandle, new GameItemStructChangeManager(Allocator.Persistent));
     }
 
+    //[BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
         state.EntityManager.GetComponentData<GameItemStructChangeManager>(state.SystemHandle).Dispose();

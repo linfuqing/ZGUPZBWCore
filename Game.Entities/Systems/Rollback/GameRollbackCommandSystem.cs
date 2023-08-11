@@ -300,7 +300,7 @@ public partial struct GameBVHRollbackSystem : ISystem, IRollbackCore
 
         var bvhs = new SharedHashMap<uint, GameRollbackBVH>(Allocator.Persistent);
 
-        containerManager.Manage(new GameBVHRollbackUtility.Container(bvhs), GameBVHRollbackUtility.ClearContainerFunction.Data, GameBVHRollbackUtility.DisposeContainerFunction.Data);
+        containerManager.Manage(new GameBVHRollbackUtility.Container(bvhs));
 
         this.bvhs = bvhs;
     }
@@ -414,16 +414,12 @@ internal static class GameBVHRollbackUtility
         }
     }
 
-    public static readonly SharedStatic<FunctionPointer<RollbackContainerDelegate>> ClearContainerFunction = SharedStatic<FunctionPointer<RollbackContainerDelegate>>.GetOrCreate<ContainerClear>();
-
-    public static readonly SharedStatic<FunctionPointer<RollbackContainerDelegate>> DisposeContainerFunction = SharedStatic<FunctionPointer<RollbackContainerDelegate>>.GetOrCreate<ContainerDispose>();
-    
 
     [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.AfterAssembliesLoaded)]
     public static void Init()
     {
-        ClearContainerFunction.Data = FunctionWrapperUtility.CompileManagedFunctionPointer<RollbackContainerDelegate>(__ClearContainer);
-        DisposeContainerFunction.Data = FunctionWrapperUtility.CompileManagedFunctionPointer<RollbackContainerDelegate>(__DisposeContainer);
+        RollbackUtility.GetClearFunction<Container>() = FunctionWrapperUtility.CompileManagedFunctionPointer<RollbackContainerDelegate>(__ClearContainer);
+        RollbackUtility.GetDisposeFunction<Container>() = FunctionWrapperUtility.CompileManagedFunctionPointer<RollbackContainerDelegate>(__DisposeContainer);
     }
 
     //[BurstCompile]
