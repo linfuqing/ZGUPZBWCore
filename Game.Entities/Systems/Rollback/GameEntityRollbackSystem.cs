@@ -957,9 +957,10 @@ public partial struct GameEntityRollbackSystem : ISystem, IRollbackCore
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            ComponentType.ReadOnly<RollbackObject>(),
-            ComponentType.ReadOnly<GameEntityCamp>());
+        using(var builder = new EntityQueryBuilder(Allocator.Temp))
+        __group = builder
+                .WithAll<RollbackObject, GameEntityCamp>()
+                .Build(ref state);
 
         var containerManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<RollbackSystemGroup>().containerManager;
 
