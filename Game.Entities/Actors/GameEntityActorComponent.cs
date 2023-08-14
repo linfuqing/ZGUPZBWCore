@@ -141,6 +141,8 @@ public struct GameEntityActionInfo : ICleanupComponentData, IEquatable<GameEntit
 
     public Entity entity;
 
+    public Entity commander;
+
     public bool Equals(GameEntityActionInfo other)
     {
         //Do not need commandVersion
@@ -784,7 +786,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         actionInfo.distance = float3.zero;
         //actionInfo.offset = float3.zero;
         actionInfo.entity = Entity.Null;
-
+        actionInfo.commander = Entity.Null;
         assigner.SetComponentData(entity, actionInfo);
 
         if (_delay != null)

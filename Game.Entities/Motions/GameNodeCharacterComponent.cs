@@ -445,6 +445,8 @@ public class GameNodeCharacterComponent : ComponentDataProxy<GameNodeCharacterDa
 
     public void SetPosition(EntityCommander commander, in float3 value)
     {
+        //Debug.LogError($"Sync Position {value}");
+
         Translation translation;
         translation.Value = value;
         commander.SetComponentData(entity, translation);

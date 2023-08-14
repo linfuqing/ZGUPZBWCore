@@ -507,6 +507,7 @@ public partial struct GameNodeCharacterSystem : ISystem
             var rigidbody = rigidbodies[rigidbodyIndex];
 
 #if GAME_DEBUG_COMPARSION
+            //UnityEngine.Debug.Log($"{rigidbody.Entity} {oldStatus} In {frameIndex}");
             UnityEngine.Assertions.Assert.AreEqual(entityIndexMap[rigidbody.Entity].value, entityIndices[index].value);
 
             stream.Begin(entityIndices[index].value);

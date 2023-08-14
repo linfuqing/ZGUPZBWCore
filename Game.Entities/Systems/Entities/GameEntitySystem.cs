@@ -1026,7 +1026,7 @@ public partial struct GameEntityActorSystem : ISystem
         public void Execute(int index)
         {
             GameEntityActionCommand command;
-            Entity commander = index < commanders.Length ? commanders[index].entity : Entity.Null;
+            Entity entity = entityArray[index], commander = index < commanders.Length ? commanders[index].entity : Entity.Null;
             if (commandMap.HasComponent(commander))
             {
                 command = commandMap[commander];
@@ -1047,6 +1047,8 @@ public partial struct GameEntityActorSystem : ISystem
 
                 ++commandVersion.value;
                 commandVersions[index] = commandVersion;
+
+                commander = entity;
             }
 
             if (isDisabled)
@@ -1110,7 +1112,6 @@ public partial struct GameEntityActorSystem : ISystem
                             }
                         }
 
-                        Entity entity = entityArray[index];
                         var actor = actors[index];
                         if (actor.rangeScale > math.FLT_MIN_NORMAL)
                         {
@@ -1656,6 +1657,7 @@ public partial struct GameEntityActorSystem : ISystem
                         actionInfo.distance = distance;// command.distance;// distance + offset;
                                                        //actionInfo.offset = offset;
                         actionInfo.entity = command.entity;
+                        actionInfo.commander = commander;
 
                         actionInfos[entity] = actionInfo;
 
@@ -2243,7 +2245,8 @@ public partial struct GameEntityHitSystem : ISystem
 
         public bool Execute(int index)
         {
-            //if (hit.value > math.FLT_MIN_NORMAL && actorHits[index].destinationHit > math.FLT_MIN_NORMAL)
+            //只有被打的时候才计时,否则会因为SetChangedVersionFilter不同步
+            if (/*hit.value > math.FLT_MIN_NORMAL && */actorHits[index].destinationHit > math.FLT_MIN_NORMAL)
             {
                 var hit = inputs[index];
                 var actorInfo = actorInfos[index];
@@ -3461,6 +3464,7 @@ public partial struct GameEntityActionHitClearSystem : ISystem
 
     private ComponentTypeHandle<GameEntityActorHit> __instanceType;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         __group = state.GetEntityQuery(ComponentType.ReadWrite<GameEntityActorHit>());
@@ -3468,6 +3472,7 @@ public partial struct GameEntityActionHitClearSystem : ISystem
         __instanceType = state.GetComponentTypeHandle<GameEntityActorHit>();
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 

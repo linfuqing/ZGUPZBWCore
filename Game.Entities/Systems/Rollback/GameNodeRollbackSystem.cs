@@ -792,6 +792,8 @@ public partial struct GameNodeTransformRollbackSystem : ISystem, IRollbackCore
 {
     public struct Restore : IRollbackRestore
     {
+        public uint frameIndex;
+
         public RollbackComponentRestoreFunction<Translation> translations;
         public RollbackComponentRestoreFunction<Rotation> rotations;
         public RollbackComponentRestoreFunction<GameNodeStatus> states;
@@ -802,6 +804,8 @@ public partial struct GameNodeTransformRollbackSystem : ISystem, IRollbackCore
         {
             if (!states.IsExists(entity))
                 return;
+
+            //UnityEngine.Debug.LogError($"Restore  {frameIndex} : {entity} : {translations[entityIndex]}");
 
             translations.Invoke(entityIndex, entity);
             rotations.Invoke(entityIndex, entity);
@@ -932,6 +936,7 @@ public partial struct GameNodeTransformRollbackSystem : ISystem, IRollbackCore
     public void ScheduleRestore(uint frameIndex, ref SystemState state)
     {
         Restore restore;
+        restore.frameIndex = frameIndex;
         restore.translations = __manager.DelegateRestore(__translations, ref state);
         restore.rotations = __manager.DelegateRestore(__rotations, ref state);
         restore.states = __manager.DelegateRestore(__states, ref state);
