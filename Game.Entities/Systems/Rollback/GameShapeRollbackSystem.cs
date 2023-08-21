@@ -637,7 +637,7 @@ public partial struct GameRollbackObjectSystem : ISystem, IRollbackCore
 {
     public struct Restore : IRollbackRestore, IEntityCommandProducerJob
     {
-        [ReadOnly]
+        [NativeDisableParallelForRestriction]
         public ComponentLookup<RollbackObject> rollbackObjects;
 
         [ReadOnly]
@@ -649,6 +649,8 @@ public partial struct GameRollbackObjectSystem : ISystem, IRollbackCore
         {
             if (!rollbackObjects.HasComponent(entity))
                 return;
+
+            rollbackObjects.SetComponentEnabled(entity, true);
 
             if (disabled.HasComponent(entity))
             {
@@ -688,6 +690,8 @@ public partial struct GameRollbackObjectSystem : ISystem, IRollbackCore
 
     private EntityTypeHandle __entityType;
 
+    private DynamicComponentTypeHandle __instanceType;
+
     private ComponentLookup<RollbackObject> __rollbackObjects;
 
     private ComponentLookup<Disabled> __disabled;
@@ -700,11 +704,14 @@ public partial struct GameRollbackObjectSystem : ISystem, IRollbackCore
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(ComponentType.ReadOnly<RollbackObject>());
+        var rollbackType = ComponentType.ReadWrite<RollbackObject>();
+        __group = state.GetEntityQuery(rollbackType);
 
         __entityType = state.GetEntityTypeHandle();
 
-        __rollbackObjects = state.GetComponentLookup<RollbackObject>(true);
+        __instanceType = state.GetDynamicComponentTypeHandle(rollbackType);
+
+        __rollbackObjects = state.GetComponentLookup<RollbackObject>();
         __disabled = state.GetComponentLookup<Disabled>(true);
 
         var world = state.WorldUnmanaged;
@@ -734,14 +741,6 @@ public partial struct GameRollbackObjectSystem : ISystem, IRollbackCore
     {
         //var inputDeps = __manager.GetChunk(frameIndex, state.Dependency);
 
-        var jobHandle = __manager.AddComponentIfNotSaved<Disabled>(
-            frameIndex, 
-            __group, 
-            __entityType.UpdateAsRef(ref state), 
-            __addComponentCommander,
-            state.Dependency, 
-            true);
-
         var removeComponentCommander = __removeComponentCommander.Create();
 
         Restore restore;
@@ -749,15 +748,38 @@ public partial struct GameRollbackObjectSystem : ISystem, IRollbackCore
         restore.disabled = __disabled.UpdateAsRef(ref state);
         restore.entityManager = removeComponentCommander.parallelWriter;
 
-        jobHandle = __manager.ScheduleParallel(restore, frameIndex, jobHandle, false);
+        var jobHandle = __manager.ScheduleParallel(restore, frameIndex, state.Dependency, true);
 
         removeComponentCommander.AddJobHandleForProducer<Restore>(jobHandle);
+
+        var entityType = __entityType.UpdateAsRef(ref state);
+        jobHandle = __manager.AddComponentIfNotSaved<Disabled>(
+            frameIndex, 
+            __group,
+            entityType, 
+            __addComponentCommander,
+            jobHandle, 
+            false);
+
+        var instanceType = __instanceType.UpdateAsRef(ref state);
+        jobHandle = __manager.EnableOrDisableComponentIfNotSaved(
+            false,
+            frameIndex,
+            __group,
+            entityType,
+            ref instanceType,
+            jobHandle,
+            false);
 
         state.Dependency = jobHandle;
     }
 
     public void ScheduleSave(uint frameIndex, in EntityTypeHandle entityType, ref SystemState state)
     {
+        if (__group.IsEmpty)
+            return;
+
+        //UnityEngine.Debug.LogError($"Save {frameIndex}");
         var data = new RollbackSaveData(__group, ref state);
 
         Save save;

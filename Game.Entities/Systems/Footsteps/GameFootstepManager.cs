@@ -289,7 +289,7 @@ public struct GameFootstepManager
     }
 }
 
-[BurstCompile, UpdateAfter(typeof(AnimationSystemGroup))]
+[BurstCompile, UpdateInGroup(typeof(PresentationSystemGroup))]
 public partial struct GameFootstepSystem : ISystem
 {
     private struct CountTags

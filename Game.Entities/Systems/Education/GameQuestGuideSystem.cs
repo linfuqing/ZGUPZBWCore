@@ -857,7 +857,8 @@ public partial struct GameQuestGuideSystem : ISystem
     }
 }
 
-[UpdateInGroup(typeof(InitializationSystemGroup))]
+[UpdateInGroup(typeof(CallbackSystemGroup)), 
+    WorldSystemFilter(WorldSystemFilterFlags.Presentation)]
 public partial class GameQuestGuideCallbackSystem : SystemBase
 {
     protected override void OnUpdate()

@@ -104,24 +104,24 @@ public struct GameItemSpawnOffset : IComponentData
     }
 }
 
-public struct GameItemSpawnCommandVersion : IComponentData
+/*public struct GameItemSpawnCommandVersion : IComponentData
 {
     public int value;
-}
+}*/
 
-public struct GameItemSpawnCommand : IBufferElementData
+public struct GameItemSpawnCommand : IBufferElementData, IEnableableComponent
 {
     public GameItemSpawnType spawnType;
     public int itemType;
     public int itemCount;
-    public int version;
+    //public int version;
     public Entity owner;
 }
 
-public struct GameItemSpawnHandleCommand : IBufferElementData
+public struct GameItemSpawnHandleCommand : IBufferElementData, IEnableableComponent
 {
     public GameItemSpawnType spawnType;
-    public int version;
+    //public int version;
     public GameItemHandle handle;
     public Entity owner;
 }
@@ -226,6 +226,8 @@ public partial struct GameItemSpawnSystem : ISystem
                 switch (value.spawnType)
                 {
                     case EntitySpwanType.ItemRoot:
+                        itemManager.DetachParent(command.handle);
+
                         result.itemHandle = command.handle;
 
                         results.Add(result);
@@ -359,7 +361,14 @@ public partial struct GameItemSpawnSystem : ISystem
 
                 var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
                 while (iterator.NextEntityIndex(out int i))
+                {
+                    if (!chunk.IsComponentEnabled(ref commandType, i))
+                        continue;
+
                     spawn.Execute(i);
+
+                    chunk.SetComponentEnabled(ref commandType, i, false);
+                }
             }
 
             if (chunk.Has(ref handleCommandType))
@@ -376,7 +385,14 @@ public partial struct GameItemSpawnSystem : ISystem
 
                 var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
                 while (iterator.NextEntityIndex(out int i))
+                {
+                    if (!chunk.IsComponentEnabled(ref handleCommandType, i))
+                        continue;
+
                     spawn.Execute(i);
+
+                    chunk.SetComponentEnabled(ref handleCommandType, i, false);
+                }
             }
         }
     }
@@ -416,12 +432,13 @@ public partial struct GameItemSpawnSystem : ISystem
     {
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __group = builder
-                    .WithAll<Translation, Rotation, GameItemSpawnCommandVersion>()
-                    .WithAllRW<GameItemSpawnCommand>()
+                    .WithAll<Translation, Rotation>()
+                    .WithAnyRW<GameItemSpawnCommand, GameItemSpawnHandleCommand>()
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
 
-        __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameItemSpawnCommandVersion>());
+        //__group.AddChangedVersionFilter(ComponentType.ReadWrite<GameItemSpawnCommand>());
+        //__group.AddChangedVersionFilter(ComponentType.ReadWrite<GameItemSpawnHandleCommand>());
 
         __translationType = state.GetComponentTypeHandle<Translation>(true);
         __rotationType = state.GetComponentTypeHandle<Rotation>(true);

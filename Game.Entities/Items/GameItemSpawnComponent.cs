@@ -2,7 +2,7 @@ using UnityEngine;
 using ZG;
 
 [EntityComponent(typeof(GameItemSpawnOffset))]
-[EntityComponent(typeof(GameItemSpawnCommandVersion))]
+//[EntityComponent(typeof(GameItemSpawnCommandVersion))]
 [EntityComponent(typeof(GameItemSpawnCommand))]
 [EntityComponent(typeof(GameItemSpawnHandleCommand))]
 public class GameItemSpawnComponent : MonoBehaviour, IEntityComponent
@@ -17,5 +17,7 @@ public class GameItemSpawnComponent : MonoBehaviour, IEntityComponent
         offset.max = offsetMax;
 
         assigner.SetComponentData(entity, offset);
+        assigner.SetComponentEnabled<GameItemSpawnCommand>(entity, false);
+        assigner.SetComponentEnabled<GameItemSpawnHandleCommand>(entity, false);
     }
 }

@@ -222,7 +222,7 @@ public partial struct GameNodeShapeSystem : ISystem
 
 #if GAME_DEBUG_COMPARSION
             change.frameIndex = frameIndex;
-            change.entityIndices = chunk.GetNativeArray(entityIndexType);
+            change.entityIndices = chunk.GetNativeArray(ref entityIndexType);
 #endif
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);

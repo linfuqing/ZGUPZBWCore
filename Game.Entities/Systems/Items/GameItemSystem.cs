@@ -395,7 +395,7 @@ public struct GameItemStructChangeManager : IComponentData
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(EndFrameEntityCommandSystemGroup))]
+[BurstCompile, UpdateInGroup(typeof(EntityObjectSystemGroup))]
 public partial struct GameItemStructChangeSystem : ISystem
 {
     [BurstCompile]
@@ -417,7 +417,7 @@ public partial struct GameItemStructChangeSystem : ISystem
     }
 }
 
-[UpdateInGroup(typeof(PresentationSystemGroup)), UpdateAfter(typeof(EntityDataSystem))]
+[UpdateInGroup(typeof(InitializationSystemGroup)), UpdateAfter(typeof(EntityDataSystem)), UpdateBefore(typeof(EntityObjectSystemGroup))]
 public partial class GameItemSystemGroup : ComponentSystemGroup
 {
 

@@ -243,7 +243,7 @@ public partial struct GameWarperSystem : ISystem
     }
 }
 
-[UpdateInGroup(typeof(TimeSystemGroup)), UpdateAfter(typeof(GameSyncSystemGroup))]
+[UpdateInGroup(typeof(CallbackSystemGroup))]
 public partial class GameWarperCallbackSystem : SystemBase//EntityCommandSystemHybrid
 {
     private GameUpdateTime __time;

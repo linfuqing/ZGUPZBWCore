@@ -6,7 +6,6 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using Unity.Transforms;
-using Unity.Physics;
 using ZG;
 using Math = ZG.Mathematics.Math;
 
@@ -350,7 +349,7 @@ public partial struct GameNodeSystem : ISystem
             //instance.angularSpeed = math.abs(instance.angularSpeed * speedScale);
 
 #if GAME_DEBUG_COMPARSION
-            //UnityEngine.Debug.Log($"Node {entityIndices[index].value} : {frameIndex} : {entityArray[index].Index} : {status.value} : {speedScale} : {this.delay[index].time.count}");
+            //UnityEngine.Debug.Log($"Node {entityIndices[index].value} : {frameIndex} : {entityArray[index].Index} : {status.value} : {speedScales[index].value.value} : {this.translations[index].Value}");
 
             stream.Begin(entityIndices[index].value);
             stream.Assert(statusName, status.value);
@@ -1059,6 +1058,10 @@ public partial struct GameNodeSpeedScaleSystem : ISystem
 {
     private struct UpdateSpeedScale
     {
+#if GAME_DEBUG_COMPARSION
+        public uint frameIndex;
+#endif
+
         [ReadOnly]
         public NativeArray<Entity> entityArray;
         [ReadOnly]
@@ -1072,14 +1075,23 @@ public partial struct GameNodeSpeedScaleSystem : ISystem
         public void Execute(int index)
         {
             var value = inputs[index];
+            var origin = value;
             if (value.Apply(components[index]))
+            {
                 outputs[entityArray[index]] = value;
+
+                //UnityEngine.Debug.LogError($"Change Speed {origin.value.value} : {value.value.value} : {entityArray[index]} : {frameIndex}");
+            }
         }
     }
 
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Deterministic)]
     private struct UpdateSpeedScaleEx : IJobChunk
     {
+#if GAME_DEBUG_COMPARSION
+        public uint frameIndex;
+#endif
+
         [ReadOnly]
         public EntityTypeHandle entityType;
         [ReadOnly]
@@ -1093,6 +1105,10 @@ public partial struct GameNodeSpeedScaleSystem : ISystem
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             UpdateSpeedScale updateSpeedScale;
+#if GAME_DEBUG_COMPARSION
+            updateSpeedScale.frameIndex = frameIndex;
+#endif
+
             updateSpeedScale.entityArray = chunk.GetNativeArray(entityType);
             updateSpeedScale.inputs = chunk.GetNativeArray(ref instanceType);
             updateSpeedScale.components = chunk.GetBufferAccessor(ref componentType);
@@ -1106,6 +1122,10 @@ public partial struct GameNodeSpeedScaleSystem : ISystem
 
     private EntityQuery __group;
 
+#if GAME_DEBUG_COMPARSION
+    private GameRollbackTime __time;
+#endif
+
     public void OnCreate(ref SystemState state)
     {
         __group = state.GetEntityQuery(
@@ -1114,6 +1134,10 @@ public partial struct GameNodeSpeedScaleSystem : ISystem
             ComponentType.Exclude<Disabled>());
 
         __group.SetChangedVersionFilter(typeof(GameNodeSpeedScaleComponent));
+
+#if GAME_DEBUG_COMPARSION
+        __time = new GameRollbackTime(ref state);
+#endif
     }
 
     public void OnDestroy(ref SystemState state)
@@ -1125,6 +1149,10 @@ public partial struct GameNodeSpeedScaleSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         UpdateSpeedScaleEx updateSpeedScale;
+#if GAME_DEBUG_COMPARSION
+        updateSpeedScale.frameIndex = __time.frameIndex;
+#endif
+
         updateSpeedScale.entityType = state.GetEntityTypeHandle();
         updateSpeedScale.instanceType = state.GetComponentTypeHandle<GameNodeSpeedScale>(true);
         updateSpeedScale.componentType = state.GetBufferTypeHandle<GameNodeSpeedScaleComponent>(true);

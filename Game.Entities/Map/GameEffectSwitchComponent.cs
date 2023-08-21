@@ -245,7 +245,7 @@ public partial class GameEffectSwitchSystem : SystemBase
     }
 }
 
-[UpdateInGroup(typeof(PresentationSystemGroup))/*, UpdateBefore(typeof(EndFrameEntityCommandSystemGroup))*/]
+[UpdateInGroup(typeof(CallbackSystemGroup))/*, UpdateBefore(typeof(EndFrameEntityCommandSystemGroup))*/]
 public partial class GameEffectSwitchCallbackSystem : SystemBase
 {
     private GameEffectSwitchSystem __system;

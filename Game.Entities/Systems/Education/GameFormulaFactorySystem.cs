@@ -911,8 +911,6 @@ public partial struct GameFormulaFactorySystem : ISystem
 
         public BufferLookup<GameItemSpawnHandleCommand> commands;
 
-        public ComponentLookup<GameItemSpawnCommandVersion> versions;
-
         public ComponentLookup<GameMoney> moneies;
 
         [ReadOnly]
@@ -979,16 +977,15 @@ public partial struct GameFormulaFactorySystem : ISystem
                         {
                             if (commands.HasBuffer(result.entity))
                             {
-                                var version = versions[result.entity];
-
                                 GameItemSpawnHandleCommand command;
                                 command.spawnType = GameItemSpawnType.Drop;
                                 command.handle = itemChildHandle;
-                                command.version = ++version.value;
+                                //command.version = ++version.value;
                                 command.owner = result.owner;
                                 commands[result.entity].Add(command);
+                                commands.SetBufferEnabled(result.entity, true);
 
-                                versions[result.entity] = version;
+                                //versions[result.entity] = version;
                             }
                         }
                     }
@@ -1020,8 +1017,6 @@ public partial struct GameFormulaFactorySystem : ISystem
         public BufferLookup<GameItemSibling> siblings;
 
         public BufferLookup<GameItemSpawnCommand> commands;
-
-        public ComponentLookup<GameItemSpawnCommandVersion> versions;
 
         public NativeList<CompletedResult> inputs;
 
@@ -1058,17 +1053,14 @@ public partial struct GameFormulaFactorySystem : ISystem
 
                         if (commands.HasBuffer(input.entity))
                         {
-                            var version = versions[input.entity];
-
                             GameItemSpawnCommand command;
                             command.spawnType = GameItemSpawnType.Drop;
                             command.itemType = result.itemType;
                             command.itemCount = sourceItemCount;
-                            command.version = ++version.value;
                             command.owner = input.owner;
                             commands[input.entity].Add(command);
 
-                            versions[input.entity] = version;
+                            commands.SetBufferEnabled(input.entity, true);
                         }
 
                         sourceItemCount = 0;
@@ -1150,7 +1142,6 @@ public partial struct GameFormulaFactorySystem : ISystem
     private ComponentTypeHandle<GameFormulaFactoryStatus> __statusType;
     private ComponentLookup<GameFormulaFactoryStatus> __states;
 
-    private ComponentLookup<GameItemSpawnCommandVersion> __versions;
     private BufferLookup<GameItemSibling> __siblings;
 
     private ComponentTypeHandle<GameFormulaFactoryStorage> __storageType;
@@ -1213,8 +1204,6 @@ public partial struct GameFormulaFactorySystem : ISystem
         __modeType = state.GetComponentTypeHandle<GameFormulaFactoryMode>(true);
         __statusType = state.GetComponentTypeHandle<GameFormulaFactoryStatus>(true);
         __states = state.GetComponentLookup<GameFormulaFactoryStatus>();
-
-        __versions = state.GetComponentLookup<GameItemSpawnCommandVersion>();
 
         __siblings = state.GetBufferLookup<GameItemSibling>();
 
@@ -1315,7 +1304,6 @@ public partial struct GameFormulaFactorySystem : ISystem
             //entityManager.AddJobHandleForProducer<RunEx>(jobHandle);
         }
 
-        var versions = __versions.UpdateAsRef(ref state);
         var siblings = __siblings.UpdateAsRef(ref state);
         if (!__groupToComplete.IsEmptyIgnoreFilter)
         {
@@ -1372,7 +1360,6 @@ public partial struct GameFormulaFactorySystem : ISystem
             applyToRun.roots = itemRoots;
             applyToRun.siblings = siblings;
             applyToRun.commands = __itemSpawnHandleCommands.UpdateAsRef(ref state);
-            applyToRun.versions = versions;
             applyToRun.moneies = monies;
             applyToRun.results = __runningResults;
 
@@ -1392,7 +1379,6 @@ public partial struct GameFormulaFactorySystem : ISystem
         applyToComplete.itemManager = itemManager;
         applyToComplete.siblings = siblings;
         applyToComplete.commands = __itemSpawnCommands.UpdateAsRef(ref state);
-        applyToComplete.versions = versions;
         applyToComplete.inputs = __completedResults;
         applyToComplete.outputs = results.writer;
 

@@ -155,7 +155,7 @@ public struct GamePhysicsHierarchyBitField : IComponentData
     public BitField value;
 }
 
-[BurstCompile, UpdateInGroup(typeof(InitializationSystemGroup)), UpdateBefore(typeof(PhysicsHierarchyTriggerSystemGroup)), UpdateAfter(typeof(BeginFrameEntityCommandSystem))]
+[BurstCompile, UpdateInGroup(typeof(InitializationSystemGroup)), UpdateBefore(typeof(PhysicsHierarchyTriggerSystemGroup))/*, UpdateAfter(typeof(BeginFrameEntityCommandSystem))*/]
 public partial struct GamePhysicsHierarchyTriggerSystem : ISystem
 {
     public struct Change

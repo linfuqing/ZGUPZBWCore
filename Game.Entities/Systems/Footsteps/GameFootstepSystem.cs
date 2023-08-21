@@ -14,7 +14,7 @@ public interface IGameFootstepResources
     ParticleSystem LoadParticleSystem(int index);
 }
 
-[UpdateInGroup(typeof(PresentationSystemGroup))]
+[CreateAfter(typeof(GameFootstepSystem)), UpdateInGroup(typeof(PresentationSystemGroup)), UpdateAfter(typeof(GameFootstepSystem))]
 public partial class GameFootstepParticleSystem : SystemBase
 {
     [BurstCompile]
@@ -116,12 +116,12 @@ public partial class GameFootstepParticleSystem : SystemBase
     {
         base.OnCreate();
 
-        __manager = World.GetOrCreateSystemUnmanaged<GameFootstepSystem>().manager;
+        __manager = World.GetExistingSystemUnmanaged<GameFootstepSystem>().manager;
     }
 
     protected override void OnUpdate()
     {
-        ref var state = ref this.GetState();
+        //ref var state = ref this.GetState();
 
         var resources = GameFootstepSettings.resources;
         __manager.Reset(resources == null ? 0 : resources.particleSystemCount);
@@ -132,7 +132,7 @@ public partial class GameFootstepParticleSystem : SystemBase
             manager.resources = resources;
 
             if (__manager.Apply(manager, out var jobHandle))
-                state.Dependency = jobHandle;
+                Dependency = jobHandle;
 
             /*var tagCounts = __manager.GetTagCounts();
 

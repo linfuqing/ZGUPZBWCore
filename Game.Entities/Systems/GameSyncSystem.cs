@@ -405,7 +405,7 @@ public struct GameSyncManager : IComponentData
         utcTimeOffset -= frames * (double)SyncTime.frameDelta;
     }
 
-    public void UpdateToUTCFrameIndex(double utcTime, ref WorldUnmanaged world)
+    /*public void UpdateToUTCFrameIndex(double utcTime, ref WorldUnmanaged world)
     {
         //this.utcTime = utcTime;
 
@@ -415,7 +415,7 @@ public struct GameSyncManager : IComponentData
             for (uint i = SyncTime.frameIndex; i < utcFrameIndex; ++i)
                 __systemGroup.Update(ref world);
         }
-    }
+    }*/
 
     public void Update(uint upperFrameCount, uint lowerFrameCount, uint maxFrameCountToUpdate, double utcTime, ref WorldUnmanaged world)
     {
@@ -552,11 +552,11 @@ public partial class GameSyncSystemGroup : SystemBase
         __manager.CatchUp(frames);
     }
 
-    public void UpdateToUTCFrameIndex()
+    /*public void UpdateToUTCFrameIndex()
     {
         var world = World.Unmanaged;
         __manager.UpdateToUTCFrameIndex(GameSyncUtility.utcTime, ref world);
-    }
+    }*/
 
     protected override void OnCreate()
     {

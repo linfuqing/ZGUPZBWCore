@@ -19,7 +19,7 @@ public struct GameStatus : IComponentData
 
 [AutoCreateIn("Server"), 
     BurstCompile, 
-    CreateAfter(typeof(EndFrameStructChangeSystem)), 
+    CreateAfter(typeof(GameDataStructChangeSystem)), 
     UpdateInGroup(typeof(GameDataSystemGroup))]
 public partial struct GameDataStatusSystem : ISystem
 {
@@ -88,7 +88,7 @@ public partial struct GameDataStatusSystem : ISystem
         __entityType = state.GetEntityTypeHandle();
         __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
 
-        __entityManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<EndFrameStructChangeSystem>().manager.addComponentPool;
+        __entityManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameDataStructChangeSystem>().manager.addComponentPool;
     }
 
     [BurstCompile]

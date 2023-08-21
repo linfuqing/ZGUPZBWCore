@@ -55,7 +55,7 @@ public struct GameEntityActionSharedData : IComponentData
     public BlobAssetReference<GameEntityActionSharedDefinition> definition;
 }
 
-[BurstCompile, UpdateInGroup(typeof(EndFrameEntityCommandSystemGroup))]//UpdateInGroup(typeof(EndTimeSystemGroupEntityCommandSystemGroup))]
+[BurstCompile, UpdateInGroup(typeof(PresentationSystemGroup))]//UpdateInGroup(typeof(EndTimeSystemGroupEntityCommandSystemGroup))]
 public partial struct GameEntityActionSharedFactorySytem : ISystem
 {
     public struct Command
@@ -359,7 +359,8 @@ public partial struct GameEntitySharedActionTransformSystem : ISystem
     }
 }
 
-[UpdateBefore(typeof(GameTransformSystem))]//[UpdateBefore(typeof(GameEntityActionSharedCommandSytem))]
+//[UpdateBefore(typeof(GameTransformSystem))]//[UpdateBefore(typeof(GameEntityActionSharedCommandSytem))]
+[UpdateInGroup(typeof(PresentationSystemGroup)), UpdateAfter(typeof(GameEntityActionSharedFactorySytem))]
 public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
 {
     public struct Asset
@@ -658,7 +659,7 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
     }
 }
 
-[BurstCompile, RequireMatchingQueriesForUpdate, UpdateBefore(typeof(GameEntityActionSharedObjectFactorySystem))]
+[BurstCompile, RequireMatchingQueriesForUpdate, UpdateInGroup(typeof(PresentationSystemGroup)), UpdateBefore(typeof(GameEntityActionSharedObjectFactorySystem))]
 public partial struct GameEntityActionSharedObjectBreakSystem : ISystem
 {
     private struct CollectFromNonexistentActions
@@ -1107,6 +1108,7 @@ public partial struct GameEntityActionSharedUpdateSystem : ISystem
     CreateAfter(typeof(GamePhysicsWorldBuildSystem)),
     CreateAfter(typeof(GameEntityActionSharedFactorySytem)),
     UpdateInGroup(typeof(GameEntityActionSystemGroup))]
+[WorldSystemFilter(WorldSystemFilterFlags.Presentation)]
 public partial struct GameEntityActionSharedSystem : ISystem
 {
     /*public struct Item

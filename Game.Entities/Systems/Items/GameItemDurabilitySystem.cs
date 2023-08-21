@@ -515,37 +515,37 @@ public partial struct GameItemDurabilityApplySystem : ISystem
     }
 }
 
-[BurstCompile, CreateAfter(typeof(GameWeaponSystem)), UpdateInGroup(typeof(PresentationSystemGroup))]//UpdateInGroup(typeof(InitializationSystemGroup)), UpdateAfter(typeof(EntityObjectSystemGroup))]
-public partial struct GameWeaponCallbackSystem : ISystem
+[CreateAfter(typeof(GameWeaponSystem)), UpdateInGroup(typeof(CallbackSystemGroup))]//UpdateInGroup(typeof(InitializationSystemGroup)), UpdateAfter(typeof(EntityObjectSystemGroup))]
+public partial class GameWeaponCallbackSystem : SystemBase
 {
     private EntityQuery __group;
     private SharedHashMap<GameItemHandle, GameWeaponSystem.Value> __values;
 
-    [BurstCompile]
-    public void OnCreate(ref SystemState state)
+    protected override void OnCreate()
     {
+        base.OnCreate();
+
         using(var builder = new EntityQueryBuilder(Allocator.Temp))
         __group = builder
                 .WithAll<GameWeaponCallback>()
                 .WithNone<GameItemRoot>()
-                .Build(ref state);
+                .Build(this);
 
-        __values = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameWeaponSystem>().values;
+        __values = World.GetExistingSystemUnmanaged<GameWeaponSystem>().values;
     }
 
-    [BurstCompile]
-    public void OnDestroy(ref SystemState state)
+    protected override void OnDestroy()
     {
-
+        base.OnDestroy();
     }
 
-    public void OnUpdate(ref SystemState state)
+    protected override void OnUpdate()
     {
-        var entityManager = state.EntityManager;
+        var entityManager = EntityManager;
         if (!__group.IsEmptyIgnoreFilter)
         {
             //TODO: 
-            state.CompleteDependency();
+            CompleteDependency();
 
             using(var callbacks = __group.ToComponentDataArray<GameWeaponCallback>(Allocator.Temp))
             {

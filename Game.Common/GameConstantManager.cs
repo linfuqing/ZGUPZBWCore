@@ -25,6 +25,8 @@ public class GameConstantManager : UnityEngine.MonoBehaviour
 
     public static bool isInit => __count != null && __count.Value < 1;
 
+    public static IReadOnlyDictionary<string, string> args => __args;
+
     public static string Get(string key)
     {
         if (__args.TryGetValue(key, out string value))
@@ -38,12 +40,12 @@ public class GameConstantManager : UnityEngine.MonoBehaviour
         return Get(type.Name);
     }
 
-    public void Init(string[] args)
+    public static void Init(string[] args, int startIndex = 0)
     {
         var regex = new Regex("\"(\\w+)\"\\s*=\\s*\"(.+)\"");
         Match match;
         int numArgs = args.Length;
-        for (int i = 0; i < numArgs; ++i)
+        for (int i = startIndex; i < numArgs; ++i)
         {
             match = regex.Match(args[i]);
             if (match == null || !match.Success)

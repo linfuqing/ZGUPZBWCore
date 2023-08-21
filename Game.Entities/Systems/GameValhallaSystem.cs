@@ -92,8 +92,15 @@ public struct GameValhallaInitializer : IEntityDataInitializer
     }
 }
 
+[UpdateInGroup(typeof(InitializationSystemGroup))]
+public class GameValhallaSystemGroup : ComponentSystemGroup
+{
 
-[BurstCompile, CreateAfter(typeof(GameItemSystem))]
+}
+
+[BurstCompile, 
+    CreateAfter(typeof(GameItemSystem)), 
+    UpdateInGroup(typeof(GameValhallaSystemGroup))]
 public partial struct GameValhallaCollectSystem : ISystem
 {
     public struct Exp
@@ -326,6 +333,7 @@ public partial struct GameValhallaCollectSystem : ISystem
     }
 }
 
+[UpdateInGroup(typeof(GameValhallaSystemGroup))]
 public partial class GameValhallaUpgradeSystem : SystemBase
 {
     private struct Result
@@ -500,6 +508,7 @@ public partial class GameValhallaUpgradeSystem : SystemBase
     }
 }
 
+[UpdateInGroup(typeof(GameValhallaSystemGroup))]
 public partial class GameValhallaRenameSystem : SystemBase
 {
     [Serializable]
@@ -641,6 +650,7 @@ public partial class GameValhallaRenameSystem : SystemBase
     }
 }
 
+[UpdateInGroup(typeof(GameValhallaSystemGroup))]
 public partial class GameValhallaDestroySystem : SystemBase
 {
     [Serializable]
@@ -809,6 +819,7 @@ public partial class GameValhallaDestroySystem : SystemBase
     }
 }
 
+[UpdateInGroup(typeof(GameValhallaSystemGroup))]
 public partial class GameValhallaEvolutionSystem : SystemBase
 {
     [Serializable]
@@ -1051,7 +1062,7 @@ public partial class GameValhallaEvolutionSystem : SystemBase
 }
 
 //[AlwaysUpdateSystem]
-[BurstCompile, CreateAfter(typeof(GameItemSystem))]
+[BurstCompile, CreateAfter(typeof(GameItemSystem)), UpdateInGroup(typeof(GameValhallaSystemGroup))]
 public partial struct GameValhallaRespawnSystem : ISystem
 {
     public struct Command

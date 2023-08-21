@@ -5,6 +5,7 @@ using Unity.Entities;
 using Unity.Collections;
 using Unity.Mathematics;
 using ZG;
+using Unity.Burst;
 
 public enum GameDataConstans
 {
@@ -17,7 +18,10 @@ public struct GameDataCommon : IComponentData
     public FixedString4096Bytes path;
 }
 
-[AutoCreateIn("Server"), UpdateInGroup(typeof(InitializationSystemGroup)), UpdateBefore(typeof(GameItemInitSystemGroup))]
+[BurstCompile, 
+    UpdateInGroup(typeof(InitializationSystemGroup)), 
+    UpdateBefore(typeof(GameItemInitSystemGroup)), 
+    UpdateAfter(typeof(GameItemSystemGroup)), AutoCreateIn("Server")]
 public partial struct GameDataSystemGroup : ISystem
 {
     private SystemGroup __systemGroup;
@@ -54,6 +58,7 @@ public partial struct GameDataSystemGroup : ISystem
             __types.Dispose();
     }
 
+    [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
         var world = state.WorldUnmanaged;
@@ -61,12 +66,71 @@ public partial struct GameDataSystemGroup : ISystem
     }
 }
 
+[BurstCompile, 
+    UpdateInGroup(typeof(GameDataSystemGroup), OrderLast = true), AutoCreateIn("Server")]
+public partial struct GameDataStructChangeSystem : ISystem
+{
+    /*private struct Assigner : EntityCommandStructChangeManager.IAssigner
+    {
+        public EntityComponentAssigner instance;
+
+        public void Playback(ref SystemState systemState)
+        {
+            instance.Playback(ref systemState);
+        }
+    }*/
+
+    //private EntityQuery __group;
+
+    public EntityCommandStructChangeManager manager
+    {
+        get;
+
+        private set;
+    }
+
+    public EntityComponentAssigner assigner
+    {
+        get;
+
+        private set;
+    }
+
+    public EntityAddDataPool addDataPool => new EntityAddDataPool(manager.addComponentPool, assigner);
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        manager = new EntityCommandStructChangeManager(Allocator.Persistent);
+
+        assigner = new EntityComponentAssigner(Allocator.Persistent);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        manager.Dispose();
+
+        assigner.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        /*Assigner assigner;
+        assigner.instance = this.assigner;*/
+        manager.Playback(ref state/*, ref assigner*/);
+
+        assigner.Playback(ref state);
+    }
+}
+
 //BeginFrameEntityCommandSystem 为了在GameItemEntitySystem之前
 [AutoCreateIn("Server"), 
     UpdateInGroup(typeof(InitializationSystemGroup)), 
     //UpdateBefore(typeof(GameItemInitSystemGroup)), 
-    UpdateBefore(typeof(GameDataSystemGroup)),
-    UpdateAfter(typeof(BeginFrameEntityCommandSystem))]
+    UpdateBefore(typeof(GameDataSystemGroup))/*,
+    UpdateAfter(typeof(BeginFrameEntityCommandSystem))*/]
 public partial class GameDataDeserializationSystemGroup : EntityDataDeserializationManagedSystem
 {
     private string __filePath;
@@ -150,7 +214,10 @@ public partial class GameDataDeserializationSystemGroup : EntityDataDeserializat
     }
 }
 
-[AutoCreateIn("Server"), UpdateInGroup(typeof(InitializationSystemGroup)),  UpdateAfter(typeof(GameDataDeserializationSystemGroup)),  UpdateAfter(typeof(GameItemInitSystemGroup))]
+[AutoCreateIn("Server"), 
+    UpdateInGroup(typeof(InitializationSystemGroup)),  
+    UpdateAfter(typeof(GameDataDeserializationSystemGroup)),  
+    UpdateAfter(typeof(GameItemInitSystemGroup))]
 public partial class GameDataSerializationSystemGroup : EntityDataSerializationManagedSystem
 {
     public double time = 600.0f;

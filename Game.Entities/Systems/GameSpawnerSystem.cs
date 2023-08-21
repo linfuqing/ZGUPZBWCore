@@ -8,7 +8,7 @@ using ZG;
 
 [assembly: RegisterGenericJobType(typeof(TimeManager<Entity>.UpdateEvents))]
 
-[BurstCompile, CreateAfter(typeof(EndFrameStructChangeSystem)), UpdateInGroup(typeof(TimeSystemGroup)), UpdateAfter(typeof(GameSyncSystemGroup))]
+[BurstCompile, CreateAfter(typeof(BeginFrameStructChangeSystem)), UpdateInGroup(typeof(TimeSystemGroup)), UpdateAfter(typeof(GameSyncSystemGroup))]
 public partial struct GameSpawnerTimeSystem : ISystem
 {
     private struct Init
@@ -308,7 +308,7 @@ public partial struct GameSpawnerTimeSystem : ISystem
         __followerType = state.GetBufferTypeHandle<GameFollower>(true);
         __counterType = state.GetBufferTypeHandle<GameSpawnerAssetCounter>();
 
-        __entityManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<EndFrameStructChangeSystem>().addDataPool;//GetOrCreateSystemManaged<EndTimeSystemGroupEntityCommandSystem>().CreateAddComponentDataCommander<GameSpawnedInstanceInfo>();
+        __entityManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<BeginFrameStructChangeSystem>().addDataPool;//GetOrCreateSystemManaged<EndTimeSystemGroupEntityCommandSystem>().CreateAddComponentDataCommander<GameSpawnedInstanceInfo>();
 
         __timeManager = new TimeManager<Entity>(Allocator.Persistent);
 
@@ -338,7 +338,7 @@ public partial struct GameSpawnerTimeSystem : ISystem
 
         double time = state.WorldUnmanaged.Time.ElapsedTime;
 
-        var entityCount = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
+        var entityCount = CollectionHelper.CreateNativeArray<int>(1, state.WorldUpdateAllocator, NativeArrayOptions.ClearMemory);
         var inputDeps = __groupToInit.CalculateEntityCountAsync(entityCount, state.Dependency);
 
         InitEx init;
@@ -359,7 +359,7 @@ public partial struct GameSpawnerTimeSystem : ISystem
         move.inputs = __timeEvents;
         move.outputs = __timeManager.writer;
 
-        var jobHandle = move.Schedule(inputDeps);
+        var jobHandle = move.ScheduleByRef(inputDeps);
 
         __commands.Clear();
 
@@ -378,7 +378,6 @@ public partial struct GameSpawnerTimeSystem : ISystem
 
         state.Dependency = JobHandle.CombineDependencies(
             count.ScheduleParallelByRef(__groupToCount, inputDeps),
-            entityCount.Dispose(inputDeps), 
             jobHandle);
     }
 }

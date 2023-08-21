@@ -1,12 +1,13 @@
 using System;
-using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using Unity.Jobs;
 using Unity.Burst;
 using Unity.Entities;
 using Unity.Collections;
-using Unity.Mathematics;
 using ZG;
+
+public struct GameRollbackFrameCount : IComponentData
+{
+    public int value;
+}
 
 public struct GameRollbackFrameDelta : IComponentData
 {
@@ -194,7 +195,7 @@ public struct GameRollbackManager
     public void Update(ref WorldUnmanaged world, int rollbackFrameCount = 3)
     {
         var flag = __frameSyncSystemGroup.flag;
-        if ((flag & FrameSyncFlag.Value.Clear) == FrameSyncFlag.Value.Clear && (realFrameIndex % rollbackFrameCount) == 0)
+        if ((flag & FrameSyncFlag.Value.Clear) == FrameSyncFlag.Value.Clear && (rollbackFrameCount == 0 || (realFrameIndex % rollbackFrameCount) == 0))
             __frameSyncSystemGroup.Update(ref world);
         else
         {
@@ -230,6 +231,8 @@ public partial struct GameRollbackSystemGroup : ISystem
     public void OnUpdate(ref SystemState state)
     {
         var world = state.WorldUnmanaged;
-        manager.Update(ref world);
+        manager.Update(
+            ref world, 
+            SystemAPI.HasSingleton<GameRollbackFrameCount>() ? SystemAPI.GetSingleton<GameRollbackFrameCount>().value : 0);
     }
 }

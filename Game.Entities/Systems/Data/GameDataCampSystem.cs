@@ -344,7 +344,7 @@ public struct GameCampManagerShared
 
 }
 
-[AutoCreateIn("Server"), BurstCompile, CreateAfter(typeof(EndFrameStructChangeSystem)), UpdateInGroup(typeof(GameDataSystemGroup))]
+[AutoCreateIn("Server"), BurstCompile, CreateAfter(typeof(GameDataStructChangeSystem)), UpdateInGroup(typeof(GameDataSystemGroup))]
 public partial struct GameDataCampSystem : ISystem
 {
     private struct Serialize
@@ -426,7 +426,7 @@ public partial struct GameDataCampSystem : ISystem
 
         __campType = state.GetComponentTypeHandle<GameEntityCamp>(true);
 
-        __entityManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<EndFrameStructChangeSystem>().manager.addComponentPool;
+        __entityManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameDataStructChangeSystem>().manager.addComponentPool;
 
         manager = new GameCampManagerShared(Allocator.Persistent, (int)GameDataConstans.BuiltInCamps);
     }
