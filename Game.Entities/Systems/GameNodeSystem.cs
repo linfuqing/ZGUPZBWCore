@@ -1569,7 +1569,7 @@ public partial struct GameNodeStatusSystem : ISystem
 {
     private struct UpdateStates
     {
-        public GameDeadline time;
+        //public GameDeadline time;
 
         [ReadOnly]
         public NativeArray<GameNodeStatus> states;
