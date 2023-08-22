@@ -436,7 +436,7 @@ public struct GameAreaInvokeCommands<T> : IJobParallelForDefer//, IEntityCommand
             instances.Enqueue(instance);
         }*/
 
-        var random = new Random(hash ^ (uint)index);
+        var random = new Random(hash ^ (uint)command.prefabIndex);
         GameAreaInternalInstance instance;
         var randomGroups = definition.randomGroups.AsArray();
         if ((command.flag & GameAreaInternalInstance.Flag.Random) == GameAreaInternalInstance.Flag.Random)

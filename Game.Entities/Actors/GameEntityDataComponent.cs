@@ -26,8 +26,11 @@ public struct GameActionSpawn
 [Serializable]
 public struct GameBuff : IComponentData
 {
+    [Tooltip("对目标每秒持续加血")]
     public float healthPerTime;
+    [Tooltip("对目标持续加血时间")]
     public float healthTime;
+    [Tooltip("对目标持续晕眩时间")]
     public float torpidityTime;
 
     public static GameBuff operator +(GameBuff x, GameBuff y)

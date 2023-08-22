@@ -11,9 +11,20 @@ using Unity.Transforms;
 using Unity.Rendering;
 using UnityEngine;
 using ZG;
-using ZG.Unsafe;
+using UnityEngine.Rendering;
+using ZG.Entities.Physics;
+using static ZG.MotionClipWeightMaskDefinition;
 
-public partial class GameLocationClipTargetWeightSystem : SystemBase, IEntityCommandProducerJob
+public struct GameLocationClipTargetFactory : IComponentData
+{
+    public EntityCommandPool<Entity> visibleCommander;
+    public EntityCommandPool<Entity> invisibleCommander;
+}
+
+[BurstCompile, CreateAfter(typeof(GameContainerChildSystem)), 
+    CreateAfter(typeof(MeshInstanceRendererSystem)), 
+    UpdateInGroup(typeof(UpdatePresentationSystemGroup))]
+public partial struct GameLocationClipTargetWeightSystem : ISystem, IEntityCommandProducerJob
 {
     [BurstCompile]
     private struct Count : IJobChunk
@@ -61,9 +72,18 @@ public partial class GameLocationClipTargetWeightSystem : SystemBase, IEntityCom
 
     private struct Visible
     {
-        public float changedWeightValue;
+        public float deltaTime;
 
         public float3 forward;
+
+        [ReadOnly]
+        public SharedHashMap<Entity, MeshInstanceRendererBuilder>.Reader rendererBuilders;
+
+        [ReadOnly]
+        public SharedMultiHashMap<Entity, EntityData<int>>.Reader childIndices;
+
+        [ReadOnly]
+        public SharedMultiHashMap<Entity, EntityData<int>>.Reader parentIndices;
 
         [ReadOnly]
         public ComponentLookup<GameClipTargetData> instances;
@@ -78,17 +98,18 @@ public partial class GameLocationClipTargetWeightSystem : SystemBase, IEntityCom
         public BufferAccessor<GameNodeCharacterDistanceHit> distanceHits;
 
         [ReadOnly]
-        public SharedMultiHashMap<Entity, EntityData<int>>.Reader childIndices;
-
-        [ReadOnly]
-        public SharedMultiHashMap<Entity, EntityData<int>>.Reader parentIndices;
+        public BufferLookup<MeshInstanceNode> renderers;
 
         [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameClipTargetWeight> weights;
+        public ComponentLookup<PhysicsRaycastColliderToIgnore> physicsRaycastCollidersToIgnore;
+
+        [NativeDisableParallelForRestriction]
+        public ComponentLookup<GameClipTargetWeight> sources;
+
+        [NativeDisableParallelForRestriction]
+        public ComponentLookup<ClipTargetWeight> destinations;
 
         public EntityCommandQueue<Entity>.ParallelWriter entityManager;
-
-        public EntityCommandQueue<CallbackHandle>.ParallelWriter callbackHandles;
 
         public NativeParallelHashSet<Entity>.ParallelWriter entities;
 
@@ -103,17 +124,28 @@ public partial class GameLocationClipTargetWeightSystem : SystemBase, IEntityCom
             if (position.y + instance.height > targetPosition.y && 
                 math.dot(targetPosition - position, forward) > 0.0f)
             {
-                if (weights.HasComponent(entity))
-                {
-                    var weight = weights[entity];
-                    weight.value = math.min(weight.value + changedWeightValue, 1.0f) + changedWeightValue;
-                    weights[entity] = weight;
-                }
-                else
-                {
-                    entityManager.Enqueue(entity);
+                sources.SetComponentEnabled(entity, true);
 
-                    callbackHandles.Enqueue(instance.visibleCallback);
+                if(physicsRaycastCollidersToIgnore.IsComponentEnabled(entity))
+                    physicsRaycastCollidersToIgnore.SetComponentEnabled(entity, true);
+
+                float changedWeightValue = instance.weightSpeed * deltaTime;
+
+                var weight = sources[entity];
+                weight.value = math.min(weight.value + changedWeightValue, 1.0f) + changedWeightValue;
+                sources[entity] = weight;
+
+                if (renderers.HasBuffer(entity) && !rendererBuilders.ContainsKey(entity))
+                {
+                    ClipTargetWeight targetWeight;
+                    targetWeight.value = weight.value;
+                    foreach (var renderer in renderers[entity])
+                    {
+                        if (destinations.HasComponent(renderer.entity))
+                            destinations[renderer.entity] = targetWeight;
+                        else
+                            entityManager.Enqueue(renderer.entity);
+                    }
                 }
             }
         }
@@ -140,9 +172,18 @@ public partial class GameLocationClipTargetWeightSystem : SystemBase, IEntityCom
     [BurstCompile]
     private struct VisibleEx : IJobChunk, IEntityCommandProducerJob
     {
-        public float changedWeightValue;
+        public float deltaTime;
 
         public float3 forward;
+
+        [ReadOnly]
+        public SharedHashMap<Entity, MeshInstanceRendererBuilder>.Reader rendererBuilders;
+
+        [ReadOnly]
+        public SharedMultiHashMap<Entity, EntityData<int>>.Reader childIndices;
+
+        [ReadOnly]
+        public SharedMultiHashMap<Entity, EntityData<int>>.Reader parentIndices;
 
         [ReadOnly]
         public ComponentLookup<GameClipTargetData> instances;
@@ -160,34 +201,38 @@ public partial class GameLocationClipTargetWeightSystem : SystemBase, IEntityCom
         public BufferTypeHandle<GameNodeCharacterDistanceHit> distanceHitType;
 
         [ReadOnly]
-        public SharedMultiHashMap<Entity, EntityData<int>>.Reader childIndices;
-
-        [ReadOnly]
-        public SharedMultiHashMap<Entity, EntityData<int>>.Reader parentIndices;
+        public BufferLookup<MeshInstanceNode> renderers;
 
         [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameClipTargetWeight> weights;
+        public ComponentLookup<PhysicsRaycastColliderToIgnore> physicsRaycastCollidersToIgnore;
+
+        [NativeDisableParallelForRestriction]
+        public ComponentLookup<GameClipTargetWeight> sources;
+
+        [NativeDisableParallelForRestriction]
+        public ComponentLookup<ClipTargetWeight> destinations;
 
         public EntityCommandQueue<Entity>.ParallelWriter entityManager;
-
-        public EntityCommandQueue<CallbackHandle>.ParallelWriter callbackHandles;
 
         public NativeParallelHashSet<Entity>.ParallelWriter entities;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             Visible visible;
-            visible.changedWeightValue = changedWeightValue;
+            visible.deltaTime = deltaTime;
             visible.forward = forward;
+            visible.rendererBuilders = rendererBuilders;
+            visible.childIndices = childIndices;
+            visible.parentIndices = parentIndices;
             visible.instances = instances;
             visible.translationMap = translations;
             visible.translations = chunk.GetNativeArray(ref translationType);
             visible.distanceHits = chunk.GetBufferAccessor(ref distanceHitType);
-            visible.childIndices = childIndices;
-            visible.parentIndices = parentIndices;
-            visible.weights = weights;
+            visible.renderers = renderers;
+            visible.physicsRaycastCollidersToIgnore = physicsRaycastCollidersToIgnore;
+            visible.sources = sources;
+            visible.destinations = destinations;
             visible.entityManager = entityManager;
-            visible.callbackHandles = callbackHandles;
             visible.entities = entities;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -198,7 +243,10 @@ public partial class GameLocationClipTargetWeightSystem : SystemBase, IEntityCom
 
     private struct Invisible
     {
-        public float changedWeightValue;
+        public float deltaTime;
+
+        [ReadOnly]
+        public SharedHashMap<Entity, MeshInstanceRendererBuilder>.Reader rendererBuilders;
 
         [ReadOnly]
         public NativeArray<Entity> entityArray;
@@ -206,34 +254,53 @@ public partial class GameLocationClipTargetWeightSystem : SystemBase, IEntityCom
         [ReadOnly]
         public NativeArray<GameClipTargetData> instances;
 
-        public NativeArray<GameClipTargetWeight> weights;
+        public NativeArray<GameClipTargetWeight> sources;
+
+        [NativeDisableParallelForRestriction]
+        public ComponentLookup<ClipTargetWeight> destinations;
+
+        public BufferAccessor<MeshInstanceNode> renderers;
 
         public EntityCommandQueue<Entity>.ParallelWriter entityManager;
 
-        public EntityCommandQueue<CallbackHandle>.ParallelWriter callbackHandles;
-
-        public void Execute(int index)
+        public bool Execute(int index)
         {
-            var weight = weights[index];
+            var weight = sources[index];
 
-            weight.value -= changedWeightValue;
-            if(weight.value < 0.0f)
-            {
+            weight.value -= instances[index].weightSpeed * deltaTime;
+            bool result = weight.value < 0.0f;
+            if(result)
                 weight.value = 0.0f;
 
-                entityManager.Enqueue(entityArray[index]);
-
-                callbackHandles.Enqueue(instances[index].invisibleCallback);
+            if(index < renderers.Length && !rendererBuilders.ContainsKey(entityArray[index]))
+            {
+                ClipTargetWeight targetWeight;
+                targetWeight.value = weight.value;
+                foreach (var renderer in renderers[index])
+                {
+                    if (destinations.HasComponent(renderer.entity))
+                    {
+                        if(result)
+                            entityManager.Enqueue(renderer.entity);
+                        else
+                            destinations[renderer.entity] = targetWeight;
+                    }
+                }
             }
 
-            weights[index] = weight;
+            sources[index] = weight;
+
+            return result;
         }
     }
 
     [BurstCompile]
     private struct InvisibleEx : IJobChunk, IEntityCommandProducerJob
     {
-        public float changedWeightValue;
+        public float deltaTime;
+
+        [ReadOnly]
+        public SharedHashMap<Entity, MeshInstanceRendererBuilder>.Reader rendererBuilders;
 
         [ReadOnly]
         public EntityTypeHandle entityType;
@@ -241,85 +308,145 @@ public partial class GameLocationClipTargetWeightSystem : SystemBase, IEntityCom
         [ReadOnly]
         public ComponentTypeHandle<GameClipTargetData> instanceType;
 
-        public ComponentTypeHandle<GameClipTargetWeight> weightType;
+        public ComponentTypeHandle<GameClipTargetWeight> sourceType;
+
+        public ComponentTypeHandle<PhysicsRaycastColliderToIgnore> physicsRaycastColliderToIgnoreType;
+
+        public BufferTypeHandle<MeshInstanceNode> rendererType;
+
+        [NativeDisableParallelForRestriction]
+        public ComponentLookup<ClipTargetWeight> destinations;
 
         public EntityCommandQueue<Entity>.ParallelWriter entityManager;
-
-        public EntityCommandQueue<CallbackHandle>.ParallelWriter callbackHandles;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             Invisible invisible;
-            invisible.changedWeightValue = changedWeightValue;
+            invisible.deltaTime = deltaTime;
+            invisible.rendererBuilders = rendererBuilders;
             invisible.entityArray = chunk.GetNativeArray(entityType);
             invisible.instances = chunk.GetNativeArray(ref instanceType);
-            invisible.weights = chunk.GetNativeArray(ref weightType);
+            invisible.sources = chunk.GetNativeArray(ref sourceType);
+            invisible.renderers = chunk.GetBufferAccessor(ref rendererType);
+            invisible.destinations = destinations;
             invisible.entityManager = entityManager;
-            invisible.callbackHandles = callbackHandles;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
-                invisible.Execute(i);
+            {
+                if (invisible.Execute(i))
+                {
+                    chunk.SetComponentEnabled(ref sourceType, i, false);
+
+                    chunk.SetComponentEnabled(ref physicsRaycastColliderToIgnoreType, i, false);
+                }
+            }
         }
     }
 
-    public float weightSpeed = 1f;
-    private Camera __camera;
+    private EntityQuery __visibleGroup;
+    private EntityQuery __invisibleGroup;
+
+    private EntityTypeHandle __entityType;
+    private ComponentTypeHandle<PhysicsRaycastColliderToIgnore> __physicsRaycastCollidersToIgnoreType;
+    private ComponentTypeHandle<GameClipTargetWeight> __weightType;
+    private ComponentTypeHandle<GameClipTargetData> __instanceType;
+
+    private BufferTypeHandle<GameNodeCharacterDistanceHit> __distanceHitType;
+
+    private BufferTypeHandle<MeshInstanceNode> __rendererType;
+
+    private BufferLookup<MeshInstanceNode> __renderers;
+
+    private ComponentLookup<GameClipTargetData> __instances;
+
+    private ComponentLookup<Translation> __translations;
+
+    private ComponentLookup<Rotation> __rotations;
+
+    private ComponentTypeHandle<Translation> __translationType;
+
+    private ComponentLookup<GameClipTargetWeight> __sources;
+
+    private ComponentLookup<ClipTargetWeight> __destinations;
+
+    private ComponentLookup<PhysicsRaycastColliderToIgnore> __physicsRaycastCollidersToIgnore;
+
+    private SharedHashMap<Entity, MeshInstanceRendererBuilder> __rendererBuilders;
+
     private SharedMultiHashMap<Entity, EntityData<int>> __parentIndices;
     private SharedMultiHashMap<Entity, EntityData<int>> __childIndices;
     private NativeParallelHashSet<Entity> __entities;
-    private EntityQuery __visibleGroup;
-    private EntityQuery __invisibleGroup;
-    private EntityCommandPool<Entity> __visibleCommander;
-    private EntityCommandPool<Entity> __invisibleCommander;
-    private EntityCommandPool<CallbackHandle> __callbackCommander;
 
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __visibleGroup = builder
+                .WithAll<GameLocator, GameNodeCharacterDistanceHit>()
+                .Build(ref state);
 
-        World world = World;
+        __invisibleGroup = state.GetEntityQuery(ComponentType.ReadWrite<GameClipTargetWeight>());
+
+        __entityType = state.GetEntityTypeHandle();
+        __physicsRaycastCollidersToIgnoreType = state.GetComponentTypeHandle<PhysicsRaycastColliderToIgnore>();
+        __weightType = state.GetComponentTypeHandle<GameClipTargetWeight>();
+        __instanceType = state.GetComponentTypeHandle<GameClipTargetData>(true);
+
+        __distanceHitType = state.GetBufferTypeHandle<GameNodeCharacterDistanceHit>(true);
+
+        __rendererType = state.GetBufferTypeHandle<MeshInstanceNode>(true);
+        __renderers = state.GetBufferLookup<MeshInstanceNode>(true);
+
+        __instances = state.GetComponentLookup<GameClipTargetData>(true);
+        __translations = state.GetComponentLookup<Translation>(true);
+        __rotations = state.GetComponentLookup<Rotation>(true);
+        __translationType = state.GetComponentTypeHandle<Translation>(true);
+        __sources = state.GetComponentLookup<GameClipTargetWeight>();
+        __destinations = state.GetComponentLookup<ClipTargetWeight>();
+
+        __physicsRaycastCollidersToIgnore = state.GetComponentLookup<PhysicsRaycastColliderToIgnore>();
+
         __entities = new NativeParallelHashSet<Entity>(1, Allocator.Persistent);
-        ref var containerChildSystem = ref world.GetOrCreateSystemUnmanaged<GameContainerChildSystem>();
+
+        var world = state.WorldUnmanaged;
+
+        __rendererBuilders = world.GetExistingSystemUnmanaged<MeshInstanceRendererSystem>().builders;
+
+        ref var containerChildSystem = ref world.GetExistingSystemUnmanaged<GameContainerChildSystem>();
         __parentIndices = containerChildSystem.parentIndices;
         __childIndices = containerChildSystem.childIndices;
-
-        __visibleGroup = GetEntityQuery(ComponentType.ReadOnly<GameLocator>(), ComponentType.ReadOnly<GameNodeCharacterDistanceHit>());
-        __invisibleGroup = GetEntityQuery(ComponentType.ReadWrite<GameClipTargetWeight>());
-        __visibleCommander = world.GetOrCreateSystemManaged<GameClipTargetRenderSystem>().visibleCommander;
-        __invisibleCommander = world.GetOrCreateSystemManaged<GameClipTargetRenderSystem>().invisibleCommander;
-        __callbackCommander = world.GetOrCreateSystemManaged<GameClipTargetRenderSystem>().callbackCommander;
     }
 
-    protected override void OnDestroy()
+    //[BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
         __entities.Dispose();
-
-        base.OnDestroy();
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
-        if (__camera == null)
-        {
-            __camera = Camera.main;
-            if (__camera == null)
-                return;
-        }
+        if (!SystemAPI.HasSingleton<MainCameraForward>())
+            return;
 
-        float changedWeightValue = weightSpeed * World.Time.DeltaTime;
-        var jobHandle = Dependency;
-        var callbackCommander = __callbackCommander.Create();
-        var callbackCommanderWriter = callbackCommander.parallelWriter;
+        var factory = SystemAPI.GetSingleton<GameLocationClipTargetFactory>();
+
+        var rendererBuilders = __rendererBuilders.reader;
+        ref var rendererBuilderJobManager = ref __rendererBuilders.lookupJobManager;
+        var destinations = __destinations.UpdateAsRef(ref state);
+        JobHandle? result = null;
+        var inputDeps = state.Dependency;
+        float deltaTime = state.WorldUnmanaged.Time.DeltaTime;
         if (!__visibleGroup.IsEmptyIgnoreFilter)
         {
-            var distanceHitType = GetBufferTypeHandle<GameNodeCharacterDistanceHit>(true);
+            var distanceHitType = __distanceHitType.UpdateAsRef(ref state);
             var counter = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
 
             Count count;
             count.counter = counter;
             count.distanceHitType = distanceHitType;
-            jobHandle = count.ScheduleParallel(__visibleGroup, jobHandle);
+            var jobHandle = count.ScheduleParallelByRef(__visibleGroup, inputDeps);
 
             ref var childIndicesJobManager = ref __childIndices.lookupJobManager;
             ref var parentIndicesJobManager = ref __parentIndices.lookupJobManager;
@@ -332,526 +459,353 @@ public partial class GameLocationClipTargetWeightSystem : SystemBase, IEntityCom
             clear.childIndices = childIndices;
             clear.parentIndices = parentIndices;
             clear.entities = __entities;
-            jobHandle = clear.Schedule(JobHandle.CombineDependencies(
+            jobHandle = clear.ScheduleByRef(JobHandle.CombineDependencies(
                 childIndicesJobManager.readOnlyJobHandle,
-                parentIndicesJobManager.readOnlyJobHandle, 
+                parentIndicesJobManager.readOnlyJobHandle,
                 jobHandle));
 
-            var entityManager = __visibleCommander.Create();
+            var entityManager = factory.visibleCommander.Create();
 
             VisibleEx visible;
-            visible.changedWeightValue = changedWeightValue;
-            visible.forward = __camera.transform.forward;
-            visible.instances = GetComponentLookup<GameClipTargetData>(true);
-            visible.translations = GetComponentLookup<Translation>(true);
-            visible.rotations = GetComponentLookup<Rotation>(true);
-            visible.translationType = GetComponentTypeHandle<Translation>(true);
+            visible.deltaTime = deltaTime;
+            visible.forward = SystemAPI.GetSingleton<MainCameraForward>().value;
+            visible.rendererBuilders = rendererBuilders;
+            visible.instances = __instances.UpdateAsRef(ref state);
+            visible.translations = __translations.UpdateAsRef(ref state);
+            visible.rotations = __rotations.UpdateAsRef(ref state);
+            visible.translationType = __translationType.UpdateAsRef(ref state);
             visible.distanceHitType = distanceHitType;
             visible.childIndices = childIndices;
             visible.parentIndices = parentIndices;
-            visible.weights = GetComponentLookup<GameClipTargetWeight>();
+            visible.renderers = __renderers.UpdateAsRef(ref state);
+            visible.physicsRaycastCollidersToIgnore = __physicsRaycastCollidersToIgnore.UpdateAsRef(ref state);
+            visible.sources = __sources.UpdateAsRef(ref state);
+            visible.destinations = destinations;
             visible.entityManager = entityManager.parallelWriter;
-            visible.callbackHandles = callbackCommanderWriter;
             visible.entities = __entities.AsParallelWriter();
-            jobHandle = visible.ScheduleParallel(__visibleGroup, jobHandle);
+            jobHandle = visible.ScheduleParallelByRef(__visibleGroup, JobHandle.CombineDependencies(jobHandle, rendererBuilderJobManager.readOnlyJobHandle));
 
             childIndicesJobManager.AddReadOnlyDependency(jobHandle);
             parentIndicesJobManager.AddReadOnlyDependency(jobHandle);
             entityManager.AddJobHandleForProducer<VisibleEx>(jobHandle);
+
+            result = jobHandle;
         }
 
         if (!__invisibleGroup.IsEmptyIgnoreFilter)
         {
-            var entityManager = __invisibleCommander.Create();
+            var jobHandle = result == null ? JobHandle.CombineDependencies(rendererBuilderJobManager.readOnlyJobHandle, inputDeps) : result.Value;
+
+            var entityManager = factory.invisibleCommander.Create();
 
             InvisibleEx invisible;
-            invisible.changedWeightValue = changedWeightValue;
-            invisible.entityType = GetEntityTypeHandle();
-            invisible.instanceType = GetComponentTypeHandle<GameClipTargetData>(true);
-            invisible.weightType = GetComponentTypeHandle<GameClipTargetWeight>();
+            invisible.deltaTime = deltaTime;
+            invisible.rendererBuilders = rendererBuilders;
+            invisible.entityType = __entityType.UpdateAsRef(ref state);
+            invisible.instanceType = __instanceType.UpdateAsRef(ref state);
+            invisible.sourceType = __weightType.UpdateAsRef(ref state);
+            invisible.physicsRaycastColliderToIgnoreType = __physicsRaycastCollidersToIgnoreType.UpdateAsRef(ref state);
+            invisible.rendererType = __rendererType.UpdateAsRef(ref state);
+            invisible.destinations = __destinations;
             invisible.entityManager = entityManager.parallelWriter;
-            invisible.callbackHandles = callbackCommanderWriter;
-            jobHandle = invisible.ScheduleParallel(__invisibleGroup, jobHandle);
+            jobHandle = invisible.ScheduleParallelByRef(__invisibleGroup, jobHandle);
 
             entityManager.AddJobHandleForProducer<InvisibleEx>(jobHandle);
+
+            result = jobHandle;
         }
 
-        callbackCommander.AddJobHandleForProducer<GameLocationClipTargetWeightSystem>(jobHandle);
+        if (result != null)
+        {
+            var jobHandle = result.Value;
 
-        Dependency = jobHandle;
+            rendererBuilderJobManager.AddReadOnlyDependency(jobHandle);
+
+            state.Dependency = jobHandle;
+        }
     }
 }
 
-[AlwaysUpdateSystem, UpdateInGroup(typeof(MeshInstanceSystemGroup), OrderFirst = true), UpdateAfter(typeof(MeshInstanceFactorySystem))]
+[CreateAfter(typeof(EntitiesGraphicsSystem)), 
+    UpdateInGroup(typeof(PresentationSystemGroup), OrderLast = true)]
 public partial class GameClipTargetRenderSystem : SystemBase
 {
-    public struct Result
-    {
-        public bool isFree;
-
-        public float weight;
-
-        public Entity entity;
-    }
-
-    private struct Free
-    {
-        [ReadOnly]
-        public BufferAccessor<MeshInstanceNode> nodes;
-
-        [NativeDisableUnsafePtrRestriction]
-        public unsafe UnsafeList<Result>* results;
-
-        public unsafe void Execute(int index)
-        {
-            Result result;
-            result.isFree = true;
-            result.weight = 0.0f;
-
-            var nodes = this.nodes[index];
-            int numNodes = nodes.Length;
-            for (int i = 0; i < numNodes; ++i)
-            {
-                result.entity = nodes[i].entity;
-
-                results->Add(result);
-            }
-        }
-    }
-
-    [BurstCompile]
-    private struct FreeEx : IJobChunk
-    {
-        [ReadOnly]
-        public BufferTypeHandle<MeshInstanceNode> nodeType;
-
-        [NativeDisableUnsafePtrRestriction]
-        public unsafe UnsafeList<Result>* results;
-
-        public unsafe void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
-        {
-            if (!chunk.Has(ref nodeType))
-                return;
-
-            Free free;
-            free.nodes = chunk.GetBufferAccessor(ref nodeType);
-            free.results = results;
-
-            var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
-            while (iterator.NextEntityIndex(out int i))
-                free.Execute(i);
-        }
-    }
-
-    private struct Collect
-    {
-        [ReadOnly]
-        public NativeArray<GameClipTargetWeight> weights;
-        [ReadOnly]
-        public BufferAccessor<MeshInstanceNode> nodes;
-
-        public NativeList<Result> results;
-
-        public void Execute(int index)
-        {
-            Result result;
-            result.isFree = false;
-            result.weight = weights[index].value;
-
-            var nodes = this.nodes[index];
-            int numNodes = nodes.Length;
-            for (int i = 0; i < numNodes; ++i)
-            {
-                result.entity = nodes[i].entity;
-
-                results.Add(result);
-            }
-        }
-    }
-
-    [BurstCompile]
-    private struct CollectEx : IJobChunk
-    {
-        [ReadOnly]
-        public ComponentTypeHandle<GameClipTargetWeight> weightType;
-
-        [ReadOnly]
-        public BufferTypeHandle<MeshInstanceNode> nodeType;
-
-        public NativeList<Result> results;
-
-        public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
-        {
-            Collect collect;
-            collect.weights = chunk.GetNativeArray(ref weightType);
-            collect.nodes = chunk.GetBufferAccessor(ref nodeType);
-            collect.results = results;
-
-            var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
-            while (iterator.NextEntityIndex(out int i))
-                collect.Execute(i);
-        }
-    }
-
-    [BurstCompile]
-    private static class BurstUtility
-    {
-        public struct Input
-        {
-            public unsafe UnsafeList<Result>* results;
-            public EntityCommandPool<Entity>.Context visibleCommander;
-            public EntityCommandPool<Entity>.Context invisibleCommander;
-            public EntityQuery group;
-        }
-
-        public unsafe delegate void ApplyDelegate(
-            Input* input,
-            ref SystemState systemState);
-
-        public static readonly unsafe ApplyDelegate ApplyFunction = BurstCompiler.CompileFunctionPointer<ApplyDelegate>(Apply).Invoke;
-
-        [BurstCompile]
-        [AOT.MonoPInvokeCallback(typeof(ApplyDelegate))]
-        public static unsafe void Apply(
-            Input* input,
-            ref SystemState systemState)
-        {
-            var entityManager = systemState.EntityManager;
-
-            Result result;
-            result.isFree = true;
-            result.weight = 0.0f;
-
-            //using (var entityArray = input.group.ToEntityArray(Allocator.Temp))
-            {
-                /*int length = entityArray.Length;
-                for (int i = 0; i < length; ++i)
-                {
-                    result.entity = entityArray[i];
-
-                    input.results->Add(result);
-                }*/
-
-                systemState.CompleteDependency();
-
-                FreeEx free;
-                free.nodeType = systemState.GetBufferTypeHandle<MeshInstanceNode>(true);
-                free.results = input->results;
-                free.Run(input->group);
-
-                entityManager.RemoveComponent<GameClipTargetWeight>(input->group);
-            }
-
-            using (var entities = new NativeList<Entity>(Allocator.Temp))
-            {
-                Entity entity;
-
-                while (input->visibleCommander.TryDequeue(out entity))
-                    entities.Add(entity);
-
-                int visibleLength = entities.Length;
-                if (visibleLength > 0)
-                    entityManager.AddComponentBurstCompatible<GameClipTargetWeight>(entities.AsArray());
-
-                while (input->invisibleCommander.TryDequeue(out entity))
-                    entities.Add(entity);
-
-                int invisibleLength = entities.Length;
-                if (invisibleLength > visibleLength)
-                    entityManager.RemoveComponent<GameClipTargetWeight>(entities.AsArray().GetSubArray(visibleLength, invisibleLength - visibleLength));
-
-                //result.isFree = false;
-
-                var nodes = systemState.GetBufferLookup<MeshInstanceNode>(true);
-                DynamicBuffer<MeshInstanceNode> nodesTemp;
-                int i, j, numNodes;
-                /*for(i = 0; i < visibleLength; ++i)
-                {
-                    entity = entities[i];
-                    if (!nodes.HasComponent(entity))
-                        continue;
-
-                    nodesTemp = nodes[entities[i]];
-                    numNodes = nodesTemp.Length;
-                    for (j = 0; j < numNodes; ++j)
-                    {
-                        result.entity = nodesTemp[j].value;
-                        results->Add(result);
-                    }
-                }*/
-
-                for (i = visibleLength; i < invisibleLength; ++i)
-                {
-                    entity = entities[i];
-                    if (!nodes.HasBuffer(entity))
-                        continue;
-
-                    nodesTemp = nodes[entities[i]];
-                    numNodes = nodesTemp.Length;
-                    for (j = 0; j < numNodes; ++j)
-                    {
-                        result.entity = nodesTemp[j].entity;
-                        input->results->Add(result);
-                    }
-                }
-            }
-        }
-
-        public static unsafe void Apply(
-            NativeList<Result> results,
-            EntityCommandPool<Entity>.Context visibleCommander,
-            EntityCommandPool<Entity>.Context invisibleCommander,
-            in EntityQuery group,
-            ref SystemState systemState)
-        {
-            Input input;
-            input.results = results.GetUnsafeList();
-            input.visibleCommander = visibleCommander;
-            input.invisibleCommander = invisibleCommander;
-            input.group = group;
-
-            ApplyFunction((Input*)UnsafeUtility.AddressOf(ref input), ref systemState);
-        }
-
-        public static void ApplyAndCollect(
-            NativeList<Result> results,
-            EntityCommandPool<Entity>.Context visibleCommander,
-            EntityCommandPool<Entity>.Context invisibleCommander,
-            in EntityQuery invisibleGroup,
-            in EntityQuery visibleGroup,
-            ref SystemState systemState)
-        {
-            Apply(results, visibleCommander, invisibleCommander, invisibleGroup, ref systemState);
-
-            //results.Capacity = math.max(results.Capacity, results.Length + visibleGroup.CalculateEntityCount());
-
-            CollectEx collect;
-            collect.weightType = systemState.GetComponentTypeHandle<GameClipTargetWeight>(true);
-            collect.nodeType = systemState.GetBufferTypeHandle<MeshInstanceNode>(true);
-            collect.results = results;
-            collect.Run(visibleGroup);
-        }
-    }
-
     private struct MaterialRef
     {
         public int count;
-        public Material source;
-        public Material destination;
+        public BatchMaterialID value;
+    }
 
-        public bool Release()
+    [BurstCompile]
+    private struct Release : IJobParallelFor
+    {
+        [ReadOnly]
+        public NativeArray<Entity> entities;
+
+        public NativeHashMap<Entity, BatchMaterialID> entityMaterials;
+
+        public NativeHashMap<BatchMaterialID, MaterialRef> materialRefs;
+
+        public ComponentLookup<MaterialMeshInfo> materialMeshInfos;
+
+        public NativeList<BatchMaterialID> materialsToInvisible;
+
+        public unsafe void Execute(int index)
         {
-            if (--count < 1)
+            Entity entity = entities[index];
+            if (!entityMaterials.TryGetValue(entity, out var material))
+                return;
+
+            entityMaterials.Remove(entity);
+
+            var materialRef = materialRefs[material];
+            if (--materialRef.count < 1)
             {
-                UnityEngine.Object.Destroy(destination);
+                materialsToInvisible.Add(materialRef.value);
 
-                destination = null;
-
-                return true;
+                materialRefs.Remove(material);
             }
+            else
+                materialRefs[material] = materialRef;
 
-            return false;
+            if (materialMeshInfos.HasComponent(entity))
+            {
+                var materialMeshInfo = materialMeshInfos[entity];
+                if (materialMeshInfo.MaterialID == materialRef.value)
+                {
+                    materialMeshInfo.MaterialID = material;
+
+                    materialMeshInfos[entity] = materialMeshInfo;
+                }
+            }
         }
     }
 
-    public int materialPropertyWeight = Shader.PropertyToID("_ClipTargetWeight");
-    public string materialKeyword = "CLIP_TARGET";
+    [BurstCompile]
+    private struct Retain : IJobParallelFor
+    {
+        [ReadOnly]
+        public NativeArray<Entity> entities;
 
-    private EntityQuery __visibleGroup;
-    private EntityQuery __invisibleGroup;
-    private EntityQuery __destroyGroup;
+        public NativeHashMap<Entity, BatchMaterialID> entityMaterials;
+
+        public ComponentLookup<MaterialMeshInfo> materialMeshInfos;
+
+        public NativeHashMap<BatchMaterialID, MaterialRef> materialRefs;
+
+        public NativeParallelMultiHashMap<BatchMaterialID, Entity> materialToVisible;
+
+        public unsafe void Execute(int index)
+        {
+            Entity entity = entities[index];
+            if (entityMaterials.ContainsKey(entity) || !materialMeshInfos.HasComponent(entity))
+                return;
+
+            var materialMeshInfo = materialMeshInfos[entity];
+
+            var material = materialMeshInfo.MaterialID;
+
+            entityMaterials[entity] = material;
+
+            if (materialRefs.TryGetValue(material, out var materialRef))
+            {
+                ++materialRef.count;
+
+                materialMeshInfo.MaterialID = materialRef.value;
+
+                materialMeshInfos[entity] = materialMeshInfo;
+            }
+            else
+                materialToVisible.Add(material, entity);
+        }
+    }
+
+    [BurstCompile]
+    private struct Apply : IJob
+    {
+        [ReadOnly]
+        public NativeHashMap<BatchMaterialID, MaterialRef> materialRefs;
+
+        public NativeParallelMultiHashMap<BatchMaterialID, Entity> materialsToVisible;
+
+        public ComponentLookup<MaterialMeshInfo> materialMeshInfos;
+
+        public void Execute()
+        {
+            MaterialMeshInfo materialMeshInfo;
+            Entity entity;
+            foreach(var materialToVisible in materialsToVisible)
+            {
+                entity = materialToVisible.Value;
+                materialMeshInfo = materialMeshInfos[entity];
+                materialMeshInfo.MaterialID = materialRefs[materialMeshInfo.MaterialID].value;
+                materialMeshInfos[entity] = materialMeshInfo;
+            }
+
+            materialsToVisible.Clear();
+        }
+    }
+
+    //public int materialPropertyWeight = Shader.PropertyToID("_ClipTargetWeight");
+    public const string MATERIAL_KEYWORD = "CLIP_TARGET";
+
+    private EntityQuery __group;
+    private ComponentLookup<MaterialMeshInfo> __materialMeshInfos;
 
     private EntityCommandPool<Entity>.Context __visibleCommander;
     private EntityCommandPool<Entity>.Context __invisibleCommander;
-    private EntityCommandPool<CallbackHandle>.Context __callbackCommander;
 
-    private NativeList<Result> __results;
-    private NativeParallelHashMap<Entity, int> __entityMaterials;
-    private Dictionary<int, MaterialRef> __materialRefs;
+    private NativeHashMap<Entity, BatchMaterialID> __entityMaterials;
+    private NativeHashMap<BatchMaterialID, MaterialRef> __materialRefs;
 
-    public EntityCommandPool<Entity> visibleCommander => __visibleCommander.pool;
-    public EntityCommandPool<Entity> invisibleCommander => __invisibleCommander.pool;
-    public EntityCommandPool<CallbackHandle> callbackCommander => __callbackCommander.pool;
+    private NativeParallelMultiHashMap<BatchMaterialID, Entity> __materialsToVisible;
 
-    public GameClipTargetRenderSystem()
-    {
-        __visibleCommander = new EntityCommandPool<Entity>.Context(Allocator.Persistent);
-        __invisibleCommander = new EntityCommandPool<Entity>.Context(Allocator.Persistent);
-        __callbackCommander = new EntityCommandPool<CallbackHandle>.Context(Allocator.Persistent);
-    }
+    private EntitiesGraphicsSystem __entitiesGraphicsSystem;
 
     protected override void OnCreate()
     {
         base.OnCreate();
 
-        __visibleGroup = GetEntityQuery(ComponentType.ReadOnly<GameClipTargetWeight>(), ComponentType.ReadOnly<MeshInstanceNode>(), ComponentType.ReadOnly<EntityObjects>());
-        __invisibleGroup = GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameClipTargetWeight>()
-                },
-                None = new ComponentType[]
-                {
-                    typeof(EntityObjects)
-                },
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            }, 
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameClipTargetWeight>(),
-                    ComponentType.ReadOnly<Disabled>()
-                },
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
-        __destroyGroup = GetEntityQuery(ComponentType.ReadOnly<GameClipTargetData>(), ComponentType.Exclude<EntityObjects>());
+        __group = GetEntityQuery(ComponentType.ReadOnly<ClipTargetWeight>(), ComponentType.Exclude<MaterialMeshInfo>());
 
-        __results = new NativeList<Result>(Allocator.Persistent);
+        __materialMeshInfos = GetComponentLookup<MaterialMeshInfo>();
 
-        __entityMaterials = new NativeParallelHashMap<Entity, int>(1, Allocator.Persistent);
-        __materialRefs = new Dictionary<int, MaterialRef>();
+        __entityMaterials = new NativeHashMap<Entity, BatchMaterialID>(1, Allocator.Persistent);
+        __materialRefs = new NativeHashMap<BatchMaterialID, MaterialRef>(1, Allocator.Persistent);
+
+        __visibleCommander = new EntityCommandPool<Entity>.Context(Allocator.Persistent);
+        __invisibleCommander = new EntityCommandPool<Entity>.Context(Allocator.Persistent);
+
+        __materialsToVisible = new NativeParallelMultiHashMap<BatchMaterialID, Entity>(1, Allocator.Persistent);
+
+        GameLocationClipTargetFactory factory;
+        factory.visibleCommander = __visibleCommander.pool;
+        factory.invisibleCommander = __invisibleCommander.pool;
+        EntityManager.AddComponentData(SystemHandle, factory);
+
+        __entitiesGraphicsSystem = World.GetExistingSystemManaged<EntitiesGraphicsSystem>();
     }
 
     protected override void OnDestroy()
     {
-        foreach(var material in __materialRefs.Values)
-            UnityEngine.Object.Destroy(material.destination);
+        if (__entitiesGraphicsSystem != null)
+        {
+            foreach (var materialRef in __materialRefs)
+                __Release(materialRef.Value.value);
+        }
 
-        __materialRefs = null;
+        __materialRefs.Dispose();
 
         __entityMaterials.Dispose();
         __visibleCommander.Dispose();
         __invisibleCommander.Dispose();
-        __callbackCommander.Dispose();
-        __results.Dispose();
+
+        __materialsToVisible.Dispose();
 
         base.OnDestroy();
     }
 
     protected override void OnUpdate()
     {
-        __results.Clear();
-
-        BurstUtility.ApplyAndCollect(
-            __results, 
-            __visibleCommander, 
-            __invisibleCommander, 
-            __invisibleGroup, 
-            __visibleGroup, 
-            ref this.GetState());
-
         var entityManager = EntityManager;
-
-        bool isContains, isInit;
-        int numResults = __results.Length, sourceInstanceID, destinationInstanceID;
-        Result result;
-        MaterialRef materialRef = default;
-        RenderMesh renderMesh;
-        for(int i = 0; i < numResults; ++i)
+        ref var state = ref this.GetState();
+        bool isInvisible = !__invisibleCommander.isEmpty, isDestroied = !__group.IsEmpty;
+        if (isInvisible || isDestroied)
         {
-            result = __results[i];
-
-            isContains = __entityMaterials.TryGetValue(result.entity, out sourceInstanceID);
-            if (result.isFree)
+            using (var materialsToInvisible = new NativeList<BatchMaterialID>(Allocator.TempJob))
             {
-                if (isContains)
+                using (var entities = new NativeList<Entity>(Allocator.TempJob))
                 {
-                    __Release(sourceInstanceID, out materialRef.source);
+                    if(isInvisible)
+                        __invisibleCommander.MoveTo(new EntityCommandEntityContainer(entities));
 
-                    __entityMaterials.Remove(result.entity);
-
-                    if (entityManager.HasComponent<RenderMesh>(result.entity))
+                    if (isDestroied)
                     {
-                        renderMesh = entityManager.GetSharedComponentManaged<RenderMesh>(result.entity);
-                        renderMesh.material = materialRef.source;
-                        entityManager.SetSharedComponentManaged(result.entity, renderMesh);
+                        using (var entityArray = __group.ToEntityArray(Allocator.Temp))
+                            entities.AddRange(entityArray);
+                    }
+
+                    if (entities.Length > 0)
+                    {
+                        var entityArray = entities.AsArray();
+
+                        entityManager.RemoveComponent<ClipTargetWeight>(entityArray);
+
+                        Release release;
+                        release.entities = entityArray;
+                        release.entityMaterials = __entityMaterials;
+                        release.materialRefs = __materialRefs;
+                        release.materialMeshInfos = __materialMeshInfos.UpdateAsRef(ref state);
+                        release.materialsToInvisible = materialsToInvisible;
+                        release.RunByRef(entities.Length);
                     }
                 }
-            }
-            else if (entityManager.HasComponent<RenderMesh>(result.entity))
-            {
-                renderMesh = entityManager.GetSharedComponentManaged<RenderMesh>(result.entity);
-                if (isContains)
-                {
-                    materialRef = __materialRefs[sourceInstanceID];
-                    isInit = renderMesh.material != materialRef.destination;
-                }
-                else
-                    isInit = true;
 
-                if (isInit)
-                {
-                    if (isContains)
-                        __Release(sourceInstanceID, out _);
-
-                    destinationInstanceID = renderMesh.material.GetInstanceID();
-                    if (!__materialRefs.TryGetValue(destinationInstanceID, out materialRef))
-                    {
-                        materialRef.count = 1;
-                        materialRef.source = renderMesh.material;
-                        materialRef.destination = UnityEngine.Object.Instantiate(renderMesh.material);
-                        materialRef.destination.EnableKeyword(materialKeyword);
-                    }
-                    else
-                        ++materialRef.count;
-
-                    __materialRefs[destinationInstanceID] = materialRef;
-                    __entityMaterials[result.entity] = destinationInstanceID;
-
-                    renderMesh.material = materialRef.destination;
-                    entityManager.SetSharedComponentManaged(result.entity, renderMesh);
-                }
-
-                materialRef.destination.SetFloat(materialPropertyWeight, result.weight);
+                foreach(var materialToInvisible in materialsToInvisible)
+                    __Release(materialToInvisible);
             }
         }
 
-        while(__callbackCommander.TryDequeue(out var callbackHandle))
+        if (!__visibleCommander.isEmpty)
         {
-            try
+            using (var entities = new NativeList<Entity>(Allocator.TempJob))
             {
-                callbackHandle.Invoke();
-            }
-            catch(Exception e)
-            {
-                Debug.LogException(e.InnerException ?? e);
-            }
-        }
+                __visibleCommander.MoveTo(new EntityCommandEntityContainer(entities));
 
-        if(!__destroyGroup.IsEmptyIgnoreFilter)
-        {
-            //TODO:
-            __destroyGroup.CompleteDependency();
-
-            using (var instances = __destroyGroup.ToComponentDataArray<GameClipTargetData>(Allocator.Temp))
-            {
-                foreach(var instance in instances)
+                if (entities.Length > 0)
                 {
-                    instance.visibleCallback.Unregister();
-                    instance.invisibleCallback.Unregister();
+                    var entityArray = entities.AsArray();
+
+                    entityManager.AddComponent<ClipTargetWeight>(entityArray);
+
+                    Retain retain;
+                    retain.entities = entityArray;
+                    retain.entityMaterials = __entityMaterials;
+                    retain.materialRefs = __materialRefs;
+                    retain.materialMeshInfos = __materialMeshInfos.UpdateAsRef(ref state);
+                    retain.materialToVisible = __materialsToVisible;
+                    retain.RunByRef(entities.Length);
                 }
             }
 
-            entityManager.RemoveComponent<GameClipTargetData>(__destroyGroup);
+            using(var materials = __materialsToVisible.GetKeyArray(Allocator.Temp))
+            {
+                MaterialRef materialRef;
+                BatchMaterialID material;
+                int numMaterials = materials.ConvertToUniqueArray();
+                for(int i = 0; i < numMaterials; ++i)
+                {
+                    material = materials[i];
+                    materialRef.count = __materialsToVisible.CountValuesForKey(material);
+                    materialRef.value = __Retain(material);
+
+                    __materialRefs.Add(material, materialRef);
+                }
+            }
+
+            Apply apply;
+            apply.materialRefs = __materialRefs;
+            apply.materialsToVisible = __materialsToVisible;
+            apply.materialMeshInfos = __materialMeshInfos.UpdateAsRef(ref state);
+
+            Dependency = apply.ScheduleByRef(Dependency);
         }
     }
 
-    private void __Release(int instanceID, out Material material)
+    private BatchMaterialID __Retain(in BatchMaterialID batchMaterialID)
     {
-        var materialRef = __materialRefs[instanceID];
+        var material = __entitiesGraphicsSystem.GetMaterial(batchMaterialID);
+        material = UnityEngine.Object.Instantiate(material);
+        material.EnableKeyword(MATERIAL_KEYWORD);
+        return __entitiesGraphicsSystem.RegisterMaterial(material);
+    }
 
-        material = materialRef.source;
+    private void __Release(in BatchMaterialID batchMaterialID)
+    {
+        var material = __entitiesGraphicsSystem.GetMaterial(batchMaterialID);
 
-        if (materialRef.Release())
-        {
-            material.DisableKeyword(materialKeyword);
+        __entitiesGraphicsSystem.UnregisterMaterial(batchMaterialID);
 
-            __materialRefs.Remove(instanceID);
-        }
-        else
-            __materialRefs[instanceID] = materialRef;
+        UnityEngine.Object.Destroy(material);
     }
 }

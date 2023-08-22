@@ -703,8 +703,8 @@ public struct GameEntityActionSystemCore
                 (handler.Create(
                         index,
                         time,
+                        instanceEx.targetPosition,
                         entity,
-                        instanceEx.target,
                         instanceEx.transform,
                         instance) ||
                         (value & GameActionStatus.Status.Damage) == GameActionStatus.Status.Damage &&

@@ -1233,8 +1233,8 @@ public partial struct GameEntityActionSharedSystem : ISystem
         public bool Create(
             int index,
             double time,
+            in float3 targetPosition, 
             in Entity entity,
-            in Entity target,
             in RigidTransform transform,
             in GameActionData data)
         {
@@ -1276,13 +1276,28 @@ public partial struct GameEntityActionSharedSystem : ISystem
                     {
                         if (!isDestinationTransformed)
                         {
-                            isDestinationTransformed = __GetTransform(target, out destaintionTransform);
+                            if (!isSourceTransformed)
+                            {
+                                isSourceTransformed = __GetTransform(data.entity, out sourceTransform);
+                                if (!isSourceTransformed)
+                                {
+                                    isSourceTransformed = true;
+
+                                    sourceTransform = transform;
+                                }
+                            }
+
+                            destaintionTransform.rot = sourceTransform.rot;
+                            destaintionTransform.pos = targetPosition;
+
+                            isDestinationTransformed = true;
+                            /*isDestinationTransformed = __GetTransform(target, out destaintionTransform);
                             if (!isDestinationTransformed)
                             {
                                 isDestinationTransformed = true;
 
                                 destaintionTransform = transform;
-                            }
+                            }*/
                         }
 
                         command.instance.transform = destaintionTransform;

@@ -1,50 +1,43 @@
 using System;
 using Unity.Entities;
+using UnityEngine;
 using ZG;
 
-[Serializable]
-public struct GameClipTargetData : ICleanupComponentData
+public struct GameClipTargetData : IComponentData
 {
-    public float height;
+    public float weightSpeed;
 
-    public CallbackHandle visibleCallback;
-    public CallbackHandle invisibleCallback;
+    public float height;
 }
 
-[Serializable]
-public struct GameClipTargetWeight : ICleanupComponentData
+public struct GameClipTargetWeight : IComponentData, IEnableableComponent
+{
+    public float value;
+}
+
+[Unity.Rendering.MaterialProperty("_ClipTargetWeight")]
+public struct ClipTargetWeight : IComponentData
 {
     public float value;
 }
 
 [EntityComponent(typeof(GameClipTargetData))]
-public class GameClipTargetComponent : EntityProxyComponent, IEntitySystemStateComponent
+[EntityComponent(typeof(GameClipTargetWeight))]
+public class GameClipTargetComponent : EntityProxyComponent, IEntityComponent
 {
-    public float height = 0.5f;
+    [SerializeField]
+    internal float _weightSpeed = 1f;
 
-    public event Action onVisible;
-    public event Action onInvisible;
+    [SerializeField]
+    internal float _height = 0.5f;
 
-    private void __Visible()
-    {
-        //print($"Visible {name}");
-        if (onVisible != null)
-            onVisible();
-    }
-
-    private void __Invisible()
-    {
-        //print($"Invisible {name}");
-        if (onInvisible != null)
-            onInvisible();
-    }
-
-    void IEntitySystemStateComponent.Init(in Entity entity, EntityComponentAssigner assigner)
+    void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
     {
         GameClipTargetData instance;
-        instance.height = height;
-        instance.visibleCallback = new Action(__Visible).Register();
-        instance.invisibleCallback = new Action(__Invisible).Register();
+        instance.weightSpeed = _weightSpeed;
+        instance.height = _height;
+        //instance.visibleCallback = new Action(__Visible).Register();
+        //instance.invisibleCallback = new Action(__Invisible).Register();
         assigner.SetComponentData(entity, instance);
     }
 }

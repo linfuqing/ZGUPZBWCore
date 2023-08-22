@@ -413,8 +413,8 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         public bool Create(
             int index,
             double time,
+            in float3 targetPosition,
             in Entity entity,
-            in Entity target,
             in RigidTransform transform, 
             in GameActionData data)
         {
