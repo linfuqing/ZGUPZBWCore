@@ -599,7 +599,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                 BufferElementData<GameEntityTorpidityBuff> torpidityBuff;
 
                 torpidityBuff.entity = target;
-                torpidityBuff.value.value = -torpor;
+                torpidityBuff.value.value = -torpor / buff.value.torpidityTime;
                 torpidityBuff.value.duration = buff.value.torpidityTime;
                 torpidityBuffs.Create().value = torpidityBuff;
             }

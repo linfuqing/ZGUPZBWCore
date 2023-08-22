@@ -1569,6 +1569,8 @@ public partial struct GameNodeStatusSystem : ISystem
 {
     private struct UpdateStates
     {
+        public GameDeadline time;
+
         [ReadOnly]
         public NativeArray<GameNodeStatus> states;
         public NativeArray<GameNodeOldStatus> oldStates;
@@ -1624,6 +1626,16 @@ public partial struct GameNodeStatusSystem : ISystem
 
                 if (index < delay.Length)
                     delay[index] = default;
+
+                if (index < directions.Length)
+                {
+                    var direction = directions[index];
+                    direction.version = 0;
+                    directions[index] = direction;
+                }
+
+                if (index < velocityComponents.Length)
+                    velocityComponents[index].Clear();
             }
 
             if ((diff & value & GameNodeStatus.OVER) == GameNodeStatus.OVER)
