@@ -75,6 +75,7 @@ public struct GameActionEntity : IBufferElementData
 
 public struct GameEntityHit : IComponentData, IEquatable<GameEntityHit>
 {
+    public float delta;
     public float value;
     public GameDeadline time;
     public float3 normal;

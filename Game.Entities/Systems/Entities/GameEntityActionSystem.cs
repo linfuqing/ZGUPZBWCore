@@ -719,7 +719,25 @@ public struct GameEntityActionSystemCore
 
             float elapsedTime;
             if (maxTime > time)
+            {
                 elapsedTime = (float)(time - instance.time);
+
+                if (instanceEx.collider.IsCreated)
+                {
+                    var actionEntities = this.actionEntities[index];
+                    GameActionEntity actionEntity;
+                    int numActionEntites = actionEntities.Length;
+                    for (int i = 0; i < numActionEntites; ++i)
+                    {
+                        actionEntity = actionEntities[i];
+                        if (math.abs(actionEntity.delta) > math.FLT_MIN_NORMAL)
+                        {
+                            actionEntity.delta = 0.0f;
+                            actionEntities[i] = actionEntity;
+                        }
+                    }
+                }
+            }
             else
             {
                 elapsedTime = (float)(maxTime - instance.time);
@@ -1520,51 +1538,58 @@ public struct GameEntityActionSystemCore
             var instance = instances[index];
             bool isExists = actorHits.HasComponent(instance.entity);
             GameEntityActorHit result = isExists ? actorHits[instance.entity] : default;
-            if ((states[index].value & GameActionStatus.Status.Damaged) == GameActionStatus.Status.Damage)
-                ++result.sourceTimes;
-
-            GameEntityHit hit;
-            GameEntityActorHit actorHit;
-            GameActionEntity entity;
-            GameDeadline time;
-            var entities = this.entities[index];
-            int length = entities.Length;
-            //string log = "";
-            for (int i = 0; i < length; ++i)
+            var status = states[index].value;
+            if ((status & GameActionStatus.Status.Destroy) != GameActionStatus.Status.Destroy)
             {
-                entity = entities[i];
-                if (entity.delta > math.FLT_MIN_NORMAL)
+                GameEntityHit hit;
+                GameEntityActorHit actorHit;
+                GameActionEntity entity;
+                GameDeadline time;
+                var entities = this.entities[index];
+                int length = entities.Length;
+                //string log = "";
+                for (int i = 0; i < length; ++i)
                 {
-                    //log += entity.ToString();
-                    result.sourceHit += entity.delta;
-
-                    if (actorHits.HasComponent(entity.target))
+                    entity = entities[i];
+                    if (entity.delta > math.FLT_MIN_NORMAL)
                     {
-                        actorHit = actorHits[entity.target];
-                        ++actorHit.destinationTimes;
-                        actorHit.destinationHit += entity.delta;
+                        //log += entity.ToString();
+                        result.sourceHit += entity.delta;
 
-                        actorHits[entity.target] = actorHit;
-                    }
+                        if (actorHits.HasComponent(entity.target))
+                        {
+                            actorHit = actorHits[entity.target];
+                            ++actorHit.destinationTimes;
+                            actorHit.destinationHit += entity.delta;
 
-                    if (hits.HasComponent(entity.target))
-                    {
-                        hit = hits[entity.target];
-                        hit.value += entity.delta;
+                            actorHits[entity.target] = actorHit;
+                        }
 
-                        time = instance.time;
-                        time += entity.elaspedTime;
-                        hit.time = GameDeadline.Max(hit.time, time);
-                        hit.normal += entity.normal;
-                        hits[entity.target] = hit;
+                        if (hits.HasComponent(entity.target))
+                        {
+                            hit = hits[entity.target];
+                            hit.delta += entity.delta;
+                            hit.value += entity.delta;
 
-                        //log += "-hit: " + hit.value + ", time: " + hit.time + ", elapsedTime: " + (instance.time + entity.elaspedTime);
+                            time = instance.time;
+                            time += entity.elaspedTime;
+                            hit.time = GameDeadline.Max(hit.time, time);
+                            hit.normal += entity.normal;
+                            hits[entity.target] = hit;
+
+                            //log += "-hit: " + hit.value + ", time: " + hit.time + ", elapsedTime: " + (instance.time + entity.elaspedTime);
+                        }
                     }
                 }
             }
 
             if (isExists)
+            {
+                if ((status & GameActionStatus.Status.Damaged) == GameActionStatus.Status.Damage)
+                    ++result.sourceTimes;
+
                 actorHits[instance.entity] = result;
+            }
             /*if (log.Length > 1)
                 UnityEngine.Debug.Log(log);*/
         }

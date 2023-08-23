@@ -2218,8 +2218,6 @@ public partial struct GameEntityHitSystem : ISystem
         [ReadOnly]
         public NativeArray<GameEntityHit> inputs;
         [ReadOnly]
-        public NativeArray<GameEntityActorHit> actorHits;
-        [ReadOnly]
         public NativeArray<GameEntityActorData> instances;
         [ReadOnly]
         public NativeArray<GameEntityActorInfo> actorInfos;
@@ -2245,10 +2243,13 @@ public partial struct GameEntityHitSystem : ISystem
 
         public bool Execute(int index)
         {
+            bool result = false;
+            var hit = inputs[index];
             //只有被打的时候才计时,否则会因为SetChangedVersionFilter不同步
-            if (/*hit.value > math.FLT_MIN_NORMAL && */actorHits[index].destinationHit > math.FLT_MIN_NORMAL)
+            if (/*hit.value > math.FLT_MIN_NORMAL && */hit.delta > math.FLT_MIN_NORMAL)
             {
-                var hit = inputs[index];
+                hit.delta = 0.0f;
+
                 var actorInfo = actorInfos[index];
 
                 //UnityEngine.Debug.Log("Hit: " + entityArray[index].ToString() + ":" + hit.value + ":" + actionInfo.hit + ":" + hit.time + ":" + actionInfo.time + (actorInfo.version != actionInfo.version));
@@ -2276,17 +2277,18 @@ public partial struct GameEntityHitSystem : ISystem
 
                         commands[index] = command;
 
-                        return true;
+                        result = true;
                     }
 
                     hit.value = 0.0f;
                     hit.time = actorInfo.alertTime;
                     hit.normal = float3.zero;
-                    outputs[entityArray[index]] = hit;
                 }
+
+                outputs[entityArray[index]] = hit;
             }
 
-            return false;
+            return result;
         }
     }
 
@@ -2297,8 +2299,8 @@ public partial struct GameEntityHitSystem : ISystem
         public EntityTypeHandle entityType;
         [ReadOnly]
         public ComponentTypeHandle<GameEntityHit> hitType;
-        [ReadOnly]
-        public ComponentTypeHandle<GameEntityActorHit> actorHitType;
+        //[ReadOnly]
+        //public ComponentTypeHandle<GameEntityActorHit> actorHitType;
         [ReadOnly]
         public ComponentTypeHandle<GameEntityActorData> instanceType;
         [ReadOnly]
@@ -2327,7 +2329,7 @@ public partial struct GameEntityHitSystem : ISystem
             ComputeHits computeHits;
             computeHits.entityArray = chunk.GetNativeArray(entityType);
             computeHits.inputs = chunk.GetNativeArray(ref hitType);
-            computeHits.actorHits = chunk.GetNativeArray(ref actorHitType);
+            //computeHits.actorHits = chunk.GetNativeArray(ref actorHitType);
             computeHits.instances = chunk.GetNativeArray(ref instanceType);
             computeHits.actorInfos = chunk.GetNativeArray(ref actorInfoType);
             computeHits.actionInfos = chunk.GetNativeArray(ref actionInfoType);
@@ -2356,7 +2358,7 @@ public partial struct GameEntityHitSystem : ISystem
     private EntityTypeHandle __entityType;
 
     private ComponentTypeHandle<GameEntityHit> __hitType;
-    private ComponentTypeHandle<GameEntityActorHit> __actorHitType;
+    //private ComponentTypeHandle<GameEntityActorHit> __actorHitType;
     private ComponentTypeHandle<GameEntityActorData> __instanceType;
     private ComponentTypeHandle<GameEntityActorInfo> __actorInfoType;
     private ComponentTypeHandle<GameEntityActionInfo> __actionInfoType;
@@ -2378,7 +2380,7 @@ public partial struct GameEntityHitSystem : ISystem
 
         __entityType = state.GetEntityTypeHandle();
         __hitType = state.GetComponentTypeHandle<GameEntityHit>(true);
-        __actorHitType = state.GetComponentTypeHandle<GameEntityActorHit>(true);
+        //__actorHitType = state.GetComponentTypeHandle<GameEntityActorHit>(true);
         __instanceType = state.GetComponentTypeHandle<GameEntityActorData>(true);
         __actorInfoType = state.GetComponentTypeHandle<GameEntityActorInfo>(true);
         __actionInfoType = state.GetComponentTypeHandle<GameEntityActionInfo>(true);
@@ -2399,7 +2401,7 @@ public partial struct GameEntityHitSystem : ISystem
         ComputeHitsEx computeHits;
         computeHits.entityType = __entityType.UpdateAsRef(ref state);
         computeHits.hitType = __hitType.UpdateAsRef(ref state);
-        computeHits.actorHitType = __actorHitType.UpdateAsRef(ref state);
+        //computeHits.actorHitType = __actorHitType.UpdateAsRef(ref state);
         computeHits.instanceType = __instanceType.UpdateAsRef(ref state);
         computeHits.actorInfoType = __actorInfoType.UpdateAsRef(ref state);
         computeHits.actionInfoType = __actionInfoType.UpdateAsRef(ref state);
