@@ -694,7 +694,7 @@ public struct GameEntityActionSystemCore
             Entity entity = entityArray[index];
             int rigidbodyIndex = collisionWorld.GetRigidBodyIndex(entity);
             var rigidbody = rigidbodies[rigidbodyIndex];
-            var transform = rigidbody.WorldFromBody;// math.RigidTransform(rotations[index].Value, translations[index].Value);
+            RigidTransform origin = rigidbody.WorldFromBody, transform = origin;// math.RigidTransform(rotations[index].Value, translations[index].Value);
 
             double damageTime = instance.time + instanceEx.info.damageTime,
                 maxDamageTime = damageTime + instanceEx.info.duration,
@@ -1133,7 +1133,7 @@ public struct GameEntityActionSystemCore
                         GameEntityTransform start;
                         double minTime = time - deltaTime;
                         start.elapsedTime = minTime < damageTime ? instanceEx.info.damageTime : math.min((float)(minTime - instance.time), duration);
-                        start.value = rigidbodyIndex == -1 ? transform : rigidbodies[rigidbodyIndex].WorldFromBody;
+                        start.value = origin;
 
                         GameEntityTransform end;
                         end.elapsedTime = duration;

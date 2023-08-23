@@ -1176,7 +1176,7 @@ public partial struct GameEntityActorSystem : ISystem
                                 forward = math.forward(rotation);
                             }
 
-                            if (action.instance.trackType == GameActionRangeType.Source)
+                            if (action.instance.rangeType == GameActionRangeType.Source)
                             {
                                 forward -= Math.ProjectSafe(forward, gravity);
 
@@ -1223,7 +1223,7 @@ public partial struct GameEntityActorSystem : ISystem
                                 {
                                     forward = math.normalizesafe(transform.pos - source, forward);
 
-                                    if (action.instance.trackType == GameActionRangeType.Source)
+                                    if (action.instance.rangeType == GameActionRangeType.Source)
                                     {
                                         forward -= Math.ProjectSafe(forward, gravity);
 
@@ -1331,7 +1331,7 @@ public partial struct GameEntityActorSystem : ISystem
 
                                 if (action.instance.direction.Equals(float3.zero))
                                 {
-                                    if (action.instance.trackType == GameActionRangeType.Source)
+                                    if (action.instance.rangeType == GameActionRangeType.Source)
                                         distance = forward * action.info.distance;
                                     else
                                     {
@@ -1356,7 +1356,7 @@ public partial struct GameEntityActorSystem : ISystem
                                 if (action.instance.direction.Equals(float3.zero))
                                 {
                                     distance = forward * actionDistance;
-                                    if (action.instance.trackType != GameActionRangeType.Source)
+                                    if (action.instance.rangeType != GameActionRangeType.Source)
                                     {
                                         /*float distanceSq = action.info.distance * action.info.distance,
                                             offsetDistanceSq = math.lengthsq(Math.ProjectSafe(offset, forward)),
@@ -2259,7 +2259,7 @@ public partial struct GameEntityHitSystem : ISystem
                     if (actionInfo.version != actorInfo.version || actionInfo.time < hit.time || actionInfo.hit < hit.value)
                     {
 #if GAME_DEBUG_COMPARSION
-                        UnityEngine.Debug.LogError($"Break {entityIndices[index].value} : {frameIndex} : {entityArray[index]} : {hit.value} : {actionInfo.hit} : {hit.time} : {hit.normal}");
+                        //UnityEngine.Debug.LogError($"Break {entityIndices[index].value} : {frameIndex} : {entityArray[index]} : {hit.value} : {actionInfo.hit} : {hit.time} : {hit.normal}");
 #endif
 
                         var instance = instances[index];

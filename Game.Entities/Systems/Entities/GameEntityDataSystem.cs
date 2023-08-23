@@ -10,6 +10,50 @@ using Unity.Burst.Intrinsics;
 
 [assembly: RegisterGenericJobType(typeof(GameEntityActionSystemCore.PerformEx<GameEntityActionDataSystem.Handler, GameEntityActionDataSystem.Factory>))]
 
+/*public struct GameEntityActionDataDefinition
+{
+    public struct Action
+    {
+        public GameBuff buff;
+
+        public BlobArray<GameActionAttack> attacks;
+
+        public BlobArray<GameActionSpawn> spawns;
+    }
+
+    public struct Item
+    {
+        public int type;
+
+        public GameBuff buff;
+
+        public GameActionAttack[] attacks;
+        public GameEntityDefence[] defences;
+    }
+
+    public struct ActionData
+    {
+        public int spawnStartIndex;
+        public int spawnCount;
+
+        public GameBuff buff;
+    }
+
+    public struct ItemData
+    {
+        public GameBuff buff;
+    }
+
+    public struct LevelData
+    {
+        public float stageExpFactor;
+
+        public Property[] attacks;
+        public Property[] defences;
+    }
+
+}*/
+
 [BurstCompile,
     CreateAfter(typeof(GameEntityActionLocationSystem)),
     CreateAfter(typeof(GamePhysicsWorldBuildSystem)),
