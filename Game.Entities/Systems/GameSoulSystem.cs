@@ -264,7 +264,7 @@ public struct GameSoulManager : IDisposable
 
 //[UpdateInGroup(typeof(GameSyncSystemGroup)), UpdateBefore(typeof(GameStatusSystemGroup))]
 
-[UpdateInGroup(typeof(GameItemInitSystemGroup)), UpdateBefore(typeof(GameItemComponentInitSystemGroup))]
+[BurstCompile, UpdateInGroup(typeof(GameItemInitSystemGroup)), UpdateBefore(typeof(GameItemComponentInitSystemGroup))]
 public partial struct GameSoulSystem : ISystem
 {
     private struct Convert
