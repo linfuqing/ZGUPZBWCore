@@ -5,62 +5,47 @@ using ZG;
 using Unity.Collections;
 using System.Collections.Generic;
 
-public struct GameValhallaData : IComponentData
-{
-    public float respawnTime;
-    public float3 respawnOffset;
-}
-
 public struct GameValhallaExp : IComponentData
 {
     public float value;
 }
 
-public struct GameValhallaVersion : IComponentData
+public struct GameValhallaCollectCommand : IComponentData, IEnableableComponent
 {
-    public int value;
 }
 
-public struct GameValhallaCollectCommand : IComponentData
+public struct GameValhallaUpgradeCommand : IComponentData, IEnableableComponent
 {
-    public int version;
-}
-
-public struct GameValhallaUpgradeCommand : IComponentData
-{
-    public int version;
     public int soulIndex;
     public float exp;
     public Entity entity;
 }
 
-public struct GameValhallaRenameCommand : IComponentData
+public struct GameValhallaRenameCommand : IComponentData, IEnableableComponent
 {
-    public int version;
     public int soulIndex;
     public Entity entity;
     public FixedString32Bytes name;
 }
 
-public struct GameValhallaDestroyCommand : IComponentData
+public struct GameValhallaDestroyCommand : IComponentData, IEnableableComponent
 {
-    public int version;
     public int soulIndex;
     public Entity entity;
 }
 
-public struct GameValhallaEvoluteCommand : IComponentData
+public struct GameValhallaEvoluteCommand : IComponentData, IEnableableComponent
 {
-    public int version;
     public int soulIndex;
     public Entity entity;
 }
 
-public struct GameValhallaRespawnCommand : IComponentData
+public struct GameValhallaRespawnCommand : IComponentData, IEnableableComponent
 {
-    public int version;
     public int soulIndex;
+    public float time;
     public Entity entity;
+    public RigidTransform transform;
 }
 
 public struct GameValhallaSacrificer : IBufferElementData
@@ -80,7 +65,6 @@ public struct GameValhallaCommand
 }
 
 [EntityComponent(typeof(GameValhallaExp))]
-[EntityComponent(typeof(GameValhallaVersion))]
 [EntityComponent(typeof(GameValhallaCollectCommand))]
 [EntityComponent(typeof(GameValhallaUpgradeCommand))]
 [EntityComponent(typeof(GameValhallaRespawnCommand))]
@@ -88,17 +72,25 @@ public struct GameValhallaCommand
 [EntityComponent(typeof(GameValhallaEvoluteCommand))]
 [EntityComponent(typeof(GameValhallaRenameCommand))]
 [EntityComponent(typeof(GameValhallaSacrificer))]
-public class GameValhallaComponent : ComponentDataProxy<GameValhallaData>
+public class GameValhallaComponent : EntityProxyComponent
 {
-    public int version => this.GetComponentData<GameValhallaVersion>().value;
+    public struct RespawnData
+    {
+        public float respawnTime;
+        public float3 respawnOffset;
+    }
+
+    [UnityEngine.SerializeField, 
+        UnityEngine.Serialization.FormerlySerializedAs("_value")]
+    internal RespawnData _respawnData;
 
     public float exp => this.GetComponentData<GameValhallaExp>().value;
 
     public void Collect()
     {
         GameValhallaCollectCommand command;
-        command.version = version;
-        gameObjectEntity.SetComponentData(command);
+        this.SetComponentData(command);
+        this.SetComponentEnabled<GameValhallaCollectCommand>(true);
     }
 
     public void Upgrade(int soulIndex, float exp, in Entity entity)
@@ -108,9 +100,10 @@ public class GameValhallaComponent : ComponentDataProxy<GameValhallaData>
         command.exp = exp;
         command.soulIndex = soulIndex;
 
-        command.version = version;
+        //command.version = version;
 
         this.SetComponentData(command);
+        this.SetComponentEnabled<GameValhallaUpgradeCommand>(true);
     }
 
     public void Rename(int soulIndex, in Entity entity, in FixedString32Bytes name)
@@ -120,9 +113,8 @@ public class GameValhallaComponent : ComponentDataProxy<GameValhallaData>
         command.entity = entity;
         command.soulIndex = soulIndex;
 
-        command.version = version;
-
         this.SetComponentData(command);
+        this.SetComponentEnabled<GameValhallaRenameCommand>(true);
     }
 
     public void Destroy(int soulIndex, in Entity entity)
@@ -131,9 +123,8 @@ public class GameValhallaComponent : ComponentDataProxy<GameValhallaData>
         command.soulIndex = soulIndex;
         command.entity = entity;
 
-        command.version = version;
-
         this.SetComponentData(command);
+        this.SetComponentEnabled<GameValhallaDestroyCommand>(true);
     }
 
     public void Evolute<T>(int soulIndex, in Entity entity, in T sacrificerIndices) where T : IReadOnlyCollection<GameValhallaSacrificer>
@@ -142,21 +133,29 @@ public class GameValhallaComponent : ComponentDataProxy<GameValhallaData>
         command.entity = entity;
         command.soulIndex = soulIndex;
 
-        command.version = version;
-
         this.SetComponentData(command);
+        this.SetComponentEnabled<GameValhallaEvoluteCommand>(true);
 
         this.SetBuffer<GameValhallaSacrificer, T>(sacrificerIndices);
     }
 
-    public void Respwan(int soulIndex, in Entity entity)
+    public void Respwan(int soulIndex, float respawnTime, in Entity entity, in RigidTransform transform)
     {
         GameValhallaRespawnCommand command;
-        command.entity = entity;
         command.soulIndex = soulIndex;
-
-        command.version = version;
+        command.time = respawnTime;
+        command.entity = entity;
+        command.transform = transform;
 
         this.SetComponentData(command);
+        this.SetComponentEnabled<GameValhallaRespawnCommand>(true);
+    }
+
+    public void Respwan(int soulIndex, in Entity entity)
+    {
+        var transform = math.RigidTransform(base.transform.rotation, base.transform.position);
+
+        transform.pos = math.transform(transform, _respawnData.respawnOffset);
+        Respwan(soulIndex, _respawnData.respawnTime, entity, transform);
     }
 }

@@ -113,18 +113,23 @@ public struct GameSoulManager : IDisposable
         public Next[] nexts;
     }
 
-    private NativeArray<Sacrificer> __sacrificers;
-    private NativeArray<Next> __nexts;
-    private NativeArray<Level> __levels;
+    private NativeList<Sacrificer> __sacrificers;
+    private NativeList<Next> __nexts;
+    private NativeList<Level> __levels;
 
-    public bool isCreated => __levels.IsCreated;
+    public GameSoulManager(in AllocatorManager.AllocatorHandle allocator)
+    {
+        __sacrificers = new NativeList<Sacrificer>(allocator);
+        __nexts = new NativeList<Next>(allocator);
+        __levels = new NativeList<Level>(allocator);
+    }
 
-    public GameSoulManager(LevelData[] levels, Allocator allocator)
+    public void Init(LevelData[] levels)
     {
         int i, count, numSacrificers = 0, numNexts = 0, numLevels = levels.Length;
         LevelData source;
         Level destination;
-        __levels = new NativeArray<Level>(numLevels, allocator);
+        __levels.ResizeUninitialized(numLevels);
         for(i = 0; i < numLevels; ++i)
         {
             source = levels[i];
@@ -147,8 +152,8 @@ public struct GameSoulManager : IDisposable
             __levels[i] = destination;
         }
 
-        __nexts = new NativeArray<Next>(numNexts, allocator);
-        __sacrificers = new NativeArray<Sacrificer>(numSacrificers, allocator);
+        __nexts.ResizeUninitialized(numNexts);
+        __sacrificers.ResizeUninitialized(numSacrificers);
         numNexts = 0;
         numSacrificers = 0;
         for(i = 0; i < numLevels; ++i)
@@ -158,14 +163,14 @@ public struct GameSoulManager : IDisposable
             count = source.nexts == null ? 0 : source.nexts.Length;
 
             if(count > 0)
-                NativeArray<Next>.Copy(source.nexts, 0, __nexts, numNexts, count);
+                NativeArray<Next>.Copy(source.nexts, 0, __nexts.AsArray(), numNexts, count);
 
             numNexts += count;
 
             count = source.sacrificers == null ? 0 : source.sacrificers.Length;
 
             if(count > 0)
-                NativeArray<Sacrificer>.Copy(source.sacrificers, 0, __sacrificers, numSacrificers, count);
+                NativeArray<Sacrificer>.Copy(source.sacrificers, 0, __sacrificers.AsArray(), numSacrificers, count);
 
             numSacrificers += count;
         }
@@ -260,7 +265,7 @@ public struct GameSoulManager : IDisposable
 //[UpdateInGroup(typeof(GameSyncSystemGroup)), UpdateBefore(typeof(GameStatusSystemGroup))]
 
 [UpdateInGroup(typeof(GameItemInitSystemGroup)), UpdateBefore(typeof(GameItemComponentInitSystemGroup))]
-public partial class GameSoulSystem : ReadOnlyLookupSystem
+public partial struct GameSoulSystem : ISystem
 {
     private struct Convert
     {
@@ -477,7 +482,21 @@ public partial class GameSoulSystem : ReadOnlyLookupSystem
         }
     }
 
+    private long __ticks;
     private EntityQuery __group;
+
+    private ComponentTypeHandle<GameItemObjectData> __instanceType;
+    private ComponentTypeHandle<GameItemName> __nameType;
+    private ComponentTypeHandle<GameItemVariant> __variantType;
+    private ComponentTypeHandle<GameItemOwner> __ownerType;
+    private ComponentTypeHandle<GameItemLevel> __levelType;
+    private ComponentTypeHandle<GameItemExp> __expType;
+    private ComponentTypeHandle<GameItemPower> __powerType;
+
+    private ComponentLookup<GameSoulIndex> __indices;
+
+    private BufferLookup<GameSoul> __souls;
+
     private NativeQueue<EntityData<GameSoulData>> __results;
 
     public GameSoulManager manager
@@ -487,75 +506,49 @@ public partial class GameSoulSystem : ReadOnlyLookupSystem
         private set;
     }
 
-    public void Create(GameSoulManager.LevelData[] levels)
+    public void Create(long ticks, GameSoulManager.LevelData[] levels)
     {
-        manager = new GameSoulManager(levels, Allocator.Persistent);
+        __ticks = ticks;
+
+        manager.Init(levels);
     }
 
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameItemObjectData>()
+                    .WithAny<GameItemName, GameItemVariant, GameItemOwner, GameItemLevel, GameItemExp, GameItemPower>()
+                    .WithNone<GameItemData>()
+                    .Build(ref state);
 
-        /*__group = GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<EntityDataIdentity>(),
-                    ComponentType.ReadOnly<GameVariant>(),
-                    ComponentType.ReadOnly<GameLevel>(),
-                    ComponentType.ReadOnly<GameExp>(),
-                    ComponentType.ReadOnly<GamePower>(),
-                    ComponentType.ReadOnly<GameNickname>(),
-                    ComponentType.ReadOnly<GameOwner>(),
-                    ComponentType.ReadOnly<GameNodeStatus>(),
-                    ComponentType.ReadOnly<GameNodeOldStatus>()
-                },
-                Options = EntityQueryOptions.IncludeDisabled
-            });
-
-        __group.SetChangedVersionFilter(new ComponentType[]
-            {
-                typeof(GameNodeStatus),
-                typeof(GameNodeOldStatus)
-            });*/
-        __group = GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameItemObjectData>(),
-                },
-                Any = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameItemName>(),
-                    ComponentType.ReadOnly<GameItemVariant>(),
-                    ComponentType.ReadOnly<GameItemOwner>(), 
-                    ComponentType.ReadOnly<GameItemLevel>(),
-                    ComponentType.ReadOnly<GameItemExp>(),
-                    ComponentType.ReadOnly<GameItemPower>()
-                }, 
-                None = new ComponentType[]
-                {
-                    typeof(GameItemData)
-                }
-            });
+        __instanceType = state.GetComponentTypeHandle<GameItemObjectData>(true);
+        __nameType = state.GetComponentTypeHandle<GameItemName>(true);
+        __variantType = state.GetComponentTypeHandle<GameItemVariant>(true);
+        __ownerType = state.GetComponentTypeHandle<GameItemOwner>(true);
+        __levelType = state.GetComponentTypeHandle<GameItemLevel>(true);
+        __expType = state.GetComponentTypeHandle<GameItemExp>(true);
+        __powerType = state.GetComponentTypeHandle<GameItemPower>(true);
+        __indices = state.GetComponentLookup<GameSoulIndex>();
+        __souls = state.GetBufferLookup<GameSoul>();
 
         __results = new NativeQueue<EntityData<GameSoulData>>(Allocator.Persistent);
+
+
+        manager = new GameSoulManager(Allocator.Persistent);
     }
 
-    protected override void OnDestroy()
+    //[BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
         __results.Dispose();
 
-        var manager = this.manager;
-        if (manager.isCreated)
-            manager.Dispose();
-
-        base.OnDestroy();
+        manager.Dispose();
     }
 
-    protected override void _Update()
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
         /*DieEx die;
         die.identityType = GetComponentTypeHandle<EntityDataIdentity>(true);
@@ -570,23 +563,23 @@ public partial class GameSoulSystem : ReadOnlyLookupSystem
         die.souls = GetBufferLookup<GameSoul>(true);
         die.results = __results.AsParallelWriter();*/
         ConvertEx convert;
-        convert.instanceType = GetComponentTypeHandle<GameItemObjectData>(true);
-        convert.nameType = GetComponentTypeHandle<GameItemName>(true);
-        convert.variantType = GetComponentTypeHandle<GameItemVariant>(true);
-        convert.ownerType = GetComponentTypeHandle<GameItemOwner>(true);
-        convert.levelType = GetComponentTypeHandle<GameItemLevel>(true);
-        convert.expType = GetComponentTypeHandle<GameItemExp>(true);
-        convert.powerType = GetComponentTypeHandle<GameItemPower>(true);
-        convert.souls = GetBufferLookup<GameSoul>(true);
+        convert.instanceType = __instanceType.UpdateAsRef(ref state);
+        convert.nameType = __nameType.UpdateAsRef(ref state);
+        convert.variantType = __variantType.UpdateAsRef(ref state);
+        convert.ownerType = __ownerType.UpdateAsRef(ref state);
+        convert.levelType = __levelType.UpdateAsRef(ref state);
+        convert.expType = __expType.UpdateAsRef(ref state);
+        convert.powerType = __powerType.UpdateAsRef(ref state);
+        convert.souls = __souls.UpdateAsRef(ref state);
         convert.results = __results.AsParallelWriter();
-        var jobHandle = convert.ScheduleParallel(__group, Dependency);
+        var jobHandle = convert.ScheduleParallelByRef(__group, state.Dependency);
 
         Collect collect;
-        collect.ticks = DateTime.UtcNow.Ticks;
+        collect.ticks = __ticks + (long)math.round(TimeSpan.TicksPerSecond * state.WorldUnmanaged.Time.ElapsedTime);
         collect.inputs = __results;
-        collect.outputs = GetBufferLookup<GameSoul>();
-        collect.indices = GetComponentLookup<GameSoulIndex>();
-        Dependency = collect.Schedule(jobHandle);
+        collect.outputs = __souls.UpdateAsRef(ref state);
+        collect.indices = __indices.UpdateAsRef(ref state);
+        state.Dependency = collect.ScheduleByRef(jobHandle);
     }
 }
 

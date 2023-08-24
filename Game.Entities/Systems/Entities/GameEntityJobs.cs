@@ -100,31 +100,31 @@ public static class GameEntityUtility
 
         if (i < numActionEntities)
         {
-            if (interval > math.FLT_MIN_NORMAL)
+            if (interval > math.FLT_MIN_NORMAL && actionEntity.elaspedTime < elaspedTime)
             {
-                if (actionEntity.elaspedTime >= elaspedTime)
-                    return 0;
-
                 int count = 0;
                 float nextTime = actionEntity.elaspedTime + interval;
-                do
+                while (nextTime <= elaspedTime)
                 {
                     ++count;
 
                     actionEntity.elaspedTime = nextTime;
 
                     nextTime += interval;
-                } while (nextTime <= elaspedTime);
+                }
 
-                actionEntity.delta = value * count;
-                actionEntity.hit += actionEntity.delta;
-                actionEntity.normal += normal;
-                actionEntities[i] = actionEntity;
+                if (count > 0)
+                {
+                    actionEntity.delta = value * count;
+                    actionEntity.hit += actionEntity.delta;
+                    actionEntity.normal += normal * count;
+                    actionEntities[i] = actionEntity;
 
-                return count;
+                    return count;
+                }
             }
-            else
-                return 0;
+
+            return 0;
         }
 
         actionEntity.hit = value;
