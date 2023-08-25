@@ -4,57 +4,72 @@ using Unity.Collections;
 using Unity.Transforms;
 using ZG;
 
-public abstract partial class GameEffectSystem<TEffect, THandler, TFactory> : SystemBase
-    where TEffect : unmanaged, IGameEffect<TEffect>
-    where THandler : struct, IGameEffectHandler<TEffect>
-    where TFactory : struct, IGameEffectFactory<TEffect, THandler>
+public struct GameEffectSystemCore<TEffect> where TEffect : unmanaged, IGameEffect<TEffect>
 {
-    private EntityQuery __group;
+    private EntityQuery __defintionGroup;
 
-    protected NativeArray<GameEffectInternalSurface> _surfaces;
+    private ComponentLookup<GameEffectAreaOverride> __areasOverride;
+    private ComponentLookup<PhysicsShapeParent> __physicsShapeParents;
+    private BufferTypeHandle<PhysicsTriggerEvent> __physicsTriggerEventType;
+    private ComponentTypeHandle<Translation> __translationType;
+    private ComponentTypeHandle<GameEffectData<TEffect>> __instanceType;
+
+    private ComponentTypeHandle<GameEffectResult<TEffect>> __resultType;
+
+    private ComponentTypeHandle<GameEffectArea> __areaType;
+
+    /*protected NativeArray<GameEffectInternalSurface> _surfaces;
     protected NativeArray<GameEffectInternalCondition> _conditions;
     protected NativeArray<GameEffectInternalHeight> _heights;
     protected NativeArray<GameEffectInternalValue> _effects;
-    protected NativeArray<TEffect> _values;
+    protected NativeArray<TEffect> _values;*/
 
-    public bool isEmpty => __group.IsEmptyIgnoreFilter;
+    public readonly EntityQuery Group;
 
-    public int entityCount => __group.CalculateEntityCount();
-    
-    protected override void OnCreate()
+    public GameEffectSystemCore(ref SystemState state)
     {
-        base.OnCreate();
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            Group = builder
+                    .WithAll<Translation, GameEffectData<TEffect>>()
+                    .WithAllRW<GameEffectResult<TEffect>, GameEffectArea>()
+                    .Build(ref state);
 
-        __group = GetEntityQuery(
-            ComponentType.ReadOnly<Translation>(),
-            ComponentType.ReadOnly<GameEffectData<TEffect>>(),
-            ComponentType.ReadWrite<GameEffectResult<TEffect>>(),
-            ComponentType.ReadWrite<GameEffectArea>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __defintionGroup = builder
+                .WithAll<GameEffectLandscapeData>()
+                .Build(ref state);
+
+        __areasOverride = state.GetComponentLookup<GameEffectAreaOverride>(true);
+        __physicsShapeParents = state.GetComponentLookup<PhysicsShapeParent>(true);
+        __physicsTriggerEventType = state.GetBufferTypeHandle<PhysicsTriggerEvent>(true);
+        __translationType = state.GetComponentTypeHandle<Translation>(true);
+        __instanceType = state.GetComponentTypeHandle<GameEffectData<TEffect>>(true);
+        __resultType = state.GetComponentTypeHandle<GameEffectResult<TEffect>>();
+        __areaType = state.GetComponentTypeHandle<GameEffectArea>();
     }
 
-    protected override void OnUpdate()
+    public void Update<THandler, TFactory>(
+        in NativeArray<TEffect>.ReadOnly values, 
+        ref TFactory factory, 
+        ref SystemState state)
+        where THandler : struct, IGameEffectHandler<TEffect>
+        where TFactory : struct, IGameEffectFactory<TEffect, THandler>
     {
-        if (!_surfaces.IsCreated)
+        if (!__defintionGroup.HasSingleton<GameEffectLandscapeData>())
             return;
 
-        var jobHandle = Dependency;
-
         GameEffectApply<TEffect, THandler, TFactory> apply;
-        apply.areasOverride = GetComponentLookup<GameEffectAreaOverride>(true);
-        apply.surfaces = _surfaces;
-        apply.conditions = _conditions;
-        apply.heights = _heights;
-        apply.effects = _effects;
-        apply.values = _values;
-        apply.revicerType = GetBufferTypeHandle<PhysicsShapeTriggerEventRevicer>(true);
-        apply.translationType = GetComponentTypeHandle<Translation>(true);
-        apply.instanceType = GetComponentTypeHandle<GameEffectData<TEffect>>(true);
-        apply.resultType = GetComponentTypeHandle<GameEffectResult<TEffect>>();
-        apply.areaType = GetComponentTypeHandle<GameEffectArea>();
-        apply.factory = _Get(ref jobHandle);
+        apply.definition = __defintionGroup.GetSingleton<GameEffectLandscapeData>().definition;
+        apply.values = values;
+        apply.areasOverride = __areasOverride.UpdateAsRef(ref state);
+        apply.physicsShapeParents = __physicsShapeParents.UpdateAsRef(ref state);
+        apply.physicsTriggerEventType = __physicsTriggerEventType.UpdateAsRef(ref state);
+        apply.translationType = __translationType.UpdateAsRef(ref state);
+        apply.instanceType = __instanceType.UpdateAsRef(ref state);
+        apply.resultType = __resultType.UpdateAsRef(ref state);
+        apply.areaType = __areaType.UpdateAsRef(ref state);
+        apply.factory = factory;
 
-        Dependency = apply.ScheduleParallel(__group, jobHandle);
+        state.Dependency = apply.ScheduleParallelByRef(Group, state.Dependency);
     }
-
-    protected abstract TFactory _Get(ref JobHandle inputDeps);
 }

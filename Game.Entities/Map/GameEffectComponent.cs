@@ -44,7 +44,7 @@ public struct GameEffectAreaOverrideDeserializer : IEntityDataStreamDeserializer
     }
 }
 
-[EntityComponent(typeof(PhysicsShapeTriggerEventRevicer))]
+[EntityComponent(typeof(PhysicsTriggerEvent))]
 [EntityComponent(typeof(GameEffectArea))]
 public class GameEffectComponent<T> : EntityProxyComponent, IEntityComponent where T : unmanaged, IGameEffect<T>
 {

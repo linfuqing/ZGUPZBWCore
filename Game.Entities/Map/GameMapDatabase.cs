@@ -1,4 +1,6 @@
 ﻿using System;
+using Unity.Collections;
+using Unity.Entities;
 using UnityEngine;
 
 [Serializable]
@@ -156,19 +158,6 @@ public class GameMapDatabase : ScriptableObject
 
         public Vector2 offset;
         public Vector2 scale;
-        
-        public static implicit operator GameEffectInternalSurface(GameMapDatabase.Surface surface)
-        {
-            GameEffectInternalSurface result;
-            result.octaveCount = surface.octaveCount;
-            result.frequency = surface.frequency;
-            result.persistence = surface.persistence;
-
-            result.offset = surface.offset;
-            result.scale = surface.scale;
-
-            return result;
-        }
     }
 
     [Serializable]
@@ -179,15 +168,6 @@ public class GameMapDatabase : ScriptableObject
 
         public float min;
         public float max;
-
-        public static implicit operator GameEffectInternalCondition(Condition condition)
-        {
-            GameEffectInternalCondition result;
-            result.mapIndex = condition.mapIndex;
-            result.min = condition.min;
-            result.max = condition.max;
-            return result;
-        }
     }
 
     [Serializable]
@@ -220,4 +200,151 @@ public class GameMapDatabase : ScriptableObject
 
     public Surface[] surfaces;
     public Effect[] effects;
+
+    public void CreateEffectLandscapeDefinition(out BlobAssetReference<GameEffectLandscapeDefinition> defintion, ref NativeList<GameEffect> values)
+    {
+        using (var builder = new BlobBuilder(Allocator.Temp))
+        {
+            ref var root = ref builder.ConstructRoot<GameEffectLandscapeDefinition>();
+
+            int i, numSurfaces = this.surfaces.Length;
+            var surfaces = builder.Allocate(ref root.surfaces, numSurfaces);
+            for (i = 0; i < numSurfaces; ++i)
+            {
+                ref var sourceSurface = ref this.surfaces[i];
+                ref var destinationSurface = ref surfaces[i];
+
+                destinationSurface.octaveCount = sourceSurface.octaveCount;
+                destinationSurface.frequency = sourceSurface.frequency;
+                destinationSurface.persistence = sourceSurface.persistence;
+
+                destinationSurface.offset = sourceSurface.offset;
+                destinationSurface.scale = sourceSurface.scale;
+            }
+
+            int effectIndex = values.Length, numEffects = effects == null ? 0 : effects.Length;
+            values.ResizeUninitialized(effectIndex + numEffects);
+
+            var areas = builder.Allocate(ref root.areas, numEffects);
+
+            int j, k, numConditions, numLayers, conditionCount = 0, layerCount = 0;
+            for (i = 0; i < numEffects; ++i)
+            {
+                ref var effect = ref this.effects[i];
+
+                conditionCount += effect.conditions == null ? 0 : effect.conditions.Length;
+
+                numLayers = effect.fromHeights == null ? 0 : effect.fromHeights.Length;
+                for(j = 0; j < numLayers; ++j)
+                {
+                    ref var height = ref effect.fromHeights[j];
+
+                    conditionCount += height.conditions == null ? 0 : height.conditions.Length;
+                }
+
+                layerCount += numLayers;
+
+                numLayers = effect.toHeights == null ? 0 : effect.toHeights.Length;
+                for (j = 0; j < numLayers; ++j)
+                {
+                    ref var height = ref effect.toHeights[j];
+
+                    conditionCount += height.conditions == null ? 0 : height.conditions.Length;
+                }
+
+                layerCount += numLayers;
+            }
+
+            int conditionIndex = 0, layerIndex = 0;
+            var layers = builder.Allocate(ref root.layers, layerCount);
+            var conditions = builder.Allocate(ref root.conditions, conditionCount);
+            BlobBuilderArray<int> conditionIndices, layerIndices;
+            for (i = 0; i < numEffects; ++i)
+            {
+                ref var effect = ref this.effects[i];
+                ref var area = ref areas[i];
+
+                numConditions = effect.conditions == null ? 0 : effect.conditions.Length;
+                conditionIndices = builder.Allocate(ref area.conditionIndices, numConditions);
+                for (j = 0; j < numConditions; ++j)
+                {
+                    conditionIndices[j] = conditionIndex;
+
+                    ref var sourceCondition = ref effect.conditions[j];
+                    ref var destinationCondition = ref conditions[conditionIndex++];
+
+                    destinationCondition.mapIndex = sourceCondition.mapIndex;
+                    destinationCondition.min = sourceCondition.min;
+                    destinationCondition.max = sourceCondition.max;
+                }
+
+                area.fromLayers.offset = effect.fromHeight;
+
+                numLayers = effect.fromHeights == null ? 0 : effect.fromHeights.Length;
+                layerIndices = builder.Allocate(ref area.fromLayers.indices, numLayers);
+                for (j = 0; j < numLayers; ++j)
+                {
+                    layerIndices[j] = layerIndex;
+
+                    ref var height = ref effect.fromHeights[j];
+
+                    ref var layer = ref layers[layerIndex++];
+                    
+                    layer.scale = height.scale;
+
+                    numConditions = height.conditions == null ? 0 : height.conditions.Length;
+
+                    conditionIndices = builder.Allocate(ref layer.conditionIndices, numConditions);
+
+                    for (k = 0; k < numConditions; ++k)
+                    {
+                        conditionIndices[k] = conditionIndex;
+
+                        ref var sourceCondition = ref height.conditions[k];
+                        ref var destinationCondition = ref conditions[conditionIndex++];
+
+                        destinationCondition.mapIndex = sourceCondition.mapIndex;
+                        destinationCondition.min = sourceCondition.min;
+                        destinationCondition.max = sourceCondition.max;
+                    }
+                }
+
+                area.toLayers.offset = effect.toHeight;
+
+                numLayers = effect.toHeights == null ? 0 : effect.toHeights.Length;
+                layerIndices = builder.Allocate(ref area.fromLayers.indices, numLayers);
+                for (j = 0; j < numLayers; ++j)
+                {
+                    layerIndices[j] = layerIndex;
+
+                    ref var height = ref effect.toHeights[j];
+
+                    ref var layer = ref layers[layerIndex++];
+
+                    layer.scale = height.scale;
+
+                    numConditions = height.conditions == null ? 0 : height.conditions.Length;
+
+                    conditionIndices = builder.Allocate(ref layer.conditionIndices, numConditions);
+
+                    for (k = 0; k < numConditions; ++k)
+                    {
+                        conditionIndices[k] = conditionIndex;
+
+                        ref var sourceCondition = ref height.conditions[k];
+                        ref var destinationCondition = ref conditions[conditionIndex++];
+
+                        destinationCondition.mapIndex = sourceCondition.mapIndex;
+                        destinationCondition.min = sourceCondition.min;
+                        destinationCondition.max = sourceCondition.max;
+                    }
+                }
+
+                values[effectIndex + i] = effect.value;
+            }
+
+            defintion = builder.CreateBlobAssetReference<GameEffectLandscapeDefinition>(Allocator.Persistent);
+        }
+    }
+
 }

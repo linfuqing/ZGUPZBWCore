@@ -2,13 +2,30 @@ using Unity.Jobs;
 using Unity.Entities;
 using Unity.Collections;
 using ZG;
+using Unity.Burst;
+using Unity.Mathematics;
 
 [assembly: RegisterGenericJobType(typeof(GameEffectApply<GameEffect, GameEffectSystem.Handler, GameEffectSystem.Factory>))]
-[assembly: RegisterGenericJobType(typeof(ClearMultiHashMap<int, Entity>))]
+//[assembly: RegisterGenericJobType(typeof(ClearMultiHashMap<int, Entity>))]
 
-[UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(GameCreatureSystem)), /*UpdateBefore(typeof(GameItemSystem)), */UpdateAfter(typeof(GameSyncSystemGroup))]
-public partial class GameEffectSystem : GameEffectSystem<GameEffect, GameEffectSystem.Handler, GameEffectSystem.Factory>
+[BurstCompile, UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(GameCreatureSystem)), /*UpdateBefore(typeof(GameItemSystem)), */UpdateAfter(typeof(GameSyncSystemGroup))]
+public partial struct GameEffectSystem : ISystem//GameEffectSystem<GameEffect, GameEffectSystem.Handler, GameEffectSystem.Factory>
 {
+    [BurstCompile]
+    public struct Clear : IJob
+    {
+        [ReadOnly, DeallocateOnJobCompletion]
+        public NativeArray<int> entityCount;
+        public SharedMultiHashMap<int, Entity>.Writer entities;
+
+        public void Execute()
+        {
+            entities.Clear();
+
+            entities.capacity = math.max(entities.capacity, this.entityCount[0]);
+        }
+    }
+
     public struct Handler : IGameEffectHandler<GameEffect>
     {
         [ReadOnly]
@@ -26,27 +43,27 @@ public partial class GameEffectSystem : GameEffectSystem<GameEffect, GameEffectS
         public NativeArray<GameItemTimeScale> itemTimeScales;
         public NativeArray<GameTimeActionFactor> timeActionFactors;
 
-        public NativeParallelMultiHashMap<int, Entity>.ParallelWriter entities;
+        public SharedMultiHashMap<int, Entity>.ParallelWriter entities;
 
         public bool Change(
             int index,
             int areaIndex,
-            in GameEffect source,
             ref GameEffect destination,
-            in DynamicBuffer<PhysicsShapeTriggerEventRevicer> revicers)
+            in GameEffect source,
+            in DynamicBuffer<PhysicsTriggerEvent> physicsTriggerEvents,
+            in ComponentLookup<PhysicsShapeParent> physicsShapeParents)
         {
             if (areaIndex != -1)
                 entities.Add(areaIndex, entityArray[index]);
 
-            Entity revicer;
-            int length = revicers.Length;
-            for (int i = 0; i < length; ++i)
+            Entity effector;
+            foreach(var physicsTriggerEvent in physicsTriggerEvents)
             {
-                revicer = revicers[i].entity;
-                if (!effectors.HasComponent(revicer))
+                effector = physicsShapeParents.HasComponent(physicsTriggerEvent.entity) ? physicsShapeParents[physicsTriggerEvent.entity].entity : physicsTriggerEvent.entity;
+                if (!effectors.HasComponent(effector))
                     continue;
 
-                destination += effectors[revicer].value;
+                destination += effectors[effector].value;
             }
 
             GameEffect value = destination - source;
@@ -170,7 +187,7 @@ public partial class GameEffectSystem : GameEffectSystem<GameEffect, GameEffectS
         public ComponentTypeHandle<GameItemTimeScale> itemTimeScaleType;
         public ComponentTypeHandle<GameTimeActionFactor> timeActionFactorType;
 
-        public NativeParallelMultiHashMap<int, Entity>.ParallelWriter entities;
+        public SharedMultiHashMap<int, Entity>.ParallelWriter entities;
 
         public Handler Create(in ArchetypeChunk chunk)
         {
@@ -191,15 +208,41 @@ public partial class GameEffectSystem : GameEffectSystem<GameEffect, GameEffectS
         }
     }
 
-    private JobHandle __jobHandle;
-    private NativeParallelMultiHashMap<int, Entity> __entities;
+    private ComponentLookup<GameEffectorData> __effectors;
 
-    public NativeMultiHashMapEnumerable<int, Entity, NativeMultiHashMapEnumeratorObject> Get(int areaIndex)
+    private EntityTypeHandle __entityType;
+
+    private BufferTypeHandle<GameEntityHealthBuff> __healthBuffType;
+    private ComponentTypeHandle<GameCreatureFoodBuff> __foodBuffType;
+    private ComponentTypeHandle<GameCreatureWaterBuff> __waterBuffType;
+    private ComponentTypeHandle<GameCreatureTemperature> __temperatureType;
+    private ComponentTypeHandle<GameCreatureFoodBuffFromTemperature> __foodBuffFromtemperatureType;
+    private ComponentTypeHandle<GameCreatureWaterBuffFromTemperature> __waterBuffFromtemperatureType;
+    private ComponentTypeHandle<GameItemTimeScale> __itemTimeScaleType;
+    private ComponentTypeHandle<GameTimeActionFactor> __timeActionFactorType;
+
+    private GameEffectSystemCore<GameEffect> __core;
+
+    public SharedList<GameEffect> values
+    {
+        get;
+
+        private set;
+    }
+
+    public SharedMultiHashMap<int, Entity> entities
+    {
+        get;
+
+        private set;
+    }
+
+    /*public NativeMultiHashMapEnumerable<int, Entity, NativeMultiHashMapEnumeratorObject> Get(int areaIndex)
     {
         __jobHandle.Complete();
         __jobHandle = default;
 
-        if (isEmpty)
+        if (__core.isEmpty)
             __entities.Clear();
 
         return __entities.GetEnumerable(areaIndex);
@@ -211,9 +254,9 @@ public partial class GameEffectSystem : GameEffectSystem<GameEffect, GameEffectS
         __jobHandle = default;
 
         _values[areaIndex] += value;
-    }
+    }*/
 
-    public bool Create(GameMapDatabase.Surface[] surfaces, GameMapDatabase.Effect[] effects)
+    /*public bool Create(GameMapDatabase.Surface[] surfaces, GameMapDatabase.Effect[] effects)
     {
         if (_surfaces.IsCreated)
             return false;
@@ -301,61 +344,74 @@ public partial class GameEffectSystem : GameEffectSystem<GameEffect, GameEffectS
         heights.Dispose();
 
         return true;
+    }*/
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = new GameEffectSystemCore<GameEffect>(ref state);
+
+        values = new SharedList<GameEffect>(Allocator.Persistent);
+
+        entities = new SharedMultiHashMap<int, Entity>(Allocator.Persistent);
+
+        __effectors = state.GetComponentLookup<GameEffectorData>(true);
+        __entityType = state.GetEntityTypeHandle();
+        __healthBuffType = state.GetBufferTypeHandle<GameEntityHealthBuff>();
+        __foodBuffType = state.GetComponentTypeHandle<GameCreatureFoodBuff>();
+        __waterBuffType = state.GetComponentTypeHandle<GameCreatureWaterBuff>();
+        __temperatureType = state.GetComponentTypeHandle<GameCreatureTemperature>();
+        __foodBuffFromtemperatureType = state.GetComponentTypeHandle<GameCreatureFoodBuffFromTemperature>();
+        __waterBuffFromtemperatureType = state.GetComponentTypeHandle<GameCreatureWaterBuffFromTemperature>();
+        __itemTimeScaleType = state.GetComponentTypeHandle<GameItemTimeScale>();
+        __timeActionFactorType = state.GetComponentTypeHandle<GameTimeActionFactor>();
     }
 
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        base.OnCreate();
+        values.Dispose();
 
-        __entities = new NativeParallelMultiHashMap<int, Entity>(1, Allocator.Persistent);
+        entities.Dispose();
     }
 
-    protected override void OnDestroy()
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
-        if (_surfaces.IsCreated)
-            _surfaces.Dispose();
+        var entityCount = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
+        var jobHandle = __core.Group.CalculateEntityCountAsync(entityCount, state.Dependency);
 
-        if (_conditions.IsCreated)
-            _conditions.Dispose();
+        var entities = this.entities;
+        ref var entitiesJobManager = ref entities.lookupJobManager;
 
-        if (_heights.IsCreated)
-            _heights.Dispose();
-
-        if (_effects.IsCreated)
-            _effects.Dispose();
-
-        if (_values.IsCreated)
-            _values.Dispose();
-
-        __entities.Dispose();
-
-        base.OnDestroy();
-    }
-
-    protected override void OnUpdate()
-    {
-        base.OnUpdate();
-
-        __jobHandle = Dependency;
-    }
-
-    protected override Factory _Get(ref JobHandle inputDeps)
-    {
-        inputDeps = __entities.Clear(entityCount, inputDeps);
+        Clear clear;
+        clear.entityCount = entityCount;
+        clear.entities = entities.writer;
+        jobHandle = clear.ScheduleByRef(JobHandle.CombineDependencies(entitiesJobManager.readWriteJobHandle, jobHandle));
 
         Factory factory;
-        factory.effectors = GetComponentLookup<GameEffectorData>(true);
-        factory.entityType = GetEntityTypeHandle();
-        factory.healthBuffType = GetBufferTypeHandle<GameEntityHealthBuff>();
-        factory.foodBuffType = GetComponentTypeHandle<GameCreatureFoodBuff>();
-        factory.waterBuffType = GetComponentTypeHandle<GameCreatureWaterBuff>();
-        factory.temperatureType = GetComponentTypeHandle<GameCreatureTemperature>();
-        factory.foodBuffFromtemperatureType = GetComponentTypeHandle<GameCreatureFoodBuffFromTemperature>();
-        factory.waterBuffFromtemperatureType = GetComponentTypeHandle<GameCreatureWaterBuffFromTemperature>();
-        factory.itemTimeScaleType = GetComponentTypeHandle<GameItemTimeScale>();
-        factory.timeActionFactorType = GetComponentTypeHandle<GameTimeActionFactor>();
-        factory.entities = __entities.AsParallelWriter();
+        factory.effectors = __effectors.UpdateAsRef(ref state);
+        factory.entityType = __entityType.UpdateAsRef(ref state);
+        factory.healthBuffType = __healthBuffType.UpdateAsRef(ref state);
+        factory.foodBuffType = __foodBuffType.UpdateAsRef(ref state);
+        factory.waterBuffType = __waterBuffType.UpdateAsRef(ref state);
+        factory.temperatureType = __temperatureType.UpdateAsRef(ref state);
+        factory.foodBuffFromtemperatureType = __foodBuffFromtemperatureType.UpdateAsRef(ref state);
+        factory.waterBuffFromtemperatureType = __waterBuffFromtemperatureType.UpdateAsRef(ref state);
+        factory.itemTimeScaleType = __itemTimeScaleType.UpdateAsRef(ref state);
+        factory.timeActionFactorType = __timeActionFactorType.UpdateAsRef(ref state);
+        factory.entities = entities.parallelWriter;
 
-        return factory;
+        var values = this.values;
+        ref var valuesJobManager = ref values.lookupJobManager;
+        state.Dependency = JobHandle.CombineDependencies(jobHandle, valuesJobManager.readOnlyJobHandle);
+
+        __core.Update<Handler, Factory>(values.AsArray().AsReadOnly(), ref factory, ref state);
+
+        jobHandle = state.Dependency;
+
+        valuesJobManager.AddReadOnlyDependency(jobHandle);
+
+        entitiesJobManager.readWriteJobHandle = jobHandle;
     }
 }
