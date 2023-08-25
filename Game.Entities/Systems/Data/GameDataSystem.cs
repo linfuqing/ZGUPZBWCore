@@ -234,41 +234,7 @@ public partial class GameDataSerializationSystemGroup : EntityDataSerializationM
 
     public override int version => (int)GameDataConstans.Version;
 
-    protected override void OnCreate()
-    {
-        base.OnCreate();
-
-        var world = World;
-
-        __deserializationSystemGroup = world.GetOrCreateSystemManaged<GameDataDeserializationSystemGroup>();
-    }
-
-    protected override void OnStartRunning()
-    {
-        base.OnStartRunning();
-
-        __systemHandle = World.GetExistingSystem<EntityDataSerializationSystemGroup>();
-    }
-
-    protected override void OnStopRunning()
-    {
-        __Save();
-
-        base.OnStopRunning();
-    }
-
-    protected override void OnUpdate()
-    {
-        int times = (int)math.floor(World.Time.ElapsedTime / time);
-        if (times > __times)
-        {
-            __times = times;
-
-            __Save();
-        }
-    }
-
-    private void __Save()
+    public void Save()
     {
         if (!__deserializationSystemGroup.isDone)
             return;
@@ -307,7 +273,7 @@ public partial class GameDataSerializationSystemGroup : EntityDataSerializationM
             {
                 pathToDelete = Path.Combine(folder, __guids[i - maxCount]);
 
-                if(File.Exists(pathToDelete))
+                if (File.Exists(pathToDelete))
                     File.Delete(pathToDelete);
             }
 
@@ -334,6 +300,40 @@ public partial class GameDataSerializationSystemGroup : EntityDataSerializationM
             __guids.Add(guid);
 
             File.AppendAllLines(path, __guids);
+        }
+    }
+
+    protected override void OnCreate()
+    {
+        base.OnCreate();
+
+        var world = World;
+
+        __deserializationSystemGroup = world.GetOrCreateSystemManaged<GameDataDeserializationSystemGroup>();
+    }
+
+    protected override void OnStartRunning()
+    {
+        base.OnStartRunning();
+
+        __systemHandle = World.GetExistingSystem<EntityDataSerializationSystemGroup>();
+    }
+
+    protected override void OnStopRunning()
+    {
+        Save();
+
+        base.OnStopRunning();
+    }
+
+    protected override void OnUpdate()
+    {
+        int times = (int)math.floor(World.Time.ElapsedTime / time);
+        if (times > __times)
+        {
+            __times = times;
+
+            Save();
         }
     }
 }
