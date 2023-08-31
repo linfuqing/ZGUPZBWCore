@@ -6,6 +6,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
+using Unity.Transforms;
 using ZG;
 using Random = Unity.Mathematics.Random;
 
@@ -916,6 +917,12 @@ public partial struct GameFormulaFactorySystem : ISystem
         [ReadOnly]
         public ComponentLookup<GameItemRoot> roots;
 
+        [ReadOnly]
+        public ComponentLookup<Rotation> rotations;
+
+        [ReadOnly]
+        public ComponentLookup<Translation> translations;
+
         public void Execute()
         {
             ref var definition = ref this.definition.Value;
@@ -982,6 +989,7 @@ public partial struct GameFormulaFactorySystem : ISystem
                                 command.handle = itemChildHandle;
                                 //command.version = ++version.value;
                                 command.owner = result.owner;
+                                command.transform = math.RigidTransform(rotations[result.entity].Value, translations[result.entity].Value);
                                 commands[result.entity].Add(command);
                                 commands.SetBufferEnabled(result.entity, true);
 
@@ -1013,6 +1021,12 @@ public partial struct GameFormulaFactorySystem : ISystem
         public BlobAssetReference<GameFormulaFactoryDefinition> definition;
 
         public GameItemManager itemManager;
+
+        [ReadOnly]
+        public ComponentLookup<Rotation> rotations;
+
+        [ReadOnly]
+        public ComponentLookup<Translation> translations;
 
         public BufferLookup<GameItemSibling> siblings;
 
@@ -1058,6 +1072,7 @@ public partial struct GameFormulaFactorySystem : ISystem
                             command.itemType = result.itemType;
                             command.itemCount = sourceItemCount;
                             command.owner = input.owner;
+                            command.transform = math.RigidTransform(rotations[input.entity].Value, translations[input.entity].Value);
                             commands[input.entity].Add(command);
 
                             commands.SetBufferEnabled(input.entity, true);
@@ -1156,6 +1171,10 @@ public partial struct GameFormulaFactorySystem : ISystem
     private BufferLookup<GameFormula> __formulas;
     private ComponentLookup<GameItemRoot> __itemRoots;
 
+    private ComponentLookup<Rotation> __rotations;
+
+    private ComponentLookup<Translation> __translations;
+
     private ComponentLookup<GameMoney> __moneies;
 
     private BufferLookup<GameItemSpawnHandleCommand> __itemSpawnHandleCommands;
@@ -1218,6 +1237,11 @@ public partial struct GameFormulaFactorySystem : ISystem
 
         __formulas = state.GetBufferLookup<GameFormula>(true);
         __itemRoots = state.GetComponentLookup<GameItemRoot>(true);
+
+
+        __rotations = state.GetComponentLookup<Rotation>(true);
+
+        __translations = state.GetComponentLookup<Translation>(true);
 
         __moneies = state.GetComponentLookup<GameMoney>();
 
@@ -1361,6 +1385,8 @@ public partial struct GameFormulaFactorySystem : ISystem
             applyToRun.siblings = siblings;
             applyToRun.commands = __itemSpawnHandleCommands.UpdateAsRef(ref state);
             applyToRun.moneies = monies;
+            applyToRun.translations = __translations.UpdateAsRef(ref state);
+            applyToRun.rotations = __rotations.UpdateAsRef(ref state);
             applyToRun.results = __runningResults;
 
             jobHandle = applyToRun.ScheduleByRef(jobHandle);
@@ -1377,6 +1403,8 @@ public partial struct GameFormulaFactorySystem : ISystem
         ApplyToComplete applyToComplete;
         applyToComplete.definition = definition;
         applyToComplete.itemManager = itemManager;
+        applyToComplete.translations = __translations.UpdateAsRef(ref state);
+        applyToComplete.rotations = __rotations.UpdateAsRef(ref state);
         applyToComplete.siblings = siblings;
         applyToComplete.commands = __itemSpawnCommands.UpdateAsRef(ref state);
         applyToComplete.inputs = __completedResults;

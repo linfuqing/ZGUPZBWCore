@@ -116,14 +116,15 @@ public struct GameItemSpawnCommand : IBufferElementData, IEnableableComponent
     public int itemCount;
     //public int version;
     public Entity owner;
+    public RigidTransform transform;
 }
 
 public struct GameItemSpawnHandleCommand : IBufferElementData, IEnableableComponent
 {
     public GameItemSpawnType spawnType;
-    //public int version;
     public GameItemHandle handle;
     public Entity owner;
+    public RigidTransform transform;
 }
 
 public struct GameItemSpawnData
@@ -177,11 +178,11 @@ public partial struct GameItemSpawnSystem : ISystem
         //[ReadOnly]
         //public NativeArray<Entity> entityArray;
 
-        [ReadOnly]
-        public NativeArray<Translation> translations;
+        //[ReadOnly]
+        //public NativeArray<Translation> translations;
 
-        [ReadOnly]
-        public NativeArray<Rotation> rotations;
+        //[ReadOnly]
+        //public NativeArray<Rotation> rotations;
 
         [ReadOnly]
         public NativeArray<GameItemSpawnOffset> offsets;
@@ -199,7 +200,7 @@ public partial struct GameItemSpawnSystem : ISystem
 
             GameItemSpawnData result;
             //result.entity = entityArray[index];
-            result.transform = math.RigidTransform(rotations[index].Value, translations[index].Value + offsets[index].GetValue(ref random));
+            //result.transform = math.RigidTransform(rotations[index].Value, translations[index].Value + offsets[index].GetValue(ref random));
 
             int i, j;
             GameItemInfo item;
@@ -222,6 +223,7 @@ public partial struct GameItemSpawnSystem : ISystem
 
                 result.identityType = value.identityType;
                 result.owner = command.owner;
+                result.transform = command.transform;
 
                 switch (value.spawnType)
                 {
@@ -255,11 +257,11 @@ public partial struct GameItemSpawnSystem : ISystem
         [ReadOnly]
         public NativeHashMap<Key, Value> values;
 
-        [ReadOnly]
-        public NativeArray<Translation> translations;
+        //[ReadOnly]
+        //public NativeArray<Translation> translations;
 
-        [ReadOnly]
-        public NativeArray<Rotation> rotations;
+        //[ReadOnly]
+        //public NativeArray<Rotation> rotations;
 
         [ReadOnly]
         public NativeArray<GameItemSpawnOffset> offsets;
@@ -276,7 +278,7 @@ public partial struct GameItemSpawnSystem : ISystem
                 return;
 
             GameItemSpawnData result;
-            result.transform = math.RigidTransform(rotations[index].Value, translations[index].Value + offsets[index].GetValue(ref random));
+            //result.transform = math.RigidTransform(rotations[index].Value, translations[index].Value + offsets[index].GetValue(ref random));
 
             int i, j, count;
             Key key;
@@ -292,6 +294,7 @@ public partial struct GameItemSpawnSystem : ISystem
 
                 result.identityType = value.identityType;
                 result.owner = command.owner;
+                result.transform = command.transform;
 
                 switch (value.spawnType)
                 {
@@ -326,11 +329,11 @@ public partial struct GameItemSpawnSystem : ISystem
         //[ReadOnly]
         //public EntityTypeHandle entityType;
 
-        [ReadOnly]
-        public ComponentTypeHandle<Translation> translationType;
+        //[ReadOnly]
+        //public ComponentTypeHandle<Translation> translationType;
 
-        [ReadOnly]
-        public ComponentTypeHandle<Rotation> rotationType;
+        //[ReadOnly]
+        //public ComponentTypeHandle<Rotation> rotationType;
 
         [ReadOnly]
         public ComponentTypeHandle<GameItemSpawnOffset> offsetType;
@@ -344,8 +347,8 @@ public partial struct GameItemSpawnSystem : ISystem
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             var random = new Random(hash ^ (uint)unfilteredChunkIndex);
-            var translations = chunk.GetNativeArray(ref translationType);
-            var rotations = chunk.GetNativeArray(ref rotationType);
+            //var translations = chunk.GetNativeArray(ref translationType);
+            //var rotations = chunk.GetNativeArray(ref rotationType);
             var offsets = chunk.GetNativeArray(ref offsetType);
             if (chunk.Has(ref commandType))
             {
@@ -353,8 +356,8 @@ public partial struct GameItemSpawnSystem : ISystem
                 spawn.random = random;
                 spawn.itemManager = itemManager;
                 spawn.values = values;
-                spawn.translations = translations;
-                spawn.rotations = rotations;
+                //spawn.translations = translations;
+                //spawn.rotations = rotations;
                 spawn.offsets = offsets;
                 spawn.commands = chunk.GetBufferAccessor(ref commandType);
                 spawn.results = results;
@@ -377,8 +380,8 @@ public partial struct GameItemSpawnSystem : ISystem
                 spawn.random = random;
                 spawn.itemManager = itemManager;
                 spawn.values = values;
-                spawn.translations = translations;
-                spawn.rotations = rotations;
+                //spawn.translations = translations;
+                //spawn.rotations = rotations;
                 spawn.offsets = offsets;
                 spawn.commands = chunk.GetBufferAccessor(ref handleCommandType);
                 spawn.results = results;
@@ -399,9 +402,9 @@ public partial struct GameItemSpawnSystem : ISystem
 
     private EntityQuery __group;
 
-    private ComponentTypeHandle<Translation> __translationType;
+    //private ComponentTypeHandle<Translation> __translationType;
 
-    private ComponentTypeHandle<Rotation> __rotationType;
+    //private ComponentTypeHandle<Rotation> __rotationType;
 
     private ComponentTypeHandle<GameItemSpawnOffset> __offsetType;
 
@@ -440,8 +443,8 @@ public partial struct GameItemSpawnSystem : ISystem
         //__group.AddChangedVersionFilter(ComponentType.ReadWrite<GameItemSpawnCommand>());
         //__group.AddChangedVersionFilter(ComponentType.ReadWrite<GameItemSpawnHandleCommand>());
 
-        __translationType = state.GetComponentTypeHandle<Translation>(true);
-        __rotationType = state.GetComponentTypeHandle<Rotation>(true);
+        //__translationType = state.GetComponentTypeHandle<Translation>(true);
+        //__rotationType = state.GetComponentTypeHandle<Rotation>(true);
         __offsetType = state.GetComponentTypeHandle<GameItemSpawnOffset>(true);
         __commandType = state.GetBufferTypeHandle<GameItemSpawnCommand>();
         __handleCommandType = state.GetBufferTypeHandle<GameItemSpawnHandleCommand>();
@@ -473,8 +476,8 @@ public partial struct GameItemSpawnSystem : ISystem
         spawn.hash = RandomUtility.Hash(state.WorldUnmanaged.Time.ElapsedTime);
         spawn.itemManager = __itemManager.value;
         spawn.values = __values;
-        spawn.translationType = __translationType.UpdateAsRef(ref state);
-        spawn.rotationType = __rotationType.UpdateAsRef(ref state);
+        //spawn.translationType = __translationType.UpdateAsRef(ref state);
+        //spawn.rotationType = __rotationType.UpdateAsRef(ref state);
         spawn.offsetType = __offsetType.UpdateAsRef(ref state);
         spawn.commandType = __commandType.UpdateAsRef(ref state);
         spawn.handleCommandType = __handleCommandType.UpdateAsRef(ref state);
