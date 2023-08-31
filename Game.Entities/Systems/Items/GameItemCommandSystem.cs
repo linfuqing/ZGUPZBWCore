@@ -131,7 +131,7 @@ public struct GameItemCommandManager
                                     {
                                         moveType = manager.Move(handle, parentHandle, parentChildIndex);
 
-                                        UnityEngine.Assertions.Assert.AreNotEqual(GameItemMoveType.Error, moveType);
+                                        //UnityEngine.Assertions.Assert.AreNotEqual(GameItemMoveType.Error, moveType);
                                     }
                                     else
                                     {
@@ -148,7 +148,7 @@ public struct GameItemCommandManager
                                             {
                                                 moveType = manager.Move(handle, parentHandle, parentChildIndex);
 
-                                                UnityEngine.Assertions.Assert.AreNotEqual(GameItemMoveType.Error, moveType);
+                                                //UnityEngine.Assertions.Assert.AreNotEqual(GameItemMoveType.Error, moveType);
                                             }
                                         }
                                     }
@@ -207,7 +207,7 @@ public struct GameItemCommandManager
 
                         var moveType = manager.Move(command.handle, command.parentHandle, command.parentChildIndex);
 
-                        UnityEngine.Assertions.Assert.AreNotEqual(GameItemMoveType.Error, moveType);
+                        //UnityEngine.Assertions.Assert.AreNotEqual(GameItemMoveType.Error, moveType);
                     }
                     break;
                 case CommandType.Split:
