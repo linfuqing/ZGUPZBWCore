@@ -707,9 +707,13 @@ public struct GameEntityActionSystemCore
                             colliderCastInput.Orientation = sourceRigidbody.WorldFromBody.rot;
                             colliderCastInput.Start = source;
                             colliderCastInput.End = destination;
-                            var collector = new FarthestHitCollectorExcludeDynamicBodies<ColliderCastHit>(collisionWorld.NumDynamicBodies, 1.0f);
+
+                            var collector = new StaticBodyCollector<ColliderCastHit>(collisionWorld.NumDynamicBodies, 1.0f);
                             if (collisionWorld.CastCollider(colliderCastInput, ref collector))
-                                sourceTransform.pos = math.lerp(source, destination, collector.farthestHit.Fraction);
+                            {
+                                float fraction = collector.closestHit.Fraction;
+                                sourceTransform.pos = fraction > math.FLT_MIN_NORMAL ? math.lerp(source, destination, fraction) : sourceRigidbody.WorldFromBody.pos;
+                            }
                             else
                                 sourceTransform.pos = destination;
 
@@ -743,7 +747,7 @@ public struct GameEntityActionSystemCore
                 (handler.Create(
                         index,
                         time,
-                        instanceEx.targetPosition,
+                        isSourceTransform ? sourceTransform.pos : instanceEx.targetPosition,
                         entity,
                         instanceEx.transform,
                         instance) ||
