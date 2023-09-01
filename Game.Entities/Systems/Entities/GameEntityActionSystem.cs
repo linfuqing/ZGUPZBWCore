@@ -628,12 +628,8 @@ public struct GameEntityActionSystemCore
                 oldTime = time - deltaTime;
             RigidTransform sourceTransform = RigidTransform.identity;
             var rigidbodies = collisionWorld.Bodies;
-            if(time < actorMoveStartTime)
-            {
-                if (instanceEx.info.actorMoveDuration > math.FLT_MIN_NORMAL)
-                    return;
-            }
-            else if (oldTime < actorMoveTime)
+            bool isActorMove = time >= actorMoveStartTime && oldTime < actorMoveTime;
+            if (isActorMove || (value & GameActionStatus.Status.Created) != GameActionStatus.Status.Created)
             {
                 double max = math.min(time, actorMoveTime), min = math.max(oldTime, actorMoveStartTime);
                 if (max > min && infos.HasComponent(instance.entity) && infos[instance.entity].version == instance.version)
@@ -741,7 +737,10 @@ public struct GameEntityActionSystemCore
                     }
 
                     if (isSourceTransform)
-                        locations.TryAdd(instance.entity, sourceTransform.pos);
+                    {
+                        if(isActorMove)
+                            locations.TryAdd(instance.entity, sourceTransform.pos);
+                    }
 
                     //actorMoveDistance = (instanceEx.info.actorMoveSpeed + instanceEx.info.actorMoveSpeedIndirect) * (float)(max - min);
 
