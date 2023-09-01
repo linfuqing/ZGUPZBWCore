@@ -629,126 +629,130 @@ public struct GameEntityActionSystemCore
             RigidTransform sourceTransform = RigidTransform.identity;
             var rigidbodies = collisionWorld.Bodies;
             bool isActorMove = time >= actorMoveStartTime && oldTime < actorMoveTime;
-            if (isActorMove || ((value & GameActionStatus.Status.Created) != GameActionStatus.Status.Created))
+            if(isActorMove)
             {
                 double max = math.min(time, actorMoveTime), min = math.max(oldTime, actorMoveStartTime);
-                if (max > min && infos.HasComponent(instance.entity) && infos[instance.entity].version == instance.version)
+
+                isActorMove &= max > min;
+            }
+
+            if ((isActorMove || ((value & GameActionStatus.Status.Created) != GameActionStatus.Status.Created)) &&
+                infos.HasComponent(instance.entity) && infos[instance.entity].version == instance.version)
+            {
+                if (isActorMove && (instanceEx.value.flag & GameActionFlag.ActorUnstoppable) == GameActionFlag.ActorUnstoppable)
+                    unstoppableEntities.Create().value = instance.entity;
+
+                if (instanceEx.info.actorLocationDistance > math.FLT_MIN_NORMAL)
                 {
-                    if ((instanceEx.value.flag & GameActionFlag.ActorUnstoppable) == GameActionFlag.ActorUnstoppable)
-                        unstoppableEntities.Create().value = instance.entity;
-
-                    if (instanceEx.info.actorLocationDistance > math.FLT_MIN_NORMAL)
+                    int sourceRigidbodyIndex = collisionWorld.GetRigidBodyIndex(instance.entity);
+                    if (sourceRigidbodyIndex != -1)
                     {
-                        int sourceRigidbodyIndex = collisionWorld.GetRigidBodyIndex(instance.entity);
-                        if (sourceRigidbodyIndex != -1)
+                        var sourceRigidbody = rigidbodies[sourceRigidbodyIndex];
+
+                        float distance;
+                        float3 source = math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.actorOffset), destination;
+
+                        if ((instanceEx.value.flag & GameActionFlag.ActorLocation) == GameActionFlag.ActorLocation)
                         {
-                            var sourceRigidbody = rigidbodies[sourceRigidbodyIndex];
+                            destination = instanceEx.targetPosition;
 
-                            float distance;
-                            float3 source = math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.actorOffset), destination;
-
-                            if ((instanceEx.value.flag & GameActionFlag.ActorLocation) == GameActionFlag.ActorLocation)
-                            {
-                                destination = instanceEx.targetPosition;
-
-                                distance = math.distance(destination, source);
-                            }
-                            else
-                            {
-                                distance = instanceEx.info.distance;
-
-                                destination = source + math.forward(sourceRigidbody.WorldFromBody.rot) * distance;
-                            }
-
-                            if (distance > math.FLT_MIN_NORMAL)
-                            {
-                                ColliderCastInput colliderCastInput = default;
-                                colliderCastInput.Collider = (Collider*)(colliders.HasComponent(instance.entity) ? colliders[instance.entity].value.GetUnsafePtr() : sourceRigidbody.Collider.GetUnsafePtr());
-                                colliderCastInput.Orientation = sourceRigidbody.WorldFromBody.rot;
-                                colliderCastInput.Start = source;
-                                colliderCastInput.End = destination;
-                                var collector = new ClosestHitCollectorExclude<ColliderCastHit>(sourceRigidbodyIndex, 1.0f);
-                                /*if (collisionWorld.CastCollider(colliderCastInput, ref collector))
-                                    destination = math.lerp(sourceRigidbody.WorldFromBody.pos, destination, collector.closestHit.Fraction);*/
-
-                                float fraction;
-                                if (collisionWorld.CastCollider(colliderCastInput, ref collector))
-                                {
-                                    var closestHit = collector.closestHit;
-                                    if (closestHit.Entity == instanceEx.target)
-                                        fraction = closestHit.Fraction;
-                                    else
-                                        fraction = math.min(instanceEx.info.actorLocationDistance, distance * closestHit.Fraction) / distance;
-                                }
-                                else
-                                    fraction = math.min(instanceEx.info.actorLocationDistance, distance) / distance;
-
-                                sourceTransform.pos = fraction > math.FLT_MIN_NORMAL ? math.lerp(source, destination, fraction) : sourceRigidbody.WorldFromBody.pos;
-                            }
-                            else
-                                sourceTransform.pos = sourceRigidbody.WorldFromBody.pos;
-
-                            sourceTransform.rot = sourceRigidbody.WorldFromBody.rot;
-
-                            isSourceTransform = true;
+                            distance = math.distance(destination, source);
                         }
-                    }
-                    else if ((instanceEx.value.flag & GameActionFlag.ActorLocation) == GameActionFlag.ActorLocation)
-                    {
-                        sourceTransform.pos = instanceEx.targetPosition;
-                        int sourceRigidbodyIndex = collisionWorld.GetRigidBodyIndex(instance.entity);
-                        if (sourceRigidbodyIndex != -1)
+                        else
                         {
-                            var sourceRigidbody = rigidbodies[sourceRigidbodyIndex];
-                            float3 source = math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.actorOffset),
-                                destination = math.transform(sourceTransform, instanceEx.value.actorOffset);
-                            float distance = collisionWorld.CollisionTolerance;
-                            var collider = (Collider*)(colliders.HasComponent(instance.entity) ? colliders[instance.entity].value.GetUnsafePtr() : sourceRigidbody.Collider.GetUnsafePtr());
+                            distance = instanceEx.info.distance;
 
-                            ColliderDistanceInput colliderDistanceInput = default;
-                            colliderDistanceInput.Collider = collider;
-                            colliderDistanceInput.Transform = math.RigidTransform(sourceRigidbody.WorldFromBody.rot, destination);
-                            colliderDistanceInput.MaxDistance = distance;
-                            var distanceCollector = new StaticBodyCollector<DistanceHit>(collisionWorld.NumDynamicBodies, distance);
-                            if (collisionWorld.CalculateDistance(colliderDistanceInput, ref distanceCollector))
+                            destination = source + math.forward(sourceRigidbody.WorldFromBody.rot) * distance;
+                        }
+
+                        if (distance > math.FLT_MIN_NORMAL)
+                        {
+                            ColliderCastInput colliderCastInput = default;
+                            colliderCastInput.Collider = (Collider*)(colliders.HasComponent(instance.entity) ? colliders[instance.entity].value.GetUnsafePtr() : sourceRigidbody.Collider.GetUnsafePtr());
+                            colliderCastInput.Orientation = sourceRigidbody.WorldFromBody.rot;
+                            colliderCastInput.Start = source;
+                            colliderCastInput.End = destination;
+                            var collector = new ClosestHitCollectorExclude<ColliderCastHit>(sourceRigidbodyIndex, 1.0f);
+                            /*if (collisionWorld.CastCollider(colliderCastInput, ref collector))
+                                destination = math.lerp(sourceRigidbody.WorldFromBody.pos, destination, collector.closestHit.Fraction);*/
+
+                            float fraction;
+                            if (collisionWorld.CastCollider(colliderCastInput, ref collector))
                             {
-                                ColliderCastInput colliderCastInput = default;
-                                colliderCastInput.Collider = (Collider*)(colliders.HasComponent(instance.entity) ? colliders[instance.entity].value.GetUnsafePtr() : sourceRigidbody.Collider.GetUnsafePtr());
-                                colliderCastInput.Orientation = sourceRigidbody.WorldFromBody.rot;
-                                colliderCastInput.Start = source;
-                                colliderCastInput.End = destination;
-
-                                var collector = new StaticBodyCollector<ColliderCastHit>(collisionWorld.NumDynamicBodies, 1.0f);
-                                if (collisionWorld.CastCollider(colliderCastInput, ref collector))
-                                {
-                                    float fraction = collector.closestHit.Fraction;
-                                    sourceTransform.pos = fraction > math.FLT_MIN_NORMAL ? math.lerp(source, destination, fraction) : sourceRigidbody.WorldFromBody.pos;
-                                }
+                                var closestHit = collector.closestHit;
+                                if (closestHit.Entity == instanceEx.target)
+                                    fraction = closestHit.Fraction;
                                 else
-                                    sourceTransform.pos = destination;
+                                    fraction = math.min(instanceEx.info.actorLocationDistance, distance * closestHit.Fraction) / distance;
                             }
                             else
-                                sourceTransform.pos = destination;
+                                fraction = math.min(instanceEx.info.actorLocationDistance, distance) / distance;
 
-                            sourceTransform.rot = rigidbodies[sourceRigidbodyIndex].WorldFromBody.rot;
+                            sourceTransform.pos = fraction > math.FLT_MIN_NORMAL ? math.lerp(source, destination, fraction) : sourceRigidbody.WorldFromBody.pos;
                         }
+                        else
+                            sourceTransform.pos = sourceRigidbody.WorldFromBody.pos;
+
+                        sourceTransform.rot = sourceRigidbody.WorldFromBody.rot;
 
                         isSourceTransform = true;
                     }
-
-                    if (isSourceTransform)
+                }
+                else if ((instanceEx.value.flag & GameActionFlag.ActorLocation) == GameActionFlag.ActorLocation)
+                {
+                    sourceTransform.pos = instanceEx.targetPosition;
+                    int sourceRigidbodyIndex = collisionWorld.GetRigidBodyIndex(instance.entity);
+                    if (sourceRigidbodyIndex != -1)
                     {
-                        if(isActorMove)
-                            locations.TryAdd(instance.entity, sourceTransform.pos);
+                        var sourceRigidbody = rigidbodies[sourceRigidbodyIndex];
+                        float3 source = math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.actorOffset),
+                            destination = math.transform(sourceTransform, instanceEx.value.actorOffset);
+                        float distance = collisionWorld.CollisionTolerance;
+                        var collider = (Collider*)(colliders.HasComponent(instance.entity) ? colliders[instance.entity].value.GetUnsafePtr() : sourceRigidbody.Collider.GetUnsafePtr());
+
+                        ColliderDistanceInput colliderDistanceInput = default;
+                        colliderDistanceInput.Collider = collider;
+                        colliderDistanceInput.Transform = math.RigidTransform(sourceRigidbody.WorldFromBody.rot, destination);
+                        colliderDistanceInput.MaxDistance = distance;
+                        var distanceCollector = new StaticBodyCollector<DistanceHit>(collisionWorld.NumDynamicBodies, distance);
+                        if (collisionWorld.CalculateDistance(colliderDistanceInput, ref distanceCollector))
+                        {
+                            ColliderCastInput colliderCastInput = default;
+                            colliderCastInput.Collider = (Collider*)(colliders.HasComponent(instance.entity) ? colliders[instance.entity].value.GetUnsafePtr() : sourceRigidbody.Collider.GetUnsafePtr());
+                            colliderCastInput.Orientation = sourceRigidbody.WorldFromBody.rot;
+                            colliderCastInput.Start = source;
+                            colliderCastInput.End = destination;
+
+                            var collector = new StaticBodyCollector<ColliderCastHit>(collisionWorld.NumDynamicBodies, 1.0f);
+                            if (collisionWorld.CastCollider(colliderCastInput, ref collector))
+                            {
+                                float fraction = collector.closestHit.Fraction;
+                                sourceTransform.pos = fraction > math.FLT_MIN_NORMAL ? math.lerp(source, destination, fraction) : sourceRigidbody.WorldFromBody.pos;
+                            }
+                            else
+                                sourceTransform.pos = destination;
+                        }
+                        else
+                            sourceTransform.pos = destination;
+
+                        sourceTransform.rot = rigidbodies[sourceRigidbodyIndex].WorldFromBody.rot;
                     }
 
-                    //actorMoveDistance = (instanceEx.info.actorMoveSpeed + instanceEx.info.actorMoveSpeedIndirect) * (float)(max - min);
-
-                    /*EntityData<float> directVelocity;
-                    directVelocity.value = actorMoveDistance;
-                    directVelocity.entity = instance.entity;
-                    directVelocities.Enqueue(directVelocity);*/
+                    isSourceTransform = true;
                 }
+
+                if (isSourceTransform)
+                {
+                    if (isActorMove)
+                        locations.TryAdd(instance.entity, sourceTransform.pos);
+                }
+
+                //actorMoveDistance = (instanceEx.info.actorMoveSpeed + instanceEx.info.actorMoveSpeedIndirect) * (float)(max - min);
+
+                /*EntityData<float> directVelocity;
+                directVelocity.value = actorMoveDistance;
+                directVelocity.entity = instance.entity;
+                directVelocities.Enqueue(directVelocity);*/
             }
 
             Entity entity = entityArray[index];
