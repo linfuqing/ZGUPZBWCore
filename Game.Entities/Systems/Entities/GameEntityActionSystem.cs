@@ -628,7 +628,7 @@ public struct GameEntityActionSystemCore
                 oldTime = time - deltaTime;
             RigidTransform sourceTransform = RigidTransform.identity;
             var rigidbodies = collisionWorld.Bodies;
-            if(time > actorMoveStartTime)
+            if(time < actorMoveStartTime)
             {
                 if (instanceEx.info.actorMoveDuration > math.FLT_MIN_NORMAL)
                     return;
