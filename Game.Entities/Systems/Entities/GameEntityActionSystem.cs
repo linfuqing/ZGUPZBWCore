@@ -629,7 +629,7 @@ public struct GameEntityActionSystemCore
             RigidTransform sourceTransform = RigidTransform.identity;
             var rigidbodies = collisionWorld.Bodies;
             bool isActorMove = time >= actorMoveStartTime && oldTime < actorMoveTime;
-            if (isActorMove || (value & GameActionStatus.Status.Created) != GameActionStatus.Status.Created)
+            if (isActorMove || ((value & GameActionStatus.Status.Created) != GameActionStatus.Status.Created))
             {
                 double max = math.min(time, actorMoveTime), min = math.max(oldTime, actorMoveStartTime);
                 if (max > min && infos.HasComponent(instance.entity) && infos[instance.entity].version == instance.version)
@@ -759,23 +759,27 @@ public struct GameEntityActionSystemCore
             double damageTime = instance.time + instanceEx.info.damageTime,
                 maxDamageTime = damageTime + instanceEx.info.duration,
                 maxTime = math.max(actorMoveTime, maxDamageTime);
-            if ((value & GameActionStatus.Status.Created) != GameActionStatus.Status.Created &&
-                (handler.Create(
+            if ((value & GameActionStatus.Status.Created) != GameActionStatus.Status.Created)
+            {
+                if (handler.Create(
                         index,
                         time,
                         isSourceTransform ? sourceTransform.pos : instanceEx.targetPosition,
                         entity,
                         instanceEx.transform,
                         instance) ||
-                        (value & GameActionStatus.Status.Damage) == GameActionStatus.Status.Damage &&
+                        ((value & GameActionStatus.Status.Damage) == GameActionStatus.Status.Damage) &&
                         handler.Init(
                         index,
                         (float)(maxTime > oldTime ? oldTime - instance.time : maxTime - instance.time),
                         time,
                         entity,
                         transform,
-                        instance)))
-                value |= /*GameActionStatus.Status.Created | */GameActionStatus.Status.Managed;
+                        instance))
+                    value |= /*GameActionStatus.Status.Created | */GameActionStatus.Status.Managed;
+                else
+                    value |= GameActionStatus.Status.Created;
+            }
 
             float elapsedTime;
             if (maxTime > time)
