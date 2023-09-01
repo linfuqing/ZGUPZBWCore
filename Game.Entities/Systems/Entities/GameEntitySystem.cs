@@ -2955,24 +2955,27 @@ public partial struct GameEntityStatusSystem : ISystem
 
         public bool Execute(int index)
         {
-            int value = states[index].value & GameNodeStatus.OVER, oldValue = oldStates[index].value & GameNodeStatus.OVER;
-            if (value == oldValue || value != GameNodeStatus.OVER)
+            int flag = GameNodeStatus.STOP | GameNodeStatus.OVER, value = states[index].value & flag, oldValue = oldStates[index].value & flag;
+            if (value == oldValue)
                 return false;
 
             if (index < entityActions.Length)
                 GameEntityAction.Break(time, entityActions[index], ref actionStates);
 
-            actorTimes[index] = default;
+            if ((value & GameNodeStatus.OVER) != 0)
+            {
+                actorTimes[index] = default;
 
-            actorInfos[index] = default;
+                actorInfos[index] = default;
 
-            var actorActionInfos = this.actorActionInfos[index];
-            int numActorActionInfos = actorActionInfos.Length;
-            for (int i = 0; i < numActorActionInfos; ++i)
-                actorActionInfos[i] = default;
+                var actorActionInfos = this.actorActionInfos[index];
+                int numActorActionInfos = actorActionInfos.Length;
+                for (int i = 0; i < numActorActionInfos; ++i)
+                    actorActionInfos[i] = default;
 
-            timeEventHandles.Enqueue(eventInfos[index].timeEventHandle);
-            timeEventHandles.Enqueue(eventCommands[index].handle);
+                timeEventHandles.Enqueue(eventInfos[index].timeEventHandle);
+                timeEventHandles.Enqueue(eventCommands[index].handle);
+            }
 
             return true;
         }
