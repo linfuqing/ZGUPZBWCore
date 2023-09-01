@@ -643,22 +643,49 @@ public struct GameEntityActionSystemCore
                         {
                             var sourceRigidbody = rigidbodies[sourceRigidbodyIndex];
 
-                            float3 source = math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.actorOffset),
-                                destination = (instanceEx.value.flag & GameActionFlag.ActorLocation) == GameActionFlag.ActorLocation ?
-                                instanceEx.targetPosition :
-                                source + math.forward(sourceRigidbody.WorldFromBody.rot) * instanceEx.info.distance;
+                            float distance;
+                            float3 source = math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.actorOffset), destination;
 
-                            ColliderCastInput colliderCastInput = default;
-                            colliderCastInput.Collider = (Collider*)(colliders.HasComponent(instance.entity) ? colliders[instance.entity].value.GetUnsafePtr() : rigidbodies[sourceRigidbodyIndex].Collider.GetUnsafePtr());
-                            colliderCastInput.Orientation = sourceRigidbody.WorldFromBody.rot;
-                            colliderCastInput.Start = source;
-                            colliderCastInput.End = destination;
-                            var collector = new ClosestHitCollectorExclude<ColliderCastHit>(sourceRigidbodyIndex, 1.0f);
-                            /*if (collisionWorld.CastCollider(colliderCastInput, ref collector))
-                                destination = math.lerp(sourceRigidbody.WorldFromBody.pos, destination, collector.closestHit.Fraction);*/
+                            if ((instanceEx.value.flag & GameActionFlag.ActorLocation) == GameActionFlag.ActorLocation)
+                            {
+                                destination = instanceEx.targetPosition;
 
-                            float fraction = collisionWorld.CastCollider(colliderCastInput, ref collector) ? collector.closestHit.Fraction : instanceEx.info.actorLocationDistance / instanceEx.info.distance;
-                            sourceTransform.pos = fraction > math.FLT_MIN_NORMAL ? math.lerp(source, destination, fraction) : sourceRigidbody.WorldFromBody.pos;
+                                distance = math.distance(destination, source);
+                            }
+                            else
+                            {
+                                distance = instanceEx.info.distance;
+
+                                destination = source + math.forward(sourceRigidbody.WorldFromBody.rot) * distance;
+                            }
+
+                            if (distance > math.FLT_MIN_NORMAL)
+                            {
+                                ColliderCastInput colliderCastInput = default;
+                                colliderCastInput.Collider = (Collider*)(colliders.HasComponent(instance.entity) ? colliders[instance.entity].value.GetUnsafePtr() : rigidbodies[sourceRigidbodyIndex].Collider.GetUnsafePtr());
+                                colliderCastInput.Orientation = sourceRigidbody.WorldFromBody.rot;
+                                colliderCastInput.Start = source;
+                                colliderCastInput.End = destination;
+                                var collector = new ClosestHitCollectorExclude<ColliderCastHit>(sourceRigidbodyIndex, 1.0f);
+                                /*if (collisionWorld.CastCollider(colliderCastInput, ref collector))
+                                    destination = math.lerp(sourceRigidbody.WorldFromBody.pos, destination, collector.closestHit.Fraction);*/
+
+                                float fraction;
+                                if (collisionWorld.CastCollider(colliderCastInput, ref collector))
+                                {
+                                    var closestHit = collector.closestHit;
+                                    if (closestHit.Entity == instanceEx.target)
+                                        fraction = closestHit.Fraction;
+                                    else
+                                        fraction = math.min(instanceEx.info.actorLocationDistance, distance * closestHit.Fraction) / distance;
+                                }
+                                else
+                                    fraction = math.min(instanceEx.info.actorLocationDistance, distance) / distance;
+
+                                sourceTransform.pos = fraction > math.FLT_MIN_NORMAL ? math.lerp(source, destination, fraction) : sourceRigidbody.WorldFromBody.pos;
+                            }
+                            else
+                                sourceTransform.pos = sourceRigidbody.WorldFromBody.pos;
 
                             sourceTransform.rot = sourceRigidbody.WorldFromBody.rot;
 
