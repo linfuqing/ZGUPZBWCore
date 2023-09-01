@@ -662,7 +662,7 @@ public struct GameEntityActionSystemCore
                             if (distance > math.FLT_MIN_NORMAL)
                             {
                                 ColliderCastInput colliderCastInput = default;
-                                colliderCastInput.Collider = (Collider*)(colliders.HasComponent(instance.entity) ? colliders[instance.entity].value.GetUnsafePtr() : rigidbodies[sourceRigidbodyIndex].Collider.GetUnsafePtr());
+                                colliderCastInput.Collider = (Collider*)(colliders.HasComponent(instance.entity) ? colliders[instance.entity].value.GetUnsafePtr() : sourceRigidbody.Collider.GetUnsafePtr());
                                 colliderCastInput.Orientation = sourceRigidbody.WorldFromBody.rot;
                                 colliderCastInput.Start = source;
                                 colliderCastInput.End = destination;
@@ -698,9 +698,22 @@ public struct GameEntityActionSystemCore
                         int sourceRigidbodyIndex = collisionWorld.GetRigidBodyIndex(instance.entity);
                         if (sourceRigidbodyIndex != -1)
                         {
-                            sourceTransform.rot = rigidbodies[sourceRigidbodyIndex].WorldFromBody.rot;
+                            var sourceRigidbody = rigidbodies[sourceRigidbodyIndex];
+                            float3 source = math.transform(sourceRigidbody.WorldFromBody, instanceEx.value.actorOffset), 
+                                destination = math.transform(sourceTransform, instanceEx.value.actorOffset);
 
-                            sourceTransform.pos = math.transform(sourceTransform, instanceEx.value.actorOffset);
+                            ColliderCastInput colliderCastInput = default;
+                            colliderCastInput.Collider = (Collider*)(colliders.HasComponent(instance.entity) ? colliders[instance.entity].value.GetUnsafePtr() : sourceRigidbody.Collider.GetUnsafePtr());
+                            colliderCastInput.Orientation = sourceRigidbody.WorldFromBody.rot;
+                            colliderCastInput.Start = source;
+                            colliderCastInput.End = destination;
+                            var collector = new FarthestHitCollectorExcludeDynamicBodies<ColliderCastHit>(collisionWorld.NumDynamicBodies, 1.0f);
+                            if (collisionWorld.CastCollider(colliderCastInput, ref collector))
+                                sourceTransform.pos = math.lerp(source, destination, collector.farthestHit.Fraction);
+                            else
+                                sourceTransform.pos = destination;
+
+                            sourceTransform.rot = rigidbodies[sourceRigidbodyIndex].WorldFromBody.rot;
                         }
 
                         isSourceTransform = true;
