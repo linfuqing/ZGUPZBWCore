@@ -12,6 +12,18 @@ public struct GameNodeParent : IComponentData
     public int authority;
     public Entity entity;
     public RigidTransform transform;
+
+    public static Entity GetRootMain(in Entity entity, in ComponentLookup<GameNodeParent> parents)
+    {
+        if(parents.HasComponent(entity))
+        {
+            var parent = parents[entity];
+            if (parent.authority > 0)
+                return GetRootMain(parent.entity, parents);
+        }
+
+        return entity;
+    }
 }
 
 /*public struct GameNodeCommander : IComponentData

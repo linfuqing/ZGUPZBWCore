@@ -968,6 +968,8 @@ public partial struct GameValhallaSystem : ISystem
 
     private BufferLookup<GameSoul> __souls;
 
+    private BufferLookup<GameSoul> __soulsRO;
+
     private BufferLookup<GameValhallaSacrificer> __sacrificers;
 
     private GameItemManagerShared __itemManager;
@@ -1073,6 +1075,7 @@ public partial struct GameValhallaSystem : ISystem
         __respawnCommandType = state.GetComponentTypeHandle<GameValhallaRespawnCommand>();
         __exps = state.GetComponentLookup<GameValhallaExp>();
         __souls = state.GetBufferLookup<GameSoul>();
+        __soulsRO = state.GetBufferLookup<GameSoul>(true);
         __sacrificers = state.GetBufferLookup<GameValhallaSacrificer>(true);
 
         var world = state.WorldUnmanaged;
@@ -1190,25 +1193,25 @@ public partial struct GameValhallaSystem : ISystem
 
         //lookupJobManager.readWriteJobHandle = finalCollectJobHandle;
 
-        ref var souls = ref __souls.UpdateAsRef(ref state);
+        ref var soulsRO = ref __soulsRO.UpdateAsRef(ref state);
 
         UpgradeEx upgrade;
         upgrade.definition = definition;
-        upgrade.souls = souls;
+        upgrade.souls = soulsRO;
         upgrade.commandType = __upgradeCommandType.UpdateAsRef(ref state);
         upgrade.expType = expType;
         upgrade.results = __upgradeResults.AsParallelWriter();
         var finalUpgradeJobHandle = upgrade.ScheduleParallelByRef(__upgradeGroup, jobHandle);
 
         RenameEx rename;
-        rename.souls = souls;
+        rename.souls = soulsRO;
         rename.commandType = __renameCommandType.UpdateAsRef(ref state);
         rename.results = __renameResults.AsParallelWriter();
         var finalRenameJobHandle = rename.ScheduleParallelByRef(__renameGroup, inputDeps);
 
         DestroyEx destroy;
         destroy.definition = definition;
-        destroy.souls = souls;
+        destroy.souls = soulsRO;
         destroy.commandType = __destroyCommandType.UpdateAsRef(ref state);
         destroy.expType = expType;
         destroy.results = __destroyResults.AsParallelWriter();
@@ -1218,11 +1221,13 @@ public partial struct GameValhallaSystem : ISystem
         evolute.hash = hash;
         evolute.definition = definition;
         evolute.manager = __soulManager;
-        evolute.souls = souls;
+        evolute.souls = soulsRO;
         evolute.sacrificerType = __sacrificerType.UpdateAsRef(ref state);
         evolute.entityType = entityType;
         evolute.commandType = __evoluteCommandType.UpdateAsRef(ref state);
         evolute.results = __evoluteResults.AsParallelWriter();
+
+        var souls = __souls.UpdateAsRef(ref state);
 
         var finalEvoluteJobHandle = evolute.ScheduleParallelByRef(__evoluteGroup, inputDeps);
 
@@ -1236,22 +1241,22 @@ public partial struct GameValhallaSystem : ISystem
             ClearSoulIndicess clearSoulIndicess;
             clearSoulIndicess.capacity = entityCount;
             clearSoulIndicess.soulIndicess = __soulIndicess;
-            jobHandle = clearSoulIndicess.ScheduleByRef(inputDeps);
+            var finalRespawnJobHandle = clearSoulIndicess.ScheduleByRef(inputDeps);
 
             RespawnEx respawn;
             respawn.time = time;
             respawn.definition = definition;
-            respawn.souls = souls;
+            respawn.souls = soulsRO;
             respawn.commandType = __respawnCommandType.UpdateAsRef(ref state);
             respawn.expType = expType;
             respawn.soulIndicesToRemove = __soulIndicess.AsParallelWriter();
             respawn.results = __timeEvents.AsParallelWriter();
-            jobHandle = respawn.ScheduleParallelByRef(__respawnGroup, JobHandle.CombineDependencies(jobHandle, finalDestroyJobHandle));
+            finalRespawnJobHandle = respawn.ScheduleParallelByRef(__respawnGroup, JobHandle.CombineDependencies(finalRespawnJobHandle, finalDestroyJobHandle));
 
             Add add;
             add.inputs = __timeEvents;
             add.outputs = __timeManager.writer;
-            var finalRespawnJobHandle = add.ScheduleByRef(jobHandle);
+            finalRespawnJobHandle = add.ScheduleByRef(finalRespawnJobHandle);
 
             __commands.Clear();
 
@@ -1295,9 +1300,7 @@ public partial struct GameValhallaSystem : ISystem
             Remove remove;
             remove.soulIndices = __soulIndicess;
             remove.souls = souls;
-            jobHandle = remove.ScheduleByRef(jobHandle);
-
-            finalJobHandle = JobHandle.CombineDependencies(finalJobHandle, finalRespawnJobHandle, jobHandle);
+            finalJobHandle = remove.ScheduleByRef(JobHandle.CombineDependencies(finalJobHandle, finalRespawnJobHandle));
         }
         else
             finalJobHandle = JobHandle.CombineDependencies(finalJobHandle, finalCollectJobHandle, finalDestroyJobHandle);

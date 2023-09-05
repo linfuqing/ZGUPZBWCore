@@ -34,7 +34,7 @@ public struct GameRollbackCollider : IComponentData
 
 public struct GameRollbackObjectIncludeDisabled : IComponentData
 {
-    public unsafe static EntityQuery GetEntityQuery(NativeArray<ComponentType> componentTypes, ref SystemState state)
+    public unsafe static EntityQuery GetEntityQuery(in NativeArray<ComponentType> componentTypes, ref SystemState state)
     {
         var builder = new EntityQueryBuilder(Allocator.Temp);
         {
