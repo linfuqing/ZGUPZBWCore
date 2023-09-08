@@ -122,6 +122,7 @@ public struct GameInputActionDefinition
         //in GameEntityActorTime actorTime,
         in DynamicBuffer<GameEntityActorActionInfo> actorActionInfos,
         in DynamicBuffer<GameEntityActorActionData> actorActions,
+        in DynamicBuffer<GameInputActionInstance> actionInstances,
         ref int actorActionIndex,
         ref int layerMask,
         ref GameActionTargetType targetType, 
@@ -133,15 +134,17 @@ public struct GameInputActionDefinition
         distance = 0.0f;
 
         GameEntityActorActionData actorAction;
-        int numActorActions = actorActions.Length;
+        GameInputActionInstance actionInstance;
+        int numActionInstances = actionInstances.Length;
         if (actorActionIndex != -1)
         {
             int preActionIndex = actorActions[actorActionIndex].actionIndex;
-            for (int i = actorActionIndex + 1; i < numActorActions; ++i)
+            for (int i = 0; i < numActionInstances; ++i)
             {
-                actorAction = actorActions[i];
-                if (actorAction.activeCount > 0)
+                actionInstance = actionInstances[i];
+                if (actionInstance.activeCount > 0)
                 {
+                    actorAction = actorActions[actionInstance.actorActionIndex];
                     ref var action = ref actions[actorAction.actionIndex];
                     if (action.Did(
                         button,
@@ -159,42 +162,7 @@ public struct GameInputActionDefinition
                     {
                         if (actorActionInfos[i].coolDownTime < time)
                         {
-                            actorActionIndex = i;
-                            layerMask = action.layerMask;
-                            targetType = action.targetType;
-                            distance = action.distance;
-
-                            return true;
-                        }
-
-                        break;
-                    }
-                }
-            }
-
-            for (int i = 0; i <= actorActionIndex; ++i)
-            {
-                actorAction = actorActions[i];
-                if (actorAction.activeCount > 0)
-                {
-                    ref var action = ref actions[actorAction.actionIndex];
-                    if (action.Did(
-                        button,
-                        targetType,
-                        layerMask,
-                        group,
-                        preActionIndex,
-                        actorStatus,
-                        actorVelocity,
-                        dot,
-                        delta/*,
-                        time,
-                        actorTime*/) &&
-                        filter.Check(actorAction.actionIndex, time))
-                    {
-                        if (actorActionInfos[i].coolDownTime < time)
-                        {
-                            actorActionIndex = i;
+                            actorActionIndex = actionInstance.actorActionIndex;
                             layerMask = action.layerMask;
                             targetType = action.targetType;
                             distance = action.distance;
@@ -208,11 +176,13 @@ public struct GameInputActionDefinition
             }
         }
 
-        for (int i = 0; i < numActorActions; ++i)
+        for (int i = 0; i < numActionInstances; ++i)
         {
-            actorAction = actorActions[i];
-            if (actorAction.activeCount > 0)
+            actionInstance = actionInstances[i];
+            if (actionInstance.activeCount > 0)
             {
+                actorAction = actorActions[actionInstance.actorActionIndex];
+                
                 ref var action = ref actions[actorAction.actionIndex];
                 if (action.Did(
                         button,
@@ -228,7 +198,7 @@ public struct GameInputActionDefinition
                         actorTime*/) &&
                         filter.Check(actorAction.actionIndex, time))
                 {
-                    actorActionIndex = i;
+                    actorActionIndex = actionInstance.actorActionIndex;
                     layerMask = action.layerMask;
                     targetType = action.targetType;
                     distance = action.distance;
@@ -314,6 +284,7 @@ public struct GameInputAction : IComponentData
         in ComponentLookup<GameEntityCamp> camps,
         in DynamicBuffer<GameEntityActorActionInfo> actorActionInfos,
         in DynamicBuffer<GameEntityActorActionData> actorActions,
+        in DynamicBuffer<GameInputActionInstance> actionInstances,
         in DynamicBuffer<GameEntityItem> items,
         in BlobAssetReference<GameInputActionDefinition> definition,
         in BlobAssetReference<GameActionSetDefinition> actionSetDefinition, 
@@ -334,10 +305,9 @@ public struct GameInputAction : IComponentData
         float delta = (float)(time - minActionTime), distance;
         var filter = new Filter(actorTime, actionSetDefinition);
         isTimeout = time > maxActionTime;
-        if (actorActionIndex == -1)
+        if (actorActionIndex == -1 || actorActionIndex == this.actorActionIndex)
         {
-            if(!isTimeout)
-                actorActionIndex = this.actorActionIndex;
+            actorActionIndex = isTimeout ? -1 : this.actorActionIndex;
 
             result = definition.Value.Did(
                 button,
@@ -350,6 +320,7 @@ public struct GameInputAction : IComponentData
                 //actorTime, 
                 actorActionInfos,
                 actorActions,
+                actionInstances, 
                 ref actorActionIndex,
                 ref layerMask,
                 ref targetType,
@@ -358,31 +329,25 @@ public struct GameInputAction : IComponentData
         }
         else
         {
-            result = false;
             distance = 0.0f;
 
             var actorAction = actorActions[actorActionIndex];
-            if (actorAction.activeCount > 0)
-            {
-                if (actorActionIndex == 6)
-                    UnityEngine.Debug.Log("??");
 
-                ref var action = ref definition.Value.actions[actorAction.actionIndex];
-                result = action.Did(
-                    button,
-                    targetType,
-                    layerMask,
-                    group,
-                    isTimeout ? -1 : this.actorActionIndex,
-                    actorStatus,
-                    actorVelocity,
-                    dot,
-                    delta) &&
-                    filter.Check(actorAction.actionIndex, time);
+            ref var action = ref definition.Value.actions[actorAction.actionIndex];
+            result = action.Did(
+                button,
+                targetType,
+                layerMask,
+                group,
+                isTimeout ? -1 : this.actorActionIndex,
+                actorStatus,
+                actorVelocity,
+                dot,
+                delta) &&
+                filter.Check(actorAction.actionIndex, time);
 
-                if (result && actorActionInfos[actorActionIndex].coolDownTime < time)
-                    distance = action.distance;
-            }
+            if (result && actorActionInfos[actorActionIndex].coolDownTime < time)
+                distance = action.distance;
         }
 
         if (result)
@@ -474,6 +439,12 @@ public struct GameInputActionCommand : IComponentData, IEnableableComponent
     public int actorActionIndex;
     public int group;
     public float3 direction;
+}
+
+public struct GameInputActionInstance : IBufferElementData
+{
+    public int actorActionIndex;
+    public int activeCount;
 }
 
 public struct GameInputSelection : IComponentData
@@ -747,6 +718,9 @@ public partial struct GameInputSystem : ISystem
         public BufferAccessor<GameEntityActorActionData> actorActions;
 
         [ReadOnly]
+        public BufferAccessor<GameInputActionInstance> actionInstances;
+
+        [ReadOnly]
         public NativeArray<GameEntityCamp> camps;
 
         public NativeArray<GameInputSelectionTarget> results;
@@ -754,7 +728,8 @@ public partial struct GameInputSystem : ISystem
         public bool IsSelectable(
             in Entity entity,
             int camp,
-            in DynamicBuffer<GameEntityActorActionData> actorActions)
+            in DynamicBuffer<GameEntityActorActionData> actorActions,
+            in DynamicBuffer<GameInputActionInstance> actionInstances)
         {
             if (campMap.HasComponent(entity) && campMap[entity].value == camp)
             {
@@ -764,11 +739,11 @@ public partial struct GameInputSystem : ISystem
             else if (!entities.HasComponent(entity) && colliders.HasComponent(entity))
             {
                 uint belongsTo = colliders[entity].Value.Value.Filter.BelongsTo;
-                foreach (var actorAction in actorActions)
+                foreach (var actionInstance in actionInstances)
                 {
-                    if (actorAction.activeCount > 0)
+                    if (actionInstance.activeCount > 0)
                     {
-                        ref var action = ref actionSetDefinition.Value.values[actorAction.actionIndex];
+                        ref var action = ref actionSetDefinition.Value.values[actorActions[actionInstance.actorActionIndex].actionIndex];
                         if ((action.instance.damageMask & belongsTo) != 0)
                             return true;
                     }
@@ -782,9 +757,10 @@ public partial struct GameInputSystem : ISystem
         {
             GameInputSelectionTarget result;
 
+            var actionInstances = this.actionInstances[index];
             var actorActions = this.actorActions[index];
             int camp = camps[index].value;
-            if (IsSelectable(selection, camp, actorActions))
+            if (IsSelectable(selection, camp, actorActions, actionInstances))
                 result.entity = selection;
             else
             {
@@ -794,7 +770,7 @@ public partial struct GameInputSystem : ISystem
 
                 foreach (var target in targets)
                 {
-                    if (IsSelectable(target.entity, camp, actorActions))
+                    if (IsSelectable(target.entity, camp, actorActions, actionInstances))
                     {
                         result.entity = target.entity;
 
@@ -843,6 +819,9 @@ public partial struct GameInputSystem : ISystem
 
         [ReadOnly]
         public BufferTypeHandle<GameEntityActorActionData> actorActionType;
+
+        [ReadOnly]
+        public BufferTypeHandle<GameInputActionInstance> actionInstanceType;
 
         public ComponentTypeHandle<GameInputSelectionTarget> resultType;
 
@@ -896,6 +875,7 @@ public partial struct GameInputSystem : ISystem
                 select.campMap = camps;
                 select.camps = chunk.GetNativeArray(ref campType);
                 select.actorActions = chunk.GetBufferAccessor(ref actorActionType);
+                select.actionInstances = chunk.GetBufferAccessor(ref actionInstanceType);
                 select.results = chunk.GetNativeArray(ref resultType);
 
                 var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -951,6 +931,9 @@ public partial struct GameInputSystem : ISystem
         [ReadOnly]
         public BufferAccessor<GameEntityActorActionData> actorActions;
 
+        [ReadOnly]
+        public BufferAccessor<GameInputActionInstance> actionInstances;
+
         public NativeArray<GameInputGuideTarget> results;
 
         public void Execute(int index)
@@ -960,6 +943,7 @@ public partial struct GameInputSystem : ISystem
 
             ref var actionSetDefinition = ref this.actionSetDefinition.Value;
 
+            var actionInstances = this.actionInstances[index];
             var actorActions = this.actorActions[index];
             int camp = camps[index].value;
             uint belongsTo;
@@ -987,11 +971,11 @@ public partial struct GameInputSystem : ISystem
                 {
                     isContains = false;
                     belongsTo = colliders[target.entity].Value.Value.Filter.BelongsTo;
-                    foreach(var actorAction in actorActions)
+                    foreach(var actionInstance in actionInstances)
                     {
-                        if (actorAction.activeCount > 0)
+                        if (actionInstance.activeCount > 0)
                         {
-                            ref var action = ref actionSetDefinition.values[actorAction.actionIndex];
+                            ref var action = ref actionSetDefinition.values[actorActions[actionInstance.actorActionIndex].actionIndex];
                             if ((action.instance.damageMask & belongsTo) != 0)
                             {
                                 isContains = true;
@@ -1044,6 +1028,9 @@ public partial struct GameInputSystem : ISystem
         [ReadOnly]
         public BufferTypeHandle<GameEntityActorActionData> actorActionType;
 
+        [ReadOnly]
+        public BufferTypeHandle<GameInputActionInstance> actionInstanceType;
+
         public ComponentTypeHandle<GameInputGuideTarget> resultType;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
@@ -1060,6 +1047,7 @@ public partial struct GameInputSystem : ISystem
             guide.campMap = camps;
             guide.camps = chunk.GetNativeArray(ref campType);
             guide.actorActions = chunk.GetBufferAccessor(ref actorActionType);
+            guide.actionInstances = chunk.GetBufferAccessor(ref actionInstanceType);
             guide.results = chunk.GetNativeArray(ref resultType);
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -1091,6 +1079,8 @@ public partial struct GameInputSystem : ISystem
     private ComponentTypeHandle<GameEntityCamp> __campType;
 
     private BufferTypeHandle<GameEntityActorActionData> __actorActionType;
+
+    private BufferTypeHandle<GameInputActionInstance> __actionInstanceType;
 
     private ComponentTypeHandle<GameInputSelectionTarget> __selectionTargetType;
 
@@ -1128,6 +1118,7 @@ public partial struct GameInputSystem : ISystem
         __camps = state.GetComponentLookup<GameEntityCamp>(true);
         __campType = state.GetComponentTypeHandle<GameEntityCamp>(true);
         __actorActionType = state.GetBufferTypeHandle<GameEntityActorActionData>(true);
+        __actionInstanceType = state.GetBufferTypeHandle<GameInputActionInstance>(true);
         __selectionTargetType = state.GetComponentTypeHandle<GameInputSelectionTarget>();
         __guideTargetType = state.GetComponentTypeHandle<GameInputGuideTarget>();
 
@@ -1206,6 +1197,7 @@ public partial struct GameInputSystem : ISystem
         var camps = __camps.UpdateAsRef(ref state);
         var campType = __campType.UpdateAsRef(ref state);
         var actorActionType = __actorActionType.UpdateAsRef(ref state);
+        var actionInstanceType = __actionInstanceType.UpdateAsRef(ref state);
 
         var targetsReader = targets.reader;
 
@@ -1222,6 +1214,7 @@ public partial struct GameInputSystem : ISystem
         select.camps = camps;
         select.campType = campType;
         select.actorActionType = actorActionType;
+        select.actionInstanceType = actionInstanceType;
         select.resultType = __selectionTargetType.UpdateAsRef(ref state);
 
         var submitJobHandle = select.ScheduleParallelByRef(__group, jobHandle);
@@ -1240,6 +1233,7 @@ public partial struct GameInputSystem : ISystem
         guide.camps = camps;
         guide.campType = campType;
         guide.actorActionType = actorActionType;
+        guide.actionInstanceType = actionInstanceType;
         guide.resultType = __guideTargetType.UpdateAsRef(ref state);
 
         ref var questGuideJobManager = ref questGuideManager.lookupJobManager;
@@ -1301,10 +1295,13 @@ public partial struct GameInputActionSystem : ISystem
         public BufferLookup<GameEntityItem> items;
 
         [ReadOnly]
+        public BufferLookup<GameEntityActorActionData> actorActions;
+
+        [ReadOnly]
         public BufferLookup<GameEntityActorActionInfo> actorActionInfos;
 
         [ReadOnly]
-        public BufferLookup<GameEntityActorActionData> actorActions;
+        public BufferLookup<GameInputActionInstance> actionInstances;
 
         [ReadOnly]
         public NativeArray<GameInputKey> keys;
@@ -1622,6 +1619,7 @@ public partial struct GameInputActionSystem : ISystem
                 camps,
                 actorActionInfos[entity],
                 actorActions[entity],
+                actionInstances[entity], 
                 items[entity],
                 definition,
                 actionSetDefinition,
@@ -1682,10 +1680,13 @@ public partial struct GameInputActionSystem : ISystem
         public BufferLookup<GameEntityItem> items;
 
         [ReadOnly]
+        public BufferLookup<GameEntityActorActionData> actorActions;
+
+        [ReadOnly]
         public BufferLookup<GameEntityActorActionInfo> actorActionInfos;
 
         [ReadOnly]
-        public BufferLookup<GameEntityActorActionData> actorActions;
+        public BufferLookup<GameInputActionInstance> actionInstances;
 
         [ReadOnly]
         public ComponentTypeHandle<GameNodeDirection> directionType;
@@ -1718,8 +1719,9 @@ public partial struct GameInputActionSystem : ISystem
             apply.actorTimes = actorTimes;
             apply.camps = camps;
             apply.items = items;
-            apply.actorActionInfos = actorActionInfos;
             apply.actorActions = actorActions;
+            apply.actorActionInfos = actorActionInfos;
+            apply.actionInstances = actionInstances;
             apply.keys = keys;
             apply.entityArray = chunk.GetNativeArray(entityType);
             apply.directions = chunk.GetNativeArray(ref directionType);
@@ -1770,9 +1772,11 @@ public partial struct GameInputActionSystem : ISystem
 
     private BufferLookup<GameEntityItem> __items;
 
+    private BufferLookup<GameEntityActorActionData> __actorActions;
+
     private BufferLookup<GameEntityActorActionInfo> __actorActionInfos;
 
-    private BufferLookup<GameEntityActorActionData> __actorActions;
+    private BufferLookup<GameInputActionInstance> __actionInstances;
 
     private ComponentTypeHandle<GameNodeDirection> __directionType;
 
@@ -1792,7 +1796,6 @@ public partial struct GameInputActionSystem : ISystem
     {
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __group = builder
-                .WithAll<GameNodeDirection>()
                 .WithAllRW<GameInputActionTarget, GameInputAction>()
                 .WithAllRW<GameInputStatus>()
                 .Build(ref state);
@@ -1810,8 +1813,9 @@ public partial struct GameInputActionSystem : ISystem
         __actorTimes = state.GetComponentLookup<GameEntityActorTime>(true);
         __camps = state.GetComponentLookup<GameEntityCamp>(true);
         __items = state.GetBufferLookup<GameEntityItem>(true);
-        __actorActionInfos = state.GetBufferLookup<GameEntityActorActionInfo>(true);
         __actorActions = state.GetBufferLookup<GameEntityActorActionData>(true);
+        __actorActionInfos = state.GetBufferLookup<GameEntityActorActionInfo>(true);
+        __actionInstances = state.GetBufferLookup<GameInputActionInstance>(true);
         __directionType = state.GetComponentTypeHandle<GameNodeDirection>(true);
         __actionTargetType = state.GetComponentTypeHandle<GameInputActionTarget>();
         __actionType = state.GetComponentTypeHandle<GameInputAction>();
@@ -1864,8 +1868,9 @@ public partial struct GameInputActionSystem : ISystem
         apply.actorTimes = __actorTimes.UpdateAsRef(ref state);
         apply.camps = __camps.UpdateAsRef(ref state);
         apply.items = __items.UpdateAsRef(ref state);
-        apply.actorActionInfos = __actorActionInfos.UpdateAsRef(ref state);
         apply.actorActions = __actorActions.UpdateAsRef(ref state);
+        apply.actorActionInfos = __actorActionInfos.UpdateAsRef(ref state);
+        apply.actionInstances = __actionInstances.UpdateAsRef(ref state);
         apply.directionType = __directionType.UpdateAsRef(ref state);
         apply.actionTargetType = __actionTargetType.UpdateAsRef(ref state);
         apply.actionType = __actionType.UpdateAsRef(ref state);

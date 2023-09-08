@@ -230,7 +230,6 @@ public struct GameEntityActorHit : IComponentData
 [InternalBufferCapacity(2)]
 public struct GameEntityActorActionData : IBufferElementData
 {
-    public int activeCount;
     public int actionIndex;
 }
 
