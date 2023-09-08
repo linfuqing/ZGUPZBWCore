@@ -4,6 +4,7 @@ using Unity.Entities;
 using Unity.Physics;
 using UnityEngine;
 using ZG;
+using Unity.Transforms;
 
 public struct GameNodeShpaeDefault : IComponentData
 {
@@ -32,6 +33,9 @@ public class GameNodeShapeComponent : EntityProxyComponent, IEntityComponent
     public class Shape : ISerializationCallbackReceiver
     {
         [SerializeField]
+        internal int _shapeIndex = -1;
+
+        [SerializeField]
         internal int _status = 0;
 
         //[SerializeField]
@@ -43,36 +47,37 @@ public class GameNodeShapeComponent : EntityProxyComponent, IEntityComponent
         [SerializeField, HideInInspector]
         private PhysicsColliders __colliders;
 
-        public BlobAssetReference<Unity.Physics.Collider> colliders => __colliders.value;
+        private BlobAssetReference<Unity.Physics.Collider> __collider;
 
-        internal GameNodeShpae _Init()
+#if UNITY_EDITOR
+        public PhysicsShapeComponent shape
         {
-            /*if (__colliders == null)
+            get => _instance;
+
+            set => _instance = value;
+        }
+
+        public int shapeIndex
+        {
+            get => _shapeIndex;
+
+            set => _shapeIndex = value;
+        }
+#endif
+
+        public BlobAssetReference<Unity.Physics.Collider> colliders => __colliders == null  ? __collider : __colliders.value;
+
+        internal GameNodeShpae _Init(GameObject gameObject)
+        {
+            BlobAssetReference<Unity.Physics.Collider> collider;
+            if (__colliders == null)
             {
-                var colliders = _instance.colliders;
-                var triggers = _instance.triggers;
-                var colliderBlobInstances = new Unity.Collections.NativeList<CompoundCollider.ColliderBlobInstance>(Unity.Collections.Allocator.Temp);
-                int length = colliders.length, temp = 0, numTriggerIndices = triggers == null ? 0 : triggers.Count, triggerIndex = numTriggerIndices < 1 ? -1 : triggers[0].index;
-                for (int i = 0; i < length; ++i)
-                {
-                    if (i == triggerIndex)
-                    {
-                        ++temp;
+                __collider = gameObject.GetComponent<PhysicsHierarchyComponent>().database.GetOrCreateCollider(_shapeIndex);
 
-                        triggerIndex = temp < numTriggerIndices ? triggers[temp].index : -1;
-
-                        continue;
-                    }
-
-                    colliderBlobInstances.Add(colliders[i]);
-                }
-
-                __colliders = PhysicsColliders.Create(colliderBlobInstances, false);
-
-                colliderBlobInstances.Dispose();
-            }*/
-
-            var collider = __colliders.value;
+                collider = __collider;
+            }
+            else
+                collider = __colliders.value;
             
             GameNodeShpae shape;
             shape.status = _status;
@@ -93,7 +98,7 @@ public class GameNodeShapeComponent : EntityProxyComponent, IEntityComponent
             if (!Application.isPlaying)
                 return;
 #endif
-            if (__colliders == null)
+            if (__colliders == null && _instance != null)
             {
                 var colliders = _instance.colliders;
                 var triggers = _instance.triggers;
@@ -125,8 +130,15 @@ public class GameNodeShapeComponent : EntityProxyComponent, IEntityComponent
 
     //[SerializeField]
     //internal float _mass = 0.0f;
-    
-    private PhysicsShapeComponent __defaultShape;
+
+#if UNITY_EDITOR
+    public Shape[] shape
+    {
+        get => _shapes;
+
+        set => _shapes = value;
+    }
+#endif
 
     public int shapeCount => _shapes.Length;
 
@@ -154,9 +166,12 @@ public class GameNodeShapeComponent : EntityProxyComponent, IEntityComponent
 
     public void ResetParent()
     {
-        __defaultShape.enabled = true;
+        /*if (__defaultShape != null)
+        {
+            __defaultShape.enabled = true;
 
-        __defaultShape.Refresh();
+            __defaultShape.Refresh();
+        }*/
 
         //this.AddComponentDataIfNotExists<PhysicsVelocity>(default);
 
@@ -166,10 +181,6 @@ public class GameNodeShapeComponent : EntityProxyComponent, IEntityComponent
 
     public void SetParent(IPhysicsComponent value, int authority = 0)
     {
-        __defaultShape.enabled = false;
-
-        __defaultShape.Refresh();
-
         this.AddComponent<PhysicsExclude>();
 
         //this.RemoveComponentIfExists<PhysicsVelocity>();
@@ -181,7 +192,7 @@ public class GameNodeShapeComponent : EntityProxyComponent, IEntityComponent
         GameNodeParent parent;
         parent.authority = authority;
         parent.entity = value.entity;
-        parent.transform = math.mul(math.inverse(value.GetTransform()), __defaultShape.GetTransform());
+        parent.transform = math.mul(math.inverse(value.GetTransform()), math.RigidTransform(this.GetComponentData<Rotation>().Value, this.GetComponentData<Translation>().Value));
         this.AddComponentData(parent);
     }
 
@@ -193,7 +204,7 @@ public class GameNodeShapeComponent : EntityProxyComponent, IEntityComponent
         GameNodeParent parent;
         parent.authority = authority;
         parent.entity = value.entity;
-        parent.transform = math.mul(math.inverse(value.GetTransform()), __defaultShape.GetTransform());
+        parent.transform = math.mul(math.inverse(value.GetTransform()), math.RigidTransform(this.GetComponentData<Rotation>().Value, this.GetComponentData<Translation>().Value));
         commander.AddComponentData(entity, parent);
     }
     
@@ -202,27 +213,12 @@ public class GameNodeShapeComponent : EntityProxyComponent, IEntityComponent
         return _shapes[index].colliders;
     }
 
-    protected void Awake()
-    {
-        __defaultShape = GetComponent<PhysicsShapeComponent>();
-    }
-
-    protected void OnDestroy()
-    {
-        if(__defaultShape != null)
-        {
-            //__defaultShape.onChanged -= __OnChanged;
-
-            __defaultShape = null;
-        }
-    }
-    
     void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
     {
         int length = _shapes.Length;
-        GameNodeShpae[] shapes = new GameNodeShpae[length];
+        var shapes = new GameNodeShpae[length];
         for (int i = length - 1; i >= 0; --i)
-            shapes[i] = _shapes[i]._Init();
+            shapes[i] = _shapes[i]._Init(gameObject);
 
         assigner.SetBuffer(true, entity, shapes);
     }

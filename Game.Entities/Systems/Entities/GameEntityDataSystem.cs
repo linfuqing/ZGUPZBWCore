@@ -447,6 +447,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                         //destination.time = time;
                         destination.entity = entity;
                         destination.transform = transform;
+                        destination.itemHandle = GameItemHandle.Empty;
 
                         results.AddNoResize(destination);
                     }

@@ -43,6 +43,25 @@ public class GameWatcherComponent : ZG.ComponentDataProxy<GameWatcherData>
     [UnityEngine.SerializeField]
     internal PhysicsShapeComponent _shape = null;
 
+    [UnityEngine.SerializeField]
+    internal int _shapeIndex = 2;
+
+#if UNITY_EDITOR
+    public PhysicsShapeComponent shape
+    {
+        get => _shape;
+
+        set => _shape = value;
+    }
+
+    public int shapeIndex
+    {
+        get => _shapeIndex;
+
+        set => _shapeIndex = value;
+    }
+#endif
+
     public Entity target
     {
         get
@@ -72,6 +91,9 @@ public class GameWatcherComponent : ZG.ComponentDataProxy<GameWatcherData>
     {
         if (_shape != null)
             _value.collider = _shape.colliders.value;
+        else 
+        if(_shapeIndex != -1)
+            _value.collider = GetComponent<PhysicsHierarchyComponent>().database.GetOrCreateCollider(_shapeIndex);
 
         base.Init(entity, assigner);
 

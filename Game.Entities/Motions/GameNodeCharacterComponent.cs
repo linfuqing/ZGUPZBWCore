@@ -260,8 +260,28 @@ public class GameNodeCharacterComponent : ComponentDataProxy<GameNodeCharacterDa
 {
     [SerializeField]
     internal PhysicsShapeComponent _shape = null;
+
+    [SerializeField]
+    internal int _shapeIndex = 1;
+
     internal bool _isKinematic = true;
-    
+
+#if UNITY_EDITOR
+    public PhysicsShapeComponent shape
+    {
+        get => _shape;
+
+        set => _shape = value;
+    }
+
+    public int shapeIndex
+    {
+        get => _shapeIndex;
+
+        set => _shapeIndex = value;
+    }
+#endif
+
     public half angle
     {
         get
@@ -473,7 +493,7 @@ public class GameNodeCharacterComponent : ComponentDataProxy<GameNodeCharacterDa
             if(_isKinematic)
                 types.Add(typeof(GameNodeCharacterDesiredVelocity));
 
-            if (_shape != null)
+            if (_shape != null || _shapeIndex != -1)
             {
                 types.Add(typeof(GameNodeCharacterCollider));
                 types.Add(typeof(GameNodeCharacterCenterOfMass));
@@ -499,6 +519,13 @@ public class GameNodeCharacterComponent : ComponentDataProxy<GameNodeCharacterDa
         {
             GameNodeCharacterCollider collider;
             collider.value = _shape.colliders.value;
+            assigner.SetComponentData(entity, collider);
+        }
+        else
+        if (_shapeIndex != -1)
+        {
+            GameNodeCharacterCollider collider;
+            collider.value = GetComponent<PhysicsHierarchyComponent>().database.GetOrCreateCollider(_shapeIndex);
             assigner.SetComponentData(entity, collider);
         }
     }

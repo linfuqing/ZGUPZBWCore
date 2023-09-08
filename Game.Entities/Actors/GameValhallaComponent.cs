@@ -72,7 +72,7 @@ public struct GameValhallaCommand
 [EntityComponent(typeof(GameValhallaEvoluteCommand))]
 [EntityComponent(typeof(GameValhallaRenameCommand))]
 [EntityComponent(typeof(GameValhallaSacrificer))]
-public class GameValhallaComponent : EntityProxyComponent
+public class GameValhallaComponent : EntityProxyComponent, IEntityComponent
 {
     public struct RespawnData
     {
@@ -157,5 +157,15 @@ public class GameValhallaComponent : EntityProxyComponent
 
         transform.pos = math.transform(transform, _respawnData.respawnOffset);
         Respwan(soulIndex, _respawnData.respawnTime, entity, transform);
+    }
+
+    void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
+    {
+        assigner.SetComponentEnabled<GameValhallaCollectCommand>(entity, false);
+        assigner.SetComponentEnabled<GameValhallaUpgradeCommand>(entity, false);
+        assigner.SetComponentEnabled<GameValhallaRenameCommand>(entity, false);
+        assigner.SetComponentEnabled<GameValhallaDestroyCommand>(entity, false);
+        assigner.SetComponentEnabled<GameValhallaEvoluteCommand>(entity, false);
+        assigner.SetComponentEnabled<GameValhallaRespawnCommand>(entity, false);
     }
 }

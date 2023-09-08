@@ -33,6 +33,7 @@ public struct GameSpawnData
     //public double time;
     public Entity entity;
     public RigidTransform transform;
+    public GameItemHandle itemHandle;
 }
 
 /*public abstract class GameSpawnCommander : IEntityCommander<GameSpawnData>

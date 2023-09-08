@@ -177,6 +177,7 @@ public partial struct GameTimeActorSystem : ISystem
                                 //spawnData.time = time;
                                 spawnData.entity = entity;
                                 spawnData.transform = math.RigidTransform(transform.rot, math.transform(transform, action.spawnOffset));
+                                spawnData.itemHandle = GameItemHandle.Empty;
 
                                 results.AddNoResize(spawnData);
                             }

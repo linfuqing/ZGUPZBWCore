@@ -748,15 +748,19 @@ public partial struct GameValhallaSystem : ISystem
             ref var respawnLevelExp = ref definition.Value.levels[soul.data.levelIndex].expToRespawn;
 
             float expCost = respawnLevelExp.value + respawnLevelExp.factor * soul.data.exp;
-            var exp = exps[index];
+            bool hasExp = index < exps.Length;
+            var exp = hasExp ? exps[index] : default;
             if (exp.value < expCost)
                 return;
 
             if (!soulIndicesToRemove.TryAdd(command.entity, command.soulIndex))
                 return;
 
-            exp.value -= expCost;
-            exps[index] = exp;
+            if (hasExp)
+            {
+                exp.value -= expCost;
+                exps[index] = exp;
+            }
 
             TimeEvent<Command> result;
             result.time = time + command.time;
