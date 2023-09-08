@@ -158,7 +158,14 @@ public struct GameFormulaFactoryMode : IComponentData
         Force
     }
 
+    public enum OwnerType
+    {
+        User, 
+        Factory
+    }
+
     public Mode value;
+    public OwnerType ownerType;
 }
 
 public struct GameFormulaFactoryItemTimeScale : IComponentData
@@ -485,17 +492,31 @@ public partial struct GameFormulaFactorySystem : ISystem
                 {
                     status.value = GameFormulaFactoryStatus.Status.Normal;
 
-                    var mode = modes[index].value;
-                    switch (mode)
+                    var mode = modes[index];
+                    Entity owner;
+                    switch(mode.ownerType)
+                    {
+                        case GameFormulaFactoryMode.OwnerType.User:
+                            owner = status.entity;
+                            break;
+                        case GameFormulaFactoryMode.OwnerType.Factory:
+                            owner = entity;
+                            break;
+                        default:
+                            owner = Entity.Null;
+                            break;
+                    }
+
+                    switch (mode.value)
                     {
                         case GameFormulaFactoryMode.Mode.Normal:
                         case GameFormulaFactoryMode.Mode.Auto:
                             if (storages[index].status == GameFormulaFactoryStorage.Status.Active)
                             {
-                                if (!Complete(false, status.formulaIndex, status.level, entity, status.entity, handle, ref definition.values[status.formulaIndex]))
+                                if (!Complete(false, status.formulaIndex, status.level, entity, owner, handle, ref definition.values[status.formulaIndex]))
                                     return 0;
 
-                                if (mode == GameFormulaFactoryMode.Mode.Auto)
+                                if (mode.value == GameFormulaFactoryMode.Mode.Auto)
                                 {
                                     Command(index, status.formulaIndex, entity);
 
@@ -506,13 +527,13 @@ public partial struct GameFormulaFactorySystem : ISystem
                                 status.value = GameFormulaFactoryStatus.Status.Completed;
                             break;
                         case GameFormulaFactoryMode.Mode.Once:
-                            if (!Complete(true, status.formulaIndex, status.level, entity, status.entity, handle, ref definition.values[status.formulaIndex]))
+                            if (!Complete(true, status.formulaIndex, status.level, entity, owner, handle, ref definition.values[status.formulaIndex]))
                                 return 0;
 
                             //factoryStatus = GameFactoryStatus.Complete;
                             break;
                         case GameFormulaFactoryMode.Mode.Repeat:
-                            if (!Complete(false, status.formulaIndex, status.level, entity, status.entity, handle, ref definition.values[status.formulaIndex]))
+                            if (!Complete(false, status.formulaIndex, status.level, entity, owner, handle, ref definition.values[status.formulaIndex]))
                                 return 0;
 
                             Command(index, status.formulaIndex, entity);
@@ -521,7 +542,7 @@ public partial struct GameFormulaFactorySystem : ISystem
                             break;
                         case GameFormulaFactoryMode.Mode.Force:
                             ref var formula = ref definition.values[status.formulaIndex];
-                            if (!Complete(true, status.formulaIndex, status.level, status.entity, entity, handle, ref formula))
+                            if (!Complete(true, status.formulaIndex, status.level, owner, entity, handle, ref formula))
                                 return 0;
 
                             if (formula.Test(
@@ -802,8 +823,21 @@ public partial struct GameFormulaFactorySystem : ISystem
 
                 RunningResult result;
                 result.entity = command.entity;
-                result.factory = entity;
-                result.owner = command.entity;
+                result.factory = entity; 
+
+                switch (modes[index].ownerType)
+                {
+                    case GameFormulaFactoryMode.OwnerType.User:
+                        result.owner = command.entity;
+                        break;
+                    case GameFormulaFactoryMode.OwnerType.Factory:
+                        result.owner = entity;
+                        break;
+                    default:
+                        result.owner = Entity.Null;
+                        break;
+                }
+
                 result.formulaIndex = command.formulaIndex;
                 runningResults.AddNoResize(result);
 

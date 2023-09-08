@@ -576,8 +576,28 @@ public struct GameItemComponentDataInitSystemCore<T> where T : struct, IComponen
     }
 }
 
-[UpdateInGroup(typeof(GameItemInitSystemGroup))]
-public partial class GameItemComponentInitSystemGroup : ComponentSystemGroup
+[BurstCompile, UpdateInGroup(typeof(GameItemInitSystemGroup))]
+public partial struct GameItemComponentInitSystemGroup : ISystem
 {
+    private SystemGroup __group;
 
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __group = SystemGroupUtility.GetOrCreateSystemGroup(state.World, typeof(GameItemComponentInitSystemGroup));
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        var world = state.WorldUnmanaged;
+
+        __group.Update(ref world);
+    }
 }

@@ -423,10 +423,28 @@ public partial class GameItemSystemGroup : ComponentSystemGroup
 
 }
 
-[UpdateInGroup(typeof(InitializationSystemGroup)), UpdateAfter(typeof(EntityObjectSystemGroup/*BeginFrameEntityCommandSystem*/))]
-public partial class GameItemInitSystemGroup : ComponentSystemGroup
+[BurstCompile, UpdateInGroup(typeof(InitializationSystemGroup)), UpdateAfter(typeof(EntityObjectSystemGroup/*BeginFrameEntityCommandSystem*/))]
+public partial struct GameItemInitSystemGroup : ISystem
 {
+    private SystemGroup __group;
 
+    public void OnCreate(ref SystemState state)
+    {
+        __group = SystemGroupUtility.GetOrCreateSystemGroup(state.World, typeof(GameItemInitSystemGroup));
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        var world = state.WorldUnmanaged;
+        __group.Update(ref world);
+    }
 }
 
 /*[BurstCompile, UpdateInGroup(typeof(GameItemInitSystemGroup), OrderFirst = true)]

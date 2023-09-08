@@ -18,6 +18,8 @@ public class GameFormulaFactoryComponent : EntityProxyComponent, IEntityComponen
 
     [SerializeField]
     public GameFormulaFactoryMode.Mode _mode;
+    [SerializeField]
+    public GameFormulaFactoryMode.OwnerType _ownerType;
     [SerializeField, Index("database.combines", emptyName = "Null", pathLevel = -1)]
     public int _formulaIndex = -1;
     [SerializeField]
@@ -110,6 +112,7 @@ public class GameFormulaFactoryComponent : EntityProxyComponent, IEntityComponen
     {
         GameFormulaFactoryMode mode;
         mode.value = _mode;
+        mode.ownerType = _ownerType;
         assigner.SetComponentData(entity, mode);
 
         GameFormulaFactoryStatus status;
