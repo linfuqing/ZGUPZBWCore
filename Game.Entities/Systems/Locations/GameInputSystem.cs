@@ -530,7 +530,7 @@ public struct GameInputGuideTarget : IComponentData
     public Entity entity;
 }
 
-[AutoCreateIn("Client"), CreateAfter(typeof(GamePhysicsWorldBuildSystem)), UpdateInGroup(typeof(FixedStepSimulationSystemGroup))]
+[AutoCreateIn("Client"), BurstCompile, CreateAfter(typeof(GamePhysicsWorldBuildSystem)), UpdateInGroup(typeof(FixedStepSimulationSystemGroup))]
 public partial struct GameInputSystem : ISystem
 {
     [BurstCompile]
@@ -1247,7 +1247,7 @@ public partial struct GameInputSystem : ISystem
 }
 
 //[UpdateInGroup(typeof(PresentationSystemGroup), OrderFirst = true)]
-[AutoCreateIn("Client"), CreateAfter(typeof(GameInputSystem))]//, UpdateInGroup(typeof(GameRollbackSystemGroup), OrderFirst = true)]
+[AutoCreateIn("Client"), BurstCompile, CreateAfter(typeof(GameInputSystem))]//, UpdateInGroup(typeof(GameRollbackSystemGroup), OrderFirst = true)]
 public partial struct GameInputActionSystem : ISystem
 {
     public struct Apply
