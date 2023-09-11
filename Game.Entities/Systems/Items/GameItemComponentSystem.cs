@@ -581,7 +581,7 @@ public partial struct GameItemComponentInitSystemGroup : ISystem
 {
     private SystemGroup __group;
 
-    [BurstCompile]
+    //[BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         __group = SystemGroupUtility.GetOrCreateSystemGroup(state.World, typeof(GameItemComponentInitSystemGroup));

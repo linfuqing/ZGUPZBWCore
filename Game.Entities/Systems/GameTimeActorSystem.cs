@@ -12,22 +12,10 @@ using Random = Unity.Mathematics.Random;
 [BurstCompile, AutoCreateIn("Server"), UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(StateMachineSchedulerGroup))/*, UpdateAfter(typeof(GameNodeEventSystem))*/]
 public partial struct GameTimeActorSystem : ISystem
 {
-    private struct Count
-    {
-        public NativeArray<int> counter;
-
-        [ReadOnly]
-        public BufferAccessor<GameTimeAction> actions;
-
-        public void Execute(int index)
-        {
-            counter[0] += actions[index].Length;
-        }
-    }
-
     [BurstCompile]
     private struct CountEx : IJobChunk
     {
+        [NativeDisableParallelForRestriction]
         public NativeArray<int> counter;
 
         [ReadOnly]
@@ -35,13 +23,14 @@ public partial struct GameTimeActorSystem : ISystem
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
-            Count count;
-            count.counter = counter;
-            count.actions = chunk.GetBufferAccessor(ref actionType);
+            var actions = chunk.GetBufferAccessor(ref actionType);
 
+            int count = 0;
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
-                count.Execute(i);
+                count += actions[i].Length;
+
+            counter.Add(0, count);
         }
     }
 
@@ -340,7 +329,7 @@ public partial struct GameTimeActorSystem : ISystem
         CountEx count;
         count.counter = counter;
         count.actionType = actionType;
-        var jobHandle = count.ScheduleByRef(__group, state.Dependency);
+        var jobHandle = count.ScheduleParallelByRef(__group, state.Dependency);
 
         var commands = SystemAPI.GetSingleton<GameRandomSpawnerFactory>().commands;
         ref var commandsJobManager = ref commands.lookupJobManager;

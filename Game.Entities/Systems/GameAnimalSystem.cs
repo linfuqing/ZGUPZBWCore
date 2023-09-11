@@ -41,10 +41,14 @@ public partial struct GameAnimalBuffSystem : ISystem
     }
 }
 
-[CreateAfter(typeof(GameItemSystem)), UpdateInGroup(typeof(TimeSystemGroup)), UpdateAfter(typeof(GameEntityHealthSystem)), UpdateAfter(typeof(GameWeaponSystem))]
-public partial class GameAnimalSystem : SystemBase
+[BurstCompile, 
+    CreateAfter(typeof(GameAnimalEventSystem)), 
+    CreateAfter(typeof(GameItemSystem)), 
+    UpdateInGroup(typeof(TimeSystemGroup)), 
+    UpdateAfter(typeof(GameEntityHealthSystem)), 
+    UpdateAfter(typeof(GameWeaponSystem))]
+public partial struct GameAnimalSystem : ISystem
 {
-    [Serializable]
     public struct Result
     {
         public int value;
@@ -119,7 +123,7 @@ public partial class GameAnimalSystem : SystemBase
 
         public NativeQueue<Item>.ParallelWriter items;
 
-        public NativeQueue<Result>.ParallelWriter results;
+        public EntityCommandQueue<Result>.ParallelWriter results;
 
         public void Execute(int index)
         {
@@ -192,7 +196,7 @@ public partial class GameAnimalSystem : SystemBase
     }
 
     [BurstCompile]
-    private struct UpdateNodesEx : IJobChunk
+    private struct UpdateNodesEx : IJobChunk, IEntityCommandProducerJob
     {
         public double time;
 
@@ -224,7 +228,7 @@ public partial class GameAnimalSystem : SystemBase
 
         public NativeQueue<Item>.ParallelWriter items;
 
-        public NativeQueue<Result>.ParallelWriter results;
+        public EntityCommandQueue<Result>.ParallelWriter results;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -336,94 +340,117 @@ public partial class GameAnimalSystem : SystemBase
         }
     }
 
-    private JobHandle __jobHandle;
-
     private EntityQuery __nodeGroup;
     private EntityQuery __infoGroup;
+
+    private EntityTypeHandle __entityType;
+
+    private ComponentTypeHandle<GameItemRoot> __itemRootType;
+    private ComponentTypeHandle<GameNodeStatus> __statusType;
+    private ComponentTypeHandle<GameNodeDelay> __delayType;
+    private ComponentTypeHandle<GameCreatureData> __creatureType;
+    private ComponentTypeHandle<GameCreatureFood> __foodType;
+
+    private BufferTypeHandle<GameAnimalFoodIndex> __foodIndexType;
+
+    private ComponentTypeHandle<GameAnimalFoodTime> __foodTimeType;
+
+    private ComponentTypeHandle<GameAnimalData> __instanceType;
+
+    private ComponentTypeHandle<GameAnimalBuff> __buffType;
+
+    private ComponentTypeHandle<GameAnimalInfo> __infoType;
+
     private NativeQueue<Item> __items;
-    private NativeQueue<Result> __results;
     private GameItemManagerShared __itemManager;
+    private EntityCommandPool<Result> __results;
 
-    public NativeQueue<Result> results
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        get
-        {
-            __jobHandle.Complete();
-            __jobHandle = default;
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __nodeGroup = builder
+                    .WithAll<GameAnimalFoodIndex, GameItemRoot, GameNodeStatus, GameNodeDelay>()
+                    .WithAll<GameCreatureData, GameCreatureFood>()
+                    .WithAllRW<GameAnimalFoodTime>()
+                    .Build(ref state);
 
-            return __results;
-        }
-    }
-
-    protected override void OnCreate()
-    {
-        __nodeGroup = GetEntityQuery(
-            ComponentType.ReadOnly<GameAnimalFoodIndex>(),
-            ComponentType.ReadOnly<GameItemRoot>(),
-            ComponentType.ReadOnly<GameNodeStatus>(),
-            ComponentType.ReadOnly<GameNodeDelay>(),
-            ComponentType.ReadOnly<GameCreatureData>(),
-            ComponentType.ReadOnly<GameCreatureFood>(),
-            ComponentType.ReadWrite<GameAnimalFoodTime>(),
-            ComponentType.Exclude<Disabled>());
-
-        __infoGroup = GetEntityQuery(
-            ComponentType.ReadOnly<GameNodeStatus>(),
-            ComponentType.ReadOnly<GameAnimalData>(),
-            ComponentType.ReadOnly<GameAnimalBuff>(),
-            ComponentType.ReadWrite<GameAnimalInfo>(),
-            ComponentType.Exclude<Disabled>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __infoGroup = builder
+                .WithAll<GameNodeStatus, GameAnimalData, GameAnimalBuff>()
+                .WithAllRW<GameAnimalInfo>()
+                .Build(ref state);
 
         __items = new NativeQueue<Item>(Allocator.Persistent);
 
-        __results = new NativeQueue<Result>(Allocator.Persistent);
+        __entityType = state.GetEntityTypeHandle();
+        __itemRootType = state.GetComponentTypeHandle<GameItemRoot>(true);
+        __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
+        __delayType = state.GetComponentTypeHandle<GameNodeDelay>(true);
+        __creatureType = state.GetComponentTypeHandle<GameCreatureData>(true);
+        __foodType = state.GetComponentTypeHandle<GameCreatureFood>(true);
+        __foodIndexType = state.GetBufferTypeHandle<GameAnimalFoodIndex>(true);
+        //updateNodes.versionType = GetComponentTypeHandle<GameEntityCommandVersion>(true);
+        //updateNodes.entityVersionType = GetComponentTypeHandle<GameAnimalEntityCommandVersion>();
+        __foodTimeType = state.GetComponentTypeHandle<GameAnimalFoodTime>();
 
-        World world = World;
+        __instanceType = state.GetComponentTypeHandle<GameAnimalData>(true);
+        __buffType = state.GetComponentTypeHandle<GameAnimalBuff>(true);
+        __infoType = state.GetComponentTypeHandle<GameAnimalInfo>();
+
+        var world = state.WorldUnmanaged;
 
         __itemManager = world.GetExistingSystemUnmanaged<GameItemSystem>().manager;
+        __results = world.GetExistingSystemUnmanaged<GameAnimalEventSystem>().pool;
     }
 
-    protected override void OnDestroy()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
         __items.Dispose();
-
-        __results.Dispose();
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
-        var inputDeps = Dependency;
+        var statusType = __statusType.UpdateAsRef(ref state);
+
+        var inputDeps = state.Dependency;
         JobHandle? result;
         if (__itemManager.isCreated && SystemAPI.HasSingleton<GameAnimalFoodsData>())
         {
             var itemManager = __itemManager.value;
 
+            var results = __results.Create();
+
             UpdateNodesEx updateNodes;
-            updateNodes.time = World.Time.ElapsedTime;
+            updateNodes.time = state.WorldUnmanaged.Time.ElapsedTime;
             updateNodes.definition = SystemAPI.GetSingleton<GameAnimalFoodsData>().definition;
             updateNodes.itemManager = itemManager.readOnly;
-            updateNodes.entityType = GetEntityTypeHandle();
-            updateNodes.itemRootType = GetComponentTypeHandle<GameItemRoot>(true);
-            updateNodes.statusType = GetComponentTypeHandle<GameNodeStatus>(true);
-            updateNodes.delayType = GetComponentTypeHandle<GameNodeDelay>(true);
-            updateNodes.creatureType = GetComponentTypeHandle<GameCreatureData>(true);
-            updateNodes.foodType = GetComponentTypeHandle<GameCreatureFood>(true);
-            updateNodes.foodIndexType = GetBufferTypeHandle<GameAnimalFoodIndex>(true);
+            updateNodes.entityType = __entityType.UpdateAsRef(ref state);
+            updateNodes.itemRootType = __itemRootType.UpdateAsRef(ref state);
+            updateNodes.statusType = statusType;
+            updateNodes.delayType = __delayType.UpdateAsRef(ref state);
+            updateNodes.creatureType = __creatureType.UpdateAsRef(ref state);
+            updateNodes.foodType = __foodType.UpdateAsRef(ref state);
+            updateNodes.foodIndexType = __foodIndexType.UpdateAsRef(ref state);
             //updateNodes.versionType = GetComponentTypeHandle<GameEntityCommandVersion>(true);
             //updateNodes.entityVersionType = GetComponentTypeHandle<GameAnimalEntityCommandVersion>();
-            updateNodes.foodTimeType = GetComponentTypeHandle<GameAnimalFoodTime>();
+            updateNodes.foodTimeType = __foodTimeType.UpdateAsRef(ref state);
             updateNodes.items = __items.AsParallelWriter();
-            updateNodes.results = __results.AsParallelWriter();
+            updateNodes.results = results.parallelWriter;
 
             ref var lookupJobManager = ref __itemManager.lookupJobManager;
 
-            __jobHandle = updateNodes.ScheduleParallel(__nodeGroup, JobHandle.CombineDependencies(lookupJobManager.readOnlyJobHandle, inputDeps));
+            var jobHandle = updateNodes.ScheduleParallelByRef(__nodeGroup, JobHandle.CombineDependencies(lookupJobManager.readOnlyJobHandle, inputDeps));
+
+            results.AddJobHandleForProducer<UpdateNodesEx>(jobHandle);
 
             ApplyItems applyItems;
             applyItems.items = __items;
             applyItems.itemManager = itemManager;
 
-            var jobHandle = applyItems.Schedule(JobHandle.CombineDependencies(__jobHandle, lookupJobManager.readWriteJobHandle));
+            jobHandle = applyItems.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, lookupJobManager.readWriteJobHandle));
 
             lookupJobManager.readWriteJobHandle = jobHandle;
 
@@ -433,38 +460,43 @@ public partial class GameAnimalSystem : SystemBase
             result = null;
 
         UpdateInfosEx updateInfos;
-        updateInfos.deltaTime = World.Time.DeltaTime;
-        updateInfos.statusType = GetComponentTypeHandle<GameNodeStatus>(true);
-        updateInfos.instanceType = GetComponentTypeHandle<GameAnimalData>(true);
-        updateInfos.buffType = GetComponentTypeHandle<GameAnimalBuff>(true);
-        updateInfos.infoType = GetComponentTypeHandle<GameAnimalInfo>();
+        updateInfos.deltaTime = state.WorldUnmanaged.Time.DeltaTime;
+        updateInfos.statusType = statusType;
+        updateInfos.instanceType = __instanceType.UpdateAsRef(ref state);
+        updateInfos.buffType = __buffType.UpdateAsRef(ref state);
+        updateInfos.infoType = __infoType.UpdateAsRef(ref state);
 
-        var temp = updateInfos.ScheduleParallel(__infoGroup, inputDeps);
+        var temp = updateInfos.ScheduleParallelByRef(__infoGroup, inputDeps);
         if (result != null)
             temp = JobHandle.CombineDependencies(temp, result.Value);
 
-        Dependency = temp;
+        state.Dependency = temp;
     }
 }
 
 //[UpdateInGroup(typeof(TimeSystemGroup), OrderFirst = true), UpdateBefore(typeof(BeginTimeSystemGroupEntityCommandSystem))]
 [UpdateInGroup(typeof(CallbackSystemGroup), OrderFirst = true)]
-public partial class GameAnimalEventSystem : SystemBase
+public partial struct GameAnimalEventSystem : ISystem
 {
-    private GameAnimalSystem __animalSystem;
+    private EntityCommandPool<GameAnimalSystem.Result>.Context __context;
 
-    protected override void OnCreate()
+    public EntityCommandPool<GameAnimalSystem.Result> pool => __context.pool;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
-
-        __animalSystem = World.GetOrCreateSystemManaged<GameAnimalSystem>();
+        __context = new EntityCommandPool<GameAnimalSystem.Result>.Context(Allocator.Persistent);
     }
 
-    protected override void OnUpdate()
+    public void OnDestroy(ref SystemState state)
     {
-        var entityManager = EntityManager;
-        var results = __animalSystem.results;
-        while (results.TryDequeue(out var result))
+        __context.Dispose();
+    }
+
+    public void OnUpdate(ref SystemState state)
+    {
+        var entityManager = state.EntityManager;
+        while (__context.TryDequeue(out var result))
         {
             if (!entityManager.HasComponent<EntityObject<GameAnimalComponent>>(result.entity))
                 continue;
