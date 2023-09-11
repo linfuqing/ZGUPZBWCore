@@ -418,7 +418,7 @@ public struct GameInputAction : IComponentData
         in ComponentLookup<PhysicsShapeCompoundCollider> colliders)
     {
         return states.HasComponent(entity) &&
-           (((GameEntityStatus)states[entity].value & GameEntityStatus.Mask) == GameEntityStatus.Dead) &&
+           (((GameEntityStatus)states[entity].value & GameEntityStatus.Mask) != GameEntityStatus.Dead) &&
            (layerMask == 0 || (colliders[entity].value.Value.Filter.BelongsTo & layerMask) != 0) &&
            Check(targetType == 0 ? GameActionTargetType.Enemy : targetType, camp, camps[entity].value);
     }
