@@ -142,6 +142,7 @@ public struct GameIDManagerShared
     [NativeContainerIsReadOnly]
     public unsafe struct Serializer : IEntityDataContainerSerializer
     {
+        [ReadOnly]
         public readonly SharedHashMap<Hash128, int>.Reader EntityIndices;
 
         [NativeDisableUnsafePtrRestriction]
