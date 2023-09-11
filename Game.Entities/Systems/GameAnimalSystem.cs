@@ -474,8 +474,9 @@ public partial struct GameAnimalSystem : ISystem
     }
 }
 
+//TODO: Delete
 //[UpdateInGroup(typeof(TimeSystemGroup), OrderFirst = true), UpdateBefore(typeof(BeginTimeSystemGroupEntityCommandSystem))]
-[UpdateInGroup(typeof(CallbackSystemGroup), OrderFirst = true)]
+[BurstCompile, UpdateInGroup(typeof(CallbackSystemGroup), OrderFirst = true)]
 public partial struct GameAnimalEventSystem : ISystem
 {
     private EntityCommandPool<GameAnimalSystem.Result>.Context __context;
