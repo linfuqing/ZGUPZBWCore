@@ -187,6 +187,7 @@ public struct GameIDManagerShared
     [NativeContainer]
     public unsafe struct Deserializer : IEntityDataContainerDeserializer
     {
+        [ReadOnly]
         public readonly SharedList<EntityDataIdentity>.Reader Identities;
 
         [NativeDisableUnsafePtrRestriction]
@@ -434,8 +435,10 @@ public partial struct GameDataIDDeserializationContainerSystem : ISystem
 
         __core.Update(ref deserializer, ref state);
 
-        identitiesJobManager.AddReadOnlyDependency(state.Dependency);
+        var jobHandle = state.Dependency;
 
-        managerJobManager.readWriteJobHandle = state.Dependency;
+        identitiesJobManager.AddReadOnlyDependency(jobHandle);
+
+        managerJobManager.readWriteJobHandle = jobHandle;
     }
 }
