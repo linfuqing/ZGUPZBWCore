@@ -81,12 +81,15 @@ public class GameItemEditorObject : ScriptableObject
 
             var children = __handles.Count > 0 ? __handles.ToArray() : null;
 
+            Entity entity = handleEntities[GameItemStructChangeFactory.Convert(handle)];
+
             instance._index = handle.index;
             instance._version = item.version;
             instance._type = item.type;
             instance._count = item.count;
             instance._parentChildIndex = item.parentChildIndex;
-            instance._entity = handleEntities[GameItemStructChangeFactory.Convert(handle)];
+            instance._entityIndex = entity.Index; 
+            instance._entityVersion = entity.Version;
             instance._parent = __Create(item.parentHandle, manager, handleEntities);
             instance._sibling = __Create(item.siblingHandle, manager, handleEntities);
 
@@ -135,7 +138,9 @@ public class GameItemEditorObject : ScriptableObject
     [SerializeField]
     internal int _parentChildIndex;
     [SerializeField]
-    internal Entity _entity;
+    internal int _entityIndex;
+    [SerializeField]
+    internal int _entityVersion;
     [SerializeField]
     internal GameItemEditorObject _parent;
     [SerializeField]
