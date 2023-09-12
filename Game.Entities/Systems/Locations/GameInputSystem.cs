@@ -236,18 +236,15 @@ public struct GameInputAction : IComponentData
     public struct Filter : IGameInputActionFilter
     {
         public readonly float Rage;
-        public readonly float ActionRage;
         public readonly GameEntityActorTime ActorTime;
         public readonly BlobAssetReference<GameActionSetDefinition> ActionSetDefinition;
 
         public Filter(
             float rage, 
-            float actionRage, 
             in GameEntityActorTime actorTime, 
             in BlobAssetReference<GameActionSetDefinition> actionSetDefinition)
         {
             Rage = rage;
-            ActionRage = actionRage;
             ActorTime = actorTime;
             ActionSetDefinition = actionSetDefinition;
         }
@@ -255,7 +252,7 @@ public struct GameInputAction : IComponentData
         public bool Check(int actionIndex, double time)
         {
             ref var action = ref ActionSetDefinition.Value.values[actionIndex];
-            return action.info.rage + ActionRage <= Rage && ActorTime.Did(action.instance.actorMask, time);
+            return action.info.rage + Rage >= 0 && ActorTime.Did(action.instance.actorMask, time);
         }
     }
 
@@ -324,7 +321,7 @@ public struct GameInputAction : IComponentData
             target = Entity.Null;
         }
 
-        float actionRage = 0.0f, artTime = 0.0f;
+        float artTime = 0.0f;
         if (items.IsCreated)
         {
             ref var actionItems = ref actionItemSetDefinition.Value.values;
@@ -338,7 +335,7 @@ public struct GameInputAction : IComponentData
                 {
                     ref var actionItem = ref actionItems[item.index];
 
-                    actionRage += actionItem.rage;
+                    rage += actionItem.rage;
                     artTime += actionItem.artTime;
                 }
             }
@@ -346,7 +343,7 @@ public struct GameInputAction : IComponentData
 
         bool result;
         float delta = (float)(time - minActionTime), distance;
-        var filter = new Filter(rage, actionRage, actorTime, actionSetDefinition);
+        var filter = new Filter(rage, actorTime, actionSetDefinition);
         isTimeout = time > maxActionTime;
         if (actorActionIndex == -1 || actorActionIndex == this.actorActionIndex)
         {
@@ -382,7 +379,7 @@ public struct GameInputAction : IComponentData
                 targetType,
                 layerMask,
                 group,
-                isTimeout ? -1 : this.actorActionIndex,
+                isTimeout || this.actorActionIndex == -1 ? -1 : actorActions[this.actorActionIndex].actionIndex,
                 actorStatus,
                 actorVelocity,
                 dot,

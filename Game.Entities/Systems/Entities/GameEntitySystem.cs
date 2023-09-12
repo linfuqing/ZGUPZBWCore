@@ -1116,11 +1116,11 @@ public partial struct GameEntityActorSystem : ISystem
 
                         bool hasRage = index < rages.Length;
                         var rage = index < rages.Length ? rages[index] : default;
-                        if (rage.value >= action.info.rage)
+                        if (rage.value + action.info.rage >= 0.0f)
                         {
                             if (hasRage)
                             {
-                                rage.value -= action.info.rage;
+                                rage.value += action.info.rage;
                                 if (index < rageMaxes.Length)
                                     rage.value = math.clamp(rage.value, 0.0f, rageMaxes[index].value);
                                 else

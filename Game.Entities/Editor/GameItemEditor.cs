@@ -6,6 +6,7 @@ using UnityEditor;
 using UnityEditorInternal;
 using System.Collections.Generic;
 using System;
+using ZG;
 
 public class GameItemEditorObject : ScriptableObject
 {
@@ -42,7 +43,10 @@ public class GameItemEditorObject : ScriptableObject
             return true;
         }
 
-        private GameItemEditorObject __Create(in GameItemHandle handle, in GameItemManager.Hierarchy manager)
+        private GameItemEditorObject __Create(
+            in GameItemHandle handle, 
+            in GameItemManager.Hierarchy manager, 
+            in SharedHashMap<Entity, Entity>.Reader handleEntities)
         {
             if (!manager.GetChildren(handle, out var enumerator, out var item))
             {
@@ -82,18 +86,22 @@ public class GameItemEditorObject : ScriptableObject
             instance._type = item.type;
             instance._count = item.count;
             instance._parentChildIndex = item.parentChildIndex;
-            instance._parent = __Create(item.parentHandle, manager);
-            instance._sibling = __Create(item.siblingHandle, manager);
+            instance._entity = handleEntities[GameItemStructChangeFactory.Convert(handle)];
+            instance._parent = __Create(item.parentHandle, manager, handleEntities);
+            instance._sibling = __Create(item.siblingHandle, manager, handleEntities);
 
             int numChildren = children == null ? 0 : children.Length;
             instance._children = numChildren > 0 ? new GameItemEditorObject[numChildren] : null;
             for (int i = 0; i < numChildren; ++i)
-                instance._children[i] = __Create(children[i], manager);
+                instance._children[i] = __Create(children[i], manager, handleEntities);
 
             return instance;
         }
 
-        public GameItemEditorObject[] Create(in NativeArray<GameItemHandle> handles, in GameItemManager.Hierarchy manager)
+        public GameItemEditorObject[] Create(
+            in NativeArray<GameItemHandle> handles, 
+            in GameItemManager.Hierarchy manager, 
+            in SharedHashMap<Entity, Entity>.Reader handleEntities)
         {
             if (__instances != null)
             {
@@ -109,7 +117,7 @@ public class GameItemEditorObject : ScriptableObject
             int numHandles = handles.Length;
             var results = new GameItemEditorObject[numHandles];
             for (int i = 0; i < numHandles; ++i)
-                results[i] = __Create(handles[i], manager);
+                results[i] = __Create(handles[i], manager, handleEntities);
 
             return results;
         }
@@ -126,6 +134,8 @@ public class GameItemEditorObject : ScriptableObject
 
     [SerializeField]
     internal int _parentChildIndex;
+    [SerializeField]
+    internal Entity _entity;
     [SerializeField]
     internal GameItemEditorObject _parent;
     [SerializeField]
@@ -302,7 +312,13 @@ public class GameItemEditor : EditorWindow
             var itemManager = itemManagerShared.value;
             if (__handles.IsCreated)
             {
-                var objects = GameItemEditorObject.GetOrCreateWorld(worldNames[__worldIndex]).Create(__handles.AsArray(), itemManager.hierarchy);
+                var handleEntities = world.EntityManager.GetComponentData<GameItemStructChangeManager>(world.GetExistingUnmanagedSystem<GameItemStructChangeSystem>()).handleEntities;
+                handleEntities.lookupJobManager.CompleteReadOnlyDependency();
+
+                var objects = GameItemEditorObject.GetOrCreateWorld(worldNames[__worldIndex]).Create(
+                    __handles.AsArray(), 
+                    itemManager.hierarchy, 
+                    handleEntities.reader);
                 __reorderableList = new ReorderableList(objects, typeof(GameItemEditorObject));
                 __reorderableList.displayAdd = false;
                 __reorderableList.displayRemove = false;
