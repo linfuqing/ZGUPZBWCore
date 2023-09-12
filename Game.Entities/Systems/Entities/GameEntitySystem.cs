@@ -2456,7 +2456,7 @@ public partial struct GameEntityHitSystem : ISystem
         __commandVersionType = state.GetComponentTypeHandle<GameEntityCommandVersion>(true);
         __commandType = state.GetComponentTypeHandle<GameEntityBreakCommand>();
         __hits = state.GetComponentLookup<GameEntityHit>();
-        __rageType = state.GetComponentTypeHandle<GameEntityRage>(true);
+        __rageType = state.GetComponentTypeHandle<GameEntityRage>();
     }
 
     [BurstCompile]
