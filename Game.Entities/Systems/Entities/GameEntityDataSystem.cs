@@ -182,6 +182,9 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         public int hitCount;
 
         [ReadOnly]
+        public SharedHashMap<Entity, Entity>.Reader handleEntities;
+
+        [ReadOnly]
         public GameItemManager.Hierarchy hierarchy;
 
         [ReadOnly]
@@ -191,16 +194,16 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         public ComponentLookup<GameItemRoot> itemRoots;
 
         [ReadOnly]
-        public ComponentLookup<GameVariant> entityVariants;
+        public ComponentLookup<GameItemVariant> entityVariants;
 
         [ReadOnly]
-        public ComponentLookup<GameExp> entityExps;
+        public ComponentLookup<GameItemExp> entityExps;
 
         [ReadOnly]
-        public ComponentLookup<GamePower> entityPowers;
+        public ComponentLookup<GameItemPower> entityPowers;
 
         [ReadOnly]
-        public ComponentLookup<GameLevel> entityLevels;
+        public ComponentLookup<GameItemLevel> entityLevels;
 
         [ReadOnly]
         public NativeHashMap<int, int> itemTypeIndices;
@@ -248,7 +251,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
         public SharedList<GameSpawnData>.ParallelWriter results;
 
-        public void CalculateProperties(bool isAttack, in Entity entity, NativeArray<float> properties)
+        public void CalculateProperties(bool isAttack, in Entity entity, ref NativeArray<float> properties)
         {
             if (!entityLevels.HasComponent(entity))
                 return;
@@ -382,13 +385,13 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         public bool CalculateProperties(
             in GameItemHandle handle,
             in NativeArray<float> inputs,
-            NativeArray<float> outputs)
+            ref NativeArray<float> outputs)
         {
             return __CalculateProperties(
                 false,
                 handle,
                 inputs,
-                outputs, 
+                ref outputs, 
                 out _);
         }
 
@@ -485,12 +488,13 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
             for (int i = 0; i < propertyCount; ++i)
                 attacks[i] = actionAttacks[temp++].value;
 
-            CalculateProperties(true, data.entity, attacks.Reinterpret<float>().AsNativeArray());
-
             if (itemRoots.HasComponent(data.entity))
             {
                 var handle = itemRoots[data.entity].handle;
-                CalculateProperties(handle, itemAttacks.Reinterpret<float>(), attacks.AsNativeArray());
+                var attackArray = attacks.AsNativeArray();
+                CalculateProperties(true, handleEntities[GameItemStructChangeFactory.Convert(handle)], ref attackArray);
+
+                CalculateProperties(handle, itemAttacks.Reinterpret<float>(), ref attackArray);
 
                 CalculateProperties(handle, ref buff.value);
             }
@@ -569,27 +573,30 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                 NativeArray<float>.Copy(temp, defences, math.min(temp.Length, defences.Length));
             }
 
-            if(itemRoots.HasComponent(target))
-                CalculateProperties(itemRoots[target].handle, itemDefences.Reinterpret<float>(), defences);
-
-            /*if(this.entityItems.HasComponent(target))
+            if (itemRoots.HasComponent(target))
             {
-                var entityItems = this.entityItems[target];
-                GameEntityItem entityItem;
-                int numEntityItems = entityItems.Length, offset, length = items.Length, i, j;
-                for (i = 0; i < numEntityItems; ++i)
-                {
-                    entityItem = entityItems[i];
-                    if (entityItem.index >= 0 && entityItem.index < length)
-                    {
-                        offset = entityItem.index * this.count;
-                        for (j = 0; j < this.count; ++j)
-                            defences[j] += itemDefences[offset + j];
-                    }
-                }
-            }*/
+                var handle = itemRoots[target].handle;
+                CalculateProperties(handle, itemDefences.Reinterpret<float>(), ref defences);
 
-            CalculateProperties(false, target, defences);
+                /*if(this.entityItems.HasComponent(target))
+                {
+                    var entityItems = this.entityItems[target];
+                    GameEntityItem entityItem;
+                    int numEntityItems = entityItems.Length, offset, length = items.Length, i, j;
+                    for (i = 0; i < numEntityItems; ++i)
+                    {
+                        entityItem = entityItems[i];
+                        if (entityItem.index >= 0 && entityItem.index < length)
+                        {
+                            offset = entityItem.index * this.count;
+                            for (j = 0; j < this.count; ++j)
+                                defences[j] += itemDefences[offset + j];
+                        }
+                    }
+                }*/
+
+                CalculateProperties(false, handleEntities[GameItemStructChangeFactory.Convert(handle)], ref defences);
+            }
 
             float attack, defence, value, hit = 0.0f, torpor = 0.0f;
             for (int i = 0; i < numAttacks; ++i)
@@ -672,7 +679,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
             bool isSibling, 
             in GameItemHandle handle,
             in NativeArray<float> inputs,
-            NativeArray<float> outputs, 
+            ref NativeArray<float> outputs, 
             out GameItemInfo item)
         {
             if (hierarchy.GetChildren(handle, out var enumerator, out item))
@@ -681,7 +688,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                     true,
                     item.siblingHandle,
                     inputs,
-                    outputs, 
+                    ref outputs, 
                     out _);
 
                 if (isSibling)
@@ -693,7 +700,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                             false,
                             enumerator.Current.handle,
                             inputs,
-                            outputs,
+                            ref outputs,
                             out childItem) &&
                             itemTypeIndices.TryGetValue(childItem.type, out int itemIndex))
                         {
@@ -710,7 +717,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                             false,
                             enumerator.Current.handle,
                             inputs,
-                            outputs,
+                            ref outputs,
                             out _);
                 }
 
@@ -772,6 +779,9 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         public int hitCount;
 
         [ReadOnly]
+        public SharedHashMap<Entity, Entity>.Reader handleEntities;
+
+        [ReadOnly]
         public GameItemManager.Hierarchy hierarchy;
 
         [ReadOnly]
@@ -781,16 +791,16 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         public ComponentLookup<GameItemRoot> itemRoots;
 
         [ReadOnly]
-        public ComponentLookup<GameVariant> entityVariants;
+        public ComponentLookup<GameItemVariant> entityVariants;
 
         [ReadOnly]
-        public ComponentLookup<GameExp> entityExps;
+        public ComponentLookup<GameItemExp> entityExps;
 
         [ReadOnly]
-        public ComponentLookup<GamePower> entityPowers;
+        public ComponentLookup<GameItemPower> entityPowers;
 
         [ReadOnly]
-        public ComponentLookup<GameLevel> entityLevels;
+        public ComponentLookup<GameItemLevel> entityLevels;
 
         [ReadOnly]
         public NativeArray<Level> levels;
@@ -843,6 +853,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
             Handler handler;
             handler.propertyCount = propertyCount;
             handler.hitCount = hitCount;
+            handler.handleEntities = handleEntities;
             handler.hierarchy = hierarchy;
             handler.nodeStates = nodeStates;
             handler.itemRoots = itemRoots;
@@ -918,13 +929,13 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
     private ComponentLookup<GameItemRoot> __itemRoots;
 
-    private ComponentLookup<GameVariant> __entityVariants;
+    private ComponentLookup<GameItemVariant> __entityVariants;
 
-    private ComponentLookup<GameExp> __entityExps;
+    private ComponentLookup<GameItemExp> __entityExps;
 
-    private ComponentLookup<GamePower> __entityPowers;
+    private ComponentLookup<GameItemPower> __entityPowers;
 
-    private ComponentLookup<GameLevel> __entityLevels;
+    private ComponentLookup<GameItemLevel> __entityLevels;
 
     private BufferLookup<GameEntityDefence> __defences;
 
@@ -955,7 +966,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
     private GameItemManagerShared __itemManager;
 
     public void Create(
-        World world, 
+        //World world, 
         int hitCount, 
         IEnumerable<Action> actions, 
         IEnumerable<Item> items,
@@ -1097,10 +1108,10 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
         __nodeStates = state.GetComponentLookup<GameNodeStatus>(true);
         __itemRoots = state.GetComponentLookup<GameItemRoot>(true);
-        __entityVariants = state.GetComponentLookup<GameVariant>(true);
-        __entityExps = state.GetComponentLookup<GameExp>(true);
-        __entityPowers = state.GetComponentLookup<GamePower>(true);
-        __entityLevels = state.GetComponentLookup<GameLevel>(true);
+        __entityVariants = state.GetComponentLookup<GameItemVariant>(true);
+        __entityExps = state.GetComponentLookup<GameItemExp>(true);
+        __entityPowers = state.GetComponentLookup<GameItemPower>(true);
+        __entityLevels = state.GetComponentLookup<GameItemLevel>(true);
 
         __defences = state.GetBufferLookup<GameEntityDefence>(true);
         __attackType = state.GetBufferTypeHandle<GameActionAttack>();
@@ -1181,13 +1192,16 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         recapcity.results = commands.writer;
         jobHandle = recapcity.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, commandsJobManager.readWriteJobHandle));
 
+        var handleEntities = SystemAPI.GetSingleton<GameItemStructChangeManager>().handleEntities;
+        ref var handleEntitiesJobManager = ref handleEntities.lookupJobManager;
         ref var itemManagerJobManager = ref __itemManager.lookupJobManager;
 
-        state.Dependency = JobHandle.CombineDependencies(jobHandle, itemManagerJobManager.readOnlyJobHandle);
+        state.Dependency = JobHandle.CombineDependencies(jobHandle, handleEntitiesJobManager.readOnlyJobHandle, itemManagerJobManager.readOnlyJobHandle);
 
         Factory factory;
         factory.propertyCount = __propertyCount;
         factory.hitCount = __hitCount;
+        factory.handleEntities = handleEntities.reader;
         factory.hierarchy = __itemManager.hierarchy;
         factory.nodeStates = __nodeStates.UpdateAsRef(ref state);
         factory.itemRoots = __itemRoots.UpdateAsRef(ref state);
@@ -1220,6 +1234,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
             var performJob = __core.performJob;
 
             //spawnCommandQueue.AddJobHandleForProducer<GameEntityActionDataSystem>(jobHandle);
+            handleEntitiesJobManager.AddReadOnlyDependency(performJob);
 
             itemManagerJobManager.AddReadOnlyDependency(performJob);
 
