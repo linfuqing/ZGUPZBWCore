@@ -910,6 +910,9 @@ public partial struct GameEntityActorSystem : ISystem
         public NativeArray<GameEntityCamp> camps;
 
         [ReadOnly]
+        public NativeArray<GameEntityRageMax> rageMaxes;
+
+        [ReadOnly]
         public NativeArray<GameEntityActorData> actors;
 
         [ReadOnly]
@@ -938,6 +941,8 @@ public partial struct GameEntityActorSystem : ISystem
 
         public NativeArray<Rotation> rotations;
 
+        public NativeArray<PhysicsVelocity> physicsVelocities;
+
         public NativeArray<GameNodeDelay> delay;
 
         public NativeArray<GameNodeVelocity> velocities;
@@ -948,9 +953,9 @@ public partial struct GameEntityActorSystem : ISystem
 
         public NativeArray<GameNodeCharacterVelocity> characterVelocities;
 
-        public NativeArray<PhysicsVelocity> physicsVelocities;
-
         public NativeArray<GameNodeActorStatus> actorStates;
+
+        public NativeArray<GameEntityRage> rages;
 
         public NativeArray<GameEntityActorTime> actorTimes;
 
@@ -1094,9 +1099,6 @@ public partial struct GameEntityActorSystem : ISystem
                     var actorActionInfo = actorActionInfos[command.index];
                     if (actorActionInfo.coolDownTime < command.time)
                     {
-                        if (index < entityActions.Length)
-                            GameEntityAction.Break(command.time, entityActions[index], ref actionStates);
-
                         if (index < this.entityItems.Length)
                         {
                             var entityItems = this.entityItems[index];
@@ -1112,604 +1114,623 @@ public partial struct GameEntityActorSystem : ISystem
                             }
                         }
 
-                        var actor = actors[index];
-                        if (actor.rangeScale > math.FLT_MIN_NORMAL)
+                        bool hasRage = index < rages.Length;
+                        var rage = index < rages.Length ? rages[index] : default;
+                        if (rage.value >= action.info.rage)
                         {
-                            action.info.scale = (action.info.scale > math.FLT_MIN_NORMAL ? action.info.scale : 1.0f) * actor.rangeScale;
+                            if (hasRage)
+                            {
+                                rage.value -= action.info.rage;
+                                if (index < rageMaxes.Length)
+                                    rage.value = math.clamp(rage.value, 0.0f, rageMaxes[index].value);
+                                else
+                                    rage.value = math.max(rage.value, 0.0f);
 
-                            action.info.radius *= actor.rangeScale;
-                        }
+                                rages[index] = rage;
+                            }
 
-                        if (actor.distanceScale > math.FLT_MIN_NORMAL)
-                            action.info.distance *= actor.distanceScale;
+                            if (index < entityActions.Length)
+                                GameEntityAction.Break(command.time, entityActions[index], ref actionStates);
 
-                        action.instance.offset = math.select(action.instance.offset, action.instance.offset * actor.offsetScale, actor.offsetScale > math.FLT_MIN_NORMAL);
+                            var actor = actors[index];
+                            if (actor.rangeScale > math.FLT_MIN_NORMAL)
+                            {
+                                action.info.scale = (action.info.scale > math.FLT_MIN_NORMAL ? action.info.scale : 1.0f) * actor.rangeScale;
 
-                        if (command.entity != Entity.Null && (command.entity == entity || disabled.HasComponent(command.entity)))
-                            command.entity = Entity.Null;
+                                action.info.radius *= actor.rangeScale;
+                            }
+
+                            if (actor.distanceScale > math.FLT_MIN_NORMAL)
+                                action.info.distance *= actor.distanceScale;
+
+                            action.instance.offset = math.select(action.instance.offset, action.instance.offset * actor.offsetScale, actor.offsetScale > math.FLT_MIN_NORMAL);
+
+                            if (command.entity != Entity.Null && (command.entity == entity || disabled.HasComponent(command.entity)))
+                                command.entity = Entity.Null;
 
 #if GAME_DEBUG_COMPARSION
-                    stream.Assert(entityName, command.entity == Entity.Null);
+                            stream.Assert(entityName, command.entity == Entity.Null);
 #endif
 
-                        quaternion surfaceRotation = index < surfaces.Length ? surfaces[index].rotation : quaternion.identity;
+                            quaternion surfaceRotation = index < surfaces.Length ? surfaces[index].rotation : quaternion.identity;
 
-                        bool isTowardTarget = (action.instance.flag & GameActionFlag.ActorTowardTarget) == GameActionFlag.ActorTowardTarget;
-                        float3 up = math.mul(surfaceRotation, math.up()), source = translations[index].Value,
-                            offset,
-                            forward,
-                            distance,
-                            position;
-                        quaternion rotation;
-                        var actionCollider = action.colliderIndex == -1 ? BlobAssetReference<Collider>.Null : actionColliders[new SingletonAssetContainerHandle(actions.instanceID, action.colliderIndex)];
-                        if (math.lengthsq(command.distance) > math.FLT_MIN_NORMAL)
-                        {
-                            forward = command.forward;
-                            rotation = quaternion.LookRotationSafe(forward, up);
-
-                            offset = math.mul(rotation, action.instance.offset); //command.offset;//math.mul(rotation, action.instance.offset);
-                            position = source + offset;
-
-                            distance = command.distance;// - offset;
-                        }
-                        else
-                        {
-                            if ((isTowardTarget || (action.instance.flag & GameActionFlag.ActorTowardForce) == GameActionFlag.ActorTowardForce) &&
-                                math.lengthsq(command.forward) > math.FLT_MIN_NORMAL)
+                            bool isTowardTarget = (action.instance.flag & GameActionFlag.ActorTowardTarget) == GameActionFlag.ActorTowardTarget;
+                            float3 up = math.mul(surfaceRotation, math.up()), source = translations[index].Value,
+                                offset,
+                                forward,
+                                distance,
+                                position;
+                            quaternion rotation;
+                            var actionCollider = action.colliderIndex == -1 ? BlobAssetReference<Collider>.Null : actionColliders[new SingletonAssetContainerHandle(actions.instanceID, action.colliderIndex)];
+                            if (math.lengthsq(command.distance) > math.FLT_MIN_NORMAL)
                             {
                                 forward = command.forward;
+                                rotation = quaternion.LookRotationSafe(forward, up);
 
-                                //这里会不同步
-                                //rotation = quaternion.LookRotationSafe(forward, up);
+                                offset = math.mul(rotation, action.instance.offset); //command.offset;//math.mul(rotation, action.instance.offset);
+                                position = source + offset;
+
+                                distance = command.distance;// - offset;
                             }
                             else
                             {
-                                if (index < angles.Length)
+                                if ((isTowardTarget || (action.instance.flag & GameActionFlag.ActorTowardForce) == GameActionFlag.ActorTowardForce) &&
+                                    math.lengthsq(command.forward) > math.FLT_MIN_NORMAL)
                                 {
-                                    rotation = quaternion.RotateY(angles[index].value);
+                                    forward = command.forward;
 
-                                    rotation = math.mul(surfaceRotation, rotation);
-                                }
-                                else
-                                    rotation = rotations[index].Value;
-
-                                forward = math.forward(rotation);
-                            }
-
-                            if (action.instance.rangeType == GameActionRangeType.Source)
-                            {
-                                forward -= Math.ProjectSafe(forward, gravity);
-
-                                forward = math.normalizesafe(forward);
-                            }
-
-                            //为了同步,故意提取出来
-                            //rotation = quaternion.LookRotationSafe(forward, up);
-
-                            /*offset = math.mul(rotation, action.instance.offset);
-                            position = source + offset;*/
-
-                            if (command.entity != Entity.Null && translationMap.HasComponent(command.entity))
-                            {
-                                float3 destination = translationMap[command.entity].Value;
-                                RigidTransform transform = math.RigidTransform(rotationMap[command.entity].Value, destination);
-                                if (physicsMasses.HasComponent(command.entity))
-                                    destination = math.transform(transform, physicsMasses[command.entity].CenterOfMass);
-
-                                if (actionCollider.IsCreated)
-                                {
-                                    var collider = physicsColliders.HasComponent(command.entity) ? physicsColliders[command.entity].Value : BlobAssetReference<Collider>.Null;
-                                    if (collider.IsCreated)
-                                    {
-                                        PointDistanceInput pointDistanceInput = default;
-                                        pointDistanceInput.MaxDistance = math.distance(source, destination);
-                                        pointDistanceInput.Position = math.transform(math.inverse(transform), source);
-                                        pointDistanceInput.Filter = actionCollider.Value.Filter;
-                                        pointDistanceInput.Filter.CollidesWith = action.instance.damageMask;
-                                        if (collider.Value.CalculateDistance(pointDistanceInput, out DistanceHit closestHit))
-                                        {
-                                            destination = math.transform(transform, closestHit.Position);
-
-                                            /*distance = destination - source;
-
-                                            length = closestHit.Distance;*/
-
-                                            //UnityEngine.Debug.Log($"Distance : {distance} : {length}");
-                                        }
-                                    }
-                                }
-
-                                if (isTowardTarget)
-                                {
-                                    forward = math.normalizesafe(transform.pos - source, forward);
-
-                                    if (action.instance.rangeType == GameActionRangeType.Source)
-                                    {
-                                        forward -= Math.ProjectSafe(forward, gravity);
-
-                                        forward = math.normalizesafe(forward);
-                                    }
-
+                                    //这里会不同步
                                     //rotation = quaternion.LookRotationSafe(forward, up);
                                 }
-
-                                rotation = quaternion.LookRotationSafe(forward, up);
-
-                                offset = math.mul(rotation, action.instance.offset);
-                                position = source + offset;
-
-                                float3 targetPosition;
-                                bool isTrack = command.entity != Entity.Null &&
-                                        velocityMap.HasComponent(command.entity);
-                                if (isTrack)
+                                else
                                 {
-                                    float targetVelocity = velocityMap[command.entity].value;
-                                    float3 targetDirection = math.forward(transform.rot/*rotationMap[command.entity].Value*/);
-
-                                    targetPosition = destination;// + targetDirection * (targetVelocity * action.info.damageTime);
-
-                                    /*offset = math.mul(rotation, action.instance.offset);
-                                    position = source + offset;*/
-
-                                    if ((action.instance.flag & GameActionFlag.UseGravity) == GameActionFlag.UseGravity)
+                                    if (index < angles.Length)
                                     {
-                                        if (action.info.actionMoveSpeed > math.FLT_MIN_NORMAL &&
-                                               actor.accuracy > math.FLT_MIN_NORMAL &&
-                                               Math.CalculateParabolaTrajectory(
-                                                   (action.instance.flag & GameActionFlag.MoveWithActor) != GameActionFlag.MoveWithActor,
-                                                   actor.accuracy,
-                                                   math.length(gravity),
-                                                   action.info.actionMoveSpeed,
-                                                   targetVelocity,
-                                                   targetDirection,
-                                                   targetPosition,
-                                                   position,
-                                                   out var targetDistance))
-                                            targetPosition = position + targetDistance;
-                                        else
-                                        {
-                                            float3 targetForward = forward;
+                                        rotation = quaternion.RotateY(angles[index].value);
 
-                                            float2 angleAndTime = Math.CalculateParabolaAngleAndTime(
-                                                (action.instance.flag & GameActionFlag.MoveWithActor) != GameActionFlag.MoveWithActor,
-                                                action.info.actionMoveSpeed,
-                                                math.length(gravity),
-                                                targetPosition - position,
-                                                ref targetForward);
-
-                                            if (angleAndTime.y > math.FLT_MIN_NORMAL)
-                                                targetPosition = position + targetForward * (action.info.actionMoveSpeed * angleAndTime.y);
-                                            else if (action.info.distance > math.FLT_MIN_NORMAL)
-                                            {
-                                                //LookRotationSafe防止direction==up
-                                                targetForward = math.mul(quaternion.LookRotationSafe(targetForward, up), Act.forward);
-
-                                                float offsetDistanceSq = math.lengthsq(Math.ProjectSafe(offset, targetForward)),
-                                                forwardLength = math.sqrt(action.info.distance * action.info.distance - offsetDistanceSq) + math.sqrt(offsetDistanceSq);
-
-                                                targetPosition = source + forwardLength * targetForward;
-                                            }
-
-                                            isTrack = false;
-                                        }
+                                        rotation = math.mul(surfaceRotation, rotation);
                                     }
                                     else
-                                    {
-                                        if (action.info.actionMoveSpeed > math.FLT_MIN_NORMAL &&
-                                            Math.CalculateLinearTrajectory(
-                                                action.info.actionMoveSpeed,
-                                                position,
-                                                targetPosition,
-                                                targetDirection,
-                                                targetVelocity,
-                                                out var hitPoint))
-                                            targetPosition = hitPoint;
-                                        else
-                                            isTrack = false;
-                                    }
+                                        rotation = rotations[index].Value;
+
+                                    forward = math.forward(rotation);
                                 }
-                                else
-                                    targetPosition = destination;
 
-                                /*if (isTowardTarget)
+                                if (action.instance.rangeType == GameActionRangeType.Source)
                                 {
-                                    forward = math.normalizesafe(targetPosition - source, forward);
+                                    forward -= Math.ProjectSafe(forward, gravity);
 
-                                    if (action.instance.trackType == GameActionRangeType.Source)
-                                    {
-                                        forward -= Math.ProjectSafe(forward, gravity);
+                                    forward = math.normalizesafe(forward);
+                                }
 
-                                        forward = math.normalizesafe(forward);
-                                    }
+                                //为了同步,故意提取出来
+                                //rotation = quaternion.LookRotationSafe(forward, up);
 
-                                    rotation = quaternion.LookRotationSafe(forward, up);
-                                }*/
-
-                                //这样会打不准
                                 /*offset = math.mul(rotation, action.instance.offset);
                                 position = source + offset;*/
 
-                                if (action.instance.direction.Equals(float3.zero))
+                                if (command.entity != Entity.Null && translationMap.HasComponent(command.entity))
                                 {
-                                    if (action.instance.rangeType == GameActionRangeType.Source)
-                                        distance = forward * action.info.distance;
-                                    else
+                                    float3 destination = translationMap[command.entity].Value;
+                                    RigidTransform transform = math.RigidTransform(rotationMap[command.entity].Value, destination);
+                                    if (physicsMasses.HasComponent(command.entity))
+                                        destination = math.transform(transform, physicsMasses[command.entity].CenterOfMass);
+
+                                    if (actionCollider.IsCreated)
                                     {
-                                        distance = targetPosition - position;
-
-                                        float length = math.length(distance);
-                                        if (action.info.distance > math.FLT_MIN_NORMAL && action.info.distance < length)
-                                            distance = action.info.distance / length * distance;
-                                    }
-                                }
-                                else
-                                    distance = math.mul(rotation, action.instance.direction) * action.info.distance;
-                            }
-                            else
-                            {
-                                rotation = quaternion.LookRotationSafe(forward, up);
-
-                                offset = math.mul(rotation, action.instance.offset);
-                                position = source + offset;
-
-                                float actionDistance = action.info.actionDistance > math.FLT_MIN_NORMAL ? action.info.actionDistance : action.info.distance;
-                                if (action.instance.direction.Equals(float3.zero))
-                                {
-                                    distance = forward * actionDistance;
-                                    if (action.instance.rangeType != GameActionRangeType.Source)
-                                    {
-                                        /*float distanceSq = action.info.distance * action.info.distance,
-                                            offsetDistanceSq = math.lengthsq(Math.ProjectSafe(offset, forward)),
-                                            forwardLength = math.sqrt(distanceSq - offsetDistanceSq) + math.sqrt(offsetDistanceSq);
-                                        distance = forwardLength * forward - offset;*/
-
-                                        //distance -= offset;
-
-                                        if ((action.instance.flag & GameActionFlag.UseGravity) == GameActionFlag.UseGravity)
+                                        var collider = physicsColliders.HasComponent(command.entity) ? physicsColliders[command.entity].Value : BlobAssetReference<Collider>.Null;
+                                        if (collider.IsCreated)
                                         {
-                                            float3 targetForward = math.normalizesafe(distance, forward);
-                                            float2 angleAndTime = Math.CalculateParabolaAngleAndTime(
-                                                (action.instance.flag & GameActionFlag.MoveWithActor) != GameActionFlag.MoveWithActor,
-                                                action.info.actionMoveSpeed,
-                                                math.length(gravity),
-                                                distance,
-                                                ref targetForward);
-
-                                            if (angleAndTime.y > math.FLT_MIN_NORMAL)
-                                                distance = targetForward * (action.info.actionMoveSpeed * angleAndTime.y);
-                                            else
+                                            PointDistanceInput pointDistanceInput = default;
+                                            pointDistanceInput.MaxDistance = math.distance(source, destination);
+                                            pointDistanceInput.Position = math.transform(math.inverse(transform), source);
+                                            pointDistanceInput.Filter = actionCollider.Value.Filter;
+                                            pointDistanceInput.Filter.CollidesWith = action.instance.damageMask;
+                                            if (collider.Value.CalculateDistance(pointDistanceInput, out DistanceHit closestHit))
                                             {
-                                                //LookRotationSafe防止direction==up
-                                                targetForward = math.mul(quaternion.LookRotationSafe(forward, up), Act.forward);
+                                                destination = math.transform(transform, closestHit.Position);
 
-                                                distance = actionDistance/*forwardLength*/ * targetForward;// - offset;
+                                                /*distance = destination - source;
+
+                                                length = closestHit.Distance;*/
+
+                                                //UnityEngine.Debug.Log($"Distance : {distance} : {length}");
                                             }
                                         }
                                     }
+
+                                    if (isTowardTarget)
+                                    {
+                                        forward = math.normalizesafe(transform.pos - source, forward);
+
+                                        if (action.instance.rangeType == GameActionRangeType.Source)
+                                        {
+                                            forward -= Math.ProjectSafe(forward, gravity);
+
+                                            forward = math.normalizesafe(forward);
+                                        }
+
+                                        //rotation = quaternion.LookRotationSafe(forward, up);
+                                    }
+
+                                    rotation = quaternion.LookRotationSafe(forward, up);
+
+                                    offset = math.mul(rotation, action.instance.offset);
+                                    position = source + offset;
+
+                                    float3 targetPosition;
+                                    bool isTrack = command.entity != Entity.Null &&
+                                            velocityMap.HasComponent(command.entity);
+                                    if (isTrack)
+                                    {
+                                        float targetVelocity = velocityMap[command.entity].value;
+                                        float3 targetDirection = math.forward(transform.rot/*rotationMap[command.entity].Value*/);
+
+                                        targetPosition = destination;// + targetDirection * (targetVelocity * action.info.damageTime);
+
+                                        /*offset = math.mul(rotation, action.instance.offset);
+                                        position = source + offset;*/
+
+                                        if ((action.instance.flag & GameActionFlag.UseGravity) == GameActionFlag.UseGravity)
+                                        {
+                                            if (action.info.actionMoveSpeed > math.FLT_MIN_NORMAL &&
+                                                   actor.accuracy > math.FLT_MIN_NORMAL &&
+                                                   Math.CalculateParabolaTrajectory(
+                                                       (action.instance.flag & GameActionFlag.MoveWithActor) != GameActionFlag.MoveWithActor,
+                                                       actor.accuracy,
+                                                       math.length(gravity),
+                                                       action.info.actionMoveSpeed,
+                                                       targetVelocity,
+                                                       targetDirection,
+                                                       targetPosition,
+                                                       position,
+                                                       out var targetDistance))
+                                                targetPosition = position + targetDistance;
+                                            else
+                                            {
+                                                float3 targetForward = forward;
+
+                                                float2 angleAndTime = Math.CalculateParabolaAngleAndTime(
+                                                    (action.instance.flag & GameActionFlag.MoveWithActor) != GameActionFlag.MoveWithActor,
+                                                    action.info.actionMoveSpeed,
+                                                    math.length(gravity),
+                                                    targetPosition - position,
+                                                    ref targetForward);
+
+                                                if (angleAndTime.y > math.FLT_MIN_NORMAL)
+                                                    targetPosition = position + targetForward * (action.info.actionMoveSpeed * angleAndTime.y);
+                                                else if (action.info.distance > math.FLT_MIN_NORMAL)
+                                                {
+                                                    //LookRotationSafe防止direction==up
+                                                    targetForward = math.mul(quaternion.LookRotationSafe(targetForward, up), Act.forward);
+
+                                                    float offsetDistanceSq = math.lengthsq(Math.ProjectSafe(offset, targetForward)),
+                                                    forwardLength = math.sqrt(action.info.distance * action.info.distance - offsetDistanceSq) + math.sqrt(offsetDistanceSq);
+
+                                                    targetPosition = source + forwardLength * targetForward;
+                                                }
+
+                                                isTrack = false;
+                                            }
+                                        }
+                                        else
+                                        {
+                                            if (action.info.actionMoveSpeed > math.FLT_MIN_NORMAL &&
+                                                Math.CalculateLinearTrajectory(
+                                                    action.info.actionMoveSpeed,
+                                                    position,
+                                                    targetPosition,
+                                                    targetDirection,
+                                                    targetVelocity,
+                                                    out var hitPoint))
+                                                targetPosition = hitPoint;
+                                            else
+                                                isTrack = false;
+                                        }
+                                    }
+                                    else
+                                        targetPosition = destination;
+
+                                    /*if (isTowardTarget)
+                                    {
+                                        forward = math.normalizesafe(targetPosition - source, forward);
+
+                                        if (action.instance.trackType == GameActionRangeType.Source)
+                                        {
+                                            forward -= Math.ProjectSafe(forward, gravity);
+
+                                            forward = math.normalizesafe(forward);
+                                        }
+
+                                        rotation = quaternion.LookRotationSafe(forward, up);
+                                    }*/
+
+                                    //这样会打不准
+                                    /*offset = math.mul(rotation, action.instance.offset);
+                                    position = source + offset;*/
+
+                                    if (action.instance.direction.Equals(float3.zero))
+                                    {
+                                        if (action.instance.rangeType == GameActionRangeType.Source)
+                                            distance = forward * action.info.distance;
+                                        else
+                                        {
+                                            distance = targetPosition - position;
+
+                                            float length = math.length(distance);
+                                            if (action.info.distance > math.FLT_MIN_NORMAL && action.info.distance < length)
+                                                distance = action.info.distance / length * distance;
+                                        }
+                                    }
+                                    else
+                                        distance = math.mul(rotation, action.instance.direction) * action.info.distance;
                                 }
                                 else
-                                    distance = math.mul(rotation, action.instance.direction) * actionDistance;
-                            }
-
-                            if (math.lengthsq(distance) <= math.FLT_MIN_NORMAL)
-                            {
-                                //UnityEngine.Debug.LogWarning($"Reset Distance!");
-
-                                distance = forward;
-                            }
-                        }
-
-#if GAME_DEBUG_COMPARSION
-                    //UnityEngine.Debug.Log($"Do: {frameIndex} : {entityIndices[index].value} : {entityArray[index].Index} : {command.index} : {position} : {translations[index].Value} : {action.instance.offset}");
-
-                    stream.Assert(forwardName, forward);
-                    stream.Assert(offsetName, offset);
-                    stream.Assert(rotationName, rotation);
-                    stream.Assert(positionName, position);
-                    stream.Assert(distanceName, distance);
-#endif
-                        quaternion inverseSurfaceRotation = math.inverse(surfaceRotation);
-                        float3 surfaceForward = math.mul(inverseSurfaceRotation, forward);
-                        float surfaceForwardLength = math.lengthsq(surfaceForward.xz), surfaceAngle;
-                        if (surfaceForwardLength > math.FLT_MIN_NORMAL)
-                        {
-                            surfaceAngle = math.atan2(surfaceForward.x, action.info.distance < 0.0f ? -surfaceForward.z : surfaceForward.z);
-
-#if GAME_DEBUG_COMPARSION
-                        stream.Assert(angleName, surfaceAngle);
-#endif
-
-                            if (index < angles.Length)
-                            {
-                                GameNodeAngle angle;
-                                angle.value = (half)surfaceAngle;
-
-                                angles[index] = angle;
-                            }
-
-                            if (index < characterAngles.Length)
-                            {
-                                GameNodeCharacterAngle angle;
-                                angle.value = (half)surfaceAngle;
-
-                                characterAngles[index] = angle;
-                            }
-
-                            if (index < rotations.Length)
-                            {
-                                Rotation result;
-                                //result.Value = quaternion.RotateY(surfaceAngle);
-                                result.Value = index < characters.Length && (characters[index].flag & GameNodeCharacterData.Flag.SurfaceUp) == GameNodeCharacterData.Flag.SurfaceUp ?
-                                    math.mul(surfaceRotation, quaternion.RotateY(surfaceAngle)) :
-                                    quaternion.RotateY(surfaceAngle);
-                                rotations[index] = result;
-                            }
-                        }
-                        else
-                            return;
-
-                        float3 direction = math.normalizesafe(distance, forward);
-                        if (math.any(math.abs(action.info.angleLimit) > math.FLT_MIN_NORMAL))
-                        {
-                            float3 surfaceDirection = math.mul(inverseSurfaceRotation, direction);
-                            float surfaceDirectionLength = math.lengthsq(surfaceDirection.xz);
-                            if (surfaceDirectionLength > math.FLT_MIN_NORMAL)
-                            {
-                                if (math.any(math.abs(action.info.angleLimit.xy) > math.FLT_MIN_NORMAL))
                                 {
-                                    /*quaternion horizontalRotation = Math.FromToRotation(surfaceForward.xz * math.rsqrt(surfaceForwardLength), surfaceDirection.xz * math.rsqrt(surfaceDirectionLength));
-                                    horizontalRotation = Math.RotateTowards(quaternion.identity, horizontalRotation, action.info.angleLimit.x);
-                                    surfaceDirection = math.mul(horizontalRotation, surfaceDirection);*/
-                                    float horizontalAngle = math.atan2(surfaceDirection.x, surfaceDirection.z);
-                                    quaternion horizontalRotation = quaternion.RotateY(math.clamp(horizontalAngle - surfaceAngle, action.info.angleLimit.x, action.info.angleLimit.y) + surfaceAngle);
-                                    surfaceDirection = math.forward(horizontalRotation);
-                                }
+                                    rotation = quaternion.LookRotationSafe(forward, up);
 
-                                if (math.any(math.abs(action.info.angleLimit.zw) > math.FLT_MIN_NORMAL))
-                                {
-                                    surfaceDirectionLength = math.sqrt(surfaceDirectionLength);
-                                    float verticalAngle = math.atan2(surfaceDirection.y, surfaceDirectionLength);
-                                    verticalAngle = math.clamp(verticalAngle, action.info.angleLimit.z, action.info.angleLimit.w);
-                                    surfaceDirection.y = math.tan(verticalAngle) * surfaceDirectionLength;
-                                    surfaceDirection = math.normalize(surfaceDirection);
-                                }
-                            }
-                            else if (math.any(math.abs(action.info.angleLimit.zw) > math.FLT_MIN_NORMAL))
-                            {
-                                float verticalAngle = math.clamp(math.PI * 0.5f * math.sign(surfaceDirection.y), action.info.angleLimit.z, action.info.angleLimit.w);
-                                surfaceDirection.y = math.tan(verticalAngle) * math.sqrt(surfaceForwardLength);
-                                surfaceDirection.xz = surfaceForward.xz;
-                                surfaceDirection = math.normalize(surfaceDirection);
-                            }
+                                    offset = math.mul(rotation, action.instance.offset);
+                                    position = source + offset;
 
-                            direction = math.mul(surfaceRotation, surfaceDirection);
-                        }
-
-                        //因为Dreamer会导致卡死
-                        int nodeStatusValue = 0;// nodeStatus.value & (GameNodeStatus.DELAY | GameNodeStatus.OVER);
-
-                        GameNodeVelocityComponent velocityComponent;
-                        //velocityComponent.value = float3.zero;
-                        if (index < velocityComponents.Length)
-                        {
-                            var velocityComponents = this.velocityComponents[index];
-                            velocityComponents.Clear();
-
-                            float3 moveDirection = (action.instance.flag & GameActionFlag.ActorInAir) == GameActionFlag.ActorInAir ?
-                                forward : Math.ProjectOnPlane(forward, up);//math.normalizesafe(math.float3(forward.x, 0.0f, forward.z));
-                            if (math.abs(action.info.actorMoveSpeed) > math.FLT_MIN_NORMAL)
-                            {
-                                velocityComponent.mode = GameNodeVelocityComponent.Mode.Direct;
-
-                                velocityComponent.value = moveDirection * action.info.actorMoveSpeed;
-
-                                /*if ((action.instance.flag & GameActionFlag.MoveOnSurface) == GameActionFlag.MoveOnSurface)
-                                    velocityComponent.value = math.mul(surfaceRotation, velocityComponent.value);*/
-
-                                velocityComponent.time = command.time;
-                                velocityComponent.time += action.info.actorMoveStartTime;
-                                --velocityComponent.time.count;
-
-                                velocityComponent.duration = action.info.actorMoveDuration;
-                                velocityComponents.Add(velocityComponent);
-                            }
-
-                            if (math.abs(action.info.actorJumpSpeed) > math.FLT_MIN_NORMAL)
-                            {
-                                velocityComponent.mode = GameNodeVelocityComponent.Mode.Indirect;
-
-                                float3 velocity = float3.zero;
-                                if (action.info.actorMomentum > math.FLT_MIN_NORMAL)
-                                {
-                                    var characterVelocity = characterVelocities[index];
-                                    characterVelocity.value -= Math.ProjectSafe(characterVelocity.value, gravity);
-                                    velocity += Math.Project(characterVelocity.value * action.info.actorMomentum, forward);
-
-                                    characterVelocity.value = float3.zero;
-                                    characterVelocities[index] = characterVelocity;
-
-                                    physicsVelocities[index] = default;
-                                }
-
-                                if (action.info.actorJumpSpeed > math.FLT_MIN_NORMAL)
-                                {
-                                    nodeStatusValue |= GameNodeActorStatus.NODE_STATUS_ACT;
-
-                                    if (index < actorStates.Length)
+                                    float actionDistance = action.info.actionDistance > math.FLT_MIN_NORMAL ? action.info.actionDistance : action.info.distance;
+                                    if (action.instance.direction.Equals(float3.zero))
                                     {
-                                        GameNodeActorStatus status;
-                                        status.value = GameNodeActorStatus.Status.Jump;
-                                        status.time = command.time;
-                                        actorStates[index] = status;
+                                        distance = forward * actionDistance;
+                                        if (action.instance.rangeType != GameActionRangeType.Source)
+                                        {
+                                            /*float distanceSq = action.info.distance * action.info.distance,
+                                                offsetDistanceSq = math.lengthsq(Math.ProjectSafe(offset, forward)),
+                                                forwardLength = math.sqrt(distanceSq - offsetDistanceSq) + math.sqrt(offsetDistanceSq);
+                                            distance = forwardLength * forward - offset;*/
+
+                                            //distance -= offset;
+
+                                            if ((action.instance.flag & GameActionFlag.UseGravity) == GameActionFlag.UseGravity)
+                                            {
+                                                float3 targetForward = math.normalizesafe(distance, forward);
+                                                float2 angleAndTime = Math.CalculateParabolaAngleAndTime(
+                                                    (action.instance.flag & GameActionFlag.MoveWithActor) != GameActionFlag.MoveWithActor,
+                                                    action.info.actionMoveSpeed,
+                                                    math.length(gravity),
+                                                    distance,
+                                                    ref targetForward);
+
+                                                if (angleAndTime.y > math.FLT_MIN_NORMAL)
+                                                    distance = targetForward * (action.info.actionMoveSpeed * angleAndTime.y);
+                                                else
+                                                {
+                                                    //LookRotationSafe防止direction==up
+                                                    targetForward = math.mul(quaternion.LookRotationSafe(forward, up), Act.forward);
+
+                                                    distance = actionDistance/*forwardLength*/ * targetForward;// - offset;
+                                                }
+                                            }
+                                        }
                                     }
+                                    else
+                                        distance = math.mul(rotation, action.instance.direction) * actionDistance;
                                 }
 
-                                velocity += math.normalizesafe(gravity) * -action.info.actorJumpSpeed;
-                                if ((action.instance.flag & GameActionFlag.ActorOnSurface) == GameActionFlag.ActorOnSurface)
-                                    velocity = math.mul(surfaceRotation, velocity);
+                                if (math.lengthsq(distance) <= math.FLT_MIN_NORMAL)
+                                {
+                                    //UnityEngine.Debug.LogWarning($"Reset Distance!");
 
-                                //UnityEngine.Debug.Log($"{velocity}");
-
-                                velocityComponent.value = velocity;
-                                velocityComponent.time = command.time;
-                                velocityComponent.time += action.info.actorJumpStartTime;
-                                --velocityComponent.time.count;
-
-                                velocityComponent.duration = 0.0f;
-                                velocityComponents.Add(velocityComponent);
+                                    distance = forward;
+                                }
                             }
 
-                            if (math.abs(action.info.actorMoveSpeedIndirect) > math.FLT_MIN_NORMAL)
+#if GAME_DEBUG_COMPARSION
+                            //UnityEngine.Debug.Log($"Do: {frameIndex} : {entityIndices[index].value} : {entityArray[index].Index} : {command.index} : {position} : {translations[index].Value} : {action.instance.offset}");
+
+                            stream.Assert(forwardName, forward);
+                            stream.Assert(offsetName, offset);
+                            stream.Assert(rotationName, rotation);
+                            stream.Assert(positionName, position);
+                            stream.Assert(distanceName, distance);
+#endif
+                            quaternion inverseSurfaceRotation = math.inverse(surfaceRotation);
+                            float3 surfaceForward = math.mul(inverseSurfaceRotation, forward);
+                            float surfaceForwardLength = math.lengthsq(surfaceForward.xz), surfaceAngle;
+                            if (surfaceForwardLength > math.FLT_MIN_NORMAL)
                             {
-                                velocityComponent.mode = GameNodeVelocityComponent.Mode.Indirect;
+                                surfaceAngle = math.atan2(surfaceForward.x, action.info.distance < 0.0f ? -surfaceForward.z : surfaceForward.z);
 
-                                float3 velocity = moveDirection * action.info.actorMoveSpeedIndirect;
-                                if ((action.instance.flag & GameActionFlag.ActorOnSurface) == GameActionFlag.ActorOnSurface)
-                                    velocity = math.mul(surfaceRotation, velocity);
+#if GAME_DEBUG_COMPARSION
+                                stream.Assert(angleName, surfaceAngle);
+#endif
 
-                                //UnityEngine.Debug.Log($"{velocity}");
+                                if (index < angles.Length)
+                                {
+                                    GameNodeAngle angle;
+                                    angle.value = (half)surfaceAngle;
 
-                                velocityComponent.value = velocity;
+                                    angles[index] = angle;
+                                }
 
-                                velocityComponent.time = command.time;
-                                velocityComponent.time += action.info.actorMoveStartTimeIndirect;
-                                --velocityComponent.time.count;
+                                if (index < characterAngles.Length)
+                                {
+                                    GameNodeCharacterAngle angle;
+                                    angle.value = (half)surfaceAngle;
 
-                                velocityComponent.duration = action.info.actorMoveDurationIndirect;
-                                velocityComponents.Add(velocityComponent);
-                            }
+                                    characterAngles[index] = angle;
+                                }
 
-                            if ((action.instance.flag & GameActionFlag.MoveWithActor) == GameActionFlag.MoveWithActor)
-                            {
-                                velocityComponent.mode = GameNodeVelocityComponent.Mode.Indirect;
-
-                                velocityComponent.value = direction * action.info.actionMoveSpeed;
-
-                                velocityComponent.time = command.time;
-                                velocityComponent.time += action.info.damageTime;
-
-                                velocityComponent.duration = 0.0f;// action.info.actionMoveTime;
-                                velocityComponents.Add(velocityComponent);
-                            }
-                        }
-
-                        if (index < velocities.Length)
-                        {
-                            GameNodeVelocity velocity;
-                            velocity.value = action.info.actorMoveStartTime + action.info.actorMoveDuration < action.info.artTime ?
-                                0.0f : action.info.actorMoveSpeed;
-
-                            if (action.info.actorMomentum > math.FLT_MIN_NORMAL)
-                                velocity.value = math.max(velocity.value, velocities[index].value);
-
-                            velocities[index] = velocity;
-                        }
-
-                        if (index < positions.Length)
-                            positions[index].Clear();
-
-                        if (nodeStatusValue != nodeStatus.value)
-                        {
-                            nodeStatus.value = nodeStatusValue;
-                            nodeStatusMap[entity] = nodeStatus;
-                        }
-
-                        var artTime = command.time;
-                        artTime += action.info.artTime;
-                        if (index < this.delay.Length)
-                        {
-                            //var delay = this.delay[index];
-                            GameNodeDelay delay;
-                            delay.time = command.time;
-                            if (action.info.delayDuration > math.FLT_MIN_NORMAL)
-                            {
-                                delay.startTime = (half)action.info.delayStartTime;
-                                delay.endTime = (half)action.info.delayDuration;
+                                if (index < rotations.Length)
+                                {
+                                    Rotation result;
+                                    //result.Value = quaternion.RotateY(surfaceAngle);
+                                    result.Value = index < characters.Length && (characters[index].flag & GameNodeCharacterData.Flag.SurfaceUp) == GameNodeCharacterData.Flag.SurfaceUp ?
+                                        math.mul(surfaceRotation, quaternion.RotateY(surfaceAngle)) :
+                                        quaternion.RotateY(surfaceAngle);
+                                    rotations[index] = result;
+                                }
                             }
                             else
+                                return;
+
+                            float3 direction = math.normalizesafe(distance, forward);
+                            if (math.any(math.abs(action.info.angleLimit) > math.FLT_MIN_NORMAL))
                             {
-                                delay.startTime = half.zero;
-                                delay.endTime = (half)action.info.artTime;
+                                float3 surfaceDirection = math.mul(inverseSurfaceRotation, direction);
+                                float surfaceDirectionLength = math.lengthsq(surfaceDirection.xz);
+                                if (surfaceDirectionLength > math.FLT_MIN_NORMAL)
+                                {
+                                    if (math.any(math.abs(action.info.angleLimit.xy) > math.FLT_MIN_NORMAL))
+                                    {
+                                        /*quaternion horizontalRotation = Math.FromToRotation(surfaceForward.xz * math.rsqrt(surfaceForwardLength), surfaceDirection.xz * math.rsqrt(surfaceDirectionLength));
+                                        horizontalRotation = Math.RotateTowards(quaternion.identity, horizontalRotation, action.info.angleLimit.x);
+                                        surfaceDirection = math.mul(horizontalRotation, surfaceDirection);*/
+                                        float horizontalAngle = math.atan2(surfaceDirection.x, surfaceDirection.z);
+                                        quaternion horizontalRotation = quaternion.RotateY(math.clamp(horizontalAngle - surfaceAngle, action.info.angleLimit.x, action.info.angleLimit.y) + surfaceAngle);
+                                        surfaceDirection = math.forward(horizontalRotation);
+                                    }
+
+                                    if (math.any(math.abs(action.info.angleLimit.zw) > math.FLT_MIN_NORMAL))
+                                    {
+                                        surfaceDirectionLength = math.sqrt(surfaceDirectionLength);
+                                        float verticalAngle = math.atan2(surfaceDirection.y, surfaceDirectionLength);
+                                        verticalAngle = math.clamp(verticalAngle, action.info.angleLimit.z, action.info.angleLimit.w);
+                                        surfaceDirection.y = math.tan(verticalAngle) * surfaceDirectionLength;
+                                        surfaceDirection = math.normalize(surfaceDirection);
+                                    }
+                                }
+                                else if (math.any(math.abs(action.info.angleLimit.zw) > math.FLT_MIN_NORMAL))
+                                {
+                                    float verticalAngle = math.clamp(math.PI * 0.5f * math.sign(surfaceDirection.y), action.info.angleLimit.z, action.info.angleLimit.w);
+                                    surfaceDirection.y = math.tan(verticalAngle) * math.sqrt(surfaceForwardLength);
+                                    surfaceDirection.xz = surfaceForward.xz;
+                                    surfaceDirection = math.normalize(surfaceDirection);
+                                }
+
+                                direction = math.mul(surfaceRotation, surfaceDirection);
                             }
 
-                            this.delay[index] = delay;
-                        }
+                            //因为Dreamer会导致卡死
+                            int nodeStatusValue = 0;// nodeStatus.value & (GameNodeStatus.DELAY | GameNodeStatus.OVER);
 
-                        actorTime.actionMask = action.instance.actionMask;
-                        actorTime.value = command.time + action.info.performTime;
-                        actorTimes[index] = actorTime;
-
-                        var actorInfo = actorInfos[index];
-                        //distance += offset;
-                        int version = ++actorInfo.version;
-
-                        actorInfo.alertTime = command.time;
-
-                        actorInfos[index] = actorInfo;
-
-                        GameEntityActionInfo actionInfo;
-                        actionInfo.commandVersion = command.version;
-                        actionInfo.version = version;
-                        actionInfo.index = command.index;
-                        actionInfo.hit = action.info.hitSource;
-                        actionInfo.time = artTime;
-                        actionInfo.forward = forward;
-                        actionInfo.distance = distance;// command.distance;// distance + offset;
-                                                       //actionInfo.offset = offset;
-                        actionInfo.entity = command.entity;
-                        actionInfo.commander = commander;
-
-                        actionInfos[entity] = actionInfo;
-
-                        actorActionInfo.coolDownTime = command.time + action.info.coolDownTime;
-                        actorActionInfos[command.index] = actorActionInfo;
-
-                        //UnityEngine.Debug.Log($"{position} : {distance}");
-                        //if (action.collider.IsCreated)
-                        {
-                            //UnityEngine.Debug.LogError($"Actor {entity.Index} : {command.version}");
-
-                            GameEntityCommandActionCreate result;
-
-                            result.value.version = version;
-                            result.value.index = command.index;
-                            result.value.actionIndex = actionIndex;
-                            result.value.time = command.time;
-                            result.value.entity = entity;
-                            result.valueEx.camp = camps[index].value;
-                            result.valueEx.direction = direction;
-                            //result.valueEx.offset = offset;
-                            result.valueEx.position = position;
-                            result.valueEx.targetPosition = position + distance;
-                            result.valueEx.target = command.entity;
-                            result.valueEx.info = action.info;
-                            result.valueEx.value = action.instance;
-                            result.valueEx.entityArchetype = archetypes[index].value;
-                            result.valueEx.collider = actionCollider;
-                            result.valueEx.transform.rot = quaternion.LookRotationSafe(
-                                (action.instance.flag & GameActionFlag.MoveInAir) == GameActionFlag.MoveInAir ? Math.ProjectOnPlaneSafe(direction, up) : direction,
-                                up);
-
-                            switch (action.instance.rangeType)
+                            GameNodeVelocityComponent velocityComponent;
+                            //velocityComponent.value = float3.zero;
+                            if (index < velocityComponents.Length)
                             {
-                                case GameActionRangeType.Destination:
-                                    result.valueEx.transform.pos = result.valueEx.targetPosition;
-                                    break;
-                                case GameActionRangeType.All:
-                                    result.valueEx.transform.pos = (result.valueEx.position + result.valueEx.targetPosition) * 0.5f;
-                                    break;
-                                default:
-                                    result.valueEx.transform.pos = result.valueEx.position;
-                                    break;
+                                var velocityComponents = this.velocityComponents[index];
+                                velocityComponents.Clear();
+
+                                float3 moveDirection = (action.instance.flag & GameActionFlag.ActorInAir) == GameActionFlag.ActorInAir ?
+                                    forward : Math.ProjectOnPlane(forward, up);//math.normalizesafe(math.float3(forward.x, 0.0f, forward.z));
+                                if (math.abs(action.info.actorMoveSpeed) > math.FLT_MIN_NORMAL)
+                                {
+                                    velocityComponent.mode = GameNodeVelocityComponent.Mode.Direct;
+
+                                    velocityComponent.value = moveDirection * action.info.actorMoveSpeed;
+
+                                    /*if ((action.instance.flag & GameActionFlag.MoveOnSurface) == GameActionFlag.MoveOnSurface)
+                                        velocityComponent.value = math.mul(surfaceRotation, velocityComponent.value);*/
+
+                                    velocityComponent.time = command.time;
+                                    velocityComponent.time += action.info.actorMoveStartTime;
+                                    --velocityComponent.time.count;
+
+                                    velocityComponent.duration = action.info.actorMoveDuration;
+                                    velocityComponents.Add(velocityComponent);
+                                }
+
+                                if (math.abs(action.info.actorJumpSpeed) > math.FLT_MIN_NORMAL)
+                                {
+                                    velocityComponent.mode = GameNodeVelocityComponent.Mode.Indirect;
+
+                                    float3 velocity = float3.zero;
+                                    if (action.info.actorMomentum > math.FLT_MIN_NORMAL)
+                                    {
+                                        var characterVelocity = characterVelocities[index];
+                                        characterVelocity.value -= Math.ProjectSafe(characterVelocity.value, gravity);
+                                        velocity += Math.Project(characterVelocity.value * action.info.actorMomentum, forward);
+
+                                        characterVelocity.value = float3.zero;
+                                        characterVelocities[index] = characterVelocity;
+
+                                        physicsVelocities[index] = default;
+                                    }
+
+                                    if (action.info.actorJumpSpeed > math.FLT_MIN_NORMAL)
+                                    {
+                                        nodeStatusValue |= GameNodeActorStatus.NODE_STATUS_ACT;
+
+                                        if (index < actorStates.Length)
+                                        {
+                                            GameNodeActorStatus status;
+                                            status.value = GameNodeActorStatus.Status.Jump;
+                                            status.time = command.time;
+                                            actorStates[index] = status;
+                                        }
+                                    }
+
+                                    velocity += math.normalizesafe(gravity) * -action.info.actorJumpSpeed;
+                                    if ((action.instance.flag & GameActionFlag.ActorOnSurface) == GameActionFlag.ActorOnSurface)
+                                        velocity = math.mul(surfaceRotation, velocity);
+
+                                    //UnityEngine.Debug.Log($"{velocity}");
+
+                                    velocityComponent.value = velocity;
+                                    velocityComponent.time = command.time;
+                                    velocityComponent.time += action.info.actorJumpStartTime;
+                                    --velocityComponent.time.count;
+
+                                    velocityComponent.duration = 0.0f;
+                                    velocityComponents.Add(velocityComponent);
+                                }
+
+                                if (math.abs(action.info.actorMoveSpeedIndirect) > math.FLT_MIN_NORMAL)
+                                {
+                                    velocityComponent.mode = GameNodeVelocityComponent.Mode.Indirect;
+
+                                    float3 velocity = moveDirection * action.info.actorMoveSpeedIndirect;
+                                    if ((action.instance.flag & GameActionFlag.ActorOnSurface) == GameActionFlag.ActorOnSurface)
+                                        velocity = math.mul(surfaceRotation, velocity);
+
+                                    //UnityEngine.Debug.Log($"{velocity}");
+
+                                    velocityComponent.value = velocity;
+
+                                    velocityComponent.time = command.time;
+                                    velocityComponent.time += action.info.actorMoveStartTimeIndirect;
+                                    --velocityComponent.time.count;
+
+                                    velocityComponent.duration = action.info.actorMoveDurationIndirect;
+                                    velocityComponents.Add(velocityComponent);
+                                }
+
+                                if ((action.instance.flag & GameActionFlag.MoveWithActor) == GameActionFlag.MoveWithActor)
+                                {
+                                    velocityComponent.mode = GameNodeVelocityComponent.Mode.Indirect;
+
+                                    velocityComponent.value = direction * action.info.actionMoveSpeed;
+
+                                    velocityComponent.time = command.time;
+                                    velocityComponent.time += action.info.damageTime;
+
+                                    velocityComponent.duration = 0.0f;// action.info.actionMoveTime;
+                                    velocityComponents.Add(velocityComponent);
+                                }
                             }
 
-                            entityManager.Enqueue(result);
-                            //Create(result, action);
+                            if (index < velocities.Length)
+                            {
+                                GameNodeVelocity velocity;
+                                velocity.value = action.info.actorMoveStartTime + action.info.actorMoveDuration < action.info.artTime ?
+                                    0.0f : action.info.actorMoveSpeed;
+
+                                if (action.info.actorMomentum > math.FLT_MIN_NORMAL)
+                                    velocity.value = math.max(velocity.value, velocities[index].value);
+
+                                velocities[index] = velocity;
+                            }
+
+                            if (index < positions.Length)
+                                positions[index].Clear();
+
+                            if (nodeStatusValue != nodeStatus.value)
+                            {
+                                nodeStatus.value = nodeStatusValue;
+                                nodeStatusMap[entity] = nodeStatus;
+                            }
+
+                            var artTime = command.time;
+                            artTime += action.info.artTime;
+                            if (index < this.delay.Length)
+                            {
+                                //var delay = this.delay[index];
+                                GameNodeDelay delay;
+                                delay.time = command.time;
+                                if (action.info.delayDuration > math.FLT_MIN_NORMAL)
+                                {
+                                    delay.startTime = (half)action.info.delayStartTime;
+                                    delay.endTime = (half)action.info.delayDuration;
+                                }
+                                else
+                                {
+                                    delay.startTime = half.zero;
+                                    delay.endTime = (half)action.info.artTime;
+                                }
+
+                                this.delay[index] = delay;
+                            }
+
+                            actorTime.actionMask = action.instance.actionMask;
+                            actorTime.value = command.time + action.info.performTime;
+                            actorTimes[index] = actorTime;
+
+                            var actorInfo = actorInfos[index];
+                            //distance += offset;
+                            int version = ++actorInfo.version;
+
+                            actorInfo.alertTime = command.time;
+
+                            actorInfos[index] = actorInfo;
+
+                            GameEntityActionInfo actionInfo;
+                            actionInfo.commandVersion = command.version;
+                            actionInfo.version = version;
+                            actionInfo.index = command.index;
+                            actionInfo.hit = action.info.hitSource;
+                            actionInfo.time = artTime;
+                            actionInfo.forward = forward;
+                            actionInfo.distance = distance;// command.distance;// distance + offset;
+                                                           //actionInfo.offset = offset;
+                            actionInfo.entity = command.entity;
+                            actionInfo.commander = commander;
+
+                            actionInfos[entity] = actionInfo;
+
+                            actorActionInfo.coolDownTime = command.time + action.info.coolDownTime;
+                            actorActionInfos[command.index] = actorActionInfo;
+
+                            //UnityEngine.Debug.Log($"{position} : {distance}");
+                            //if (action.collider.IsCreated)
+                            {
+                                //UnityEngine.Debug.LogError($"Actor {entity.Index} : {command.version}");
+
+                                GameEntityCommandActionCreate result;
+
+                                result.value.version = version;
+                                result.value.index = command.index;
+                                result.value.actionIndex = actionIndex;
+                                result.value.time = command.time;
+                                result.value.entity = entity;
+                                result.valueEx.camp = camps[index].value;
+                                result.valueEx.direction = direction;
+                                //result.valueEx.offset = offset;
+                                result.valueEx.position = position;
+                                result.valueEx.targetPosition = position + distance;
+                                result.valueEx.target = command.entity;
+                                result.valueEx.info = action.info;
+                                result.valueEx.value = action.instance;
+                                result.valueEx.entityArchetype = archetypes[index].value;
+                                result.valueEx.collider = actionCollider;
+                                result.valueEx.transform.rot = quaternion.LookRotationSafe(
+                                    (action.instance.flag & GameActionFlag.MoveInAir) == GameActionFlag.MoveInAir ? Math.ProjectOnPlaneSafe(direction, up) : direction,
+                                    up);
+
+                                switch (action.instance.rangeType)
+                                {
+                                    case GameActionRangeType.Destination:
+                                        result.valueEx.transform.pos = result.valueEx.targetPosition;
+                                        break;
+                                    case GameActionRangeType.All:
+                                        result.valueEx.transform.pos = (result.valueEx.position + result.valueEx.targetPosition) * 0.5f;
+                                        break;
+                                    default:
+                                        result.valueEx.transform.pos = result.valueEx.position;
+                                        break;
+                                }
+
+                                entityManager.Enqueue(result);
+                                //Create(result, action);
+                            }
                         }
                     }
 #if GAME_DEBUG_COMPARSION
-                else
-                    UnityEngine.Debug.Log($"Do Fail {frameIndex} : {entityIndices[index].value} : {entityArray[index].Index} : {actorActionInfo.coolDownTime}");
+                    else
+                        UnityEngine.Debug.Log($"Do Fail {frameIndex} : {entityIndices[index].value} : {entityArray[index].Index} : {actorActionInfo.coolDownTime}");
 #endif
                 }
             }
@@ -1779,6 +1800,9 @@ public partial struct GameEntityActorSystem : ISystem
         public ComponentTypeHandle<GameEntityCamp> campType;
 
         [ReadOnly]
+        public ComponentTypeHandle<GameEntityRageMax> rageMaxType;
+
+        [ReadOnly]
         public ComponentTypeHandle<GameEntityActorData> actorType;
 
         [ReadOnly]
@@ -1804,6 +1828,8 @@ public partial struct GameEntityActorSystem : ISystem
 
         public ComponentTypeHandle<Rotation> rotationType;
 
+        public ComponentTypeHandle<PhysicsVelocity> physicsVelocityType;
+
         public ComponentTypeHandle<GameNodeDelay> delayType;
 
         public ComponentTypeHandle<GameNodeVelocity> velocityType;
@@ -1814,9 +1840,9 @@ public partial struct GameEntityActorSystem : ISystem
 
         public ComponentTypeHandle<GameNodeCharacterVelocity> characterVelocityType;
 
-        public ComponentTypeHandle<PhysicsVelocity> physicsVelocityType;
-
         public ComponentTypeHandle<GameNodeActorStatus> actorStatusType;
+
+        public ComponentTypeHandle<GameEntityRage> rageType;
 
         public ComponentTypeHandle<GameEntityActorTime> actorTimeType;
 
@@ -1880,6 +1906,7 @@ public partial struct GameEntityActorSystem : ISystem
             act.surfaces = chunk.GetNativeArray(ref surfaceType);
             act.characters = chunk.GetNativeArray(ref characterType);
             act.camps = chunk.GetNativeArray(ref campType);
+            act.rageMaxes = chunk.GetNativeArray(ref rageMaxType);
             act.actors = chunk.GetNativeArray(ref actorType);
             act.archetypes = chunk.GetNativeArray(ref archetypeType);
             act.commands = chunk.GetNativeArray(ref commandType);
@@ -1892,14 +1919,15 @@ public partial struct GameEntityActorSystem : ISystem
             act.positions = chunk.GetBufferAccessor(ref positionType);
             act.translations = chunk.GetNativeArray(ref translationType);
             act.rotations = chunk.GetNativeArray(ref rotationType);
+            act.physicsVelocities = chunk.GetNativeArray(ref physicsVelocityType);
             act.delay = chunk.GetNativeArray(ref delayType);
             act.velocities = chunk.GetNativeArray(ref velocityType);
             act.angles = chunk.GetNativeArray(ref angleType);
             act.characterAngles = chunk.GetNativeArray(ref characterAngleType);
             act.characterVelocities = chunk.GetNativeArray(ref characterVelocityType);
-            act.physicsVelocities = chunk.GetNativeArray(ref physicsVelocityType);
             //act.characterFlags = chunk.GetNativeArray(characterFlagType);
             act.actorStates = chunk.GetNativeArray(ref actorStatusType);
+            act.rages = chunk.GetNativeArray(ref rageType);
             act.actorTimes = chunk.GetNativeArray(ref actorTimeType);
             act.actorInfos = chunk.GetNativeArray(ref actorInfoType);
             act.commandVersions = chunk.GetNativeArray(ref commandVersionType);
@@ -1972,6 +2000,8 @@ public partial struct GameEntityActorSystem : ISystem
 
     private ComponentTypeHandle<GameEntityCamp> __campType;
 
+    private ComponentTypeHandle<GameEntityRageMax> __rageMaxType;
+
     private ComponentTypeHandle<GameEntityActorData> __actorType;
 
     private ComponentTypeHandle<GameEntityArchetype> __archetypeType;
@@ -1992,6 +2022,8 @@ public partial struct GameEntityActorSystem : ISystem
 
     private ComponentTypeHandle<Rotation> __rotationType;
 
+    private ComponentTypeHandle<PhysicsVelocity> __physicsVelocityType;
+
     private ComponentTypeHandle<GameNodeDelay> __delayType;
 
     private ComponentTypeHandle<GameNodeVelocity> __velocityType;
@@ -2002,9 +2034,9 @@ public partial struct GameEntityActorSystem : ISystem
 
     private ComponentTypeHandle<GameNodeCharacterVelocity> __characterVelocityType;
 
-    private ComponentTypeHandle<PhysicsVelocity> __physicsVelocityType;
-
     private ComponentTypeHandle<GameNodeActorStatus> __actorStatusType;
+
+    private ComponentTypeHandle<GameEntityRage> __rageType;
 
     private ComponentTypeHandle<GameEntityActorTime> __actorTimeType;
 
@@ -2075,6 +2107,7 @@ public partial struct GameEntityActorSystem : ISystem
         __surfaceType = state.GetComponentTypeHandle<GameNodeSurface>(true);
         __characterType = state.GetComponentTypeHandle<GameNodeCharacterData>(true);
         __campType = state.GetComponentTypeHandle<GameEntityCamp>(true);
+        __rageMaxType = state.GetComponentTypeHandle<GameEntityRageMax>(true);
         __actorType = state.GetComponentTypeHandle<GameEntityActorData>(true);
         __archetypeType = state.GetComponentTypeHandle<GameEntityArchetype>(true);
         __commandType = state.GetComponentTypeHandle<GameEntityActionCommand>(true);
@@ -2085,13 +2118,14 @@ public partial struct GameEntityActorSystem : ISystem
         __velocityComponentType = state.GetBufferTypeHandle<GameNodeVelocityComponent>();
         __positionType = state.GetBufferTypeHandle<GameNodePosition>();
         __rotationType = state.GetComponentTypeHandle<Rotation>();
+        __physicsVelocityType = state.GetComponentTypeHandle<PhysicsVelocity>();
         __delayType = state.GetComponentTypeHandle<GameNodeDelay>();
         __velocityType = state.GetComponentTypeHandle<GameNodeVelocity>();
         __angleType = state.GetComponentTypeHandle<GameNodeAngle>();
         __characterAngleType = state.GetComponentTypeHandle<GameNodeCharacterAngle>();
         __characterVelocityType = state.GetComponentTypeHandle<GameNodeCharacterVelocity>();
-        __physicsVelocityType = state.GetComponentTypeHandle<PhysicsVelocity>();
         __actorStatusType = state.GetComponentTypeHandle<GameNodeActorStatus>();
+        __rageType = state.GetComponentTypeHandle<GameEntityRage>();
         __actorTimeType = state.GetComponentTypeHandle<GameEntityActorTime>();
         __actorInfoType = state.GetComponentTypeHandle<GameEntityActorInfo>();
         __commanderType = state.GetComponentTypeHandle<GameEntityActionCommander>();
@@ -2134,7 +2168,7 @@ public partial struct GameEntityActorSystem : ISystem
         act.actions = __actionSetGroup.GetSingleton<GameActionSetData>().definition;
         act.items = __actionInfoSetGroup.GetSingleton<GameActionItemSetData>().definition;
         act.actionColliders = __actionColliders.reader;
-        act.disabled = __disabled.UpdateAsRef(ref state).UpdateAsRef(ref state);
+        act.disabled = __disabled.UpdateAsRef(ref state);
         act.translations = __translations.UpdateAsRef(ref state);
         act.rotations = __rotations.UpdateAsRef(ref state);
         act.physicsMasses = __physicsMasses.UpdateAsRef(ref state);
@@ -2148,6 +2182,7 @@ public partial struct GameEntityActorSystem : ISystem
         act.surfaceType = __surfaceType.UpdateAsRef(ref state);
         act.characterType = __characterType.UpdateAsRef(ref state);
         act.campType = __campType.UpdateAsRef(ref state);
+        act.rageMaxType = __rageMaxType.UpdateAsRef(ref state);
         act.actorType = __actorType.UpdateAsRef(ref state);
         act.archetypeType = __archetypeType.UpdateAsRef(ref state);
         act.commandType = __commandType.UpdateAsRef(ref state);
@@ -2158,13 +2193,14 @@ public partial struct GameEntityActorSystem : ISystem
         act.velocityComponentType = __velocityComponentType.UpdateAsRef(ref state);
         act.positionType = __positionType.UpdateAsRef(ref state);
         act.rotationType = __rotationType.UpdateAsRef(ref state);
+        act.physicsVelocityType = __physicsVelocityType.UpdateAsRef(ref state);
         act.delayType = __delayType.UpdateAsRef(ref state);
         act.velocityType = __velocityType.UpdateAsRef(ref state);
         act.angleType = __angleType.UpdateAsRef(ref state);
         act.characterAngleType = __characterAngleType.UpdateAsRef(ref state);
         act.characterVelocityType = __characterVelocityType.UpdateAsRef(ref state);
-        act.physicsVelocityType = __physicsVelocityType.UpdateAsRef(ref state);
         act.actorStatusType = __actorStatusType.UpdateAsRef(ref state);
+        act.rageType = __rageType.UpdateAsRef(ref state);
         act.actorTimeType = __actorTimeType.UpdateAsRef(ref state);
         act.actorInfoType = __actorInfoType.UpdateAsRef(ref state);
         act.commanderType = __commanderType.UpdateAsRef(ref state);
@@ -2216,6 +2252,10 @@ public partial struct GameEntityHitSystem : ISystem
         [ReadOnly]
         public NativeArray<Entity> entityArray;
         [ReadOnly]
+        public NativeArray<GameEntityRageMax> rageMaxes;
+        [ReadOnly]
+        public NativeArray<GameEntityRageHitScale> rageHitScales;
+        [ReadOnly]
         public NativeArray<GameEntityHit> inputs;
         [ReadOnly]
         public NativeArray<GameEntityActorData> instances;
@@ -2227,6 +2267,8 @@ public partial struct GameEntityHitSystem : ISystem
         public NativeArray<GameEntityCommandVersion> commandVersions;
 
         public NativeArray<GameEntityBreakCommand> commands;
+
+        public NativeArray<GameEntityRage> rages;
 
         [NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameEntityHit> outputs;
@@ -2248,8 +2290,6 @@ public partial struct GameEntityHitSystem : ISystem
             //只有被打的时候才计时,否则会因为SetChangedVersionFilter不同步
             if (/*hit.value > math.FLT_MIN_NORMAL && */hit.delta > math.FLT_MIN_NORMAL)
             {
-                hit.delta = 0.0f;
-
                 var actorInfo = actorInfos[index];
 
                 //UnityEngine.Debug.Log("Hit: " + entityArray[index].ToString() + ":" + hit.value + ":" + actionInfo.hit + ":" + hit.time + ":" + actionInfo.time + (actorInfo.version != actionInfo.version));
@@ -2285,6 +2325,20 @@ public partial struct GameEntityHitSystem : ISystem
                     hit.normal = float3.zero;
                 }
 
+                if(index < rages.Length)
+                {
+                    var rage = rages[index];
+                    rage.value += hit.delta * (index < rageHitScales.Length ? rageHitScales[index].value : 1.0f);
+
+                    if (index < rageMaxes.Length)
+                        rage.value = math.clamp(rage.value, 0.0f, rageMaxes[index].value);
+                    else
+                        rage.value = math.max(rage.value, 0.0f);
+
+                    rages[index] = rage;
+                }
+
+                hit.delta = 0.0f;
                 outputs[entityArray[index]] = hit;
             }
 
@@ -2297,6 +2351,10 @@ public partial struct GameEntityHitSystem : ISystem
     {
         [ReadOnly]
         public EntityTypeHandle entityType;
+        [ReadOnly]
+        public ComponentTypeHandle<GameEntityRageMax> rageMaxType;
+        [ReadOnly]
+        public ComponentTypeHandle<GameEntityRageHitScale> rageHitScaleType;
         [ReadOnly]
         public ComponentTypeHandle<GameEntityHit> hitType;
         //[ReadOnly]
@@ -2315,6 +2373,8 @@ public partial struct GameEntityHitSystem : ISystem
         [NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameEntityHit> hits;
 
+        public ComponentTypeHandle<GameEntityRage> rageType;
+
 #if GAME_DEBUG_COMPARSION
         public uint frameIndex;
 
@@ -2328,6 +2388,8 @@ public partial struct GameEntityHitSystem : ISystem
         {
             ComputeHits computeHits;
             computeHits.entityArray = chunk.GetNativeArray(entityType);
+            computeHits.rageMaxes = chunk.GetNativeArray(ref rageMaxType);
+            computeHits.rageHitScales = chunk.GetNativeArray(ref rageHitScaleType);
             computeHits.inputs = chunk.GetNativeArray(ref hitType);
             //computeHits.actorHits = chunk.GetNativeArray(ref actorHitType);
             computeHits.instances = chunk.GetNativeArray(ref instanceType);
@@ -2336,6 +2398,7 @@ public partial struct GameEntityHitSystem : ISystem
             computeHits.commandVersions = chunk.GetNativeArray(ref commandVersionType);
             computeHits.commands = chunk.GetNativeArray(ref commandType);
             computeHits.outputs = hits;
+            computeHits.rages = chunk.GetNativeArray(ref rageType);
             //computeHits.entityManager = entityManager;
             //computeHits.results = results;
 #if GAME_DEBUG_COMPARSION
@@ -2358,6 +2421,8 @@ public partial struct GameEntityHitSystem : ISystem
     private EntityTypeHandle __entityType;
 
     private ComponentTypeHandle<GameEntityHit> __hitType;
+    private ComponentTypeHandle<GameEntityRageMax> __rageMaxType;
+    private ComponentTypeHandle<GameEntityRageHitScale> __rageHitScaleType;
     //private ComponentTypeHandle<GameEntityActorHit> __actorHitType;
     private ComponentTypeHandle<GameEntityActorData> __instanceType;
     private ComponentTypeHandle<GameEntityActorInfo> __actorInfoType;
@@ -2367,6 +2432,8 @@ public partial struct GameEntityHitSystem : ISystem
     private ComponentTypeHandle<GameEntityBreakCommand> __commandType;
 
     private ComponentLookup<GameEntityHit> __hits;
+
+    private ComponentTypeHandle<GameEntityRage> __rageType;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
@@ -2379,6 +2446,8 @@ public partial struct GameEntityHitSystem : ISystem
         __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameEntityHit>());
 
         __entityType = state.GetEntityTypeHandle();
+        __rageMaxType = state.GetComponentTypeHandle<GameEntityRageMax>(true);
+        __rageHitScaleType = state.GetComponentTypeHandle<GameEntityRageHitScale>(true);
         __hitType = state.GetComponentTypeHandle<GameEntityHit>(true);
         //__actorHitType = state.GetComponentTypeHandle<GameEntityActorHit>(true);
         __instanceType = state.GetComponentTypeHandle<GameEntityActorData>(true);
@@ -2387,6 +2456,7 @@ public partial struct GameEntityHitSystem : ISystem
         __commandVersionType = state.GetComponentTypeHandle<GameEntityCommandVersion>(true);
         __commandType = state.GetComponentTypeHandle<GameEntityBreakCommand>();
         __hits = state.GetComponentLookup<GameEntityHit>();
+        __rageType = state.GetComponentTypeHandle<GameEntityRage>(true);
     }
 
     [BurstCompile]
@@ -2400,6 +2470,8 @@ public partial struct GameEntityHitSystem : ISystem
     {
         ComputeHitsEx computeHits;
         computeHits.entityType = __entityType.UpdateAsRef(ref state);
+        computeHits.rageMaxType = __rageMaxType.UpdateAsRef(ref state);
+        computeHits.rageHitScaleType = __rageHitScaleType.UpdateAsRef(ref state);
         computeHits.hitType = __hitType.UpdateAsRef(ref state);
         //computeHits.actorHitType = __actorHitType.UpdateAsRef(ref state);
         computeHits.instanceType = __instanceType.UpdateAsRef(ref state);
@@ -2408,6 +2480,7 @@ public partial struct GameEntityHitSystem : ISystem
         computeHits.commandVersionType = __commandVersionType.UpdateAsRef(ref state);
         computeHits.commandType = __commandType.UpdateAsRef(ref state);
         computeHits.hits = __hits.UpdateAsRef(ref state);
+        computeHits.rageType = __rageType.UpdateAsRef(ref state);
 
 #if GAME_DEBUG_COMPARSION
         computeHits.frameIndex = SystemAPI.GetSingleton<GameSyncManager>().SyncTime.frameIndex;

@@ -69,6 +69,12 @@ public struct GameActionInfo
 
     [Tooltip("削韧")]
     public float hitDestination;
+
+    [Tooltip("使用技能消耗的怒气值")]
+    public float rage;
+
+    [Tooltip("使用技能消耗的怒气值")]
+    public float rageCost;
     
     [Tooltip("冷却时间")]
     public float coolDownTime;
@@ -170,6 +176,7 @@ public struct GameActionInfo
     {
         x.hitSource += y.hitSource;
         x.hitDestination += y.hitDestination;
+        x.rage += y.rage;
         x.coolDownTime += y.coolDownTime;
         x.artTime += y.artTime;
         //x.castingTime += y.castingTime;
@@ -206,6 +213,7 @@ public struct GameActionInfo
     {
         x.hitSource -= y.hitSource;
         x.hitDestination -= y.hitDestination;
+        x.rage -= y.rage;
         x.coolDownTime -= y.coolDownTime;
         x.artTime -= y.artTime;
         //x.castingTime -= y.castingTime;

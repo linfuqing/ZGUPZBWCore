@@ -1009,6 +1009,112 @@ public partial struct GameEntityRollbackSystem : ISystem, IRollbackCore
 }
 
 [BurstCompile,
+    CreateAfter(typeof(RollbackSystemGroup)),
+    UpdateInGroup(typeof(RollbackSystemGroup)),
+    AutoCreateIn("Client")]
+public partial struct GameEntityRageRollbackSystem : ISystem, IRollbackCore
+{
+    public struct Restore : IRollbackRestore
+    {
+        public RollbackComponentRestoreFunction<GameEntityRage> rages;
+
+        public void Execute(int index, int entityIndex, in Entity entity)
+        {
+            if (rages.IsExists(entity))
+                rages.InvokeDiff(entityIndex, entity);
+        }
+    }
+
+    public struct Save : IRollbackSave
+    {
+        public RollbackComponentSaveFunction<GameEntityRage> rages;
+
+        public void Execute(in ArchetypeChunk chunk, int firstEntityIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+        {
+            rages.Invoke(chunk, firstEntityIndex, useEnabledMask, chunkEnabledMask);
+        }
+    }
+
+    public struct Clear : IRollbackClear
+    {
+        public RollbackComponentClearFunction<GameEntityRage> rages;
+
+        public void Remove(int fromIndex, int count)
+        {
+        }
+
+        public void Move(int fromIndex, int toIndex, int count)
+        {
+            rages.Move(fromIndex, toIndex, count);
+        }
+
+        public void Resize(int count)
+        {
+            rages.Resize(count);
+        }
+    }
+
+    private EntityQuery __group;
+
+    private RollbackManager<Restore, Save, Clear> __manager;
+
+    private RollbackComponent<GameEntityRage> __rages;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<RollbackObject, GameEntityRage>()
+                    .Build(ref state);
+
+        var containerManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<RollbackSystemGroup>().containerManager;
+
+        __manager = containerManager.CreateManager<Restore, Save, Clear>(ref state);
+
+        __rages = containerManager.CreateComponent<GameEntityRage>(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        __manager.Update(ref state, ref this);
+    }
+
+    public void ScheduleRestore(uint frameIndex, ref SystemState state)
+    {
+        Restore restore;
+        restore.rages = __manager.DelegateRestore(__rages, ref state);
+
+        state.Dependency = __manager.Schedule(restore, frameIndex, state.Dependency);
+    }
+
+    public void ScheduleSave(uint frameIndex, in EntityTypeHandle entityType, ref SystemState state)
+    {
+        var data = new RollbackSaveData(__group, ref state);
+
+        Save save;
+        save.rages = __manager.DelegateSave(__rages, ref data, ref state);
+
+        state.Dependency = __manager.ScheduleParallel(save, frameIndex, entityType, __group, data);
+    }
+
+    public void ScheduleClear(uint maxFrameIndex, uint frameIndex, uint frameCount, ref SystemState state)
+    {
+        Clear clear;
+        clear.rages = __manager.DelegateClear(__rages);
+
+        state.Dependency = __manager.Schedule(clear, maxFrameIndex, frameIndex, frameCount, state.Dependency);
+    }
+}
+
+[BurstCompile,
     CreateAfter(typeof(EndRollbackSystemGroupStructChangeSystem)),
     CreateAfter(typeof(RollbackSystemGroup)),
     UpdateInGroup(typeof(RollbackSystemGroup)),

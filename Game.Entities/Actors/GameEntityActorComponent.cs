@@ -399,6 +399,15 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
     internal float _mass = 0.0f;
 
     [SerializeField]
+    internal float _rage;
+
+    [SerializeField]
+    internal float _rageMax;
+
+    [SerializeField]
+    internal float _rageHitScale;
+
+    [SerializeField]
     internal int[] _actionIndices;
 
     [SerializeField]

@@ -235,18 +235,27 @@ public struct GameInputAction : IComponentData
 {
     public struct Filter : IGameInputActionFilter
     {
+        public readonly float Rage;
+        public readonly float ActionRage;
         public readonly GameEntityActorTime ActorTime;
         public readonly BlobAssetReference<GameActionSetDefinition> ActionSetDefinition;
 
-        public Filter(in GameEntityActorTime actorTime, in BlobAssetReference<GameActionSetDefinition> actionSetDefinition)
+        public Filter(
+            float rage, 
+            float actionRage, 
+            in GameEntityActorTime actorTime, 
+            in BlobAssetReference<GameActionSetDefinition> actionSetDefinition)
         {
+            Rage = rage;
+            ActionRage = actionRage;
             ActorTime = actorTime;
             ActionSetDefinition = actionSetDefinition;
         }
 
         public bool Check(int actionIndex, double time)
         {
-            return ActorTime.Did(ActionSetDefinition.Value.values[actionIndex].instance.actorMask, time);
+            ref var action = ref ActionSetDefinition.Value.values[actionIndex];
+            return action.info.rage + ActionRage <= Rage && ActorTime.Did(action.instance.actorMask, time);
         }
     }
 
@@ -283,6 +292,7 @@ public struct GameInputAction : IComponentData
         float actorVelocity,
         float dot,
         float maxDistance,
+        float rage, 
         //float responseTime,
         double time,
         in float3 position,
@@ -314,9 +324,29 @@ public struct GameInputAction : IComponentData
             target = Entity.Null;
         }
 
+        float actionRage = 0.0f, artTime = 0.0f;
+        if (items.IsCreated)
+        {
+            ref var actionItems = ref actionItemSetDefinition.Value.values;
+            int numItems = items.Length, length = actionItems.Length;
+            GameEntityItem item;
+            for (int i = 0; i < numItems; ++i)
+            {
+                item = items[i];
+
+                if (item.index >= 0 && item.index < length)
+                {
+                    ref var actionItem = ref actionItems[item.index];
+
+                    actionRage += actionItem.rage;
+                    artTime += actionItem.artTime;
+                }
+            }
+        }
+
         bool result;
         float delta = (float)(time - minActionTime), distance;
-        var filter = new Filter(actorTime, actionSetDefinition);
+        var filter = new Filter(rage, actionRage, actorTime, actionSetDefinition);
         isTimeout = time > maxActionTime;
         if (actorActionIndex == -1 || actorActionIndex == this.actorActionIndex)
         {
@@ -359,8 +389,12 @@ public struct GameInputAction : IComponentData
                 delta) &&
                 filter.Check(actorAction.actionIndex, time);
 
-            if (result && actorActionInfos[actorActionIndex].coolDownTime < time)
-                distance = action.distance;
+            if (result)
+            {
+                result = actorActionInfos[actorActionIndex].coolDownTime < time;
+                if (result)
+                    distance = action.distance;
+            }
         }
 
         if (result)
@@ -390,32 +424,10 @@ public struct GameInputAction : IComponentData
                 }
             }
 
-            int actionIndex = actorActions[actorActionIndex].actionIndex;
-            ref var action = ref actionSetDefinition.Value.values[actionIndex];
-            float performTime = action.info.performTime, artTime = action.info.artTime;
-            if (items.IsCreated)
-            {
-                ref var actionItems = ref actionItemSetDefinition.Value.values;
-                int numItems = items.Length, length = actionItems.Length;
-                GameEntityItem item;
-                for (int i = 0; i < numItems; ++i)
-                {
-                    item = items[i];
-
-                    if (item.index >= 0 && item.index < length)
-                    {
-                        ref var actionItem = ref actionItems[item.index];
-
-                        performTime += actionItem.performTime;
-                        artTime += actionItem.artTime;
-                    }
-                }
-            }
-
             this.actorActionIndex = actorActionIndex;
 
             minActionTime = time;// + performTime;
-            maxActionTime = time + artTime;// (artTime + responseTime);
+            maxActionTime = time + artTime + actionSetDefinition.Value.values[actorActions[actorActionIndex].actionIndex].info.artTime;// (artTime + responseTime);
 
             return true;
         }
@@ -1303,6 +1315,9 @@ public partial struct GameInputActionSystem : ISystem
         public ComponentLookup<GameEntityActorTime> actorTimes;
 
         [ReadOnly]
+        public ComponentLookup<GameEntityRage> rages;
+
+        [ReadOnly]
         public ComponentLookup<GameEntityCamp> camps;
 
         [ReadOnly]
@@ -1425,10 +1440,9 @@ public partial struct GameInputActionSystem : ISystem
         {
             GameInputActionTarget actionTarget;
             actionTarget.status = GameInputStatus.As(button);
-            actionTarget.direction = direction;
 
             var action = actions[index];
-            if (__Did(
+            bool result = __Did(
                 ref action,
                 button,
                 actorActionIndex,
@@ -1436,21 +1450,9 @@ public partial struct GameInputActionSystem : ISystem
                 index,
                 direction,
                 out _,
-                out _))
-            {
-                actionTarget.actorActionIndex = action.actorActionIndex;
-                actionTarget.entity = action.target;
+                out _);
 
-                if (actionTarget.isDo)
-                    actions[index] = action;
-            }
-            else
-            {
-                actionTarget.actorActionIndex = -1;
-                actionTarget.entity = Entity.Null;
-            }
-
-            actionTargets[index] = actionTarget;
+            __Apply(result, GameInputStatus.As(button), index, direction, ref action);
         }
 
         public void Execute(
@@ -1474,13 +1476,12 @@ public partial struct GameInputActionSystem : ISystem
 
         public void Execute(int index)
         {
-            bool doResult, isTimeout;
+            bool result, isTimeout;
             float3 direction = directions[index].value;
             var action = actions[index];
             var status = states[index];
             var value = CollectKeys(status.value, keys);
-            GameInputActionTarget actionTarget;
-            actionTarget.status = value;
+            var actionTargetStatus = value;
 
             double actorTime;
             switch (value)
@@ -1488,7 +1489,7 @@ public partial struct GameInputActionSystem : ISystem
                 case GameInputStatus.Value.KeyDown:
                 case GameInputStatus.Value.KeyHold:
                 case GameInputStatus.Value.KeyUp:
-                    doResult = __Did(
+                    result = __Did(
                         ref action,
                         GameInputStatus.As(value),
                         -1,
@@ -1499,14 +1500,14 @@ public partial struct GameInputActionSystem : ISystem
                         out _);
                     if (value == GameInputStatus.Value.KeyUp)
                     {
-                        if (doResult || isTimeout)
+                        if (result || isTimeout)
                             value = GameInputStatus.Value.Normal;
                     }
-                    else if (doResult)
+                    else if (result)
                         value = GameInputStatus.Value.KeyHold;
                     break;
                 case GameInputStatus.Value.KeyUpAndDown:
-                    doResult = __Did(
+                    result = __Did(
                         ref action,
                         GameInputButton.Up,
                         -1,
@@ -1515,7 +1516,7 @@ public partial struct GameInputActionSystem : ISystem
                         direction,
                         out isTimeout,
                         out actorTime);
-                    if (doResult)
+                    if (result)
                         value = GameInputStatus.Value.KeyDown;
                     else if (isTimeout || actorTime < time)
                         value = __Did(
@@ -1529,7 +1530,7 @@ public partial struct GameInputActionSystem : ISystem
                             out _) ? GameInputStatus.Value.KeyHold : GameInputStatus.Value.KeyDown;
                     break;
                 case GameInputStatus.Value.KeyDownAndUp:
-                    doResult = __Did(
+                    result = __Did(
                         ref action,
                         GameInputButton.Down,
                         -1,
@@ -1538,10 +1539,10 @@ public partial struct GameInputActionSystem : ISystem
                         direction,
                         out _,
                         out _);
-                    value = doResult ? GameInputStatus.Value.KeyHoldAndUp : GameInputStatus.Value.KeyUp;
+                    value = result ? GameInputStatus.Value.KeyHoldAndUp : GameInputStatus.Value.KeyUp;
                     break;
                 case GameInputStatus.Value.KeyHoldAndUp:
-                    doResult = __Did(
+                    result = __Did(
                         ref action,
                         GameInputButton.Hold,
                         -1,
@@ -1553,7 +1554,7 @@ public partial struct GameInputActionSystem : ISystem
                     value = GameInputStatus.Value.KeyUp;
                     break;
                 case GameInputStatus.Value.KeyUpAndDownAndUp:
-                    doResult = __Did(
+                    result = __Did(
                         ref action,
                         GameInputButton.Up,
                         -1,
@@ -1565,7 +1566,7 @@ public partial struct GameInputActionSystem : ISystem
                     value = GameInputStatus.Value.KeyDownAndUp;
                     break;
                 default:
-                    doResult = __Did(
+                    result = __Did(
                         ref action,
                         GameInputButton.Down,
                         -1,
@@ -1577,22 +1578,7 @@ public partial struct GameInputActionSystem : ISystem
                     break;
             }
 
-            actionTarget.direction = direction;
-            if (doResult)
-            {
-                actionTarget.actorActionIndex = action.actorActionIndex;
-                actionTarget.entity = action.target;
-
-                if (actionTarget.isDo)
-                    actions[index] = action;
-            }
-            else
-            {
-                actionTarget.actorActionIndex = -1;
-                actionTarget.entity = Entity.Null;
-            }
-
-            actionTargets[index] = actionTarget;
+            __Apply(result, actionTargetStatus, index, direction, ref action);
 
             if (value != status.value)
             {
@@ -1601,7 +1587,7 @@ public partial struct GameInputActionSystem : ISystem
             }
         }
 
-        public bool __Did(
+        private bool __Did(
             ref GameInputAction action,
             GameInputButton button,
             int actorActionIndex,
@@ -1624,6 +1610,7 @@ public partial struct GameInputActionSystem : ISystem
                 velocities[entity].value,
                 math.dot(math.normalizesafe(direction, forward), forward),
                 maxDistance,
+                rages.HasComponent(entity) ? rages[entity].value : 0.0f, 
                 time,
                 translations[entity].Value,
                 selection,
@@ -1641,6 +1628,47 @@ public partial struct GameInputActionSystem : ISystem
                 actionSetDefinition,
                 actionItemSetDefinition,
                 out isTimeout);
+        }
+
+        private void __Apply(
+            bool result,
+            GameInputStatus.Value status,
+            int index,
+            in float3 direction,
+            ref GameInputAction action)
+        {
+            if (result)
+            {
+                GameInputActionTarget actionTarget;
+                actionTarget.status = status;
+                actionTarget.actorActionIndex = action.actorActionIndex;
+                actionTarget.entity = action.target == Entity.Null ? __GetActionTarget(index) : action.target;
+                actionTarget.direction = direction;
+
+                if (actionTarget.isDo)
+                    actions[index] = action;
+
+                actionTargets[index] = actionTarget;
+            }
+            else// if (GameInputStatus.IsDo(status))
+            {
+                GameInputActionTarget actionTarget;
+                actionTarget.status = status;
+                actionTarget.actorActionIndex = -1;
+                actionTarget.entity = __GetActionTarget(index);
+                actionTarget.direction = direction;
+
+                actionTargets[index] = actionTarget;
+            }
+        }
+
+        private Entity __GetActionTarget(int index)
+        {
+            Entity entity = actionTargets[index].entity;
+            if (nodeStates.HasComponent(entity) && ((GameEntityStatus)nodeStates[entity].value & GameEntityStatus.Mask) != GameEntityStatus.Dead)
+                return entity;
+
+            return Entity.Null;
         }
     }
 
@@ -1690,6 +1718,9 @@ public partial struct GameInputActionSystem : ISystem
         public ComponentLookup<GameEntityActorTime> actorTimes;
 
         [ReadOnly]
+        public ComponentLookup<GameEntityRage> rages;
+
+        [ReadOnly]
         public ComponentLookup<GameEntityCamp> camps;
 
         [ReadOnly]
@@ -1733,6 +1764,7 @@ public partial struct GameInputActionSystem : ISystem
             apply.velocities = velocities;
             apply.actorStates = actorStates;
             apply.actorTimes = actorTimes;
+            apply.rages = rages;
             apply.camps = camps;
             apply.items = items;
             apply.actorActions = actorActions;
@@ -1784,6 +1816,8 @@ public partial struct GameInputActionSystem : ISystem
 
     private ComponentLookup<GameEntityActorTime> __actorTimes;
 
+    private ComponentLookup<GameEntityRage> __rages;
+
     private ComponentLookup<GameEntityCamp> __camps;
 
     private BufferLookup<GameEntityItem> __items;
@@ -1827,6 +1861,7 @@ public partial struct GameInputActionSystem : ISystem
         __velocities = state.GetComponentLookup<GameNodeVelocity>(true);
         __actorStates = state.GetComponentLookup<GameNodeActorStatus>(true);
         __actorTimes = state.GetComponentLookup<GameEntityActorTime>(true);
+        __rages = state.GetComponentLookup<GameEntityRage>(true);
         __camps = state.GetComponentLookup<GameEntityCamp>(true);
         __items = state.GetBufferLookup<GameEntityItem>(true);
         __actorActions = state.GetBufferLookup<GameEntityActorActionData>(true);
@@ -1882,6 +1917,7 @@ public partial struct GameInputActionSystem : ISystem
         apply.velocities = __velocities.UpdateAsRef(ref state);
         apply.actorStates = __actorStates.UpdateAsRef(ref state);
         apply.actorTimes = __actorTimes.UpdateAsRef(ref state);
+        apply.rages = __rages.UpdateAsRef(ref state);
         apply.camps = __camps.UpdateAsRef(ref state);
         apply.items = __items.UpdateAsRef(ref state);
         apply.actorActions = __actorActions.UpdateAsRef(ref state);
