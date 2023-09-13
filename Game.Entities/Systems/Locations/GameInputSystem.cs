@@ -1446,7 +1446,6 @@ public partial struct GameInputActionSystem : ISystem
                 group,
                 index,
                 direction,
-                out _,
                 out _);
 
             __Apply(result, GameInputStatus.As(button), index, direction, ref action);
@@ -1480,7 +1479,6 @@ public partial struct GameInputActionSystem : ISystem
             var value = CollectKeys(status.value, keys);
             var actionTargetStatus = value;
 
-            double actorTime;
             switch (value)
             {
                 case GameInputStatus.Value.KeyDown:
@@ -1493,8 +1491,7 @@ public partial struct GameInputActionSystem : ISystem
                         0,
                         index,
                         direction,
-                        out isTimeout,
-                        out _);
+                        out isTimeout);
                     if (value == GameInputStatus.Value.KeyUp)
                     {
                         if (result || isTimeout)
@@ -1511,20 +1508,22 @@ public partial struct GameInputActionSystem : ISystem
                         0,
                         index,
                         direction,
-                        out isTimeout,
-                        out actorTime);
+                        out _);
                     if (result)
                         value = GameInputStatus.Value.KeyDown;
-                    else if (isTimeout || actorTime < time)
-                        value = __Did(
+                    else //if (isTimeout || actorTime < time)
+                    {
+                        result = __Did(
                             ref action,
                             GameInputButton.Down,
                             -1,
                             0,
                             index,
                             direction,
-                            out _,
-                            out _) ? GameInputStatus.Value.KeyHold : GameInputStatus.Value.KeyDown;
+                            out _);
+                        
+                        value = result ? GameInputStatus.Value.KeyHold : GameInputStatus.Value.KeyDown;
+                    }
                     break;
                 case GameInputStatus.Value.KeyDownAndUp:
                     result = __Did(
@@ -1534,7 +1533,6 @@ public partial struct GameInputActionSystem : ISystem
                         0,
                         index,
                         direction,
-                        out _,
                         out _);
                     value = result ? GameInputStatus.Value.KeyHoldAndUp : GameInputStatus.Value.KeyUp;
                     break;
@@ -1546,7 +1544,6 @@ public partial struct GameInputActionSystem : ISystem
                         0,
                         index,
                         direction,
-                        out _,
                         out _);
                     value = GameInputStatus.Value.KeyUp;
                     break;
@@ -1558,7 +1555,6 @@ public partial struct GameInputActionSystem : ISystem
                         0,
                         index,
                         direction,
-                        out _,
                         out _);
                     value = GameInputStatus.Value.KeyDownAndUp;
                     break;
@@ -1570,7 +1566,6 @@ public partial struct GameInputActionSystem : ISystem
                         0,
                         index,
                         direction,
-                        out _,
                         out _);
                     break;
             }
@@ -1591,12 +1586,12 @@ public partial struct GameInputActionSystem : ISystem
             int group,
             int index,
             in float3 direction,
-            out bool isTimeout,
-            out double actorTimeValue)
+            out bool isTimeout/*,
+            out double actorTimeValue*/)
         {
             var entity = GameNodeParent.GetRootMain(entityArray[index], parents);
-            var actorTime = actorTimes[entity];
-            actorTimeValue = actorTime.value;
+            //var actorTime = actorTimes[entity];
+            //actorTimeValue = actorTime.value;
             float3 forward = math.forward(rotations[entity].Value);
             return action.Did(
                 button,
@@ -1611,7 +1606,7 @@ public partial struct GameInputActionSystem : ISystem
                 time,
                 translations[entity].Value,
                 selection,
-                actorTime,
+                actorTimes[entity],
                 targets,
                 translations,
                 colliders,
