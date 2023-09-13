@@ -57,7 +57,7 @@ public struct GameSpawnInitializer : IEntityDataInitializer
         {
             GameItemRoot itemRoot;
             itemRoot.handle = __itemHandle;
-            gameObjectEntity.SetComponentData(instance);
+            gameObjectEntity.SetComponentData(itemRoot);
         }
     }
 }
@@ -326,6 +326,8 @@ public partial struct GameRandomSpawnerSystem : ISystem
         public void Execute()
         {
             ref var assets = ref definition.Value.assets;
+            Entity entity;
+            GameItemOwner owner;
             GameItemLevel level;
             GameItemHandle handle;
             int i, j, numItemTypes, numResults = results.Length;
@@ -355,8 +357,13 @@ public partial struct GameRandomSpawnerSystem : ISystem
                     {
                         itemCreateEntityCommander.Add(result.itemHandle, levelEntityArchetype);
 
+                        entity = GameItemStructChangeFactory.Convert(result.itemHandle);
+
                         level.handle = asset.levelHandle;
-                        itemAssigner.SetComponentData(GameItemStructChangeFactory.Convert(result.itemHandle), level);
+                        itemAssigner.SetComponentData(entity, level);
+
+                        owner.entity = result.entity;
+                        itemAssigner.SetComponentData(entity, owner);
                     }
                 }
             }
