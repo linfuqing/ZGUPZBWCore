@@ -11,6 +11,10 @@ using ZG;
 [assembly: RegisterGenericJobType(typeof(RollbackSave<GameEntityRollbackSystem.Save>))]
 [assembly: RegisterGenericJobType(typeof(RollbackClear<GameEntityRollbackSystem.Clear>))]
 
+[assembly: RegisterGenericJobType(typeof(RollbackRestoreSingle<GameEntityRageRollbackSystem.Restore>))]
+[assembly: RegisterGenericJobType(typeof(RollbackSave<GameEntityRageRollbackSystem.Save>))]
+[assembly: RegisterGenericJobType(typeof(RollbackClear<GameEntityRageRollbackSystem.Clear>))]
+
 [assembly: RegisterGenericJobType(typeof(RollbackRestoreSingle<GameEntityActorRollbackSystem.Restore>))]
 [assembly: RegisterGenericJobType(typeof(RollbackSave<GameEntityActorRollbackSystem.Save>))]
 [assembly: RegisterGenericJobType(typeof(RollbackClear<GameEntityActorRollbackSystem.Clear>))]
@@ -18,6 +22,8 @@ using ZG;
 [assembly: RegisterGenericJobType(typeof(RollbackRestore<GameActionRollbackSystem.Restore>))]
 [assembly: RegisterGenericJobType(typeof(RollbackSave<GameActionRollbackSystem.Save>))]
 [assembly: RegisterGenericJobType(typeof(RollbackClear<GameActionRollbackSystem.Clear>))]
+
+[assembly: RegisterGenericJobType(typeof(RollbackResize<GameEntityRage>))]
 
 [assembly: RegisterGenericJobType(typeof(RollbackResize<GameEntityCamp>))]
 [assembly: RegisterGenericJobType(typeof(RollbackResize<GameEntityBreakInfo>))]
