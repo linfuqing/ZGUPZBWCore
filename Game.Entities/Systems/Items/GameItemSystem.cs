@@ -749,9 +749,6 @@ public partial struct GameItemSystem : ISystem
 
         public void Execute(int index)
         {
-            EntityDataIdentity identity;
-            identity.type = identityType;
-
             Entity handle;
             int numCommands = commands.Length;
             GameItemCommand command = commands[index], temp;
@@ -774,15 +771,19 @@ public partial struct GameItemSystem : ISystem
 
                     createCommander.TryAdd(command.destinationHandle, entityArchetype);
 
-                    identity.guid = CreateGUID(index, handle);// random.NextUInt4();
-                    /*if (identity.guid.ToString() == "4b959ef3998812f82e760687c088b17e")
-                        UnityEngine.Debug.Log($"dfgg {identity.type}");*/
+                    /*identity.guid = CreateGUID(index, handle);// random.NextUInt4();
 
                     assigner.SetComponentData(handle, identity);
 
                     GameItemData instance;
                     instance.handle = command.destinationHandle;
-                    assigner.SetComponentData(handle, instance);
+                    assigner.SetComponentData(handle, instance);*/
+                    Init((uint)index ^ RandomUtility.Hash(hash), 
+                        identityType, 
+                        command.destinationHandle, 
+                        handle, 
+                        ref guidEntities, 
+                        ref assigner);
                     break;
                 case GameItemCommandType.Destroy:
                     UnityEngine.Assertions.Assert.AreNotEqual(Handle.Empty, command.sourceHandle);
@@ -857,6 +858,74 @@ public partial struct GameItemSystem : ISystem
         manager.Rebuild(datas);
 
         __seed = DateTime.UtcNow.Ticks;
+    }
+
+    public static Hash128 CreateGUID(
+        uint hash,
+        in Entity entity,
+        ref SharedHashMap<Hash128, Entity>.ParallelWriter guidEntities)
+    {
+        var random = new Unity.Mathematics.Random(hash);
+
+        Hash128 result;
+        do
+        {
+            result.Value = random.NextUInt4();
+        } while (!guidEntities.TryAdd(result, entity));
+
+        return result;
+    }
+
+    public static Hash128 CreateGUID(
+        in Entity entity,
+        ref Unity.Mathematics.Random random, 
+        ref SharedHashMap<Hash128, Entity>.Writer guidEntities)
+    {
+        Hash128 result;
+        do
+        {
+            result.Value = random.NextUInt4();
+        } while (!guidEntities.TryAdd(result, entity));
+
+        return result;
+    }
+
+    public static void Init(
+        uint hash,
+        int identityType,
+        in Handle handle,
+        in Entity entity,
+        ref SharedHashMap<Hash128, Entity>.ParallelWriter guidEntities,
+        ref EntityComponentAssigner.ParallelWriter assigner)
+    {
+        EntityDataIdentity identity;
+        identity.type = identityType;
+        identity.guid = CreateGUID(hash, entity, ref guidEntities);
+
+        assigner.SetComponentData(entity, identity);
+
+        GameItemData instance;
+        instance.handle = handle;
+        assigner.SetComponentData(entity, instance);
+    }
+
+    public static void Init(
+        int identityType,
+        in Handle handle,
+        in Entity entity,
+        ref Unity.Mathematics.Random random,
+        ref SharedHashMap<Hash128, Entity>.Writer guidEntities,
+        ref EntityComponentAssigner.Writer assigner)
+    {
+        EntityDataIdentity identity;
+        identity.type = identityType;
+        identity.guid = CreateGUID(entity, ref random, ref guidEntities);
+
+        assigner.SetComponentData(entity, identity);
+
+        GameItemData instance;
+        instance.handle = handle;
+        assigner.SetComponentData(entity, instance);
     }
 
     [BurstCompile]
