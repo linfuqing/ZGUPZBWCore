@@ -73,9 +73,6 @@ public struct GameActionInfo
     [Tooltip("使用技能消耗的怒气值")]
     public float rage;
 
-    [Tooltip("使用技能消耗的怒气值")]
-    public float rageCost;
-    
     [Tooltip("冷却时间")]
     public float coolDownTime;
 
