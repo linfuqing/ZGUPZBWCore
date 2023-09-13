@@ -439,6 +439,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
             var componentTypeList = new NativeList<ComponentType>(Allocator.Temp);
             componentTypeList.AddRange(componentTypes);
             componentTypeList.Add(ComponentType.ReadWrite<GameItemLevel>());
+            componentTypeList.Add(ComponentType.ReadWrite<GameItemOwner>());
 
             __levelEntityArchetype = state.EntityManager.CreateArchetype(componentTypeList.AsArray());
 
