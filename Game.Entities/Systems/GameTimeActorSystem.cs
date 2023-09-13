@@ -9,7 +9,7 @@ using Unity.Transforms;
 using ZG;
 using Random = Unity.Mathematics.Random;
 
-[BurstCompile, AutoCreateIn("Server"), UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(StateMachineSchedulerGroup))/*, UpdateAfter(typeof(GameNodeEventSystem))*/]
+[BurstCompile, AutoCreateIn("Server"), UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(StateMachineGroup))/*, UpdateAfter(typeof(GameNodeEventSystem))*/]
 public partial struct GameTimeActorSystem : ISystem
 {
     [BurstCompile]

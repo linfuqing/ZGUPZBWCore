@@ -161,7 +161,7 @@ public struct GameActionNormalInfo : IComponentData
     public double time;
 }
 
-[BurstCompile, UpdateInGroup(typeof(StateMachineSchedulerGroup))]
+[BurstCompile, UpdateInGroup(typeof(StateMachineGroup), OrderLast = true)]
 public partial struct GameActionNormalSchedulerSystem : ISystem
 {
     public struct SchedulerExit : IStateMachineScheduler
@@ -315,7 +315,7 @@ public partial struct GameActionNormalSchedulerSystem : ISystem
 [BurstCompile, 
     CreateAfter(typeof(GameActionNormalSchedulerSystem)), 
     CreateAfter(typeof(GameActionStructChangeSystem)), 
-    UpdateInGroup(typeof(StateMachineExecutorGroup))]
+    UpdateInGroup(typeof(StateMachineGroup))]
 public partial struct GameActionNormalExecutorSystem : ISystem, IEntityCommandProducerJob
 {
     public struct Escaper : IStateMachineEscaper

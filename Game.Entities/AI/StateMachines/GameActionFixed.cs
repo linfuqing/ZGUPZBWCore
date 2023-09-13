@@ -117,7 +117,7 @@ public class GameActionFixed : StateMachineNode
 }
 
 
-[BurstCompile, UpdateInGroup(typeof(StateMachineSchedulerGroup)), UpdateAfter(typeof(GameActionActiveSchedulerSystem))]
+[BurstCompile, UpdateInGroup(typeof(StateMachineGroup), OrderLast = true), UpdateAfter(typeof(GameActionActiveSchedulerSystem))]
 public partial struct GameActionFixedSchedulerSystem : ISystem
 {
     public struct SchedulerEntry : IStateMachineScheduler
@@ -192,7 +192,7 @@ public partial struct GameActionFixedSchedulerSystem : ISystem
     }
 }
 
-[BurstCompile, CreateAfter(typeof(GameActionFixedSchedulerSystem)), UpdateInGroup(typeof(StateMachineExecutorGroup))]
+[BurstCompile, CreateAfter(typeof(GameActionFixedSchedulerSystem)), UpdateInGroup(typeof(StateMachineGroup))]
 public partial struct GameActionFixedExecutorSystem : ISystem
 {
     public struct Executor : IStateMachineExecutor

@@ -56,7 +56,7 @@ public struct GameActionFearInfo : IComponentData
     public float3 position;
 }
 
-[BurstCompile, UpdateInGroup(typeof(StateMachineSchedulerGroup)), UpdateBefore(typeof(GameActionActiveSchedulerSystem)), UpdateAfter(typeof(GameActionNormalSchedulerSystem))]
+[BurstCompile, UpdateInGroup(typeof(StateMachineGroup), OrderLast = true), UpdateBefore(typeof(GameActionActiveSchedulerSystem)), UpdateAfter(typeof(GameActionNormalSchedulerSystem))]
 public partial struct GameActionFearSchedulerSystem : ISystem
 {
     public struct SchedulerEntry : IStateMachineScheduler
@@ -175,7 +175,7 @@ public partial struct GameActionFearSchedulerSystem : ISystem
     }
 }
 
-[BurstCompile, CreateAfter(typeof(GameActionFearSchedulerSystem)), UpdateInGroup(typeof(StateMachineExecutorGroup))]
+[BurstCompile, CreateAfter(typeof(GameActionFearSchedulerSystem)), UpdateInGroup(typeof(StateMachineGroup))]
 public partial struct GameActionFearExecutorSystem : ISystem
 {
     public struct Escaper : IStateMachineEscaper

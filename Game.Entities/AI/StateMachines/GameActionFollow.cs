@@ -48,7 +48,7 @@ public struct GameActionFollowData : IComponentData
     public float distanceSq;
 }
 
-[BurstCompile, UpdateInGroup(typeof(StateMachineSchedulerGroup)), UpdateAfter(typeof(GameActionActiveSchedulerSystem))]
+[BurstCompile, UpdateInGroup(typeof(StateMachineGroup), OrderLast = true), UpdateAfter(typeof(GameActionActiveSchedulerSystem))]
 public partial struct GameActionFollowSchedulerSystem : ISystem
 {
     public struct SchedulerEntry : IStateMachineScheduler
@@ -163,7 +163,7 @@ public partial struct GameActionFollowSchedulerSystem : ISystem
     }
 }
 
-[BurstCompile, CreateAfter(typeof(GameActionFollowSchedulerSystem)), UpdateInGroup(typeof(StateMachineExecutorGroup))]
+[BurstCompile, CreateAfter(typeof(GameActionFollowSchedulerSystem)), UpdateInGroup(typeof(StateMachineGroup))]
 public partial struct GameActionFollowExecutorSystem : ISystem
 {
     public struct Executor : IStateMachineExecutor

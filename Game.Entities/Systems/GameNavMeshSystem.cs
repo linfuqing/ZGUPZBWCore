@@ -7,42 +7,40 @@ using Unity.Transforms;
 using UnityEngine.Experimental.AI;
 using ZG;
 
-[UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(GameSyncSystemGroup)), UpdateAfter(typeof(StateMachineExecutorGroup))]
-public partial class GameNavMeshSystemGroup : ComponentSystemGroup
-{
-
-}
-
-[AlwaysSynchronizeSystem, UpdateInGroup(typeof(InitializationSystemGroup)), UpdateAfter(typeof(EntityObjectSystemGroup))]
-public partial class GameNavMeshFactorySystem : SystemBase
+[BurstCompile, UpdateInGroup(typeof(InitializationSystemGroup)), UpdateAfter(typeof(EntityObjectSystemGroup))]
+public partial struct GameNavMeshFactorySystem : ISystem
 {
     private EntityQuery __groupToCreate;
     private EntityQuery __groupToDestroy;
     private NativeFactory<NavMeshQuery> __navMeshQueries;
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
+/*#if ENABLE_UNITY_COLLECTIONS_CHECKS
     private System.Collections.Generic.Dictionary<Entity, NavMeshQuery> __queries;
-#endif
+#endif*/
 
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        base.OnCreate();
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __groupToCreate = builder
+                    .WithAll<GameNavMeshAgentQueryData>()
+                    .WithNone<GameNavMeshAgentQuery>()
+                    .Build(ref state);
 
-        __groupToCreate = GetEntityQuery(
-            ComponentType.ReadOnly<GameNavMeshAgentQueryData>(),
-            ComponentType.Exclude<GameNavMeshAgentQuery>());
-
-        __groupToDestroy = GetEntityQuery(
-            ComponentType.ReadOnly<GameNavMeshAgentQuery>(),
-            ComponentType.Exclude<GameNavMeshAgentQueryData>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __groupToDestroy = builder
+                .WithAll <GameNavMeshAgentQuery> ()
+                .WithNone<GameNavMeshAgentQueryData>()
+                .Build(ref state);
 
         __navMeshQueries = new NativeFactory<NavMeshQuery>(Allocator.Persistent);
     }
 
-    protected override void OnDestroy()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
         __navMeshQueries.Dispose();
         
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
+/*#if ENABLE_UNITY_COLLECTIONS_CHECKS
         if(__queries != null)
         {
             foreach(var pair in __queries)
@@ -50,17 +48,18 @@ public partial class GameNavMeshFactorySystem : SystemBase
 
             __queries = null;
         }
-#endif
+#endif*/
 
-        base.OnDestroy();
+        //base.OnDestroy();
     }
 
-    protected override void OnUpdate()
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
         //TODO:
-        CompleteDependency();
+        state.CompleteDependency();
 
-        var entityManager = EntityManager;
+        var entityManager = state.EntityManager;
         using (var entities = __groupToCreate.ToEntityArray(Allocator.Temp))
         using (var instances = __groupToCreate.ToComponentDataArray<GameNavMeshAgentQueryData>(Allocator.Temp))
         {
@@ -74,12 +73,12 @@ public partial class GameNavMeshFactorySystem : SystemBase
             {
                 navMeshQuery = new NavMeshQuery(navMeshWorld, Allocator.Persistent, instances[i].pathNodePoolSize);
 
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
+/*#if ENABLE_UNITY_COLLECTIONS_CHECKS
                 if (__queries == null)
                     __queries = new System.Collections.Generic.Dictionary<Entity, NavMeshQuery>();
 
                 __queries.Add(entities[i], navMeshQuery);
-#endif
+#endif*/
                 query.value = __navMeshQueries.Create();
                 query.value.value = navMeshQuery;
                 entityManager.SetComponentData(entities[i], query);
@@ -87,9 +86,9 @@ public partial class GameNavMeshFactorySystem : SystemBase
         }
 
         using (var instances = __groupToDestroy.ToComponentDataArray<GameNavMeshAgentQuery>(Allocator.Temp))
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
+/*#if ENABLE_UNITY_COLLECTIONS_CHECKS
         using (var entities = __groupToDestroy.ToEntityArray(Allocator.Temp))
-#endif
+#endif*/
         {
             int numInstances = instances.Length;
             GameNavMeshAgentQuery instance;
@@ -97,13 +96,13 @@ public partial class GameNavMeshFactorySystem : SystemBase
             {
                 instance = instances[i];
 
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
+/*#if ENABLE_UNITY_COLLECTIONS_CHECKS
                 Entity entity = entities[i];
                 __queries[entity].Dispose();
                 __queries.Remove(entity);
-#else
+#else*/
                 instance.value.value.Dispose();
-#endif
+//#endif
                 instance.value.Dispose();
             }
 
@@ -154,7 +153,7 @@ public partial struct GameNavMeshStructChangeSystem : ISystem
     }
 }*/
 
-[BurstCompile, UpdateInGroup(typeof(GameNavMeshSystemGroup))]
+[BurstCompile, UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(GameSyncSystemGroup)), UpdateAfter(typeof(StateMachineGroup))]
 public partial struct GameNavMeshSystem : ISystem
 {
     private struct Move

@@ -229,7 +229,7 @@ public struct GameActionActiveInfo : IComponentData
     public Entity entity;
 }
 
-[BurstCompile, UpdateInGroup(typeof(StateMachineSchedulerGroup)), UpdateAfter(typeof(GameActionNormalSchedulerSystem))]
+[BurstCompile, UpdateInGroup(typeof(StateMachineGroup), OrderLast = true), UpdateAfter(typeof(GameActionNormalSchedulerSystem))]
 public partial struct GameActionActiveSchedulerSystem : ISystem
 {
     public struct SchedulerEntry : IStateMachineScheduler
@@ -425,7 +425,7 @@ public partial struct GameActionActiveSchedulerSystem : ISystem
     }
 }
 
-[BurstCompile, CreateAfter(typeof(GameActionActiveSchedulerSystem)), UpdateInGroup(typeof(StateMachineExecutorGroup))]
+[BurstCompile, CreateAfter(typeof(GameActionActiveSchedulerSystem)), UpdateInGroup(typeof(StateMachineGroup))]
 public partial struct GameActionActiveExecutorSystem : ISystem
 {
     public struct Escaper : IStateMachineEscaper

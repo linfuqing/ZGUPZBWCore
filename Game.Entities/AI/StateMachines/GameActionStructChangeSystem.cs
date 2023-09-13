@@ -5,7 +5,7 @@ using Unity.Burst;
 using Unity.Transforms;
 using ZG;
 
-[BurstCompile, UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(GameNavMeshSystemGroup)), UpdateAfter(typeof(StateMachineExecutorGroup))]
+[BurstCompile, UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(GameNavMeshSystem)), UpdateAfter(typeof(StateMachineGroup))]
 public partial struct GameActionStructChangeSystem : ISystem
 {
     //private EntityQuery __group;
