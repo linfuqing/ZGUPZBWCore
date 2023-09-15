@@ -71,6 +71,7 @@ public struct GameActionInfo
     public float hitDestination;
 
     [Tooltip("使用技能积攒的怒气值缩放")]
+    [UnityEngine.Serialization.FormerlySerializedAs("rage")]
     public float rageScale;
 
     [Tooltip("使用技能消耗的怒气值")]
