@@ -252,7 +252,7 @@ public struct GameInputAction : IComponentData
         public bool Check(int actionIndex, double time)
         {
             ref var action = ref ActionSetDefinition.Value.values[actionIndex];
-            return action.info.rage + Rage >= 0 && ActorTime.Did(action.instance.actorMask, time);
+            return  Rage >= action.info.rageCost && ActorTime.Did(action.instance.actorMask, time);
         }
     }
 
@@ -335,7 +335,7 @@ public struct GameInputAction : IComponentData
                 {
                     ref var actionItem = ref actionItems[item.index];
 
-                    rage += actionItem.rage;
+                    rage -= actionItem.rageCost;
                     artTime += actionItem.artTime;
                 }
             }
@@ -379,7 +379,7 @@ public struct GameInputAction : IComponentData
                 targetType,
                 layerMask,
                 group,
-                isTimeout || this.actorActionIndex == -1 ? -1 : actorActions[this.actorActionIndex].actionIndex,
+                isTimeout || this.actorActionIndex == -1 || action.preActions.Length < 1 ? -1 : actorActions[this.actorActionIndex].actionIndex,
                 actorStatus,
                 actorVelocity,
                 dot,

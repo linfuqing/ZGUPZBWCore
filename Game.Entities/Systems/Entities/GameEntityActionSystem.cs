@@ -1589,6 +1589,9 @@ public struct GameEntityActionSystemCore
         public NativeArray<GameActionData> instances;
 
         [ReadOnly]
+        public NativeArray<GameActionDataEx> instancesEx;
+
+        [ReadOnly]
         public NativeArray<GameActionStatus> states;
 
         [ReadOnly]
@@ -1597,18 +1600,22 @@ public struct GameEntityActionSystemCore
         [ReadOnly]
         public ComponentLookup<Translation> translations;
 
-        public ComponentLookup<GameEntityActorHit> actorHits;
+        public ComponentLookup<GameEntityRage> rages;
 
         public ComponentLookup<GameEntityHit> hits;
+
+        public ComponentLookup<GameEntityActorHit> actorHits;
 
         public void Execute(int index)
         {
             var instance = instances[index];
             bool isExists = actorHits.HasComponent(instance.entity);
-            GameEntityActorHit result = isExists ? actorHits[instance.entity] : default;
+            var result = isExists ? actorHits[instance.entity] : default;
             var status = states[index].value;
             if ((status & GameActionStatus.Status.Destroy) != GameActionStatus.Status.Destroy)
             {
+                float hitResult = 0.0f;
+
                 GameEntityHit hit;
                 GameEntityActorHit actorHit;
                 GameActionEntity entity;
@@ -1621,9 +1628,9 @@ public struct GameEntityActionSystemCore
                     entity = entities[i];
                     if (entity.delta > math.FLT_MIN_NORMAL)
                     {
-                        //log += entity.ToString();
-                        result.sourceHit += entity.delta;
+                        hitResult += entity.delta;
 
+                        //log += entity.ToString();
                         if (actorHits.HasComponent(entity.target))
                         {
                             actorHit = actorHits[entity.target];
@@ -1649,6 +1656,15 @@ public struct GameEntityActionSystemCore
                         }
                     }
                 }
+
+                result.sourceHit += hitResult;
+
+                if (rages.HasComponent(instance.entity))
+                {
+                    var rage = rages[instance.entity];
+                    rage.value += hitResult * instancesEx[index].info.rageScale;
+                    rages[instance.entity] = rage;
+                }
             }
 
             if (isExists)
@@ -1673,6 +1689,9 @@ public struct GameEntityActionSystemCore
         public ComponentTypeHandle<GameActionData> instanceType;
 
         [ReadOnly]
+        public ComponentTypeHandle<GameActionDataEx> instanceExType;
+
+        [ReadOnly]
         public ComponentTypeHandle<GameActionStatus> statusType;
 
         [ReadOnly]
@@ -1681,20 +1700,24 @@ public struct GameEntityActionSystemCore
         [ReadOnly]
         public ComponentLookup<Translation> translations;
 
-        public ComponentLookup<GameEntityActorHit> actorHits;
+        public ComponentLookup<GameEntityRage> rages;
 
         public ComponentLookup<GameEntityHit> hits;
+
+        public ComponentLookup<GameEntityActorHit> actorHits;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             ComputeHits executor;
             executor.entityArray = chunk.GetNativeArray(entityArrayType);
             executor.instances = chunk.GetNativeArray(ref instanceType);
+            executor.instancesEx = chunk.GetNativeArray(ref instanceExType);
             executor.states = chunk.GetNativeArray(ref statusType);
             executor.entities = chunk.GetBufferAccessor(ref entityType);
             executor.translations = translations;
-            executor.actorHits = actorHits;
+            executor.rages = rages;
             executor.hits = hits;
+            executor.actorHits = actorHits;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -1826,12 +1849,15 @@ public struct GameEntityActionSystemCore
     private ComponentLookup<GameActionStatus> __results;
     private ComponentLookup<Translation> __translations;
 
-    private ComponentLookup<GameEntityActorHit> __actorHits;
-    private ComponentLookup<GameEntityHit> __hits;
     private ComponentLookup<GameNodeCharacterFlag> __characterflags;
 
-    private BufferLookup<GameNodeVelocityComponent> __velocities;
+    private ComponentLookup<GameEntityRage> __rages;
+    private ComponentLookup<GameEntityHit> __hits;
+    private ComponentLookup<GameEntityActorHit> __actorHits;
+
     private ComponentLookup<GameEntityBreakCommand> __breakCommands;
+
+    private BufferLookup<GameNodeVelocityComponent> __velocities;
 
     //private EntityCommandPool<EntityData<GameActionDisabled>> __entityManager;
 
@@ -1914,12 +1940,15 @@ public struct GameEntityActionSystemCore
 
         __translations = systemState.GetComponentLookup<Translation>();
 
-        __actorHits = systemState.GetComponentLookup<GameEntityActorHit>();
-        __hits = systemState.GetComponentLookup<GameEntityHit>();
-
         __characterflags = systemState.GetComponentLookup<GameNodeCharacterFlag>();
-        __velocities = systemState.GetBufferLookup<GameNodeVelocityComponent>();
+
+        __rages = systemState.GetComponentLookup<GameEntityRage>();
+        __hits = systemState.GetComponentLookup<GameEntityHit>();
+        __actorHits = systemState.GetComponentLookup<GameEntityActorHit>();
+
         __breakCommands = systemState.GetComponentLookup<GameEntityBreakCommand>();
+
+        __velocities = systemState.GetBufferLookup<GameNodeVelocityComponent>();
     }
 
     public void Dispose()
@@ -1956,6 +1985,7 @@ public struct GameEntityActionSystemCore
 
         var entityType = __entityType.UpdateAsRef(ref systemState);
         var instanceType = __instanceType.UpdateAsRef(ref systemState);
+        var instanceExType = __instanceExType.UpdateAsRef(ref systemState);
         var statusType = __statusType.UpdateAsRef(ref systemState);
         var actionEntityType = __actionEntityType.UpdateAsRef(ref systemState);
 
@@ -1982,7 +2012,7 @@ public struct GameEntityActionSystemCore
         perform.commandVersions = __commandVersions.UpdateAsRef(ref systemState);
         perform.entityType = entityType;
         perform.instanceType = instanceType;
-        perform.instanceExType = __instanceExType.UpdateAsRef(ref systemState);
+        perform.instanceExType = instanceExType;
         perform.statusType = statusType;
         perform.translationType = __translationType.UpdateAsRef(ref systemState);
         perform.rotationType = __rotationType.UpdateAsRef(ref systemState);
@@ -2013,13 +2043,15 @@ public struct GameEntityActionSystemCore
         ComputeHitsEx computeHits;
         computeHits.entityArrayType = entityType;
         computeHits.instanceType = instanceType;
+        computeHits.instanceExType = instanceExType;
         computeHits.statusType = statusType;
         computeHits.entityType = actionEntityType;
         computeHits.translations = translations;
-        computeHits.actorHits = __actorHits.UpdateAsRef(ref systemState);
+        computeHits.rages = __rages.UpdateAsRef(ref systemState);
         computeHits.hits = __hits.UpdateAsRef(ref systemState);
+        computeHits.actorHits = __actorHits.UpdateAsRef(ref systemState);
 
-        var hitJob = computeHits.Schedule(group, performJob);
+        var hitJob = computeHits.ScheduleByRef(group, performJob);
 
         ApplyUnstoppableEntities applyUnstoppableEntities;
         applyUnstoppableEntities.entities = unstoppableEntities;
