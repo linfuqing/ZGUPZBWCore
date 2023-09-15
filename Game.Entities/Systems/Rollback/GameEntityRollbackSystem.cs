@@ -7,11 +7,11 @@ using Unity.Transforms;
 using Unity.Physics;
 using ZG;
 
-[assembly: RegisterGenericJobType(typeof(RollbackRestoreSingle<GameEntityRollbackSystem.Restore>))]
+[assembly: RegisterGenericJobType(typeof(RollbackRestore<GameEntityRollbackSystem.Restore>))]
 [assembly: RegisterGenericJobType(typeof(RollbackSave<GameEntityRollbackSystem.Save>))]
 [assembly: RegisterGenericJobType(typeof(RollbackClear<GameEntityRollbackSystem.Clear>))]
 
-[assembly: RegisterGenericJobType(typeof(RollbackRestoreSingle<GameEntityRageRollbackSystem.Restore>))]
+[assembly: RegisterGenericJobType(typeof(RollbackRestore<GameEntityRageRollbackSystem.Restore>))]
 [assembly: RegisterGenericJobType(typeof(RollbackSave<GameEntityRageRollbackSystem.Save>))]
 [assembly: RegisterGenericJobType(typeof(RollbackClear<GameEntityRageRollbackSystem.Clear>))]
 
@@ -992,7 +992,7 @@ public partial struct GameEntityRollbackSystem : ISystem, IRollbackCore
         Restore restore;
         restore.camps = __manager.DelegateRestore(__camps, ref state);
 
-        state.Dependency = __manager.Schedule(restore, frameIndex, state.Dependency);
+        state.Dependency = __manager.ScheduleParallel(restore, frameIndex, state.Dependency, true);
     }
 
     public void ScheduleSave(uint frameIndex, in EntityTypeHandle entityType, ref SystemState state)
@@ -1098,7 +1098,7 @@ public partial struct GameEntityRageRollbackSystem : ISystem, IRollbackCore
         Restore restore;
         restore.rages = __manager.DelegateRestore(__rages, ref state);
 
-        state.Dependency = __manager.Schedule(restore, frameIndex, state.Dependency);
+        state.Dependency = __manager.ScheduleParallel(restore, frameIndex, state.Dependency, true);
     }
 
     public void ScheduleSave(uint frameIndex, in EntityTypeHandle entityType, ref SystemState state)
