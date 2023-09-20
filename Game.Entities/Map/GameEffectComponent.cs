@@ -29,19 +29,10 @@ public struct GameEffectArea : IComponentData
 }
 
 [Serializable]
-[EntityDataStream(serializerType = typeof(EntityComponentStreamSerializer<GameEffectAreaOverride>), deserializerType = typeof(GameEffectAreaOverrideDeserializer))]
+[EntityDataStream(serializerType = typeof(EntityComponentStreamSerializer<GameEffectAreaOverride>), deserializerType = typeof(EntityComponentDeserializer<GameEffectAreaOverride>))]
 public struct GameEffectAreaOverride : IComponentData
 {
     public int index;
-}
-
-public struct GameEffectAreaOverrideDeserializer : IEntityDataStreamDeserializer
-{
-    public void Deserialize(ref UnsafeBlock.Reader reader, Entity entity, EntityManager entityManager)
-    {
-        entityManager.AddComponent<PhysicsTriggerEvent>(entity);
-        entityManager.AddComponentData(entity, reader.Read<GameEffectAreaOverride>());
-    }
 }
 
 [EntityComponent(typeof(PhysicsTriggerEvent))]

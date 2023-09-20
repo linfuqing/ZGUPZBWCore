@@ -129,6 +129,7 @@ public struct GameValhallaInitializer : IEntityDataInitializer
 [BurstCompile, 
     CreateAfter(typeof(GameItemSystem)),
     CreateAfter(typeof(GameSoulSystem)),
+    CreateAfter(typeof(GameItemRootEntitySystem)), 
     UpdateInGroup(typeof(InitializationSystemGroup))]
 public partial struct GameValhallaSystem : ISystem
 {
@@ -227,6 +228,68 @@ public partial struct GameValhallaSystem : ISystem
         }
     }
 
+    private struct CollectHandles
+    {
+        public Random random;
+
+        public BlobAssetReference<GameValhallaDefinition> definition;
+
+        [ReadOnly]
+        public GameItemManager.Hierarchy hierarchy;
+
+        [ReadOnly]
+        public SharedHashMap<GameItemHandle, Entity>.Reader rootEntities;
+
+        [ReadOnly]
+        public BufferAccessor<GameValhallaCollectCommand> commands;
+
+        [ReadOnly]
+        public NativeArray<Entity> entityArray;
+
+        [ReadOnly]
+        public NativeArray<GameValhallaExp> exps;
+
+        [NativeDisableContainerSafetyRestriction]
+        public ComponentLookup<GameValhallaExp> expMap;
+
+        public NativeQueue<GameItemHandle>.ParallelWriter handles;
+
+        public bool Execute(int index)
+        {
+            bool result = false;
+            var commands = this.commands[index];
+            if (commands.Length > 0)
+            {
+                ref var itemTypeToExps = ref definition.Value.itemTypeToExps;
+                GameItemInfo item;
+                float value;
+                var exp = exps[index];
+                foreach (var command in commands)
+                {
+                    if (hierarchy.TryGetValue(command.handle, out item))
+                    {
+                        ref var itemTypeToExp = ref itemTypeToExps[item.type];
+
+                        value = random.NextFloat(itemTypeToExp.min * item.count, itemTypeToExp.max * item.count);
+                        if (value > math.FLT_MIN_NORMAL)
+                        {
+                            exp.value += value;
+
+                            handles.Enqueue(command.handle);
+
+                            result = true;
+                        }
+                    }
+                }
+
+                if (result)
+                    expMap[entityArray[index]] = exp;
+            }
+
+            return result;
+        }
+    }
+
     [BurstCompile]
     private struct CollectEx : IJobChunk
     {
@@ -238,6 +301,9 @@ public partial struct GameValhallaSystem : ISystem
         public GameItemManager.Hierarchy hierarchy;
 
         [ReadOnly]
+        public SharedHashMap<GameItemHandle, Entity>.Reader rootEntities;
+
+        [ReadOnly]
         public EntityTypeHandle entityType;
 
         [ReadOnly]
@@ -246,7 +312,7 @@ public partial struct GameValhallaSystem : ISystem
         [ReadOnly]
         public ComponentTypeHandle<GameItemRoot> itemRootType;
 
-        public ComponentTypeHandle<GameValhallaCollectCommand> commandType;
+        public BufferTypeHandle<GameValhallaCollectCommand> commandType;
 
         [NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameValhallaExp> exps;
@@ -255,20 +321,36 @@ public partial struct GameValhallaSystem : ISystem
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
+            var random = new Random(hash ^ (uint)unfilteredChunkIndex);
+            var entityArray = chunk.GetNativeArray(entityType);
+            var exps = chunk.GetNativeArray(ref expType);
+
             Collect collect;
-            collect.random = new Random(hash ^ (uint)unfilteredChunkIndex);
+            collect.random = random;
             collect.definition = definition;
             collect.hierarchy = hierarchy;
-            collect.entityArray = chunk.GetNativeArray(entityType);
-            collect.exps = chunk.GetNativeArray(ref expType);
+            collect.entityArray = entityArray;
+            collect.exps = exps;
             collect.itemRoots = chunk.GetNativeArray(ref itemRootType);
-            collect.expMap = exps;
+            collect.expMap = this.exps;
             collect.handles = handles;
+
+            CollectHandles collectHandles;
+            collectHandles.random = random;
+            collectHandles.definition = definition;
+            collectHandles.hierarchy = hierarchy;
+            collectHandles.rootEntities = rootEntities;
+            collectHandles.entityArray = entityArray;
+            collectHandles.commands = chunk.GetBufferAccessor(ref commandType);
+            collectHandles.exps = exps;
+            collectHandles.expMap = this.exps;
+            collectHandles.handles = handles;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
             {
-                collect.Execute(i);
+                if(!collectHandles.Execute(i))
+                    collect.Execute(i);
 
                 chunk.SetComponentEnabled(ref commandType, i, false);
             }
@@ -286,6 +368,96 @@ public partial struct GameValhallaSystem : ISystem
         {
             while (handles.TryDequeue(out var handle))
                 manager.Remove(handle, 0);
+        }
+    }
+
+    private struct Destroy
+    {
+        public BlobAssetReference<GameValhallaDefinition> definition;
+
+        [ReadOnly]
+        public BufferLookup<GameSoul> souls;
+        [ReadOnly]
+        public NativeArray<GameValhallaDestroyCommand> commands;
+        public NativeArray<GameValhallaExp> exps;
+
+        public NativeQueue<DestroyResult>.ParallelWriter results;
+
+        public void Execute(int index)
+        {
+            var command = commands[index];
+            if (command.soulIndex < 0)
+                return;
+
+            if (!this.souls.HasBuffer(command.entity))
+                return;
+
+            var souls = this.souls[command.entity];
+            int soulIndex = GameSoul.IndexOf(command.soulIndex, souls);
+            if (soulIndex == -1)
+                return;
+
+            var soul = souls[soulIndex];
+            ref var destroyLevelExp = ref definition.Value.levels[soul.data.levelIndex].expToDestroy;
+
+            var exp = exps[index];
+            exp.value += destroyLevelExp.value + destroyLevelExp.factor * soul.data.exp;
+            exps[index] = exp;
+
+            DestroyResult result;
+            result.soulIndex = command.soulIndex;
+            result.entity = command.entity;
+            results.Enqueue(result);
+        }
+    }
+
+    [BurstCompile]
+    private struct DestroyEx : IJobChunk
+    {
+        public BlobAssetReference<GameValhallaDefinition> definition;
+
+        [ReadOnly]
+        public BufferLookup<GameSoul> souls;
+        public ComponentTypeHandle<GameValhallaDestroyCommand> commandType;
+        public ComponentTypeHandle<GameValhallaExp> expType;
+
+        public NativeQueue<DestroyResult>.ParallelWriter results;
+
+        public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+        {
+            Destroy destroy;
+            destroy.souls = souls;
+            destroy.definition = definition;
+            destroy.commands = chunk.GetNativeArray(ref commandType);
+            destroy.exps = chunk.GetNativeArray(ref expType);
+            destroy.results = results;
+
+            var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+            while (iterator.NextEntityIndex(out int i))
+            {
+                destroy.Execute(i);
+
+                chunk.SetComponentEnabled(ref commandType, i, false);
+            }
+        }
+    }
+
+    [BurstCompile]
+    private struct ApplyDestroy : IJob
+    {
+        public NativeQueue<DestroyResult> results;
+
+        public BufferLookup<GameSoul> souls;
+
+        public void Execute()
+        {
+            DynamicBuffer<GameSoul> souls;
+            while (results.TryDequeue(out var result))
+            {
+                souls = this.souls[result.entity];
+
+                souls.RemoveAt(GameSoul.IndexOf(result.soulIndex, souls));
+            }
         }
     }
 
@@ -315,13 +487,14 @@ public partial struct GameValhallaSystem : ISystem
             if (soulIndex == -1)
                 return;
 
-            var soul = souls[soulIndex];
-            float value = math.min(soul.data.exp + command.exp, definition.Value.levels[soul.data.levelIndex].maxExp) - soul.data.exp;
+            var soul = souls[soulIndex]; 
             var exp = exps[index];
+            float value = math.min(soul.data.exp + (command.exp > math.FLT_MIN_NORMAL ? command.exp : exp.value), definition.Value.levels[soul.data.levelIndex].maxExp) - soul.data.exp;
+
             /*if (exp.value < value)
                 return;*/
 
-            exp.value -= math.min(exp.value, value);
+            exp.value = command.exp > math.FLT_MIN_NORMAL ? exp.value - math.min(exp.value, value) : 0.0f;
             exps[index] = exp;
 
             UpgradeResult result;
@@ -465,96 +638,6 @@ public partial struct GameValhallaSystem : ISystem
                 soul = souls[soulIndex];
                 soul.data.nickname = result.name;
                 souls[soulIndex] = soul;
-            }
-        }
-    }
-
-    private struct Destroy
-    {
-        public BlobAssetReference<GameValhallaDefinition> definition;
-
-        [ReadOnly]
-        public BufferLookup<GameSoul> souls;
-        [ReadOnly]
-        public NativeArray<GameValhallaDestroyCommand> commands;
-        public NativeArray<GameValhallaExp> exps;
-
-        public NativeQueue<DestroyResult>.ParallelWriter results;
-
-        public void Execute(int index)
-        {
-            var command = commands[index];
-            if (command.soulIndex < 0)
-                return;
-
-            if (!this.souls.HasBuffer(command.entity))
-                return;
-
-            var souls = this.souls[command.entity];
-            int soulIndex = GameSoul.IndexOf(command.soulIndex, souls);
-            if (soulIndex == -1)
-                return;
-
-            var soul = souls[soulIndex];
-            ref var destroyLevelExp = ref definition.Value.levels[soul.data.levelIndex].expToDestroy;
-
-            var exp = exps[index];
-            exp.value += destroyLevelExp.value + destroyLevelExp.factor * soul.data.exp;
-            exps[index] = exp;
-
-            DestroyResult result;
-            result.soulIndex = command.soulIndex;
-            result.entity = command.entity;
-            results.Enqueue(result);
-        }
-    }
-
-    [BurstCompile]
-    private struct DestroyEx : IJobChunk
-    {
-        public BlobAssetReference<GameValhallaDefinition> definition;
-
-        [ReadOnly]
-        public BufferLookup<GameSoul> souls;
-        public ComponentTypeHandle<GameValhallaDestroyCommand> commandType;
-        public ComponentTypeHandle<GameValhallaExp> expType;
-
-        public NativeQueue<DestroyResult>.ParallelWriter results;
-
-        public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
-        {
-            Destroy destroy;
-            destroy.souls = souls;
-            destroy.definition = definition;
-            destroy.commands = chunk.GetNativeArray(ref commandType);
-            destroy.exps = chunk.GetNativeArray(ref expType);
-            destroy.results = results;
-
-            var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
-            while (iterator.NextEntityIndex(out int i))
-            {
-                destroy.Execute(i);
-
-                chunk.SetComponentEnabled(ref commandType, i, false);
-            }
-        }
-    }
-
-    [BurstCompile]
-    private struct ApplyDestroy : IJob
-    {
-        public NativeQueue<DestroyResult> results;
-
-        public BufferLookup<GameSoul> souls;
-
-        public void Execute()
-        {
-            DynamicBuffer<GameSoul> souls;
-            while (results.TryDequeue(out var result))
-            {
-                souls = this.souls[result.entity];
-
-                souls.RemoveAt(GameSoul.IndexOf(result.soulIndex, souls));
             }
         }
     }
@@ -956,7 +1039,7 @@ public partial struct GameValhallaSystem : ISystem
 
     private ComponentTypeHandle<GameItemRoot> __itemRootType;
 
-    private ComponentTypeHandle<GameValhallaCollectCommand> __collectCommandType;
+    private BufferTypeHandle<GameValhallaCollectCommand> __collectCommandType;
 
     private ComponentTypeHandle<GameValhallaUpgradeCommand> __upgradeCommandType;
 
@@ -979,6 +1062,8 @@ public partial struct GameValhallaSystem : ISystem
     private GameItemManagerShared __itemManager;
 
     private GameSoulManager __soulManager;
+
+    private SharedHashMap<GameItemHandle, Entity> __rootEntities;
 
     private NativeParallelHashMap<Entity, int> __soulIndicess;
 
@@ -1071,7 +1156,7 @@ public partial struct GameValhallaSystem : ISystem
         __sacrificerType = state.GetBufferTypeHandle<GameValhallaSacrificer>(true);
         __expType = state.GetComponentTypeHandle<GameValhallaExp>();
         __itemRootType = state.GetComponentTypeHandle<GameItemRoot>(true);
-        __collectCommandType = state.GetComponentTypeHandle<GameValhallaCollectCommand>();
+        __collectCommandType = state.GetBufferTypeHandle<GameValhallaCollectCommand>();
         __upgradeCommandType = state.GetComponentTypeHandle<GameValhallaUpgradeCommand>();
         __renameCommandType = state.GetComponentTypeHandle<GameValhallaRenameCommand>();
         __destroyCommandType = state.GetComponentTypeHandle<GameValhallaDestroyCommand>();
@@ -1089,6 +1174,8 @@ public partial struct GameValhallaSystem : ISystem
         __itemManager = itemSystem.manager;
 
         __soulManager = world.GetExistingSystemUnmanaged<GameSoulSystem>().manager;
+
+        __rootEntities = world.GetExistingSystemUnmanaged<GameItemRootEntitySystem>().entities;
 
         __handles = new NativeQueue<GameItemHandle>(Allocator.Persistent);
 
@@ -1179,6 +1266,7 @@ public partial struct GameValhallaSystem : ISystem
         collect.hash = hash;
         collect.definition = definition;
         collect.hierarchy = manager.hierarchy;
+        collect.rootEntities = __rootEntities.reader;
         collect.entityType = entityType;
         collect.expType = expType;
         collect.itemRootType = __itemRootType.UpdateAsRef(ref state);
@@ -1187,8 +1275,13 @@ public partial struct GameValhallaSystem : ISystem
         collect.handles = __handles.AsParallelWriter();
 
         ref var itemJobManager = ref __itemManager.lookupJobManager;
+        ref var rootEntitiesJobManager = ref __rootEntities.lookupJobManager;
 
-        var jobHandle = collect.ScheduleParallelByRef(__collectGroup, JobHandle.CombineDependencies(itemJobManager.readWriteJobHandle, inputDeps));
+        var jobHandle = JobHandle.CombineDependencies(itemJobManager.readWriteJobHandle, rootEntitiesJobManager.readOnlyJobHandle, inputDeps);
+
+        jobHandle = collect.ScheduleParallelByRef(__collectGroup, jobHandle);
+
+        rootEntitiesJobManager.AddReadOnlyDependency(jobHandle);
 
         DeleteHandles deleteHandles;
         deleteHandles.manager = manager;
@@ -1199,27 +1292,27 @@ public partial struct GameValhallaSystem : ISystem
 
         ref var soulsRO = ref __soulsRO.UpdateAsRef(ref state);
 
-        UpgradeEx upgrade;
-        upgrade.definition = definition;
-        upgrade.souls = soulsRO;
-        upgrade.commandType = __upgradeCommandType.UpdateAsRef(ref state);
-        upgrade.expType = expType;
-        upgrade.results = __upgradeResults.AsParallelWriter();
-        var finalUpgradeJobHandle = upgrade.ScheduleParallelByRef(__upgradeGroup, jobHandle);
-
-        RenameEx rename;
-        rename.souls = soulsRO;
-        rename.commandType = __renameCommandType.UpdateAsRef(ref state);
-        rename.results = __renameResults.AsParallelWriter();
-        var finalRenameJobHandle = rename.ScheduleParallelByRef(__renameGroup, inputDeps);
-
         DestroyEx destroy;
         destroy.definition = definition;
         destroy.souls = soulsRO;
         destroy.commandType = __destroyCommandType.UpdateAsRef(ref state);
         destroy.expType = expType;
         destroy.results = __destroyResults.AsParallelWriter();
-        var finalDestroyJobHandle = destroy.ScheduleParallelByRef(__destroyGroup, finalUpgradeJobHandle);
+        var finalDestroyJobHandle = destroy.ScheduleParallelByRef(__destroyGroup, jobHandle);
+
+        UpgradeEx upgrade;
+        upgrade.definition = definition;
+        upgrade.souls = soulsRO;
+        upgrade.commandType = __upgradeCommandType.UpdateAsRef(ref state);
+        upgrade.expType = expType;
+        upgrade.results = __upgradeResults.AsParallelWriter();
+        var finalUpgradeJobHandle = upgrade.ScheduleParallelByRef(__upgradeGroup, finalDestroyJobHandle);
+
+        RenameEx rename;
+        rename.souls = soulsRO;
+        rename.commandType = __renameCommandType.UpdateAsRef(ref state);
+        rename.results = __renameResults.AsParallelWriter();
+        var finalRenameJobHandle = rename.ScheduleParallelByRef(__renameGroup, inputDeps);
 
         EvoluteEx evolute;
         evolute.hash = hash;
@@ -1255,7 +1348,7 @@ public partial struct GameValhallaSystem : ISystem
             respawn.expType = expType;
             respawn.soulIndicesToRemove = __soulIndicess.AsParallelWriter();
             respawn.results = __timeEvents.AsParallelWriter();
-            finalRespawnJobHandle = respawn.ScheduleParallelByRef(__respawnGroup, JobHandle.CombineDependencies(finalRespawnJobHandle, finalDestroyJobHandle));
+            finalRespawnJobHandle = respawn.ScheduleParallelByRef(__respawnGroup, JobHandle.CombineDependencies(finalRespawnJobHandle, finalUpgradeJobHandle));
 
             Add add;
             add.inputs = __timeEvents;
@@ -1307,7 +1400,7 @@ public partial struct GameValhallaSystem : ISystem
             finalJobHandle = remove.ScheduleByRef(JobHandle.CombineDependencies(finalJobHandle, finalRespawnJobHandle));
         }
         else
-            finalJobHandle = JobHandle.CombineDependencies(finalJobHandle, finalCollectJobHandle, finalDestroyJobHandle);
+            finalJobHandle = JobHandle.CombineDependencies(finalJobHandle, finalCollectJobHandle, finalUpgradeJobHandle);
 
         ApplyDestroy applyDestroy;
         applyDestroy.results = __destroyResults;

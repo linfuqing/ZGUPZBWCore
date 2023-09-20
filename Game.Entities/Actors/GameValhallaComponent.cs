@@ -10,8 +10,9 @@ public struct GameValhallaExp : IComponentData
     public float value;
 }
 
-public struct GameValhallaCollectCommand : IComponentData, IEnableableComponent
+public struct GameValhallaCollectCommand : IBufferElementData, IEnableableComponent
 {
+    public GameItemHandle handle;
 }
 
 public struct GameValhallaUpgradeCommand : IComponentData, IEnableableComponent
@@ -88,9 +89,24 @@ public class GameValhallaComponent : EntityProxyComponent, IEntityComponent
 
     public void Collect()
     {
-        GameValhallaCollectCommand command;
-        this.SetComponentData(command);
+        this.SetBuffer<GameValhallaCollectCommand>();
         this.SetComponentEnabled<GameValhallaCollectCommand>(true);
+    }
+
+    public void Collect<T>(in T commands) where T : IReadOnlyCollection<GameValhallaCollectCommand>
+    {
+        this.SetBuffer<GameValhallaCollectCommand, T>(commands);
+        this.SetComponentEnabled<GameValhallaCollectCommand>(true);
+    }
+
+    public void Destroy(int soulIndex, in Entity entity)
+    {
+        GameValhallaDestroyCommand command;
+        command.soulIndex = soulIndex;
+        command.entity = entity;
+
+        this.SetComponentData(command);
+        this.SetComponentEnabled<GameValhallaDestroyCommand>(true);
     }
 
     public void Upgrade(int soulIndex, float exp, in Entity entity)
@@ -115,16 +131,6 @@ public class GameValhallaComponent : EntityProxyComponent, IEntityComponent
 
         this.SetComponentData(command);
         this.SetComponentEnabled<GameValhallaRenameCommand>(true);
-    }
-
-    public void Destroy(int soulIndex, in Entity entity)
-    {
-        GameValhallaDestroyCommand command;
-        command.soulIndex = soulIndex;
-        command.entity = entity;
-
-        this.SetComponentData(command);
-        this.SetComponentEnabled<GameValhallaDestroyCommand>(true);
     }
 
     public void Evolute<T>(int soulIndex, in Entity entity, in T sacrificerIndices) where T : IReadOnlyCollection<GameValhallaSacrificer>

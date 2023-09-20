@@ -601,7 +601,14 @@ public partial struct GameNodeCharacterSystem : ISystem
             RigidTransform transform = isKinematic ? rigidbody.WorldFromBody : math.RigidTransform(rotations[index].Value, translations[index].Value);//, source = transform;
             quaternion originRotation = quaternion.RotateY(characterAngle.value);
 
-            var distanceHitsCollector = new DynamicBufferCollectorExclude<DistanceHit>(rigidbodyIndex, instance.contactTolerance, distanceHits[index].Reinterpret<DistanceHit>());
+            var hits = distanceHits[index].Reinterpret<DistanceHit>();
+            DynamicBufferWriteOnlyWrapper<DistanceHit> wrapper;
+            var distanceHitsCollector = new ListCollectorExclude<DistanceHit, DynamicBuffer<DistanceHit>, DynamicBufferWriteOnlyWrapper<DistanceHit>>(
+                rigidbodyIndex, 
+                instance.contactTolerance, 
+                //rigidbodies,
+                ref hits, 
+                ref wrapper);
 
             ColliderDistanceInput input = default;
             {
@@ -1801,7 +1808,9 @@ public partial struct GameNodeCharacterSystem : ISystem
                     ref deferredImpulseWriter);
 
                 if (isJump || isDrop)
-                    ;// velocity = orginVelocity;
+                {
+                    // velocity = orginVelocity;
+                }
                 else
                 {
                     float lengthsq = math.lengthsq(rotationVelocity);
