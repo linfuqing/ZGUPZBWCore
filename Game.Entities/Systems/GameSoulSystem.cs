@@ -24,6 +24,23 @@ public struct GameSoulIndex : IComponentData
     public int value;
 }
 
+public struct GameSoulDislike : IBufferElementData
+{
+    public int index;
+
+    public static int IndexOf(int soulIndex, in DynamicBuffer<GameSoulDislike> souls)
+    {
+        int numSouls = souls.Length;
+        for (int i = 0; i < numSouls; ++i)
+        {
+            if (souls[i].index == soulIndex)
+                return i;
+        }
+
+        return -1;
+    }
+}
+
 public struct GameSoul : IBufferElementData
 {
     public int index;

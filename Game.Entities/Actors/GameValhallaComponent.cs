@@ -10,18 +10,6 @@ public struct GameValhallaExp : IComponentData
     public float value;
 }
 
-public struct GameValhallaCollectCommand : IBufferElementData, IEnableableComponent
-{
-    public GameItemHandle handle;
-}
-
-public struct GameValhallaUpgradeCommand : IComponentData, IEnableableComponent
-{
-    public int soulIndex;
-    public float exp;
-    public Entity entity;
-}
-
 public struct GameValhallaRenameCommand : IComponentData, IEnableableComponent
 {
     public int soulIndex;
@@ -29,9 +17,21 @@ public struct GameValhallaRenameCommand : IComponentData, IEnableableComponent
     public FixedString32Bytes name;
 }
 
-public struct GameValhallaDestroyCommand : IComponentData, IEnableableComponent
+public struct GameValhallaCollectCommand : IBufferElementData, IEnableableComponent
+{
+    public GameItemHandle handle;
+}
+
+public struct GameValhallaDestroyCommand : IBufferElementData, IEnableableComponent
 {
     public int soulIndex;
+    public Entity entity;
+}
+
+public struct GameValhallaUpgradeCommand : IComponentData, IEnableableComponent
+{
+    public int soulIndex;
+    public float exp;
     public Entity entity;
 }
 
@@ -105,8 +105,19 @@ public class GameValhallaComponent : EntityProxyComponent, IEntityComponent
         command.soulIndex = soulIndex;
         command.entity = entity;
 
-        this.SetComponentData(command);
+        this.AppendBuffer(command);
         this.SetComponentEnabled<GameValhallaDestroyCommand>(true);
+    }
+
+    public void Rename(int soulIndex, in Entity entity, in FixedString32Bytes name)
+    {
+        GameValhallaRenameCommand command;
+        command.name = name;
+        command.entity = entity;
+        command.soulIndex = soulIndex;
+
+        this.SetComponentData(command);
+        this.SetComponentEnabled<GameValhallaRenameCommand>(true);
     }
 
     public void Upgrade(int soulIndex, float exp, in Entity entity)
@@ -120,17 +131,6 @@ public class GameValhallaComponent : EntityProxyComponent, IEntityComponent
 
         this.SetComponentData(command);
         this.SetComponentEnabled<GameValhallaUpgradeCommand>(true);
-    }
-
-    public void Rename(int soulIndex, in Entity entity, in FixedString32Bytes name)
-    {
-        GameValhallaRenameCommand command;
-        command.name = name;
-        command.entity = entity;
-        command.soulIndex = soulIndex;
-
-        this.SetComponentData(command);
-        this.SetComponentEnabled<GameValhallaRenameCommand>(true);
     }
 
     public void Evolute<T>(int soulIndex, in Entity entity, in T sacrificerIndices) where T : IReadOnlyCollection<GameValhallaSacrificer>
