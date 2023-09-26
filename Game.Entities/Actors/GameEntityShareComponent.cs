@@ -24,10 +24,10 @@ public enum GameEntitySharedActionObjectFlag
     Damage = 0x40
 }
 
-public struct GameEntitySharedData : IComponentData
+/*public struct GameEntitySharedData : IComponentData
 {
     public int cacheVersionCount;
-}
+}*/
 
 public struct GameEntitySharedActionType : IComponentData
 {
@@ -47,7 +47,7 @@ public struct GameEntitySharedHit : IBufferElementData
     public Entity entity;
 }
 
-public struct GameEntitySharedAction : ICleanupBufferElementData
+/*public struct GameEntitySharedAction : ICleanupBufferElementData
 {
     public int index;
     public int version;
@@ -57,7 +57,7 @@ public struct GameEntitySharedAction : ICleanupBufferElementData
     {
         return "GameEntitySharedAction(index: " + index + ", version: " + version + ", elapsed time: " + elapsedTime + ")";
     }
-}
+}*/
 
 public struct GameEntitySharedActionData : IComponentData
 {
@@ -92,19 +92,19 @@ public struct GameActionSharedObjectData : IComponentData
     public Entity parentEntity;
 }
 
-[EntityComponent(typeof(GameEntitySharedData))]
+//[EntityComponent(typeof(GameEntitySharedData))]
 [EntityComponent(typeof(GameEntitySharedActionType))]
 [EntityComponent(typeof(GameEntitySharedActionMask))]
 [EntityComponent(typeof(GameEntitySharedHit))]
-[EntityComponent(typeof(GameEntitySharedAction))]
+//[EntityComponent(typeof(GameEntitySharedAction))]
 public class GameEntityShareComponent : GameEntityComponentEx, IEntityComponent
 {
     [UnityEngine.SerializeField]
     [UnityEngine.Tooltip("跟客户端技能效果对应，最后三层不可用")]
     internal UnityEngine.LayerMask _actionMask;
 
-    [UnityEngine.SerializeField]
-    internal int _cacheVersionCount = 4;
+    //[UnityEngine.SerializeField]
+    //internal int _cacheVersionCount = 4;
     
     private EntityArchetype __actionEntityArchetype;
 
@@ -142,9 +142,9 @@ public class GameEntityShareComponent : GameEntityComponentEx, IEntityComponent
 
     void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
     {
-        GameEntitySharedData instance;
+        /*GameEntitySharedData instance;
         instance.cacheVersionCount = _cacheVersionCount;
-        assigner.SetComponentData(entity, instance);
+        assigner.SetComponentData(entity, instance);*/
 
         GameEntitySharedActionMask actionMask;
         actionMask.value = (uint)_actionMask.value;

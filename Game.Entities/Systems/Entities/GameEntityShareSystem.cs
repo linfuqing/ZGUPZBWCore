@@ -949,7 +949,7 @@ public partial class GameEntityActionSharedStatusSystem : JobComponentSystem
     }
 }*/
 
-[BurstCompile, UpdateInGroup(typeof(GameUpdateSystemGroup)), UpdateAfter(typeof(GameEntityActionSystemGroup))]
+/*[BurstCompile, UpdateInGroup(typeof(GameUpdateSystemGroup)), UpdateAfter(typeof(GameEntityActionSystemGroup))]
 public partial struct GameEntityActionSharedUpdateSystem : ISystem
 {
     private struct UpdateActions
@@ -1101,7 +1101,7 @@ public partial struct GameEntityActionSharedUpdateSystem : ISystem
             state.Dependency = updateActions.ScheduleParallel(__groupToUpdate, state.Dependency);
         }
     }
-}
+}*/
 
 [BurstCompile,
     CreateAfter(typeof(GameEntityActionLocationSystem)),
@@ -1162,16 +1162,24 @@ public partial struct GameEntityActionSharedSystem : ISystem
         [ReadOnly]
         public ComponentLookup<GameEntitySharedActionMask> actionMasks;
 
-        [ReadOnly]
-        public BufferLookup<GameEntitySharedAction> actions;
+        /*[ReadOnly]
+        public BufferLookup<GameEntitySharedAction> actions;*/
 
         public NativeFactory<EntityData<GameEntitySharedHit>>.ParallelWriter hits;
 
         public EntityCommandQueue<GameEntityActionSharedFactorySytem.Command>.ParallelWriter entityManager;
 
+        /// <summary>
+        /// 以前用来检测Rollback时候删除的技能被创建后特效不重复创建，现在没有意义了，因为原技能被删除后子特效全部被清除
+        /// </summary>
+        /// <param name="index"></param>
+        /// <param name="version"></param>
+        /// <param name="elapsedTime"></param>
+        /// <param name="entity"></param>
+        /// <returns></returns>
         public bool Check(int index, int version, float elapsedTime, Entity entity)
         {
-            if (!this.actions.HasBuffer(entity))
+            /*if (!this.actions.HasBuffer(entity))
                 return false;
 
             var actions = this.actions[entity];
@@ -1196,7 +1204,7 @@ public partial struct GameEntityActionSharedSystem : ISystem
 
                     return false;
                 }
-            }
+            }*/
 
             //Debug.Log(log + "(Index: " + index + ", Version" + version + ", Time: " + elapsedTime + ")");
             return true;
@@ -1675,8 +1683,8 @@ public partial struct GameEntityActionSharedSystem : ISystem
         [ReadOnly]
         public ComponentLookup<GameEntitySharedActionMask> actionMasks;
 
-        [ReadOnly]
-        public BufferLookup<GameEntitySharedAction> actions;
+        /*[ReadOnly]
+        public BufferLookup<GameEntitySharedAction> actions;*/
 
         public NativeFactory<EntityData<GameEntitySharedHit>>.ParallelWriter hits;
 
@@ -1694,7 +1702,7 @@ public partial struct GameEntityActionSharedSystem : ISystem
             handler.rotations = rotations;
             handler.actionTypes = actionTypes;
             handler.actionMasks = actionMasks;
-            handler.actions = actions;
+            //handler.actions = actions;
             handler.hits = hits;
             handler.entityManager = entityManager;
 
@@ -1756,7 +1764,7 @@ public partial struct GameEntityActionSharedSystem : ISystem
     private ComponentLookup<Rotation> __rotations;
     private ComponentLookup<GameEntitySharedActionType> __actionTypes;
     private ComponentLookup<GameEntitySharedActionMask> __actionMasks;
-    private BufferLookup<GameEntitySharedAction> __actions;
+    //private BufferLookup<GameEntitySharedAction> __actions;
 
     private BufferTypeHandle<GameEntitySharedHit> __hitType;
     private BufferLookup<GameEntitySharedHit> __hitResults;
@@ -1810,9 +1818,7 @@ public partial struct GameEntityActionSharedSystem : ISystem
         __rotations = state.GetComponentLookup<Rotation>(true);
         __actionTypes = state.GetComponentLookup<GameEntitySharedActionType>(true);
         __actionMasks = state.GetComponentLookup<GameEntitySharedActionMask>(true);
-        __actions = state.GetBufferLookup<GameEntitySharedAction>(true);
-
-        __actions = state.GetBufferLookup<GameEntitySharedAction>(true);
+        //__actions = state.GetBufferLookup<GameEntitySharedAction>(true);
 
         __hitType = state.GetBufferTypeHandle<GameEntitySharedHit>();
 
@@ -1861,7 +1867,7 @@ public partial struct GameEntityActionSharedSystem : ISystem
         factory.rotations = __rotations.UpdateAsRef(ref state);
         factory.actionTypes = __actionTypes.UpdateAsRef(ref state);
         factory.actionMasks = __actionMasks.UpdateAsRef(ref state);
-        factory.actions = __actions.UpdateAsRef(ref state);
+        //factory.actions = __actions.UpdateAsRef(ref state);
         factory.hits = hits.parallelWriter;
         factory.entityManager = entityManager.parallelWriter;
 
