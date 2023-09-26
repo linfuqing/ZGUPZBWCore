@@ -98,8 +98,8 @@ public class GameTimeActorComponent : EntityProxyComponent, IEntityComponent
             for (int i = 0; i < numActions; ++i)
                 actions[i] = _actions[i];
 
-            assigner.SetBuffer(true, entity, actions);
-            assigner.SetBuffer(true, entity, new GameTimeActionElapsedTime[numActions]);
+            assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, actions);
+            assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, new GameTimeActionElapsedTime[numActions]);
         }
     }
 }

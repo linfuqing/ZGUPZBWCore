@@ -148,6 +148,6 @@ public class GameWayComponent : ComponentDataProxy<GameWayData>
     {
         base.Init(entity, assigner);
 
-        assigner.SetBuffer(true, entity, points);
+        assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, points);
     }
 }

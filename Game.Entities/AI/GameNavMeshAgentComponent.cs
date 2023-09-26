@@ -100,7 +100,7 @@ public class GameNavMeshAgentComponent : ZG.ComponentDataProxy<GameNavMeshAgentD
         instance.pathNodePoolSize = _pathNodePoolSize;
         assigner.SetComponentData(entity, instance);
 
-        assigner.SetBuffer(true, entity, _extends);
+        assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, _extends);
     }
 
     private void OnDrawGizmos()

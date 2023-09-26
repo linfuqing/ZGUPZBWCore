@@ -359,10 +359,10 @@ public class GameActionActiveComponent : EntityProxyComponent, IEntityComponent
         }
 
         if (actions != null)
-            assigner.SetBuffer(true, entity, actions.ToArray());
+            assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, actions.ToArray());
 
-        assigner.SetBuffer(true, entity, conditions);
+        assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, conditions);
 
-        assigner.SetBuffer(true, entity, groups);
+        assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, groups);
     }
 }

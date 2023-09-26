@@ -262,7 +262,7 @@ public class GameEntityDataComponent : GameEntityComponentEx, IEntityComponent
 
     void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
     {
-        assigner.SetBuffer(true, entity, __GetDefences(_defences));
+        assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, __GetDefences(_defences));
     }
 
     private GameEntityDefence[] __GetDefences(float[] values)

@@ -663,17 +663,17 @@ public partial struct GameActionActiveExecutorSystem : ISystem
             in float3 offset,
             in RigidTransform transform,
             in BlobAssetReference<Collider> sourceCollider,
-            in BlobAssetReference<Collider> destinationCollider)
+            Collider* destinationCollider)
         {
             float3 position = math.transform(transform, offset);
 
-            if (sourceCollider.IsCreated && destinationCollider.IsCreated)
+            if (sourceCollider.IsCreated && destinationCollider != null)
             {
                 PointDistanceInput pointDistanceInput = default;
                 pointDistanceInput.MaxDistance = float.MaxValue;
                 pointDistanceInput.Position = position;
                 pointDistanceInput.Filter = sourceCollider.Value.Filter;
-                if (destinationCollider.Value.CalculateDistance(pointDistanceInput, out var closestHit))
+                if (destinationCollider->CalculateDistance(pointDistanceInput, out var closestHit))
                 {
                     if (closestHit.Distance <= distance)
                         return true;
@@ -699,13 +699,13 @@ public partial struct GameActionActiveExecutorSystem : ISystem
                 colliderDistanceInput.Transform = target;
                 colliderDistanceInput.MaxDistance = collisionTolerance;
 
-                return destinationCollider.Value.CalculateDistance(colliderDistanceInput);
+                return destinationCollider->CalculateDistance(colliderDistanceInput);
             }
 
             return math.lengthsq(position) <= distance * distance;
         }
 
-        public int Execute(bool isEntry, int index)
+        public unsafe int Execute(bool isEntry, int index)
         {
             var instance = instances[index];
             if ((states[index].value & GameNodeStatus.STOP) == GameNodeStatus.STOP)
@@ -833,12 +833,12 @@ public partial struct GameActionActiveExecutorSystem : ISystem
                 instance.watcherTime > math.FLT_MIN_NORMAL) &&
                 physicsColliders.HasComponent(info.entity))
             {
-                /*var collider = physicsColliders[info.entity].Value;
-
+                //var collider = physicsColliders[info.entity].Value;
+                Collider* collider;
                 if (physicsColliders.HasComponent(info.entity))
                 {
                     ChildCollider child;
-                    var collider = physicsColliders[info.entity].ColliderPtr;
+                    collider = physicsColliders[info.entity].ColliderPtr;
                     if (physicsColliders.HasComponent(entity))
                     {
                         var physicsCollider = physicsColliders[entity];
@@ -877,8 +877,10 @@ public partial struct GameActionActiveExecutorSystem : ISystem
                                 collider = child.Collider;
                         }
                     }
-                    categoryBits = physicsColliders[info.entity].Value.Value.Filter.BelongsTo;
-                }*/
+                    //categoryBits = physicsColliders[info.entity].Value.Value.Filter.BelongsTo;
+                }
+                else
+                    collider = null;
 
                 forward = distance > math.FLT_MIN_NORMAL ? forward / distance : forward;
 
@@ -992,7 +994,7 @@ public partial struct GameActionActiveExecutorSystem : ISystem
                                 RigidTransform sourceTransform = math.RigidTransform(quaternion.LookRotationSafe(forward, math.up()), source),
                                     destinationTransform = math.RigidTransform(targetRotation, destination),
                                     transform = math.mul(math.inverse(destinationTransform), sourceTransform);
-                                var collider = physicsColliders[info.entity].Value;
+                                //var collider = physicsColliders[info.entity].Value;
                                 var actor = actors[index];
                                 var actorActions = this.actorActions[index];
                                 for (i = 0; i < numActorActions; ++i)

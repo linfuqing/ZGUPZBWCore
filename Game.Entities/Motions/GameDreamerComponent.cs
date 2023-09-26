@@ -436,7 +436,7 @@ public class GameDreamerComponent : EntityProxyComponent, IEntityComponent
                 }
             }
 
-            assigner.SetBuffer(true, entity, dreamResults.ToArray());
+            assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, dreamResults.ToArray());
         }
 
         /*if (status != GameDreamerStatus.Normal)

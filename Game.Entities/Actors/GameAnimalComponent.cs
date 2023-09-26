@@ -321,7 +321,7 @@ public class GameAnimalComponent : ComponentDataProxy<GameAnimalData>
             assigner.SetComponentEnabled<GameAnimalBuff>(entity, false);
         }
 
-        assigner.SetBuffer(true, entity, __GetFoodIndices(_foodIndices));
+        assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, __GetFoodIndices(_foodIndices));
     }
 
     private GameAnimalFoodIndex[] __GetFoodIndices(int[] values)

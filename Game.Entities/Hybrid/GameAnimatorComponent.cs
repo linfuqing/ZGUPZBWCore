@@ -256,14 +256,14 @@ public class GameAnimatorComponent : EntityProxyComponent, IEntityComponent
         for (int i = 0; i < length; ++i)
             forwardKeyframes[i].value = _forwardKeyframes[i];
 
-        assigner.SetBuffer(true, entity, forwardKeyframes);
+        assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, forwardKeyframes);
 
         length = _turnKeyframes.Length;
         var turnKeyframes = new GameAnimatorTurnKeyframe[length];
         for (int i = 0; i < length; ++i)
             turnKeyframes[i].value = _turnKeyframes[i];
 
-        assigner.SetBuffer(true, entity, turnKeyframes);
+        assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, turnKeyframes);
 
         GameAnimatorActorTimeToLive actorTimeToLive;
         actorTimeToLive.value = _actorTimeToLive;

@@ -57,7 +57,7 @@ public class GameRandomActorComponent : EntityProxyComponent, IEntityComponent
             for (int i = 0; i < length; ++i)
                 acions[i].index = _actionIndices[i];
 
-            assigner.SetBuffer(true, entity, acions);
+            assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, acions);
         }
 
         length = _slices == null ? 0 : _slices.Length;
@@ -79,7 +79,7 @@ public class GameRandomActorComponent : EntityProxyComponent, IEntityComponent
             }
 
             if(__groups.Count > 0)
-                assigner.SetBuffer(true, entity, __groups.ToArray());
+                assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, __groups.ToArray());
 
             GameRandomActorSlice[] slices = new GameRandomActorSlice[length];
 
@@ -98,7 +98,7 @@ public class GameRandomActorComponent : EntityProxyComponent, IEntityComponent
                 groupCount += destinationSlice.groupCount;
             }
 
-            assigner.SetBuffer(true, entity, slices);
+            assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, slices);
         }
     }
 }

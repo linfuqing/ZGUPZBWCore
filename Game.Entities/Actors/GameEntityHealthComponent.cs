@@ -103,6 +103,6 @@ public class GameEntityHealthComponent : ComponentDataProxy<GameEntityHealthData
         GameEntityHealthBuff buff;
         buff.duration = 0.0f;
         buff.value = _buff;
-        assigner.SetBuffer(true, entity, new GameEntityHealthBuff[] { buff });
+        assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, new GameEntityHealthBuff[] { buff });
     }
 }

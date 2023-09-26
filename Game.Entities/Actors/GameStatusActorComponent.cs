@@ -27,6 +27,6 @@ public class GameStatusActorComponent : EntityProxyComponent, IEntityComponent
 
     void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
     {
-        assigner.SetBuffer(true, entity, _levels);
+        assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, _levels);
     }
 }

@@ -762,8 +762,8 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
             this.RemoveComponent<GameEntityActorMass>();*/
 
         var actionIndices = __GetActionIndices(_actionIndices);
-        assigner.SetBuffer(true, entity, actionIndices);
-        assigner.SetBuffer(true, entity, new GameEntityActorActionInfo[actionIndices.Length]);
+        assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, actionIndices);
+        assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, new GameEntityActorActionInfo[actionIndices.Length]);
     }
 
     private GameEntityActorActionData[] __GetActionIndices(int[] values)
@@ -799,6 +799,6 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         assigner.SetComponentData(entity, actionInfo);
 
         if (_delay != null)
-            assigner.SetBuffer(true, entity, _delay);
+            assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, _delay);
     }
 }

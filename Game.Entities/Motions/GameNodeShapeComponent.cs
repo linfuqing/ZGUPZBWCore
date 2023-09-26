@@ -220,7 +220,7 @@ public class GameNodeShapeComponent : EntityProxyComponent, IEntityComponent
         for (int i = length - 1; i >= 0; --i)
             shapes[i] = _shapes[i]._Init(gameObject);
 
-        assigner.SetBuffer(true, entity, shapes);
+        assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, shapes);
     }
 
     /*private void __OnChanged(BlobAssetReference<Unity.Physics.Collider> collider)

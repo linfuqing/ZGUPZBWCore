@@ -115,8 +115,8 @@ public class GameActionFixedComponent : EntityProxyComponent, IEntityComponent
             __stages.Add(targetStage);
         }
 
-        assigner.SetBuffer<GameActionFixedNextFrame, List<GameActionFixedNextFrame>>(true, entity, __nextFrames);
-        assigner.SetBuffer<GameActionFixedFrame, List<GameActionFixedFrame>>(true, entity, __frames);
-        assigner.SetBuffer<GameActionFixedStage, List<GameActionFixedStage>>(true, entity, __stages);
+        assigner.SetBuffer<GameActionFixedNextFrame, List<GameActionFixedNextFrame>>(EntityComponentAssigner.BufferOption.Override, entity, __nextFrames);
+        assigner.SetBuffer<GameActionFixedFrame, List<GameActionFixedFrame>>(EntityComponentAssigner.BufferOption.Override, entity, __frames);
+        assigner.SetBuffer<GameActionFixedStage, List<GameActionFixedStage>>(EntityComponentAssigner.BufferOption.Override, entity, __stages);
     }
 }

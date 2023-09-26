@@ -17,6 +17,6 @@ public class GameEntityCharacterComponent : EntityProxyComponent, IEntityCompone
 
     void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
     {
-        assigner.SetBuffer(true, entity, _values);
+        assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, _values);
     }
 }

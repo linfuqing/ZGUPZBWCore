@@ -294,7 +294,7 @@ public class GameEntityComponent : EntityProxyComponent, IEntityComponent
         camp.value = _camp;
         assigner.SetComponentData(entity, camp);
 
-        assigner.SetBuffer(true, entity, __GetItemIndices(_itemIndices));
+        assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, __GetItemIndices(_itemIndices));
     }
 
     private static GameEntityItem[] __GetItemIndices(int[] values)

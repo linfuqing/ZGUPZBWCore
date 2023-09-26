@@ -890,7 +890,7 @@ public class GameNodeComponent : EntityProxyComponent, IEntityComponent
 
         _speedSections = list.ToArray();*/
 
-        assigner.SetBuffer(true, entity, _speedSections);
+        assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, _speedSections);
 
         if (__normalizedSpeed != 1.0f)
         {
@@ -903,7 +903,7 @@ public class GameNodeComponent : EntityProxyComponent, IEntityComponent
             speedScaleComponent.value = __normalizedSpeed;
             __speedScaleComponents.Add(speedScaleComponent);
 
-            assigner.SetBuffer<GameNodeSpeedScaleComponent, List<GameNodeSpeedScaleComponent>>(true, entity, __speedScaleComponents);
+            assigner.SetBuffer<GameNodeSpeedScaleComponent, List<GameNodeSpeedScaleComponent>>(EntityComponentAssigner.BufferOption.Override, entity, __speedScaleComponents);
         }
     }
 

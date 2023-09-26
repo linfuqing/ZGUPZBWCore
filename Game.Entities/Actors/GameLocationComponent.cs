@@ -64,6 +64,6 @@ public class GameLocationComponent : MonoBehaviour, IEntitySystemStateComponent
             __callbackHandles.Add(destination.exit);
         }
 
-        assigner.SetBuffer(true, entity, locations);
+        assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, locations);
     }
 }

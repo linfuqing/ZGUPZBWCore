@@ -111,7 +111,7 @@ public class GameRandomSpawnerComponent : EntityProxyComponent, IEntityComponent
             destination.offset = math.RigidTransform(source.rotation.normalized, source.position);
         }
 
-        assigner.SetBuffer(true, entity, assets);
+        assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, assets);
 
         length = _slices == null ? 0 : _slices.Length;
         if (length > 0)
@@ -132,7 +132,7 @@ public class GameRandomSpawnerComponent : EntityProxyComponent, IEntityComponent
             }
 
             if(__groups.Count > 0)
-                assigner.SetBuffer(true, entity, __groups.ToArray());
+                assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, __groups.ToArray());
 
             var slices = new GameRandomSpawnerSlice[length];
 
@@ -147,7 +147,7 @@ public class GameRandomSpawnerComponent : EntityProxyComponent, IEntityComponent
                 groupCount += destination.groupCount;
             }
 
-            assigner.SetBuffer(true, entity, slices);
+            assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, slices);
         }
     }
 }
