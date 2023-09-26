@@ -501,7 +501,8 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
         GameActionStatus.Status destroyStatus = 0;
         Entity actionEntity;
         var asset = __assets[instance.index];
-        if(asset.gameObject == null)
+        float elpasedTime = (float)(__time - instance.time);
+        if (asset.gameObject == null || asset.destroyTime < elpasedTime)
         {
             if (isAction)
                 __endFrameBarrier.RemoveComponent<GameActionSharedObjectData>(entity);
@@ -511,6 +512,7 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
             return;
         }
 
+        float destroyTime;
         var gameObject = UnityEngine.Object.Instantiate(
             asset.gameObject,
             instance.transform.pos,
@@ -520,6 +522,8 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
         //Debug.LogError($"Create {gameObject.name} : {asset.destroyTime}", gameObject);
         if (isAction)
         {
+            destroyTime = asset.destroyTime;
+
             actionEntity = entity;
 
             //__endFrameBarrier.AddComponent<EntityObjects>(entity);
@@ -542,8 +546,15 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
         }
         else
         {
+            destroyTime = asset.destroyTime - elpasedTime;
             if (gameObject != null)
-                GameObject.Destroy(gameObject, asset.destroyTime);
+            {
+                var particleSystem = gameObject.GetComponentInChildren<ParticleSystem>();
+                if (particleSystem != null)
+                    particleSystem.time = elpasedTime;
+
+                GameObject.Destroy(gameObject, destroyTime);
+            }
 
             if (instance.parentEntity == Entity.Null)
             {
@@ -570,7 +581,7 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
 
         target.index = __instances.Add(gameObject);
         target.destroyStatus = destroyStatus;
-        target.destroyTime = asset.destroyTime;
+        target.destroyTime = destroyTime;
         target.actionEntity = actionEntity;
 
         __endFrameBarrier.AddComponentData(entity, target);
@@ -578,7 +589,7 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
 
     private void __Destroy(in Entity entity, in GameActionSharedObject target)
     {
-        EntityManager entityManager = EntityManager;
+        var entityManager = EntityManager;
         bool isDisabled = entityManager.TryGetComponentData<GameActionStatus>(target.actionEntity, out var status);
         if (isDisabled &&
             ((status.value & GameActionStatus.Status.Destroy) != GameActionStatus.Status.Destroy ||
@@ -646,11 +657,11 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
 
     private Transform __GetParent(Entity entity, bool isRemove)
     {
-        EntityManager entityManager = EntityManager;
+        var entityManager = EntityManager;
         if (!entityManager.TryGetComponentData<GameActionSharedObjectParent>(entity, out var parent))
             return null;
 
-        Transform result = entityManager.TryGetComponentData<EntityObject<Transform>>(parent.value, out var transform) ? transform.value : null;
+        var result = entityManager.TryGetComponentData<EntityObject<Transform>>(parent.value, out var transform) ? transform.value : null;
 
         if (isRemove)
             __endFrameBarrier.RemoveComponent<GameActionSharedObjectParent>(entity);
