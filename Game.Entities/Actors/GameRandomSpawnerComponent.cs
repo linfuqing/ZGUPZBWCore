@@ -18,6 +18,14 @@ public struct GameRandomSpawnerGroup : IBufferElementData
 
 public struct GameRandomSpawnerAsset : IBufferElementData
 {
+    public enum Space
+    {
+        Local, 
+        World
+    }
+
+    public Space space;
+
     public int index;
 
     public float vertical;
@@ -47,13 +55,14 @@ public class GameRandomSpawnerComponent : EntityProxyComponent, IEntityComponent
 #if UNITY_EDITOR
         public string name;
 #endif
-        [Tooltip("纵向掉落范围")]
+
+        /*[Tooltip("纵向掉落范围")]
         public float vertical;
         [Tooltip("横向掉落范围")]
         public float horizontal;
 
         public Vector3 position;
-        public Quaternion rotation;
+        public Quaternion rotation;*/
 
         public RandomGroup[] groups;
     }
@@ -64,6 +73,8 @@ public class GameRandomSpawnerComponent : EntityProxyComponent, IEntityComponent
 #if UNITY_EDITOR
         public string name;
 #endif
+
+        public GameRandomSpawnerAsset.Space space;
 
         [Index("database.assets", pathLevel = -1)]
         public int index;
@@ -105,6 +116,7 @@ public class GameRandomSpawnerComponent : EntityProxyComponent, IEntityComponent
         {
             ref var source = ref _assets[i];
             ref var destination = ref assets[i];
+            destination.space = source.space;
             destination.index = source.index;
             destination.vertical = source.vertical;
             destination.horizontal = source.horizontal;

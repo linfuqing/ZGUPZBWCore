@@ -6,13 +6,11 @@ using ZG;
 
 //[assembly: RegisterEntityObject(typeof(GameEntityHealthComponent))]
 
-[Serializable]
 public struct GameEntityHealth : IComponentData
 {
     public float value;
 }
 
-[Serializable]
 public struct GameEntityHealthDamage : IComponentData
 {
     public float value;
@@ -20,7 +18,7 @@ public struct GameEntityHealthDamage : IComponentData
     public Entity entity;
 }
 
-[Serializable, InternalBufferCapacity(1)]
+[InternalBufferCapacity(1)]
 public struct GameEntityHealthBuff : IBufferElementData
 {
     public float value;

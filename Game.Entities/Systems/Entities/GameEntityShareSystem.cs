@@ -1869,8 +1869,6 @@ public partial struct GameEntityActionSharedSystem : ISystem
 
         var entityManager = __endFrameBarrier.Create();
 
-        NativeFactory<EntityData<GameEntitySharedHit>> hits = __hits;
-
         Factory factory;
         /*factory.actionObjects = __actionObjects;
         factory.actionObjectRanges = __actionObjectRanges;
@@ -1882,7 +1880,7 @@ public partial struct GameEntityActionSharedSystem : ISystem
         factory.actionTypes = __actionTypes.UpdateAsRef(ref state);
         factory.actionMasks = __actionMasks.UpdateAsRef(ref state);
         //factory.actions = __actions.UpdateAsRef(ref state);
-        factory.hits = hits.parallelWriter;
+        factory.hits = __hits.parallelWriter;
         factory.entityManager = entityManager.parallelWriter;
 
         if (__core.Update<Handler, Factory>(factory, ref state))
@@ -1892,9 +1890,9 @@ public partial struct GameEntityActionSharedSystem : ISystem
             entityManager.AddJobHandleForProducer<Factory>(performJob);
 
             ApplyHits applyHits;
-            applyHits.sources = hits;
+            applyHits.sources = __hits;
             applyHits.destinations = __hitResults.UpdateAsRef(ref state);
-            jobHandle = applyHits.Schedule(JobHandle.CombineDependencies(jobHandle, performJob));
+            jobHandle = applyHits.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, performJob));
 
             state.Dependency = JobHandle.CombineDependencies(jobHandle, state.Dependency);
         }
