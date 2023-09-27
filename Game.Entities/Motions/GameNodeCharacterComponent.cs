@@ -525,7 +525,7 @@ public class GameNodeCharacterComponent : ComponentDataProxy<GameNodeCharacterDa
         if (_shapeIndex != -1)
         {
             GameNodeCharacterCollider collider;
-            collider.value = GetComponent<PhysicsHierarchyComponent>().database.GetOrCreateCollider(_shapeIndex);
+            collider.value = GetComponentInParent<PhysicsHierarchyComponent>().database.GetOrCreateCollider(_shapeIndex);
             assigner.SetComponentData(entity, collider);
         }
     }

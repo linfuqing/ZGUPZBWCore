@@ -97,6 +97,7 @@ public struct GameEntityAction : ICleanupBufferElementData
     public Entity entity;
 
     public static void Break(
+        bool isDestroied, 
         in GameDeadline time,
         in DynamicBuffer<GameEntityAction> entityActions,
         ref ComponentLookup<GameActionStatus> states)
@@ -115,7 +116,7 @@ public struct GameEntityAction : ICleanupBufferElementData
                 continue;
 
             status.time = time;
-            status.value |= GameActionStatus.Status.Destroy;
+            status.value |= isDestroied ? GameActionStatus.Status.Destroied : GameActionStatus.Status.Destroy;
 
             states[entity] = status;
         }

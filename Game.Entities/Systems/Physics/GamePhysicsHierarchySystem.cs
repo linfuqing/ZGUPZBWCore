@@ -155,7 +155,10 @@ public struct GamePhysicsHierarchyBitField : IComponentData
     public BitField value;
 }
 
-[BurstCompile, UpdateInGroup(typeof(InitializationSystemGroup)), UpdateBefore(typeof(PhysicsHierarchyTriggerSystemGroup))/*, UpdateAfter(typeof(BeginFrameEntityCommandSystem))*/]
+[BurstCompile, 
+    CreateAfter(typeof(GameContainerChildSystem)), 
+    UpdateInGroup(typeof(InitializationSystemGroup)), 
+    UpdateBefore(typeof(PhysicsHierarchyTriggerSystemGroup))/*, UpdateAfter(typeof(BeginFrameEntityCommandSystem))*/]
 public partial struct GamePhysicsHierarchyTriggerSystem : ISystem
 {
     public struct Change
@@ -334,28 +337,43 @@ public partial struct GamePhysicsHierarchyTriggerSystem : ISystem
     }
 
     private EntityQuery __group;
+
+    private ComponentLookup<GamePhysicsHierarchyData> __instances;
+
+    private BufferTypeHandle<GameContainerChild> __childType;
+
+    private EntityTypeHandle __entityType;
+
+    private ComponentTypeHandle<GamePhysicsHierarchyData> __instanceType;
+
+    private ComponentTypeHandle<GamePhysicsHierarchyBitField> __bitFieldType;
+
+    private BufferLookup<PhysicsHierarchyInactiveTriggers> __inactiveShapes;
+
     private SharedMultiHashMap<Entity, EntityData<int>> __childIndices;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GamePhysicsHierarchyData>(),
-                    ComponentType.ReadOnly<GameContainerChild>(),
-                    ComponentType.ReadWrite<GamePhysicsHierarchyBitField>(),
-                    ComponentType.ReadWrite<PhysicsHierarchyInactiveTriggers>()
-                }, 
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GamePhysicsHierarchyData, GameContainerChild>()
+                    .WithAllRW<GamePhysicsHierarchyBitField, PhysicsHierarchyInactiveTriggers>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
+        __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameContainerChild>());
 
-        __group.SetChangedVersionFilter(typeof(GameContainerChild));
+        __instances = state.GetComponentLookup<GamePhysicsHierarchyData>(true);
+        __childType = state.GetBufferTypeHandle<GameContainerChild>(true);
+        __entityType = state.GetEntityTypeHandle();
+        __instanceType = state.GetComponentTypeHandle<GamePhysicsHierarchyData>(true);
+        __bitFieldType = state.GetComponentTypeHandle<GamePhysicsHierarchyBitField>();
+        __inactiveShapes = state.GetBufferLookup<PhysicsHierarchyInactiveTriggers>();
 
-        __childIndices = state.World.GetOrCreateSystemUnmanaged<GameContainerChildSystem>().childIndices;
+        __childIndices = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameContainerChildSystem>().childIndices;
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 
@@ -366,16 +384,16 @@ public partial struct GamePhysicsHierarchyTriggerSystem : ISystem
     {
         ChangeEx change;
         change.childIndices = __childIndices.reader;
-        change.instances = state.GetComponentLookup<GamePhysicsHierarchyData>(true);
-        change.childType = state.GetBufferTypeHandle<GameContainerChild>(true);
-        change.entityType = state.GetEntityTypeHandle();
-        change.instanceType = state.GetComponentTypeHandle<GamePhysicsHierarchyData>(true);
-        change.bitFieldType = state.GetComponentTypeHandle<GamePhysicsHierarchyBitField>();
-        change.inactiveShapes = state.GetBufferLookup<PhysicsHierarchyInactiveTriggers>();
+        change.instances = __instances.UpdateAsRef(ref state);
+        change.childType = __childType.UpdateAsRef(ref state);
+        change.entityType = __entityType.UpdateAsRef(ref state);
+        change.instanceType = __instanceType.UpdateAsRef(ref state);
+        change.bitFieldType = __bitFieldType.UpdateAsRef(ref state);
+        change.inactiveShapes = __inactiveShapes.UpdateAsRef(ref state);
 
         ref var lookupJobManager = ref __childIndices.lookupJobManager;
 
-        var jobHandle = change.Schedule(__group, JobHandle.CombineDependencies(lookupJobManager.readOnlyJobHandle, state.Dependency));
+        var jobHandle = change.ScheduleByRef(__group, JobHandle.CombineDependencies(lookupJobManager.readOnlyJobHandle, state.Dependency));
 
         lookupJobManager.AddReadOnlyDependency(jobHandle);
 
@@ -388,14 +406,16 @@ public partial struct GamePhysicsHierarchyColliderSystem : ISystem
 {
     private PhysicsHierarchyColliderSystemCore __core;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         __core = new PhysicsHierarchyColliderSystemCore(ref state);
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
-
+        __core.Dispose();
     }
 
     [BurstCompile]

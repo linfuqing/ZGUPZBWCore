@@ -72,7 +72,7 @@ public class GameNodeShapeComponent : EntityProxyComponent, IEntityComponent
             BlobAssetReference<Unity.Physics.Collider> collider;
             if (__colliders == null)
             {
-                __collider = gameObject.GetComponent<PhysicsHierarchyComponent>().database.GetOrCreateCollider(_shapeIndex);
+                __collider = gameObject.GetComponentInParent<PhysicsHierarchyComponent>().database.GetOrCreateCollider(_shapeIndex);
 
                 collider = __collider;
             }
