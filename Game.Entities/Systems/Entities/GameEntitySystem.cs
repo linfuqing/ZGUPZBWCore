@@ -1130,7 +1130,7 @@ public partial struct GameEntityActorSystem : ISystem
                             }
 
                             if (index < entityActions.Length)
-                                GameEntityAction.Break(true, command.time, entityActions[index], ref actionStates);
+                                GameEntityAction.Break(command.time, entityActions[index], ref actionStates);
 
                             var actor = actors[index];
                             if (actor.rangeScale > math.FLT_MIN_NORMAL)
@@ -2596,7 +2596,7 @@ public partial struct GameEntityBreakSystem : ISystem
             if (!isAlert || actorInfo.alertTime < command.time)//isAlert ? actorInfo.alertTime < command.time : actorInfo.castingTime > command.time)
             {
                 if (index < entityActions.Length)
-                    GameEntityAction.Break(false, command.time, entityActions[index], ref actionStates);
+                    GameEntityAction.Break(command.time, entityActions[index], ref actionStates);
 
                 ++actorInfo.version;
 
@@ -3033,7 +3033,7 @@ public partial struct GameEntityStatusSystem : ISystem
                 return false;
 
             if (index < entityActions.Length)
-                GameEntityAction.Break(false, time, entityActions[index], ref actionStates);
+                GameEntityAction.Break(time, entityActions[index], ref actionStates);
 
             if ((value & GameNodeStatus.OVER) != 0)
             {

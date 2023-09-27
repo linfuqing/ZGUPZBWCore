@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using Unity.Entities;
 using Unity.Mathematics;
+using UnityEngine;
 using ZG;
 
 [Flags]
@@ -22,6 +23,19 @@ public enum GameEntitySharedActionObjectFlag
     Init = 0x10,
     Hit = 0x20, 
     Damage = 0x40
+}
+
+[Flags]
+public enum GameActionSharedObjectFlag
+{
+    EnableWhenBreak = 0x01
+}
+
+public struct GameActionSharedObjectAsset
+{
+    public GameActionSharedObjectFlag flag;
+    public float destroyTime;
+    public GameObject gameObject;
 }
 
 /*public struct GameEntitySharedData : IComponentData
@@ -71,6 +85,7 @@ public struct GameEntitySharedActionChild : ICleanupBufferElementData
 public struct GameActionSharedObject : ICleanupComponentData
 {
     public int index;
+    public GameActionSharedObjectFlag flag;
     public GameActionStatus.Status destroyStatus;
     public float destroyTime;
     public Entity actionEntity;

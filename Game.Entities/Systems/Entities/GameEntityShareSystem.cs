@@ -363,12 +363,6 @@ public partial struct GameEntitySharedActionTransformSystem : ISystem
 [UpdateInGroup(typeof(PresentationSystemGroup)), UpdateAfter(typeof(GameEntityActionSharedFactorySytem))]
 public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
 {
-    public struct Asset
-    {
-        public float destroyTime;
-        public GameObject gameObject;
-    }
-
     private double __time;
     private GameDeadline __now;
     private EntityQuery __groupToCreate;
@@ -378,12 +372,12 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
     //private GameUpdateSystemGroup __updateSystemGroup;
     private EntityCommander __endFrameBarrier;
 
-    private Asset[] __assets;
+    private GameActionSharedObjectAsset[] __assets;
     private Pool<GameObject> __instances;
 
-    public void Create(IEnumerable<Asset> assets)
+    public void Create(IEnumerable<GameActionSharedObjectAsset> assets)
     {
-        __assets = new List<Asset>(assets).ToArray();
+        __assets = new List<GameActionSharedObjectAsset>(assets).ToArray();
     }
 
     protected override void OnCreate()
@@ -583,6 +577,7 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
             __instances = new Pool<GameObject>();
 
         target.index = __instances.Add(gameObject);
+        target.flag = asset.flag;
         target.destroyStatus = destroyStatus;
         target.destroyTime = asset.destroyTime;
         target.actionEntity = actionEntity;
@@ -616,14 +611,19 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
                     //UnityEngine.Debug.Break();
                 }*/
 
-                if (isDisabled && target.destroyStatus == 0)
+                /*if (isDisabled && target.destroyStatus == 0)
                 {
                     gameObject.transform.SetParent(parent);
-                    //GameObject.Destroy(gameObject, target.destroyTime);
+                }*/
+                if (isDisabled)
+                {
+                    if(target.destroyStatus == 0)
+                        gameObject.transform.SetParent(parent);
+                    else if((target.flag & GameActionSharedObjectFlag.EnableWhenBreak) == 0)
+                        gameObject.SetActive(false);
                 }
                 else
                     gameObject.SetActive(false);
-                //GameObject.Destroy(gameObject);
 
                 GameObject.Destroy(gameObject, target.destroyTime);
             }
