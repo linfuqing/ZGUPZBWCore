@@ -884,7 +884,7 @@ public partial struct GameActionActiveExecutorSystem : ISystem
 
                 forward = distance > math.FLT_MIN_NORMAL ? forward / distance : forward;
 
-                bool isRunAway, isHasPosition = index < positions.Length, isDelay = delay[index].Check(time);
+                bool isRunAway, isHasPosition = index < positions.Length;//, isDelay = delay[index].Check(time);
                 uint categoryBits = physicsColliders[info.entity].Value.Value.Filter.BelongsTo;
                 int maxHealth = index < healthes.Length && index < healthData.Length ? healthData[index].max : 0, 
                     maxTorpidity = index < torpidities.Length && index < torpidityData.Length ? torpidityData[index].max : 0;
@@ -918,7 +918,7 @@ public partial struct GameActionActiveExecutorSystem : ISystem
 
                                 float actorVelocity = index < desiredVelocities.Length ? math.rotate(math.inverse(quaternion.LookRotationSafe(forward, math.up())), desiredVelocities[index].linear).z : 0.0f;
                                 int actorStatus = index < actorStates.Length ? (int)actorStates[index].value : 0, groupMask = 0;
-                                if (info.groupMask == 0 || !isDelay)
+                                if (info.groupMask == 0/* || !isDelay*/)
                                 {
                                     var result = GameActionCondition.Did(
                                             time,
@@ -1128,7 +1128,7 @@ public partial struct GameActionActiveExecutorSystem : ISystem
                 else
                     isRunAway = isHasPosition;
 
-                if (isRunAway && index < directions.Length && !isDelay)
+                if (isRunAway && index < directions.Length && !delay[index].Check(time)/*!isDelay*/)
                 {
                     float3 value = -forward;
                     var direction = directions[index];
