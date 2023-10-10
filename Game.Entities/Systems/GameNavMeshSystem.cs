@@ -38,6 +38,9 @@ public partial struct GameNavMeshFactorySystem : ISystem
     [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
+        foreach (var navMeshQuery in __navMeshQueries)
+            navMeshQuery.Dispose();
+
         __navMeshQueries.Dispose();
         
 /*#if ENABLE_UNITY_COLLECTIONS_CHECKS
