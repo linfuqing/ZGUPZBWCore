@@ -95,17 +95,17 @@ public class GameValhallaComponent : EntityProxyComponent, IEntityComponent
 
     public void Collect<T>(in T commands) where T : IReadOnlyCollection<GameValhallaCollectCommand>
     {
-        this.SetBuffer<GameValhallaCollectCommand, T>(commands);
+        this.AppendBufferUnique<GameValhallaCollectCommand, T>(commands);
         this.SetComponentEnabled<GameValhallaCollectCommand>(true);
     }
 
-    public void Destroy(int soulIndex, in Entity entity)
+    public void Destroy<T>(in T commands) where T : IReadOnlyCollection<GameValhallaDestroyCommand>
     {
-        GameValhallaDestroyCommand command;
+        /*GameValhallaDestroyCommand command;
         command.soulIndex = soulIndex;
-        command.entity = entity;
+        command.entity = entity;*/
 
-        this.AppendBuffer(command);
+        this.AppendBufferUnique<GameValhallaDestroyCommand, T>(commands);
         this.SetComponentEnabled<GameValhallaDestroyCommand>(true);
     }
 

@@ -184,6 +184,7 @@ public partial struct GameTimeActorSystem : ISystem
                                     //command.offset = float3.zero;
 
                                     commands[entity] = command;
+                                    commands.SetComponentEnabled(entity, true);
                                 }
                             }
                         }

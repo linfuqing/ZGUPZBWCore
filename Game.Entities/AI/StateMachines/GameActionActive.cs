@@ -899,7 +899,7 @@ public partial struct GameActionActiveExecutorSystem : ISystem
                         isRunAway = isHasPosition;
                     else if ((!isWatch || !protectedTimes.HasComponent(info.entity) || protectedTimes[info.entity].value < time))
                     {
-                        if (actorTimes[index].value >= time || commandVersions[index].value == commands[entity].version)
+                        if (actorTimes[index].value >= time || commands.IsComponentEnabled(entity))
                             isRunAway = false;
                         else
                         {
