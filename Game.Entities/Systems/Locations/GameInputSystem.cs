@@ -168,9 +168,10 @@ public struct GameInputActionDefinition
                         delta/*,
                         time,
                         actorTime*/) &&
-                        filter.Check(actorAction.actionIndex, time))
+                        filter.Check(actorAction.actionIndex, time) &&
+                        actorActionInfos[actionInstance.actorActionIndex].coolDownTime < time)
                     {
-                        if (actorActionInfos[i].coolDownTime < time)
+                        //if (actorActionInfos[actionInstance.actorActionIndex].coolDownTime < time)
                         {
                             actorActionIndex = actionInstance.actorActionIndex;
                             layerMask = action.layerMask;
@@ -180,7 +181,7 @@ public struct GameInputActionDefinition
                             return true;
                         }
 
-                        break;
+                        //break;
                     }
                 }
             }
@@ -209,7 +210,8 @@ public struct GameInputActionDefinition
                         delta/*,
                         time,
                         actorTime*/) &&
-                        filter.Check(actorAction.actionIndex, time))
+                        filter.Check(actorAction.actionIndex, time) &&
+                        actorActionInfos[actionInstance.actorActionIndex].coolDownTime < time)
                 {
                     actorActionIndex = actionInstance.actorActionIndex;
                     layerMask = action.layerMask;
@@ -411,7 +413,7 @@ public struct GameInputAction : IComponentData
                     {
                         target = targets[i];
                         if (__Predicate(camp, target.entity, states, camps, colliders) &&
-                            target.distance < distance)
+                            target.distance < this.distance)
                         {
                             this.target = target.entity;
 
