@@ -1163,6 +1163,8 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
         __healthBuffs.Dispose();
         __torpidityBuffs.Dispose();
+
+        __core.Dispose();
     }
 
     [BurstCompile]

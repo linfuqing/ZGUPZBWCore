@@ -204,7 +204,7 @@ public partial struct GameOwnerStatusSystem : ISystem
 [BurstCompile, AutoCreateIn("Server"), UpdateInGroup(typeof(GameStatusSystemGroup))]
 public partial struct GameOwnerSystem : ISystem
 {
-    private struct UpdateStates
+    /*private struct UpdateStates
     {
         [ReadOnly]
         public NativeArray<Entity> entityArray;
@@ -265,7 +265,7 @@ public partial struct GameOwnerSystem : ISystem
             while (iterator.NextEntityIndex(out int i))
                 updateStates.Execute(i);
         }
-    }
+    }*/
 
     private struct DidChange
     {
@@ -276,6 +276,8 @@ public partial struct GameOwnerSystem : ISystem
         [ReadOnly]
         public NativeArray<Entity> entityArray;
         [ReadOnly]
+        public NativeArray<GameNodeStatus> states;
+        [ReadOnly]
         public NativeArray<GameOwner> owners;
 
         public NativeList<Entity>.ParallelWriter results;
@@ -283,7 +285,7 @@ public partial struct GameOwnerSystem : ISystem
         public void Execute(int index)
         {
             Entity entity = entityArray[index], owner = owners[index].entity;
-            if (!followers.HasBuffer(owner))
+            if (!followers.HasBuffer(owner) || ((GameEntityStatus)states[index].value & GameEntityStatus.Mask) == GameEntityStatus.Dead)
                 owner = Entity.Null;
 
             if (origins.TryGetValue(entity, out Entity origin) ? origin == owner : owner == Entity.Null)
@@ -308,6 +310,9 @@ public partial struct GameOwnerSystem : ISystem
         [ReadOnly]
         public ComponentTypeHandle<GameOwner> ownerType;
 
+        [ReadOnly]
+        public ComponentTypeHandle<GameNodeStatus> statusType;
+
         public NativeList<Entity>.ParallelWriter results;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
@@ -317,6 +322,7 @@ public partial struct GameOwnerSystem : ISystem
             didChange.followers = followers;
             didChange.entityArray = chunk.GetNativeArray(entityType);
             didChange.owners = chunk.GetNativeArray(ref ownerType);
+            didChange.states = chunk.GetNativeArray(ref statusType);
             didChange.results = results;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -423,14 +429,14 @@ public partial struct GameOwnerSystem : ISystem
         }
     }
 
-    private EntityQuery __groupToUpdate;
+    //private EntityQuery __groupToUpdate;
 
     private EntityQuery __groupToChange;
 
     private EntityTypeHandle __entityType;
 
     private ComponentTypeHandle<GameNodeStatus> __statusType;
-    private ComponentTypeHandle<GameNodeOldStatus> __oldStatusType;
+    //private ComponentTypeHandle<GameNodeOldStatus> __oldStatusType;
 
     private ComponentTypeHandle<GameOwner> __ownerType;
 
@@ -456,25 +462,26 @@ public partial struct GameOwnerSystem : ISystem
     {
         BurstUtility.InitializeJob<Own>();
 
-        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+        /*using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __groupToUpdate = builder
                     .WithAll<GameNodeStatus, GameNodeOldStatus, GameOwner>()
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
 
         __groupToUpdate.AddChangedVersionFilter(ComponentType.ReadOnly<GameNodeStatus>());
-        __groupToUpdate.AddChangedVersionFilter(ComponentType.ReadOnly<GameNodeOldStatus>());
+        __groupToUpdate.AddChangedVersionFilter(ComponentType.ReadOnly<GameNodeOldStatus>());*/
 
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __groupToChange = builder
-                    .WithAll<GameOwner>()
+                    .WithAll<GameOwner, GameNodeStatus>()
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
         __groupToChange.SetChangedVersionFilter(ComponentType.ReadOnly<GameOwner>());
+        __groupToChange.AddChangedVersionFilter(ComponentType.ReadOnly<GameNodeStatus>());
 
         __entityType = state.GetEntityTypeHandle();
         __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
-        __oldStatusType = state.GetComponentTypeHandle<GameNodeOldStatus>(true);
+        //__oldStatusType = state.GetComponentTypeHandle<GameNodeOldStatus>(true);
         __ownerType = state.GetComponentTypeHandle<GameOwner>(true);
         __owners = state.GetComponentLookup<GameOwner>(true);
         __camps = state.GetComponentLookup<GameEntityCampDefault>(true);
@@ -498,13 +505,13 @@ public partial struct GameOwnerSystem : ISystem
     {
         var followers = __followers.UpdateAsRef(ref state);
 
-        UpdateStateEx updateState;
+        /*UpdateStateEx updateState;
         updateState.entityType = __entityType.UpdateAsRef(ref state);
         updateState.statusType = __statusType.UpdateAsRef(ref state);
         updateState.oldStatusType = __oldStatusType.UpdateAsRef(ref state);
         updateState.ownerType = __ownerType.UpdateAsRef(ref state);
         updateState.followers = followers;
-        var jobHandle = updateState.ScheduleByRef(__groupToUpdate, state.Dependency);
+        var jobHandle = updateState.ScheduleByRef(__groupToUpdate, state.Dependency);*/
 
         __entities.Clear();
         __entities.Capacity = math.max(__entities.Capacity, __groupToChange.CalculateEntityCountWithoutFiltering());
@@ -519,9 +526,10 @@ public partial struct GameOwnerSystem : ISystem
         didChange.followers = followers;
         didChange.entityType = __entityType.UpdateAsRef(ref state);
         didChange.ownerType = __ownerType.UpdateAsRef(ref state);
+        didChange.statusType = __statusType.UpdateAsRef(ref state);
         didChange.origins = origins.reader;
         didChange.results = __entities.AsParallelWriter();
-        jobHandle = didChange.ScheduleParallelByRef(__groupToChange, jobHandle);
+        var jobHandle = didChange.ScheduleParallelByRef(__groupToChange, state.Dependency);
 
         Own own;
         own.entityArray = __entities.AsDeferredJobArray();
@@ -639,6 +647,7 @@ public partial struct GameOwnerCampSystem : ISystem
         __camps = state.GetComponentLookup<GameEntityCamp>();
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 
