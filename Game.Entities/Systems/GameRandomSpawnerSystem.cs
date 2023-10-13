@@ -64,6 +64,7 @@ public struct GameSpawnInitializer : IEntityDataInitializer
 
 [BurstCompile,
     CreateAfter(typeof(GameItemSystem)),
+    CreateAfter(typeof(GameItemObjectInitSystem)),
     UpdateInGroup(typeof(TimeSystemGroup)), 
     UpdateAfter(typeof(GameSyncSystemGroup))]
 public partial struct GameRandomSpawnerSystem : ISystem
@@ -315,11 +316,15 @@ public partial struct GameRandomSpawnerSystem : ISystem
 
         public EntityArchetype itemEntityArchetype;
 
+        public EntityArchetype ownerEntityArchetype;
+
         public EntityArchetype levelEntityArchetype;
 
         public BlobAssetReference<GameRandomSpawnerDefinition> definition;
 
         public GameItemManager itemManager;
+
+        public GameItemObjectInitSystem.Initializer initializer;
 
         public EntityComponentAssigner.Writer itemAssigner;
 
@@ -358,28 +363,31 @@ public partial struct GameRandomSpawnerSystem : ISystem
                         result.itemHandle = handle;
                     }
 
-                    if (asset.levelHandle == 0)
-                        itemCreateEntityCommander.Add(result.itemHandle, itemEntityArchetype);
-                    else
+                    if (initializer.IsVail(asset.itemTypes[0]))
                     {
-                        itemCreateEntityCommander.Add(result.itemHandle, levelEntityArchetype);
+                        itemCreateEntityCommander.Add(result.itemHandle, asset.levelHandle == 0 ? ownerEntityArchetype : levelEntityArchetype);
 
                         entity = GameItemStructChangeFactory.Convert(result.itemHandle);
 
                         GameItemSystem.Init(
-                            itemIdentityType, 
-                            result.itemHandle, 
-                            entity, 
-                            ref random, 
-                            ref guidEntities, 
+                            itemIdentityType,
+                            result.itemHandle,
+                            entity,
+                            ref random,
+                            ref guidEntities,
                             ref itemAssigner);
-
-                        level.handle = asset.levelHandle;
-                        itemAssigner.SetComponentData(entity, level);
 
                         owner.entity = result.entity;
                         itemAssigner.SetComponentData(entity, owner);
+
+                        if (asset.levelHandle != 0)
+                        {
+                            level.handle = asset.levelHandle;
+                            itemAssigner.SetComponentData(entity, level);
+                        }
                     }
+                    else
+                        itemCreateEntityCommander.Add(result.itemHandle, itemEntityArchetype);
                 }
             }
         }
@@ -390,6 +398,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
     private GameSyncTime __time;
 
     private EntityArchetype __itemEntityArchetype;
+    private EntityArchetype __ownerEntityArchetype;
     private EntityArchetype __levelEntityArchetype;
 
     private EntityTypeHandle __entityType;
@@ -409,6 +418,8 @@ public partial struct GameRandomSpawnerSystem : ISystem
     private ComponentLookup<GameEntityActionCommand> __commands;
 
     private GameItemManagerShared __itemManager;
+
+    public GameItemObjectInitSystem.Initializer __initializer;
 
     private SharedHashMap<Hash128, Entity> __guidEntities;
 
@@ -452,19 +463,25 @@ public partial struct GameRandomSpawnerSystem : ISystem
 
         __itemEntityArchetype = itemSystem.entityArchetype;
 
+        var entityManager = state.EntityManager;
         using (var componentTypes = __itemEntityArchetype.GetComponentTypes(Allocator.Temp))
         {
             var componentTypeList = new NativeList<ComponentType>(Allocator.Temp);
             componentTypeList.AddRange(componentTypes);
-            componentTypeList.Add(ComponentType.ReadWrite<GameItemLevel>());
             componentTypeList.Add(ComponentType.ReadWrite<GameItemOwner>());
 
-            __levelEntityArchetype = state.EntityManager.CreateArchetype(componentTypeList.AsArray());
+            __ownerEntityArchetype = entityManager.CreateArchetype(componentTypeList.AsArray());
+
+            componentTypeList.Add(ComponentType.ReadWrite<GameItemLevel>());
+
+            __levelEntityArchetype = entityManager.CreateArchetype(componentTypeList.AsArray());
 
             componentTypeList.Dispose();
         }
 
         __itemManager = itemSystem.manager;
+
+        __initializer = world.GetExistingSystemUnmanaged<GameItemObjectInitSystem>().initializer;
 
         __guidEntities = world.GetExistingSystemUnmanaged<EntityDataSystem>().guidEntities;
 
@@ -531,9 +548,11 @@ public partial struct GameRandomSpawnerSystem : ISystem
             createItems.time = state.WorldUnmanaged.Time.ElapsedTime;
             createItems.itemIdentityType = SystemAPI.GetSingleton<GameItemIdentityType>().value;
             createItems.itemEntityArchetype = __itemEntityArchetype;
+            createItems.ownerEntityArchetype = __ownerEntityArchetype;
             createItems.levelEntityArchetype = __levelEntityArchetype;
             createItems.definition = SystemAPI.GetSingleton<GameRandomSpawnerData>().definition;
             createItems.itemManager = __itemManager.value;
+            createItems.initializer = __initializer;
             createItems.itemAssigner = itemAssigner.writer;
             createItems.guidEntities = __guidEntities.writer;
             createItems.itemCreateEntityCommander = createEntityCommander.writer;
