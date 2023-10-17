@@ -346,6 +346,7 @@ public partial struct GameLocationClipTargetWeightSystem : ISystem, IEntityComma
 
     private EntityQuery __visibleGroup;
     private EntityQuery __invisibleGroup;
+    private EntityQuery __cameraForwardGroup;
 
     private EntityTypeHandle __entityType;
     private ComponentTypeHandle<PhysicsRaycastColliderToIgnore> __physicsRaycastCollidersToIgnoreType;
@@ -388,6 +389,8 @@ public partial struct GameLocationClipTargetWeightSystem : ISystem, IEntityComma
 
         __invisibleGroup = state.GetEntityQuery(ComponentType.ReadWrite<GameClipTargetWeight>());
 
+        __cameraForwardGroup = state.GetEntityQuery(ComponentType.ReadOnly<MainCameraForward>());
+
         __entityType = state.GetEntityTypeHandle();
         __physicsRaycastCollidersToIgnoreType = state.GetComponentTypeHandle<PhysicsRaycastColliderToIgnore>();
         __weightType = state.GetComponentTypeHandle<GameClipTargetWeight>();
@@ -427,7 +430,7 @@ public partial struct GameLocationClipTargetWeightSystem : ISystem, IEntityComma
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        if (!SystemAPI.HasSingleton<MainCameraForward>())
+        if (!__cameraForwardGroup.HasSingleton<MainCameraForward>())
             return;
 
         var factory = SystemAPI.GetSingleton<GameLocationClipTargetFactory>();
@@ -468,7 +471,7 @@ public partial struct GameLocationClipTargetWeightSystem : ISystem, IEntityComma
 
             VisibleEx visible;
             visible.deltaTime = deltaTime;
-            visible.forward = SystemAPI.GetSingleton<MainCameraForward>().value;
+            visible.forward = __cameraForwardGroup.GetSingleton<MainCameraForward>().value;
             visible.rendererBuilders = rendererBuilders;
             visible.instances = __instances.UpdateAsRef(ref state);
             visible.translations = __translations.UpdateAsRef(ref state);
