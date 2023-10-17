@@ -469,6 +469,8 @@ public partial struct GameLocationClipTargetWeightSystem : ISystem, IEntityComma
 
             var entityManager = factory.visibleCommander.Create();
 
+            __cameraForwardGroup.CompleteDependency();
+
             VisibleEx visible;
             visible.deltaTime = deltaTime;
             visible.forward = __cameraForwardGroup.GetSingleton<MainCameraForward>().value;
