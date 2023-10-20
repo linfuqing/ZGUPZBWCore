@@ -540,10 +540,10 @@ public struct GameInputPickable : IComponentData
 
 }
 
-public struct GameInputEntity : IComponentData
+/*public struct GameInputEntity : IComponentData
 {
 
-}
+}*/
 
 public struct GameInputSelectionTarget : IComponentData
 {
@@ -720,6 +720,8 @@ public partial struct GameInputSystem : ISystem
 
     private struct Select
     {
+        public int builtInCamps;
+
         public Entity selection;
 
         public BlobAssetReference<GameActionSetDefinition> actionSetDefinition;
@@ -734,7 +736,16 @@ public partial struct GameInputSystem : ISystem
         public ComponentLookup<GameInputSelectable> selectables;
 
         [ReadOnly]
-        public ComponentLookup<GameInputEntity> entities;
+        public ComponentLookup<GameInputPickable> pickables;
+
+        [ReadOnly]
+        public ComponentLookup<GameFactory> factories;
+
+        [ReadOnly]
+        public ComponentLookup<GameNodeStatus> states;
+
+        //[ReadOnly]
+        //public ComponentLookup<GameInputEntity> entities;
 
         [ReadOnly]
         public ComponentLookup<GameEntityCamp> campMap;
@@ -756,21 +767,43 @@ public partial struct GameInputSystem : ISystem
             in DynamicBuffer<GameEntityActorActionData> actorActions,
             in DynamicBuffer<GameInputActionInstance> actionInstances)
         {
-            if (campMap.HasComponent(entity) && campMap[entity].value == camp)
+            if (states.HasComponent(entity))
             {
-                if (selectables.HasComponent(entity))
+                var status = states[entity].value & (int)GameEntityStatus.Mask;
+                if ((int)GameEntityStatus.Dead == status)
+                    return false;
+                else if ((int)GameEntityStatus.KnockedOut == status)
                     return true;
             }
-            else if (!entities.HasComponent(entity) && colliders.HasComponent(entity))
+
+            if (pickables.HasComponent(entity))
+                return true;
+
+            if (factories.HasComponent(entity))
             {
-                uint belongsTo = colliders[entity].Value.Value.Filter.BelongsTo;
-                foreach (var actionInstance in actionInstances)
+                if (factories[entity].status == GameFactoryStatus.Complete)
+                    return true;
+            }
+
+            if (campMap.HasComponent(entity))
+            {
+                int targetCamp = campMap[entity].value;
+                if (targetCamp == camp)
                 {
-                    if (actionInstance.activeCount > 0)
+                    if (selectables.HasComponent(entity))
+                        return true;
+                }
+                else if (targetCamp < builtInCamps && colliders.HasComponent(entity))
+                {
+                    uint belongsTo = colliders[entity].Value.Value.Filter.BelongsTo;
+                    foreach (var actionInstance in actionInstances)
                     {
-                        ref var action = ref actionSetDefinition.Value.values[actorActions[actionInstance.actorActionIndex].actionIndex];
-                        if ((action.instance.damageMask & belongsTo) != 0)
-                            return true;
+                        if (actionInstance.activeCount > 0)
+                        {
+                            ref var action = ref actionSetDefinition.Value.values[actorActions[actionInstance.actorActionIndex].actionIndex];
+                            if ((action.instance.damageMask & belongsTo) != 0)
+                                return true;
+                        }
                     }
                 }
             }
@@ -811,6 +844,8 @@ public partial struct GameInputSystem : ISystem
     [BurstCompile]
     private struct SelectEx : IJobChunk
     {
+        public int builtInCamps;
+
         public Entity selection;
 
         public BlobAssetReference<GameActionSetDefinition> actionSetDefinition;
@@ -824,8 +859,8 @@ public partial struct GameInputSystem : ISystem
         [ReadOnly]
         public ComponentLookup<GameInputSelectable> selectables;
 
-        [ReadOnly]
-        public ComponentLookup<GameInputEntity> entities;
+        //[ReadOnly]
+        //public ComponentLookup<GameInputEntity> entities;
 
         [ReadOnly]
         public ComponentLookup<GameInputPickable> pickables;
@@ -873,7 +908,7 @@ public partial struct GameInputSystem : ISystem
             return false;
         }
 
-        public Entity Select(in NativeArray<GameInputTarget> targets)
+        /*public Entity Select(in NativeArray<GameInputTarget> targets)
         {
             foreach (var target in targets)
             {
@@ -882,21 +917,25 @@ public partial struct GameInputSystem : ISystem
             }
 
             return Entity.Null;
-        }
+        }*/
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             var targets = this.targets.AsArray();
-            var selection = this.selection == Entity.Null || !IsSelectable(this.selection) ? Select(targets) : this.selection;
+            var selection = this.selection == Entity.Null || !IsSelectable(this.selection) ? Entity.Null/*Select(targets)*/ : this.selection;
             if (selection == Entity.Null)
             {
                 Select select;
+                select.builtInCamps = builtInCamps;
                 select.selection = this.selection;
                 select.actionSetDefinition = actionSetDefinition;
                 select.targets = targets;
                 select.colliders = colliders;
                 select.selectables = selectables;
-                select.entities = entities;
+                select.pickables = pickables;
+                select.factories = factories;
+                select.states = states;
+                //select.entities = entities;
                 select.campMap = camps;
                 select.camps = chunk.GetNativeArray(ref campType);
                 select.actorActions = chunk.GetBufferAccessor(ref actorActionType);
@@ -936,7 +975,7 @@ public partial struct GameInputSystem : ISystem
         public ComponentLookup<PhysicsCollider> colliders;
 
         [ReadOnly]
-        public ComponentLookup<NetworkIdentity> identities;
+        public ComponentLookup<NetworkIdentityType> identityTypes;
 
         [ReadOnly]
         public ComponentLookup<GameInputPickable> pickables;
@@ -978,7 +1017,7 @@ public partial struct GameInputSystem : ISystem
                 if (states.HasComponent(target.entity) && (((GameEntityStatus)states[target.entity].value & GameEntityStatus.Mask) == GameEntityStatus.Dead))
                     continue;
 
-                if (!identities.HasComponent(target.entity) || !manager.IsPublished(GameQuestGuideVariantType.Entity, identities[target.entity].type))
+                if (!identityTypes.HasComponent(target.entity) || !manager.IsPublished(GameQuestGuideVariantType.Entity, identityTypes[target.entity].value))
                     continue;
 
                 result.entity = target.entity;
@@ -1033,7 +1072,7 @@ public partial struct GameInputSystem : ISystem
         public ComponentLookup<PhysicsCollider> colliders;
 
         [ReadOnly]
-        public ComponentLookup<NetworkIdentity> identities;
+        public ComponentLookup<NetworkIdentityType> identityTypes;
 
         [ReadOnly]
         public ComponentLookup<GameInputPickable> pickables;
@@ -1065,7 +1104,7 @@ public partial struct GameInputSystem : ISystem
             guide.manager = manager;
             guide.targets = targets.AsArray();
             guide.colliders = colliders;
-            guide.identities = identities;
+            guide.identityTypes = identityTypes;
             guide.pickables = pickables;
             guide.factories = factories;
             guide.states = states;
@@ -1087,11 +1126,11 @@ public partial struct GameInputSystem : ISystem
 
     private ComponentLookup<PhysicsCollider> __colliders;
 
-    private ComponentLookup<NetworkIdentity> __identities;
+    private ComponentLookup<NetworkIdentityType> __identityTypes;
 
     private ComponentLookup<GameInputSelectable> __selectables;
 
-    private ComponentLookup<GameInputEntity> __entities;
+    //private ComponentLookup<GameInputEntity> __entities;
 
     private ComponentLookup<GameInputPickable> __pickables;
 
@@ -1134,9 +1173,9 @@ public partial struct GameInputSystem : ISystem
 
         __entityType = state.GetEntityTypeHandle();
         __colliders = state.GetComponentLookup<PhysicsCollider>(true);
-        __identities = state.GetComponentLookup<NetworkIdentity>(true);
+        __identityTypes = state.GetComponentLookup<NetworkIdentityType>(true);
         __selectables = state.GetComponentLookup<GameInputSelectable>(true);
-        __entities = state.GetComponentLookup<GameInputEntity>(true);
+        //__entities = state.GetComponentLookup<GameInputEntity>(true);
         __pickables = state.GetComponentLookup<GameInputPickable>(true);
         __factories = state.GetComponentLookup<GameFactory>(true);
         __states = state.GetComponentLookup<GameNodeStatus>(true);
@@ -1227,12 +1266,13 @@ public partial struct GameInputSystem : ISystem
         var targetsReader = targets.reader;
 
         SelectEx select;
+        select.builtInCamps = (int)GameDataConstans.BuiltInCamps;
         select.selection = SystemAPI.HasSingleton<GameInputSelection>() ? SystemAPI.GetSingleton<GameInputSelection>().entity : Entity.Null;
         select.actionSetDefinition = actionSetDefinition;
         select.targets = targetsReader;
         select.colliders = colliders;
         select.selectables = __selectables.UpdateAsRef(ref state);
-        select.entities = __entities.UpdateAsRef(ref state);
+        //select.entities = __entities.UpdateAsRef(ref state);
         select.pickables = pickables;
         select.factories = factories;
         select.states = states;
@@ -1250,7 +1290,7 @@ public partial struct GameInputSystem : ISystem
         guide.actionSetDefinition = actionSetDefinition;
         guide.manager = questGuideManager.value.readOnly;
         guide.targets = targetsReader;
-        guide.identities = __identities.UpdateAsRef(ref state);
+        guide.identityTypes = __identityTypes.UpdateAsRef(ref state);
         guide.colliders = colliders;
         guide.pickables = pickables;
         guide.factories = factories;

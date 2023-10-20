@@ -333,8 +333,8 @@ public partial struct GameFormulaSystem : ISystem
         [ReadOnly]
         public GameFormulaManager manager;
 
-        [ReadOnly]
-        public NativeArray<Entity> entityArray;
+        //[ReadOnly]
+        //public NativeArray<Entity> entityArray;
 
         [ReadOnly]
         public NativeArray<EntityDataIdentity> identities;
@@ -350,7 +350,7 @@ public partial struct GameFormulaSystem : ISystem
         public void Execute(int index)
         {
             int type = identities[index].type, sourceMoney = moneys[index].value, destinationMoney = sourceMoney, count;
-            Entity entity = entityArray[index];
+            //Entity entity = entityArray[index];
             var instances = this.instances[index];
             var commands = this.commands[index];
             var events = this.events[index];
@@ -389,8 +389,8 @@ public partial struct GameFormulaSystem : ISystem
         [ReadOnly]
         public GameFormulaManager manager;
 
-        [ReadOnly]
-        public EntityTypeHandle entityType;
+        //[ReadOnly]
+        //public EntityTypeHandle entityType;
 
         [ReadOnly]
         public ComponentTypeHandle<EntityDataIdentity> identityType;
@@ -407,7 +407,7 @@ public partial struct GameFormulaSystem : ISystem
         {
             Command command;
             command.manager = manager;
-            command.entityArray = chunk.GetNativeArray(entityType);
+            //command.entityArray = chunk.GetNativeArray(entityType);
             command.identities = chunk.GetNativeArray(ref identityType);
             command.moneys = chunk.GetNativeArray(ref moneyType);
             command.commands = chunk.GetBufferAccessor(ref commandType);
@@ -426,7 +426,7 @@ public partial struct GameFormulaSystem : ISystem
 
     private EntityQuery __group;
 
-    private EntityTypeHandle __entityType;
+    //private EntityTypeHandle __entityType;
 
     private ComponentTypeHandle<EntityDataIdentity> __identityType;
     private ComponentTypeHandle<GameMoney> __moneyType;
@@ -452,7 +452,7 @@ public partial struct GameFormulaSystem : ISystem
                     .Build(ref state);
         __group.SetChangedVersionFilter(ComponentType.ReadWrite<GameFormulaCommand>());
 
-        __entityType = state.GetEntityTypeHandle();
+        //__entityType = state.GetEntityTypeHandle();
         __identityType = state.GetComponentTypeHandle<EntityDataIdentity>(true);
         __moneyType = state.GetComponentTypeHandle<GameMoney>();
         __instanceType = state.GetBufferTypeHandle<GameFormula>();
@@ -473,7 +473,7 @@ public partial struct GameFormulaSystem : ISystem
     {
         CommandEx command;
         command.manager = manager;
-        command.entityType = __entityType.UpdateAsRef(ref state);
+        //command.entityType = __entityType.UpdateAsRef(ref state);
         command.identityType = __identityType.UpdateAsRef(ref state);
         command.moneyType = __moneyType.UpdateAsRef(ref state);
         command.instanceType = __instanceType.UpdateAsRef(ref state);

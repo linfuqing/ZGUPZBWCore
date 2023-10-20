@@ -51,7 +51,7 @@ public class GameFormulaFactoryComponent : EntityProxyComponent, IEntityComponen
     {
         get
         {
-            if (this.TryGetComponentData<GameFormulaFactoryTime>(out var time))
+            if (this.TryGetComponentData(out GameFormulaFactoryTime time))
                 return time.value;
 
             return 0.0f;
@@ -62,7 +62,7 @@ public class GameFormulaFactoryComponent : EntityProxyComponent, IEntityComponen
     {
         get
         {
-            if (this.TryGetComponentData<GameFormulaFactoryTimeScale>(out var timeScale))
+            if (this.TryGetComponentData(out GameFormulaFactoryTimeScale timeScale))
                 return timeScale.value;
 
             return _timeScale;

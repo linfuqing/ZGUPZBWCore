@@ -203,7 +203,7 @@ public class GameAnimalComponent : ComponentDataProxy<GameAnimalData>
     {
         get
         {
-            if (gameObjectEntity.isCreated && this.TryGetComponentData<GameAnimalInfo>(out var info))
+            if (gameObjectEntity.isCreated && this.TryGetComponentData(out GameAnimalInfo info))
                 _tamedValue = (int)math.round(info.value);
 
             return _tamedValue;

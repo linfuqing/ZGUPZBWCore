@@ -88,7 +88,6 @@ public struct GameNodeCharacterData : IComponentData
     public float suction;
 }
 
-[Serializable]
 public struct GameNodeCharacterFlag : IComponentData
 {
     [Flags]
@@ -101,7 +100,6 @@ public struct GameNodeCharacterFlag : IComponentData
     public Flag value;
 }
 
-[Serializable]
 public struct GameNodeCharacterStatus : IComponentData
 {
     public enum Status
@@ -193,7 +191,6 @@ public struct GameNodeCharacterStatus : IComponentData
     }
 }
 
-[Serializable]
 public struct GameNodeCharacterSurface : IComponentData
 {
     public uint layerMask;
@@ -203,38 +200,33 @@ public struct GameNodeCharacterSurface : IComponentData
     public quaternion rotation;
 }
 
-[Serializable]
 public struct GameNodeCharacterAngle : IComponentData
 {
     public half value;
 }
 
-[Serializable]
 public struct GameNodeCharacterVelocity : IComponentData
 {
     public float3 value;
 }
 
-[Serializable]
 public struct GameNodeCharacterDesiredVelocity : IComponentData
 {
     public float3 linear;
     public float3 angular;
 }
 
-[Serializable]
 public struct GameNodeCharacterCollider : IComponentData
 {
     public BlobAssetReference<Unity.Physics.Collider> value;
 }
 
-[Serializable]
 public struct GameNodeCharacterCenterOfMass : IComponentData
 {
     public float3 value;
 }
 
-[Serializable, InternalBufferCapacity(16)]
+[InternalBufferCapacity(16)]
 public struct GameNodeCharacterDistanceHit : IBufferElementData
 {
     public DistanceHit value;

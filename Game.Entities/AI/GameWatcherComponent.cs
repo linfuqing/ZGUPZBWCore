@@ -21,7 +21,6 @@ public struct GameWatcherData : IComponentData
     public BlobAssetReference<Unity.Physics.Collider> collider;
 }
 
-[Serializable]
 public struct GameWatcherInfo : IComponentData
 {
     public enum Type
@@ -93,7 +92,7 @@ public class GameWatcherComponent : ZG.ComponentDataProxy<GameWatcherData>
             _value.collider = _shape.colliders.value;
         else 
         if(_shapeIndex != -1)
-            _value.collider = GetComponent<PhysicsHierarchyComponent>().database.GetOrCreateCollider(_shapeIndex);
+            _value.collider = GetComponentInChildren<PhysicsHierarchyComponent>().database.GetOrCreateCollider(_shapeIndex);
 
         base.Init(entity, assigner);
 

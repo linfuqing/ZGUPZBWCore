@@ -63,6 +63,12 @@ public class GameNodeShapeComponent : EntityProxyComponent, IEntityComponent
 
             set => _shapeIndex = value;
         }
+
+
+        public int status
+        {
+            get => _status;
+        }
 #endif
 
         public BlobAssetReference<Unity.Physics.Collider> colliders => __colliders == null  ? __collider : __colliders.value;

@@ -28,7 +28,6 @@ public struct GameNodeActorData : IComponentData
     public float jumpToStepSpeed;
 }
 
-[Serializable]
 public struct GameNodeActorStatus : IComponentData
 {
     public enum Status

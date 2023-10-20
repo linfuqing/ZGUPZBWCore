@@ -24,6 +24,6 @@ public class GameEntityHealthActorComponent : ComponentDataProxy<GameEntityHealt
 {
     public void Clear()
     {
-        this.SetComponentData<GameEntityHealthActorInfo>(default);
+        this.SetComponentData(default(GameEntityHealthActorInfo));
     }
 }
