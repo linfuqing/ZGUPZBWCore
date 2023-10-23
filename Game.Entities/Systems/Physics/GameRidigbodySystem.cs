@@ -9,13 +9,7 @@ using Unity.Physics;
 using Unity.Physics.Systems;
 using ZG;
 
-[UpdateInGroup(typeof(FixedStepSimulationSystemGroup)), UpdateBefore(typeof(EndFramePhysicsSystem)), UpdateAfter(typeof(ExportPhysicsWorld))]
-public partial class GameRidigbodySystemGroup : ComponentSystemGroup
-{
-
-}
-
-[BurstCompile, UpdateInGroup(typeof(GameRidigbodySystemGroup), OrderFirst = true)]
+[BurstCompile, UpdateInGroup(typeof(InitializationSystemGroup))]
 public partial struct GameRidigbodyFactorySystem : ISystem
 {
     [BurstCompile]
@@ -77,42 +71,44 @@ public partial struct GameRidigbodyFactorySystem : ISystem
     private EntityQuery __groupToCreateOrigins;
     private EntityQuery __groupToDestroy;
 
+    private ComponentTypeHandle<PhysicsShapeCompoundCollider> __colliderType;
+    private ComponentTypeHandle<GameRidigbodyMass> __masseType;
+
+    private ComponentTypeHandle<Translation> __translationType;
+    private ComponentTypeHandle<Rotation> __rotationType;
+
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __groupToCreateMasses = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameRidigbodyMass>(),
-            ComponentType.Exclude<PhysicsMass>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __groupToCreateMasses = builder
+                    .WithAll<GameRidigbodyMass>()
+                    .WithNone<PhysicsMass>()
+                    .Build(ref state);
 
-        __groupToCreateOrigins = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameRidigbodyData>(), 
-            ComponentType.Exclude<GameRidigbodyOrigin>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __groupToCreateOrigins = builder
+                .WithAll<GameRidigbodyData>()
+                .WithNone<GameRidigbodyOrigin>()
+                .Build(ref state);
 
-        __groupToDestroy = state.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<Translation>(), 
-                    ComponentType.ReadOnly<Rotation>(), 
-                    ComponentType.ReadOnly<GameRidigbodyOrigin>()
-                }, 
-                None = new ComponentType[]
-                {
-                    typeof(GameRidigbodyData)
-                }
-            }, 
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameRidigbodyOrigin>(), 
-                    ComponentType.ReadOnly<Disabled>()
-                },
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __groupToDestroy = builder
+                .WithAll<Translation, Rotation, GameRidigbodyOrigin>()
+                .WithNone<GameRidigbodyData>()
+                .AddAdditionalQuery()
+                .WithAll<GameRidigbodyOrigin, Disabled>()
+                .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                .Build(ref state);
 
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
+        __colliderType = state.GetComponentTypeHandle<PhysicsShapeCompoundCollider>(true);
+        __masseType = state.GetComponentTypeHandle<GameRidigbodyMass>(true);
+
+        __translationType = state.GetComponentTypeHandle<Translation>(true);
+        __rotationType = state.GetComponentTypeHandle<Rotation>(true);
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 
@@ -131,13 +127,13 @@ public partial struct GameRidigbodyFactorySystem : ISystem
                 state.CompleteDependency();
 
                 InitMasses init;
-                init.colliderType = state.GetComponentTypeHandle<PhysicsShapeCompoundCollider>(true);
-                init.masseType = state.GetComponentTypeHandle<GameRidigbodyMass>(true);
+                init.colliderType = __colliderType.UpdateAsRef(ref state);
+                init.masseType = __masseType.UpdateAsRef(ref state);
                 init.baseEntityIndexArray = __groupToCreateMasses.CalculateBaseEntityIndexArray(Allocator.TempJob);
                 init.physicsMasses = physicsMasses;
-                init.Run(__groupToCreateMasses);
+                init.RunByRef(__groupToCreateMasses);
 
-                entityManager.AddComponentDataBurstCompatible(__groupToCreateMasses, physicsMasses);
+                entityManager.AddComponentData(__groupToCreateMasses, physicsMasses);
             }
         }
 
@@ -149,13 +145,13 @@ public partial struct GameRidigbodyFactorySystem : ISystem
                 state.CompleteDependency();
 
                 InitOrigins init;
-                init.translationType = state.GetComponentTypeHandle<Translation>(true);
-                init.rotationType = state.GetComponentTypeHandle<Rotation>(true);
+                init.translationType = __translationType.UpdateAsRef(ref state);
+                init.rotationType = __rotationType.UpdateAsRef(ref state);
                 init.baseEntityIndexArray = __groupToCreateOrigins.CalculateBaseEntityIndexArray(Allocator.TempJob);
                 init.origins = origins;
-                init.Run(__groupToCreateOrigins);
+                init.RunByRef(__groupToCreateOrigins);
 
-                entityManager.AddComponentDataBurstCompatible(__groupToCreateOrigins, origins);
+                entityManager.AddComponentData(__groupToCreateOrigins, origins);
             }
         }
 
@@ -163,7 +159,11 @@ public partial struct GameRidigbodyFactorySystem : ISystem
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(GameRidigbodySystemGroup))]
+[BurstCompile, 
+    CreateAfter(typeof(GamePhysicsWorldBuildSystem)), 
+    UpdateInGroup(typeof(FixedStepSimulationSystemGroup)), 
+    UpdateBefore(typeof(EndFramePhysicsSystem)), 
+    UpdateAfter(typeof(ExportPhysicsWorld))]
 public partial struct GameRidigbodySystem : ISystem
 {
     private struct Reset
@@ -286,19 +286,34 @@ public partial struct GameRidigbodySystem : ISystem
     public static readonly float waterHeight = 50.0f;
 
     private EntityQuery __group;
+
+    private EntityTypeHandle __entityType;
+    private ComponentTypeHandle<GameRidigbodyData> __instanceType;
+    private ComponentTypeHandle<GameRidigbodyOrigin> __originType;
+    private ComponentTypeHandle<Rotation> __rotationType;
+    private ComponentTypeHandle<Translation> __translationType;
+
     private SharedPhysicsWorld __physicsWorld;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameRidigbodyData>(),
-            ComponentType.ReadOnly<GameRidigbodyOrigin>(),
-            ComponentType.ReadWrite<Rotation>(), 
-            ComponentType.ReadWrite<Translation>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameRidigbodyData, GameRidigbodyOrigin>()
+                    .WithAllRW<Rotation, Translation>()
+                    .Build(ref state);
 
-        __physicsWorld = state.World.GetOrCreateSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
+        __entityType = state.GetEntityTypeHandle();
+        __instanceType = state.GetComponentTypeHandle<GameRidigbodyData>(true);
+        __originType = state.GetComponentTypeHandle<GameRidigbodyOrigin>(true);
+        __rotationType = state.GetComponentTypeHandle<Rotation>();
+        __translationType = state.GetComponentTypeHandle<Translation>();
+
+        __physicsWorld = state.WorldUnmanaged.GetExistingSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 
@@ -311,15 +326,15 @@ public partial struct GameRidigbodySystem : ISystem
         reset.waterLayerMask = waterLayerMask;
         reset.waterHeight = waterHeight;
         reset.collisionWorld = __physicsWorld.collisionWorld;
-        reset.entityType = state.GetEntityTypeHandle();
-        reset.instanceType = state.GetComponentTypeHandle<GameRidigbodyData>(true);
-        reset.originType = state.GetComponentTypeHandle<GameRidigbodyOrigin>(true);
-        reset.rotationType = state.GetComponentTypeHandle<Rotation>();
-        reset.translationType = state.GetComponentTypeHandle<Translation>();
+        reset.entityType = __entityType.UpdateAsRef(ref state);
+        reset.instanceType = __instanceType.UpdateAsRef(ref state);
+        reset.originType = __originType.UpdateAsRef(ref state);
+        reset.rotationType = __rotationType.UpdateAsRef(ref state);
+        reset.translationType = __translationType.UpdateAsRef(ref state);
 
         ref var lookupJobManager = ref __physicsWorld.lookupJobManager;
 
-        var jobHandle = reset.ScheduleParallel(__group, JobHandle.CombineDependencies(lookupJobManager.readOnlyJobHandle, state.Dependency));
+        var jobHandle = reset.ScheduleParallelByRef(__group, JobHandle.CombineDependencies(lookupJobManager.readOnlyJobHandle, state.Dependency));
 
         lookupJobManager.AddReadOnlyDependency(jobHandle);
 
