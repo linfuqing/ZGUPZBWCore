@@ -343,33 +343,11 @@ public struct GameInputAction : IComponentData
             }
         }
 
-        bool result;
-        float delta = (float)(time - minActionTime), distance;
+        bool result = false;
+        float delta = (float)(time - minActionTime), distance = 0.0f;
         var filter = new Filter(rage, actorTime, actionSetDefinition);
         isTimeout = time > maxActionTime;
-        if (actorActionIndex == -1 || actorActionIndex == this.actorActionIndex)
-        {
-            actorActionIndex = isTimeout ? -1 : this.actorActionIndex;
-
-            result = definition.Value.Did(
-                button,
-                group,
-                actorStatus,
-                actorVelocity,
-                dot, //math.normalizesafe(direction, forward),
-                delta,
-                time,
-                //actorTime, 
-                actorActionInfos,
-                actorActions,
-                actionInstances,
-                ref actorActionIndex,
-                ref layerMask,
-                ref targetType,
-                ref filter,
-                out distance);
-        }
-        else
+        if (actorActionIndex != -1 && actorActionIndex != this.actorActionIndex)
         {
             distance = 0.0f;
 
@@ -394,6 +372,29 @@ public struct GameInputAction : IComponentData
                 if (result)
                     distance = action.distance;
             }
+        }
+
+        if(!result)
+        {
+            actorActionIndex = isTimeout ? -1 : this.actorActionIndex;
+
+            result = definition.Value.Did(
+                button,
+                group,
+                actorStatus,
+                actorVelocity,
+                dot, //math.normalizesafe(direction, forward),
+                delta,
+                time,
+                //actorTime, 
+                actorActionInfos,
+                actorActions,
+                actionInstances,
+                ref actorActionIndex,
+                ref layerMask,
+                ref targetType,
+                ref filter,
+                out distance);
         }
 
         if (result)
@@ -540,10 +541,10 @@ public struct GameInputPickable : IComponentData
 
 }
 
-/*public struct GameInputEntity : IComponentData
+public struct GameInputEntity : IComponentData
 {
 
-}*/
+}
 
 public struct GameInputSelectionTarget : IComponentData
 {
@@ -720,7 +721,7 @@ public partial struct GameInputSystem : ISystem
 
     private struct Select
     {
-        public int builtInCamps;
+        //public int builtInCamps;
 
         public Entity selection;
 
@@ -733,6 +734,9 @@ public partial struct GameInputSystem : ISystem
         public ComponentLookup<PhysicsCollider> colliders;
 
         [ReadOnly]
+        public ComponentLookup<GameInputEntity> entities;
+
+        [ReadOnly]
         public ComponentLookup<GameInputSelectable> selectables;
 
         [ReadOnly]
@@ -743,9 +747,6 @@ public partial struct GameInputSystem : ISystem
 
         [ReadOnly]
         public ComponentLookup<GameNodeStatus> states;
-
-        //[ReadOnly]
-        //public ComponentLookup<GameInputEntity> entities;
 
         [ReadOnly]
         public ComponentLookup<GameEntityCamp> campMap;
@@ -793,7 +794,7 @@ public partial struct GameInputSystem : ISystem
                     if (selectables.HasComponent(entity))
                         return true;
                 }
-                else if (targetCamp < builtInCamps && colliders.HasComponent(entity))
+                else if (!entities.HasComponent(entity) && colliders.HasComponent(entity))
                 {
                     uint belongsTo = colliders[entity].Value.Value.Filter.BelongsTo;
                     foreach (var actionInstance in actionInstances)
@@ -844,7 +845,7 @@ public partial struct GameInputSystem : ISystem
     [BurstCompile]
     private struct SelectEx : IJobChunk
     {
-        public int builtInCamps;
+        //public int builtInCamps;
 
         public Entity selection;
 
@@ -857,10 +858,10 @@ public partial struct GameInputSystem : ISystem
         public ComponentLookup<PhysicsCollider> colliders;
 
         [ReadOnly]
-        public ComponentLookup<GameInputSelectable> selectables;
+        public ComponentLookup<GameInputEntity> entities;
 
-        //[ReadOnly]
-        //public ComponentLookup<GameInputEntity> entities;
+        [ReadOnly]
+        public ComponentLookup<GameInputSelectable> selectables;
 
         [ReadOnly]
         public ComponentLookup<GameInputPickable> pickables;
@@ -926,16 +927,16 @@ public partial struct GameInputSystem : ISystem
             if (selection == Entity.Null)
             {
                 Select select;
-                select.builtInCamps = builtInCamps;
+                //select.builtInCamps = builtInCamps;
                 select.selection = this.selection;
                 select.actionSetDefinition = actionSetDefinition;
                 select.targets = targets;
                 select.colliders = colliders;
+                select.entities = entities;
                 select.selectables = selectables;
                 select.pickables = pickables;
                 select.factories = factories;
                 select.states = states;
-                //select.entities = entities;
                 select.campMap = camps;
                 select.camps = chunk.GetNativeArray(ref campType);
                 select.actorActions = chunk.GetBufferAccessor(ref actorActionType);
@@ -1128,9 +1129,9 @@ public partial struct GameInputSystem : ISystem
 
     private ComponentLookup<NetworkIdentityType> __identityTypes;
 
-    private ComponentLookup<GameInputSelectable> __selectables;
+    private ComponentLookup<GameInputEntity> __entities;
 
-    //private ComponentLookup<GameInputEntity> __entities;
+    private ComponentLookup<GameInputSelectable> __selectables;
 
     private ComponentLookup<GameInputPickable> __pickables;
 
@@ -1174,8 +1175,8 @@ public partial struct GameInputSystem : ISystem
         __entityType = state.GetEntityTypeHandle();
         __colliders = state.GetComponentLookup<PhysicsCollider>(true);
         __identityTypes = state.GetComponentLookup<NetworkIdentityType>(true);
+        __entities = state.GetComponentLookup<GameInputEntity>(true);
         __selectables = state.GetComponentLookup<GameInputSelectable>(true);
-        //__entities = state.GetComponentLookup<GameInputEntity>(true);
         __pickables = state.GetComponentLookup<GameInputPickable>(true);
         __factories = state.GetComponentLookup<GameFactory>(true);
         __states = state.GetComponentLookup<GameNodeStatus>(true);
@@ -1266,13 +1267,13 @@ public partial struct GameInputSystem : ISystem
         var targetsReader = targets.reader;
 
         SelectEx select;
-        select.builtInCamps = (int)GameDataConstans.BuiltInCamps;
+        //select.builtInCamps = (int)GameDataConstans.BuiltInCamps;
         select.selection = SystemAPI.HasSingleton<GameInputSelection>() ? SystemAPI.GetSingleton<GameInputSelection>().entity : Entity.Null;
         select.actionSetDefinition = actionSetDefinition;
         select.targets = targetsReader;
         select.colliders = colliders;
+        select.entities = __entities.UpdateAsRef(ref state);
         select.selectables = __selectables.UpdateAsRef(ref state);
-        //select.entities = __entities.UpdateAsRef(ref state);
         select.pickables = pickables;
         select.factories = factories;
         select.states = states;
@@ -1477,6 +1478,8 @@ public partial struct GameInputActionSystem : ISystem
             int index,
             in float3 direction)
         {
+            //UnityEngine.Debug.LogError($"Do {actorActionIndex}");
+
             GameInputActionTarget actionTarget;
             actionTarget.status = GameInputStatus.As(button);
 

@@ -34,6 +34,8 @@ public partial struct GameEntityActionLocationSystem : ISystem
 
                 translation.Value = pair.Value;
 
+                //UnityEngine.Debug.Log($"Locate {entity} : {translation.Value}");
+
                 destinations[entity] = translation;
             }
 
@@ -458,6 +460,8 @@ public struct GameEntityActionSystemCore
                     -normal,
                     __instance);
 
+                //UnityEngine.Debug.LogError($"Damage {__entity} : {entity}");
+
                 if (__impactForce > math.FLT_MIN_NORMAL && __masses.HasComponent(entity))
                 {
                     EntityData<GameNodeVelocityComponent> impact;
@@ -472,7 +476,7 @@ public struct GameEntityActionSystemCore
 
                     //UnityEngine.Debug.Log($"{normal} : {position - transform.value.pos} : {__direction}");
 
-                    //UnityEngine.Debug.Log($"Impact {entity.Index} : {(double)impact.value.time} : {__time} : {surfaceNormal} : {__start.value.pos} : {__start.value.rot.value} : {__end.value.pos} : {__end.value.rot.value}");
+                    //UnityEngine.Debug.Log($"Impact {entity.Index} : {(double)impact.value.time} : {__time} : {__start.value.pos} : {__start.value.rot.value} : {__end.value.pos} : {__end.value.rot.value}");
                 }
 
                 ++NumHits;

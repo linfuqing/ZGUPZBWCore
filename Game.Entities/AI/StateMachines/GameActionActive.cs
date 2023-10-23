@@ -833,6 +833,8 @@ public partial struct GameActionActiveExecutorSystem : ISystem
                 instance.watcherTime > math.FLT_MIN_NORMAL) &&
                 physicsColliders.HasComponent(info.entity))
             {
+                forward = distance > math.FLT_MIN_NORMAL ? forward / distance : forward;
+
                 //var collider = physicsColliders[info.entity].Value;
                 Collider* collider;
                 if (physicsColliders.HasComponent(info.entity))
@@ -881,8 +883,6 @@ public partial struct GameActionActiveExecutorSystem : ISystem
                 }
                 else
                     collider = null;
-
-                forward = distance > math.FLT_MIN_NORMAL ? forward / distance : forward;
 
                 bool isRunAway, isHasPosition = index < positions.Length;//, isDelay = delay[index].Check(time);
                 uint categoryBits = physicsColliders[info.entity].Value.Value.Filter.BelongsTo;

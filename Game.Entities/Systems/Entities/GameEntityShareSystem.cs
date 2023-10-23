@@ -512,7 +512,6 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
             instance.transform.rot);
         Transform transform = gameObject.transform, parent = __GetParent(entity, !isAction);
         transform.SetParent(parent, false);
-        //Debug.LogError($"Create {gameObject.name} : {asset.destroyTime}", gameObject);
         if (isAction)
         {
             actionEntity = entity;
@@ -541,6 +540,8 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
                 destroyTime = asset.destroyTime - elpasedTime;
             if (gameObject != null)
             {
+                //Debug.LogError($"Create {instance.index} : {entity} : {gameObject.name} : {destroyTime}", gameObject);
+
                 var particleSystem = gameObject.GetComponentInChildren<ParticleSystem>();
                 if (particleSystem != null)
                 {
@@ -550,7 +551,10 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
                     particleSystem.Play(true);
                 }
 
-                GameObject.Destroy(gameObject, destroyTime);
+                if(destroyTime > 0.0f)
+                    GameObject.Destroy(gameObject, destroyTime);
+                else
+                    GameObject.Destroy(gameObject);
             }
 
             if (instance.parentEntity == Entity.Null || destroyTime < math.FLT_MIN_NORMAL)
@@ -603,7 +607,7 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
             var gameObject = __instances[target.index];
             if (gameObject != null)
             {
-                //UnityEngine.Debug.LogError($"Destroy {gameObject.name}", gameObject);
+                //UnityEngine.Debug.LogError($"Destroy {target.index} : {entity} : {gameObject.name} : {isDisabled}", gameObject);
 
                 /*if (!isDisabled)
                 {
