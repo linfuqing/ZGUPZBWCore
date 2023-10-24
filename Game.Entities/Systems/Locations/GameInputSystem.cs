@@ -722,6 +722,7 @@ public partial struct GameInputSystem : ISystem
     private struct Select
     {
         //public int builtInCamps;
+        public float maxDistance;
 
         public Entity selection;
 
@@ -829,6 +830,9 @@ public partial struct GameInputSystem : ISystem
 
                 foreach (var target in targets)
                 {
+                    if (target.distance > maxDistance)
+                        continue;
+
                     if (IsSelectable(target.entity, camp, actorActions, actionInstances))
                     {
                         result.entity = target.entity;
@@ -846,6 +850,8 @@ public partial struct GameInputSystem : ISystem
     private struct SelectEx : IJobChunk
     {
         //public int builtInCamps;
+
+        public float maxDistance;
 
         public Entity selection;
 
@@ -928,6 +934,7 @@ public partial struct GameInputSystem : ISystem
             {
                 Select select;
                 //select.builtInCamps = builtInCamps;
+                select.maxDistance = maxDistance;
                 select.selection = this.selection;
                 select.actionSetDefinition = actionSetDefinition;
                 select.targets = targets;
@@ -1157,6 +1164,8 @@ public partial struct GameInputSystem : ISystem
 
     private NativeList<int> __hits;
 
+    public static readonly float MaxDistance = 4.0f;
+
     public SharedList<GameInputTarget> targets
     {
         get;
@@ -1267,6 +1276,7 @@ public partial struct GameInputSystem : ISystem
         var targetsReader = targets.reader;
 
         SelectEx select;
+        select.maxDistance = MaxDistance;
         //select.builtInCamps = (int)GameDataConstans.BuiltInCamps;
         select.selection = SystemAPI.HasSingleton<GameInputSelection>() ? SystemAPI.GetSingleton<GameInputSelection>().entity : Entity.Null;
         select.actionSetDefinition = actionSetDefinition;
