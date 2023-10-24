@@ -678,7 +678,7 @@ public partial struct GameItemSystem : ISystem
         {
             int commandCount = commands.Length;
 
-            typeCountAndBufferSize[0] = 2;
+            typeCountAndBufferSize[0] = 2 * commandCount;
             typeCountAndBufferSize[1] = (UnsafeUtility.SizeOf<EntityDataIdentity>() + UnsafeUtility.SizeOf<GameItemData>()) * commandCount;
 
             guidEntities.capacity = math.max(guidEntities.capacity, guidEntities.Count() + commandCount);
