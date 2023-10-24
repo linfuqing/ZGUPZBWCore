@@ -9,7 +9,7 @@ using Unity.Physics;
 using Unity.Physics.Systems;
 using ZG;
 
-[BurstCompile, UpdateInGroup(typeof(GamePhysicsWorldBuildSystem), OrderFirst = true)]
+[BurstCompile, UpdateInGroup(typeof(FixedStepSimulationSystemGroup), OrderFirst = true)]
 public partial struct GameRidigbodyFactorySystem : ISystem
 {
     private struct InitMasses
