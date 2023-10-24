@@ -531,6 +531,11 @@ public struct GameInputKey : IBufferElementData
     public Value value;
 }
 
+public struct GameInputDisabled : IComponentData
+{
+
+}
+
 public struct GameInputSelectable : IComponentData
 {
 
@@ -607,6 +612,8 @@ public partial struct GameInputSystem : ISystem
         public NativeArray<int> hits;
         [ReadOnly]
         public NativeArray<Entity> entityArray;
+        [ReadOnly]
+        public ComponentLookup<GameInputDisabled> disabled;
         public NativeParallelHashMap<Entity, float>.ParallelWriter targetDistances;
 
         public void Execute(int index)
@@ -642,7 +649,7 @@ public partial struct GameInputSystem : ISystem
             for (int i = 0; i < count; ++i)
             {
                 rigidbody = rigidbodies[hits[i]];
-                if (rigidbody.Entity == entity)
+                if (rigidbody.Entity == entity || disabled.HasComponent(rigidbody.Entity))
                     continue;
 
                 aabb = rigidbody.Collider.Value.CalculateAabb(rigidbody.WorldFromBody);
@@ -676,6 +683,8 @@ public partial struct GameInputSystem : ISystem
         public NativeArray<int> hits;
         [ReadOnly]
         public EntityTypeHandle entityType;
+        [ReadOnly]
+        public ComponentLookup<GameInputDisabled> disabled;
         public NativeParallelHashMap<Entity, float>.ParallelWriter targetDistances;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
@@ -687,6 +696,7 @@ public partial struct GameInputSystem : ISystem
             findTargets.collisionWorld = collisionWorld;
             findTargets.hits = hits;
             findTargets.entityArray = chunk.GetNativeArray(entityType);
+            findTargets.disabled = disabled;
             findTargets.targetDistances = targetDistances;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -1136,6 +1146,8 @@ public partial struct GameInputSystem : ISystem
 
     private ComponentLookup<NetworkIdentityType> __identityTypes;
 
+    private ComponentLookup<GameInputDisabled> __disabled;
+
     private ComponentLookup<GameInputEntity> __entities;
 
     private ComponentLookup<GameInputSelectable> __selectables;
@@ -1184,6 +1196,7 @@ public partial struct GameInputSystem : ISystem
         __entityType = state.GetEntityTypeHandle();
         __colliders = state.GetComponentLookup<PhysicsCollider>(true);
         __identityTypes = state.GetComponentLookup<NetworkIdentityType>(true);
+        __disabled = state.GetComponentLookup<GameInputDisabled>(true);
         __entities = state.GetComponentLookup<GameInputEntity>(true);
         __selectables = state.GetComponentLookup<GameInputSelectable>(true);
         __pickables = state.GetComponentLookup<GameInputPickable>(true);
@@ -1249,6 +1262,7 @@ public partial struct GameInputSystem : ISystem
         findTargets.collisionWorld = collisionWorld;
         findTargets.hits = __hits.AsDeferredJobArray();
         findTargets.entityType = __entityType.UpdateAsRef(ref state);
+        findTargets.disabled = __disabled.UpdateAsRef(ref state);
         findTargets.targetDistances = __targetDistances.AsParallelWriter();
         jobHandle = findTargets.ScheduleParallelByRef(__group, jobHandle);
 
