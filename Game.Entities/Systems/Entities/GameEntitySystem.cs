@@ -1351,16 +1351,16 @@ public partial struct GameEntityActorSystem : ISystem
 
                                     if (action.instance.direction.Equals(float3.zero))
                                     {
-                                        if (action.instance.rangeType == GameActionRangeType.Source)
+                                        /*if (action.instance.rangeType == GameActionRangeType.Source)
                                             distance = forward * action.info.distance;
                                         else
-                                        {
+                                        {*/
                                             distance = targetPosition - position;
 
                                             float length = math.length(distance);
                                             if (action.info.distance > math.FLT_MIN_NORMAL && action.info.distance < length)
                                                 distance = action.info.distance / length * distance;
-                                        }
+                                        //}
                                     }
                                     else
                                         distance = math.mul(rotation, action.instance.direction) * action.info.distance;

@@ -9,32 +9,61 @@ using Unity.Physics;
 using Unity.Physics.Systems;
 using ZG;
 
-[BurstCompile, UpdateInGroup(typeof(InitializationSystemGroup))]
+[BurstCompile, UpdateInGroup(typeof(GamePhysicsWorldBuildSystem), OrderFirst = true)]
 public partial struct GameRidigbodyFactorySystem : ISystem
 {
-    [BurstCompile]
-    private struct InitMasses : IJobChunk
+    private struct InitMasses
     {
+        [ReadOnly]
+        public NativeArray<Entity> entityArray;
+
+        [ReadOnly]
+        public NativeArray<PhysicsShapeCompoundCollider> colliders;
+
+        [ReadOnly]
+        public NativeArray<GameRidigbodyMass> masses;
+
+        public NativeList<Entity> entities;
+        public NativeList<PhysicsMass> physicsMasses;
+
+        public void Execute(int index)
+        {
+            var collider = colliders[index].value;
+            if (!collider.IsCreated)
+                return;
+
+            entities.Add(entities[index]);
+            physicsMasses.Add(PhysicsMass.CreateDynamic(collider.Value.MassProperties, masses[index].value));
+        }
+    }
+
+    [BurstCompile]
+    private struct InitMassesEx : IJobChunk
+    {
+        [ReadOnly]
+        public EntityTypeHandle entityType;
+
         [ReadOnly]
         public ComponentTypeHandle<PhysicsShapeCompoundCollider> colliderType;
 
         [ReadOnly]
         public ComponentTypeHandle<GameRidigbodyMass> masseType;
 
-        [ReadOnly, DeallocateOnJobCompletion]
-        public NativeArray<int> baseEntityIndexArray;
-
-        public NativeArray<PhysicsMass> physicsMasses;
+        public NativeList<Entity> entities;
+        public NativeList<PhysicsMass> physicsMasses;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
-            var colliders = chunk.GetNativeArray(ref colliderType);
-            var masses = chunk.GetNativeArray(ref masseType);
+            InitMasses initMasses;
+            initMasses.entityArray = chunk.GetNativeArray(entityType);
+            initMasses.colliders = chunk.GetNativeArray(ref colliderType);
+            initMasses.masses = chunk.GetNativeArray(ref masseType);
+            initMasses.entities = entities;
+            initMasses.physicsMasses = physicsMasses;
 
-            int index = baseEntityIndexArray[unfilteredChunkIndex];
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
-                physicsMasses[index++] = PhysicsMass.CreateDynamic(colliders[i].value.Value.MassProperties, masses[i].value);
+                initMasses.Execute(i);
         }
     }
 
@@ -67,15 +96,39 @@ public partial struct GameRidigbodyFactorySystem : ISystem
         }
     }
 
+    [BurstCompile]
+    private struct ApplyMasses : IJobParallelFor
+    {
+        [ReadOnly]
+        public NativeArray<Entity> entityArray;
+
+        [ReadOnly]
+        public NativeArray<PhysicsMass> inputs;
+
+        [NativeDisableParallelForRestriction]
+        public ComponentLookup<PhysicsMass> outputs;
+
+        public void Execute(int index)
+        {
+            outputs[entityArray[index]] = inputs[index];
+        }
+    }
+
+    public static readonly int InnerloopBatchCount = 4;
+
     private EntityQuery __groupToCreateMasses;
     private EntityQuery __groupToCreateOrigins;
     private EntityQuery __groupToDestroy;
 
-    private ComponentTypeHandle<PhysicsShapeCompoundCollider> __colliderType;
-    private ComponentTypeHandle<GameRidigbodyMass> __masseType;
+    private EntityTypeHandle __entityType;
 
     private ComponentTypeHandle<Translation> __translationType;
     private ComponentTypeHandle<Rotation> __rotationType;
+
+    private ComponentTypeHandle<PhysicsShapeCompoundCollider> __colliderType;
+    private ComponentTypeHandle<GameRidigbodyMass> __masseType;
+
+    private ComponentLookup<PhysicsMass> __physicsMasses;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
@@ -101,11 +154,15 @@ public partial struct GameRidigbodyFactorySystem : ISystem
                 .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                 .Build(ref state);
 
-        __colliderType = state.GetComponentTypeHandle<PhysicsShapeCompoundCollider>(true);
-        __masseType = state.GetComponentTypeHandle<GameRidigbodyMass>(true);
+        __entityType = state.GetEntityTypeHandle();
 
         __translationType = state.GetComponentTypeHandle<Translation>(true);
         __rotationType = state.GetComponentTypeHandle<Rotation>(true);
+
+        __colliderType = state.GetComponentTypeHandle<PhysicsShapeCompoundCollider>(true);
+        __masseType = state.GetComponentTypeHandle<GameRidigbodyMass>(true);
+
+        __physicsMasses = state.GetComponentLookup<PhysicsMass>();
     }
 
     [BurstCompile]
@@ -119,25 +176,10 @@ public partial struct GameRidigbodyFactorySystem : ISystem
     {
         var entityManager = state.EntityManager;
 
-        int count = __groupToCreateMasses.CalculateEntityCount();
-        if (count > 0)
-        {
-            using (var physicsMasses = new NativeArray<PhysicsMass>(count, Allocator.TempJob))
-            {
-                state.CompleteDependency();
 
-                InitMasses init;
-                init.colliderType = __colliderType.UpdateAsRef(ref state);
-                init.masseType = __masseType.UpdateAsRef(ref state);
-                init.baseEntityIndexArray = __groupToCreateMasses.CalculateBaseEntityIndexArray(Allocator.TempJob);
-                init.physicsMasses = physicsMasses;
-                init.RunByRef(__groupToCreateMasses);
+        entityManager.RemoveComponent<GameRidigbodyOrigin>(__groupToDestroy);
 
-                entityManager.AddComponentData(__groupToCreateMasses, physicsMasses);
-            }
-        }
-
-        count = __groupToCreateOrigins.CalculateEntityCount();
+        int count = __groupToCreateOrigins.CalculateEntityCount();
         if (count > 0)
         {
             using (var origins = new NativeArray<GameRidigbodyOrigin>(count, Allocator.TempJob))
@@ -155,7 +197,32 @@ public partial struct GameRidigbodyFactorySystem : ISystem
             }
         }
 
-        entityManager.RemoveComponent<GameRidigbodyOrigin>(__groupToDestroy);
+        count = __groupToCreateMasses.CalculateEntityCount();
+        if (count > 0)
+        {
+            var entities = new NativeList<Entity>(count, Allocator.TempJob);
+            var physicsMasses = new NativeList<PhysicsMass>(count, Allocator.TempJob);
+
+            state.CompleteDependency();
+
+            InitMassesEx init;
+            init.entityType = __entityType.UpdateAsRef(ref state);
+            init.colliderType = __colliderType.UpdateAsRef(ref state);
+            init.masseType = __masseType.UpdateAsRef(ref state);
+            init.entities = entities;
+            init.physicsMasses = physicsMasses;
+            init.RunByRef(__groupToCreateMasses);
+
+            entityManager.AddComponent<PhysicsMass>(entities.AsArray());
+
+            ApplyMasses applyMasses;
+            applyMasses.entityArray = entities.AsArray();
+            applyMasses.inputs = physicsMasses.AsArray();
+            applyMasses.outputs = __physicsMasses.UpdateAsRef(ref state);
+            var jobHandle = applyMasses.ScheduleByRef(entities.Length, InnerloopBatchCount, state.Dependency);
+
+            state.Dependency = JobHandle.CombineDependencies(entities.Dispose(jobHandle), physicsMasses.Dispose(jobHandle));
+        }
     }
 }
 
