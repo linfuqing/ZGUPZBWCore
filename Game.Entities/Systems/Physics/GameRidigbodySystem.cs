@@ -32,7 +32,7 @@ public partial struct GameRidigbodyFactorySystem : ISystem
             if (!collider.IsCreated)
                 return;
 
-            entities.Add(entities[index]);
+            entities.Add(entityArray[index]);
             physicsMasses.Add(PhysicsMass.CreateDynamic(collider.Value.MassProperties, masses[index].value));
         }
     }
@@ -135,7 +135,7 @@ public partial struct GameRidigbodyFactorySystem : ISystem
     {
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __groupToCreateMasses = builder
-                    .WithAll<GameRidigbodyMass>()
+                    .WithAll<PhysicsShapeCompoundCollider, GameRidigbodyMass>()
                     .WithNone<PhysicsMass>()
                     .Build(ref state);
 
