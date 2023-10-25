@@ -1,7 +1,7 @@
 using UnityEngine;
 using ZG;
 
-[EntityComponent(typeof(GameInputDisabled))]
+[EntityComponent(typeof(GameInputSelectionDisabled))]
 public class GameInputDisabledComponent : MonoBehaviour
 {
 }

@@ -478,6 +478,11 @@ public struct GameInputSelection : IComponentData
     public Entity entity;
 }
 
+public struct GameInputSelectionDisabled : IComponentData
+{
+
+}
+
 public struct GameInputStatus : IComponentData
 {
     public enum Value
@@ -529,11 +534,6 @@ public struct GameInputKey : IBufferElementData
 
     public Status status;
     public Value value;
-}
-
-public struct GameInputDisabled : IComponentData
-{
-
 }
 
 public struct GameInputSelectable : IComponentData
@@ -612,8 +612,6 @@ public partial struct GameInputSystem : ISystem
         public NativeArray<int> hits;
         [ReadOnly]
         public NativeArray<Entity> entityArray;
-        [ReadOnly]
-        public ComponentLookup<GameInputDisabled> disabled;
         public NativeParallelHashMap<Entity, float>.ParallelWriter targetDistances;
 
         public void Execute(int index)
@@ -649,7 +647,7 @@ public partial struct GameInputSystem : ISystem
             for (int i = 0; i < count; ++i)
             {
                 rigidbody = rigidbodies[hits[i]];
-                if (rigidbody.Entity == entity || disabled.HasComponent(rigidbody.Entity))
+                if (rigidbody.Entity == entity)
                     continue;
 
                 aabb = rigidbody.Collider.Value.CalculateAabb(rigidbody.WorldFromBody);
@@ -683,8 +681,6 @@ public partial struct GameInputSystem : ISystem
         public NativeArray<int> hits;
         [ReadOnly]
         public EntityTypeHandle entityType;
-        [ReadOnly]
-        public ComponentLookup<GameInputDisabled> disabled;
         public NativeParallelHashMap<Entity, float>.ParallelWriter targetDistances;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
@@ -696,7 +692,6 @@ public partial struct GameInputSystem : ISystem
             findTargets.collisionWorld = collisionWorld;
             findTargets.hits = hits;
             findTargets.entityArray = chunk.GetNativeArray(entityType);
-            findTargets.disabled = disabled;
             findTargets.targetDistances = targetDistances;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -745,10 +740,13 @@ public partial struct GameInputSystem : ISystem
         public ComponentLookup<PhysicsCollider> colliders;
 
         [ReadOnly]
-        public ComponentLookup<GameInputEntity> entities;
+        public ComponentLookup<GameInputSelectionDisabled> selectionDisabled;
 
         [ReadOnly]
         public ComponentLookup<GameInputSelectable> selectables;
+
+        [ReadOnly]
+        public ComponentLookup<GameInputEntity> entities;
 
         [ReadOnly]
         public ComponentLookup<GameInputPickable> pickables;
@@ -874,10 +872,13 @@ public partial struct GameInputSystem : ISystem
         public ComponentLookup<PhysicsCollider> colliders;
 
         [ReadOnly]
-        public ComponentLookup<GameInputEntity> entities;
+        public ComponentLookup<GameInputSelectionDisabled> selectionDisabled;
 
         [ReadOnly]
         public ComponentLookup<GameInputSelectable> selectables;
+
+        [ReadOnly]
+        public ComponentLookup<GameInputEntity> entities;
 
         [ReadOnly]
         public ComponentLookup<GameInputPickable> pickables;
@@ -949,8 +950,9 @@ public partial struct GameInputSystem : ISystem
                 select.actionSetDefinition = actionSetDefinition;
                 select.targets = targets;
                 select.colliders = colliders;
-                select.entities = entities;
+                select.selectionDisabled = selectionDisabled;
                 select.selectables = selectables;
+                select.entities = entities;
                 select.pickables = pickables;
                 select.factories = factories;
                 select.states = states;
@@ -1146,11 +1148,11 @@ public partial struct GameInputSystem : ISystem
 
     private ComponentLookup<NetworkIdentityType> __identityTypes;
 
-    private ComponentLookup<GameInputDisabled> __disabled;
-
-    private ComponentLookup<GameInputEntity> __entities;
+    private ComponentLookup<GameInputSelectionDisabled> __selectionDisabled;
 
     private ComponentLookup<GameInputSelectable> __selectables;
+
+    private ComponentLookup<GameInputEntity> __entities;
 
     private ComponentLookup<GameInputPickable> __pickables;
 
@@ -1196,9 +1198,9 @@ public partial struct GameInputSystem : ISystem
         __entityType = state.GetEntityTypeHandle();
         __colliders = state.GetComponentLookup<PhysicsCollider>(true);
         __identityTypes = state.GetComponentLookup<NetworkIdentityType>(true);
-        __disabled = state.GetComponentLookup<GameInputDisabled>(true);
-        __entities = state.GetComponentLookup<GameInputEntity>(true);
+        __selectionDisabled = state.GetComponentLookup<GameInputSelectionDisabled>(true);
         __selectables = state.GetComponentLookup<GameInputSelectable>(true);
+        __entities = state.GetComponentLookup<GameInputEntity>(true);
         __pickables = state.GetComponentLookup<GameInputPickable>(true);
         __factories = state.GetComponentLookup<GameFactory>(true);
         __states = state.GetComponentLookup<GameNodeStatus>(true);
@@ -1262,7 +1264,6 @@ public partial struct GameInputSystem : ISystem
         findTargets.collisionWorld = collisionWorld;
         findTargets.hits = __hits.AsDeferredJobArray();
         findTargets.entityType = __entityType.UpdateAsRef(ref state);
-        findTargets.disabled = __disabled.UpdateAsRef(ref state);
         findTargets.targetDistances = __targetDistances.AsParallelWriter();
         jobHandle = findTargets.ScheduleParallelByRef(__group, jobHandle);
 
@@ -1296,8 +1297,9 @@ public partial struct GameInputSystem : ISystem
         select.actionSetDefinition = actionSetDefinition;
         select.targets = targetsReader;
         select.colliders = colliders;
-        select.entities = __entities.UpdateAsRef(ref state);
+        select.selectionDisabled = __selectionDisabled.UpdateAsRef(ref state);
         select.selectables = __selectables.UpdateAsRef(ref state);
+        select.entities = __entities.UpdateAsRef(ref state);
         select.pickables = pickables;
         select.factories = factories;
         select.states = states;
