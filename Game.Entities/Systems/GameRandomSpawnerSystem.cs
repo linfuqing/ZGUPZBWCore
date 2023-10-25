@@ -353,7 +353,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
                     if (numItemTypes < 1)
                         continue;
 
-                    result.itemHandle = itemManager.Add(asset.itemTypes[numItemTypes - 1]);
+                    result.itemHandle = itemManager.Add(asset.itemTypes[numItemTypes - 1], 1);
                     for (j = numItemTypes - 2; j >= 0; --j)
                     {
                         handle = itemManager.Add(asset.itemTypes[j]);

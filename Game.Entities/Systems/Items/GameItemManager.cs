@@ -918,10 +918,8 @@ public struct GameItemManager
         return handle;
     }
 
-    public Handle Add(int type)
+    public Handle Add(int type, int count = 0)
     {
-        int count = 0;
-
         return Add(type, ref count);
     }
 
