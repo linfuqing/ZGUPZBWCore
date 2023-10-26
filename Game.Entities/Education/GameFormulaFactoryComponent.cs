@@ -116,8 +116,6 @@ public class GameFormulaFactoryComponent : EntityProxyComponent, IEntityComponen
         mode.ownerType = _ownerType;
         assigner.SetComponentData(entity, mode);
 
-        bool hasTime = this.hasTime;
-
         GameFormulaFactoryStatus status;
         status.value = hasTime ? GameFormulaFactoryStatus.Status.Running : GameFormulaFactoryStatus.Status.Normal;
         status.formulaIndex = _formulaIndex;
@@ -132,7 +130,7 @@ public class GameFormulaFactoryComponent : EntityProxyComponent, IEntityComponen
             time.value = _time;
             assigner.SetComponentData(entity, time);
         }
-        else if(!hasTime)
+        else if(_formulaIndex == -1)
             assigner.SetComponentEnabled<GameFormulaFactoryTime>(entity, false);
 
         if (_timeScale > 0.0f)
