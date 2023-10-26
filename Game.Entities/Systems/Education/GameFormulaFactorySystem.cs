@@ -37,6 +37,7 @@ public struct GameFormulaFactoryDefinition
             public int itemCount;
         }
 
+        public int capacity;
         public int cost;
         public float time;
         public BlobArray<Result> results;
@@ -205,12 +206,22 @@ public struct GameFormulaFactoryStatus : IComponentData
 
     public int level;
 
+    public int count;
+
     public Entity entity;
 }
 
 public struct GameFormulaFactoryTime : IComponentData, IEnableableComponent
 {
     public float value;
+}
+
+public struct GameFormulaFactoryInstance : IBufferElementData, IEnableableComponent
+{
+    public int formulaIndex;
+    public int level;
+
+    public Entity entity;
 }
 
 public struct GameFormulaFactoryCommand : IComponentData, IEnableableComponent
@@ -346,6 +357,8 @@ public partial struct GameFormulaFactorySystem : ISystem
 
     private struct CompletedResult
     {
+        public int count;
+
         public int formulaIndex;
 
         public int resultIndex;
@@ -428,6 +441,8 @@ public partial struct GameFormulaFactorySystem : ISystem
 
         public NativeArray<GameFormulaFactoryCommand> commands;
 
+        public BufferAccessor<GameFormulaFactoryInstance> instances;
+
         [NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameFormulaFactoryTimeScale> timeScaleMap;
 
@@ -488,10 +503,10 @@ public partial struct GameFormulaFactorySystem : ISystem
             {
                 var status = states[index];
 
+                ref var formula = ref definition.values[status.formulaIndex];
+
                 if (status.value == GameFormulaFactoryStatus.Status.Running)
                 {
-                    status.value = GameFormulaFactoryStatus.Status.Normal;
-
                     var mode = modes[index];
                     Entity owner;
                     switch(mode.ownerType)
@@ -513,36 +528,35 @@ public partial struct GameFormulaFactorySystem : ISystem
                         case GameFormulaFactoryMode.Mode.Auto:
                             if (storages[index].status == GameFormulaFactoryStorage.Status.Active)
                             {
-                                if (!Complete(false, status.formulaIndex, status.level, entity, owner, handle, ref definition.values[status.formulaIndex]))
+                                if (!Complete(false, status.formulaIndex, status.level, status.count, entity, owner, handle, ref formula))
                                     return 0;
 
                                 if (mode.value == GameFormulaFactoryMode.Mode.Auto)
                                 {
                                     Command(index, status.formulaIndex, entity);
 
-                                    result = RunningStatus.Command;
+                                    result |= RunningStatus.Command;
                                 }
                             }
                             else
                                 status.value = GameFormulaFactoryStatus.Status.Completed;
                             break;
                         case GameFormulaFactoryMode.Mode.Once:
-                            if (!Complete(true, status.formulaIndex, status.level, entity, owner, handle, ref definition.values[status.formulaIndex]))
+                            if (!Complete(true, status.formulaIndex, status.level, status.count, entity, owner, handle, ref formula))
                                 return 0;
 
                             //factoryStatus = GameFactoryStatus.Complete;
                             break;
                         case GameFormulaFactoryMode.Mode.Repeat:
-                            if (!Complete(false, status.formulaIndex, status.level, entity, owner, handle, ref definition.values[status.formulaIndex]))
+                            if (!Complete(false, status.formulaIndex, status.level, status.count, entity, owner, handle, ref formula))
                                 return 0;
 
                             Command(index, status.formulaIndex, entity);
 
-                            result = RunningStatus.Command;
+                            result |= RunningStatus.Command;
                             break;
                         case GameFormulaFactoryMode.Mode.Force:
-                            ref var formula = ref definition.values[status.formulaIndex];
-                            if (!Complete(true, status.formulaIndex, status.level, owner, entity, handle, ref formula))
+                            if (!Complete(true, status.formulaIndex, status.level, status.count, owner, entity, handle, ref formula))
                                 return 0;
 
                             if (formula.Test(
@@ -556,16 +570,60 @@ public partial struct GameFormulaFactorySystem : ISystem
 
                             Command(index, status.formulaIndex, entity);
 
-                            result = RunningStatus.Command;
+                            result |= RunningStatus.Command;
                             break;
                         default:
                             return 0;// throw new InvalidOperationException();
                     }
-
-                    statusMap[entity] = status;
                 }
 
-                result |= RunningStatus.Stop;
+                var instances = this.instances[index];
+                if (instances.Length > 0)
+                {
+                    ref var instance = ref instances.ElementAt(0);
+
+                    if (status.value == GameFormulaFactoryStatus.Status.Completed)
+                    {
+                        if (instance.formulaIndex == status.formulaIndex &&
+                            instance.level == status.level &&
+                            instance.entity == status.entity &&
+                            status.count < formula.capacity)
+                        {
+                            ++status.count;
+
+                            instances.RemoveAt(0);
+
+                            time.value = formula.time;
+                            times[index] = time;
+
+                            status.value = GameFormulaFactoryStatus.Status.Running;
+                        }
+                        else
+                            result |= RunningStatus.Stop;
+                    }
+                    else
+                    {
+                        status.formulaIndex = instance.formulaIndex;
+                        status.level = instance.level;
+                        status.count = 0;
+                        status.entity = instance.entity;
+
+                        instances.RemoveAt(0);
+
+                        time.value = definition.values[status.formulaIndex].time;
+                        times[index] = time;
+                    }
+                }
+                else
+                {
+                    if (status.value == GameFormulaFactoryStatus.Status.Running)
+                        status.value = GameFormulaFactoryStatus.Status.Normal;
+
+                    result |= RunningStatus.Stop;
+                }
+
+                statusMap[entity] = status;
+
                 //entityManager.Enqueue(entity);
             }
 
@@ -576,6 +634,7 @@ public partial struct GameFormulaFactorySystem : ISystem
             bool isForce, 
             int formulaIndex, 
             int level, 
+            int count, 
             in Entity entity, 
             in Entity owner, 
             in GameItemHandle handle, 
@@ -586,13 +645,15 @@ public partial struct GameFormulaFactorySystem : ISystem
             if (result.resultIndex == -1)
                 return false;
 
+            ++count;
+
             ref var formulaResult = ref formula.results[result.resultIndex];
 
             result.handle = handle;
             if (!itemManager.Find(
                 result.handle,
                 formulaResult.itemType,
-                formulaResult.itemCount,
+                formulaResult.itemCount * count,
                 out result.parentChildIndex,
                 out result.parentHandle))
             {
@@ -600,6 +661,7 @@ public partial struct GameFormulaFactorySystem : ISystem
                     return false;
             }
 
+            result.count = count;
             result.formulaIndex = formulaIndex;
 
             result.entity = entity;
@@ -654,6 +716,8 @@ public partial struct GameFormulaFactorySystem : ISystem
 
         public ComponentTypeHandle<GameFormulaFactoryCommand> commandType;
 
+        public BufferTypeHandle<GameFormulaFactoryInstance> instanceType;
+
         [NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameFormulaFactoryTimeScale> timeScales;
 
@@ -680,6 +744,7 @@ public partial struct GameFormulaFactorySystem : ISystem
             run.itemTimeScales = chunk.GetNativeArray(ref itemTimeScaleType);
             run.times = chunk.GetNativeArray(ref timeType);
             run.commands = chunk.GetNativeArray(ref commandType);
+            run.instances = chunk.GetBufferAccessor(ref instanceType);
             run.timeScaleMap = timeScales;
             run.statusMap = states;
             //run.entityManager = entityManager;
@@ -729,8 +794,9 @@ public partial struct GameFormulaFactorySystem : ISystem
         [ReadOnly]
         public NativeArray<GameFormulaFactoryStatus> states;
 
-        [ReadOnly]
         public NativeArray<GameFormulaFactoryCommand> commands;
+
+        public BufferAccessor<GameFormulaFactoryInstance> instances;
 
         [NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameFormulaFactoryStatus> statusMap;
@@ -743,18 +809,23 @@ public partial struct GameFormulaFactorySystem : ISystem
 
         public float Execute(int index)
         {
-            var command = commands[index];
-            if (command.entity == Entity.Null)
-                return 0.0f;
-
             ref var definition = ref this.definition.Value;
 
             Entity entity;
             GameFormula temp;
+            var command = this.commands[index];
+            if (command.entity == Entity.Null)
+                return 0.0f;
+
             var status = states[index];
             if (command.formulaIndex == -1)
             {
-                if (status.value != GameFormulaFactoryStatus.Status.Completed)
+                if (status.formulaIndex == -1)
+                    return 0.0f;
+
+                int count = status.value == GameFormulaFactoryStatus.Status.Completed ? status.count + 1 : status.count;
+
+                if (count < 1)
                     return 0.0f;
 
                 if (GameFormulaManager.IndexOf(status.formulaIndex, formulas[command.entity], out temp) == -1)
@@ -775,18 +846,55 @@ public partial struct GameFormulaFactorySystem : ISystem
 
                     ref var formulaResult = ref formula.results[result.resultIndex];
 
-                    itemManager.Find(result.handle, formulaResult.itemType, formulaResult.itemCount, out result.parentChildIndex, out result.parentHandle);
+                    itemManager.Find(result.handle, formulaResult.itemType, formulaResult.itemCount * count, out result.parentChildIndex, out result.parentHandle);
 
+                    result.count = count;
                     result.formulaIndex = status.formulaIndex;
 
                     completeResults.AddNoResize(result);
                 }
 
-                if (modes[index].value != GameFormulaFactoryMode.Mode.Auto)
+                status.count = 0;
+
+                if (status.value == GameFormulaFactoryStatus.Status.Completed)
                 {
-                    status.value = GameFormulaFactoryStatus.Status.Normal;
-                    status.level = temp.level;
-                    status.entity = command.entity;
+                    if (modes[index].value == GameFormulaFactoryMode.Mode.Auto)
+                        status.value = GameFormulaFactoryStatus.Status.Normal;
+                    else
+                    {
+                        float time;
+                        var instances = this.instances[index];
+                        if(instances.Length > 0)
+                        {
+                            status.formulaIndex = -1;
+
+                            ref var instance = ref instances.ElementAt(0);
+
+                            status.value = GameFormulaFactoryStatus.Status.Running;
+                            status.formulaIndex = instance.formulaIndex;
+                            status.level = instance.level;
+                            status.entity = instance.entity;
+
+                            instances.RemoveAt(0);
+
+                            time = math.max(definition.values[status.formulaIndex].time, math.FLT_MIN_NORMAL);
+                        }
+                        else
+                        {
+                            status.value = GameFormulaFactoryStatus.Status.Normal;
+                            status.level = temp.level;
+                            status.entity = command.entity;
+
+                            time = 0.0f;
+                        }
+
+                        statusMap[entity] = status;
+
+                        return time;
+                    }
+                }
+                else
+                {
                     statusMap[entity] = status;
 
                     return 0.0f;
@@ -794,15 +902,15 @@ public partial struct GameFormulaFactorySystem : ISystem
 
                 command.formulaIndex = status.formulaIndex;
             }
-            else if (status.value == GameFormulaFactoryStatus.Status.Normal)
+            else// if (status.value == GameFormulaFactoryStatus.Status.Normal)
             {
                 if (GameFormulaManager.IndexOf(command.formulaIndex, this.formulas[command.entity], out temp) == -1)
                     temp = default;
 
                 entity = entityArray[index];
             }
-            else
-                return 0.0f;
+            /*else
+                return 0.0f;*/
 
             {
                 var handle = itemRoots[index].handle;
@@ -823,7 +931,7 @@ public partial struct GameFormulaFactorySystem : ISystem
 
                 RunningResult result;
                 result.entity = command.entity;
-                result.factory = entity; 
+                result.factory = entity;
 
                 switch (modes[index].ownerType)
                 {
@@ -841,13 +949,52 @@ public partial struct GameFormulaFactorySystem : ISystem
                 result.formulaIndex = command.formulaIndex;
                 runningResults.AddNoResize(result);
 
-                status.value = GameFormulaFactoryStatus.Status.Running;
-                status.formulaIndex = command.formulaIndex;
-                status.level = temp.level;
-                status.entity = command.entity;
-                statusMap[entity] = status;
+                var instances = this.instances[index];
+                if (status.value == GameFormulaFactoryStatus.Status.Normal)
+                {
+                    status.value = GameFormulaFactoryStatus.Status.Running;
 
-                return math.max(formula.time, math.FLT_MIN_NORMAL);
+                    float time;
+                    if (instances.Length > 0)
+                    {
+                        var instance = instances[0];
+
+                        status.formulaIndex = instance.formulaIndex;
+                        status.level = instance.level;
+                        status.entity = instance.entity;
+                        statusMap[entity] = status;
+
+                        instances.RemoveAt(0);
+
+                        instance.formulaIndex = command.formulaIndex;
+                        instance.level = temp.level;
+                        instance.entity = command.entity;
+                        instances.Add(instance);
+
+                        time = definition.values[status.formulaIndex].time;
+                    }
+                    else
+                    {
+                        status.formulaIndex = command.formulaIndex;
+                        status.level = temp.level;
+                        status.entity = command.entity;
+                        statusMap[entity] = status;
+
+                        time = formula.time;
+                    }
+
+                    return math.max(time, math.FLT_MIN_NORMAL);
+                }
+                else
+                {
+                    GameFormulaFactoryInstance instance;
+                    instance.formulaIndex = command.formulaIndex;
+                    instance.level = temp.level;
+                    instance.entity = command.entity;
+                    instances.Add(instance);
+                }
+
+                return 0.0f;
             }
         }
     }
@@ -887,6 +1034,8 @@ public partial struct GameFormulaFactorySystem : ISystem
 
         public ComponentTypeHandle<GameFormulaFactoryCommand> commandType;
 
+        public BufferTypeHandle<GameFormulaFactoryInstance> instanceType;
+
         [NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameFormulaFactoryStatus> states;
 
@@ -910,6 +1059,7 @@ public partial struct GameFormulaFactorySystem : ISystem
             complete.modes = chunk.GetNativeArray(ref modeType);
             complete.states = chunk.GetNativeArray(ref statusType);
             complete.commands = chunk.GetNativeArray(ref commandType);
+            complete.instances = chunk.GetBufferAccessor(ref instanceType);
             complete.statusMap = states;
             //complete.entityManager = entityManager;
             complete.runningResults = runningResults;
@@ -1090,7 +1240,7 @@ public partial struct GameFormulaFactorySystem : ISystem
                 output.factory = input.factory;
 
                 ref var result = ref definition.values[input.formulaIndex].results[input.resultIndex];
-                sourceItemCount = result.itemCount;
+                sourceItemCount = result.itemCount * input.count;
 
                 do
                 {
@@ -1200,6 +1350,8 @@ public partial struct GameFormulaFactorySystem : ISystem
 
     private ComponentTypeHandle<GameFormulaFactoryCommand> __commandType;
 
+    private BufferTypeHandle<GameFormulaFactoryInstance> __instanceType;
+
     private ComponentLookup<GameFormulaFactoryTimeScale> __timeScales;
 
     private BufferLookup<GameFormula> __formulas;
@@ -1267,11 +1419,12 @@ public partial struct GameFormulaFactorySystem : ISystem
 
         __commandType = state.GetComponentTypeHandle<GameFormulaFactoryCommand>();
 
+        __instanceType = state.GetBufferTypeHandle<GameFormulaFactoryInstance>();
+
         __timeScales = state.GetComponentLookup<GameFormulaFactoryTimeScale>();
 
         __formulas = state.GetBufferLookup<GameFormula>(true);
         __itemRoots = state.GetComponentLookup<GameItemRoot>(true);
-
 
         __rotations = state.GetComponentLookup<Rotation>(true);
 
@@ -1322,6 +1475,7 @@ public partial struct GameFormulaFactorySystem : ISystem
         var entityType = __entityType.UpdateAsRef(ref state);
         var itemRootType = __itemRootType.UpdateAsRef(ref state);
         var modeType = __modeType.UpdateAsRef(ref state);
+        var instanceType = __instanceType.UpdateAsRef(ref state);
         var commandType = __commandType.UpdateAsRef(ref state);
         var timeType = __timeType.UpdateAsRef(ref state);
         var statusType = __statusType.UpdateAsRef(ref state);
@@ -1348,6 +1502,7 @@ public partial struct GameFormulaFactorySystem : ISystem
             run.itemTimeScaleType = __itemTimeScaleType.UpdateAsRef(ref state);
             run.timeType = timeType;
             run.commandType = commandType;
+            run.instanceType = instanceType;
             run.timeScales = __timeScales.UpdateAsRef(ref state);
             run.states = states;
             //run.entityManager = entityManager.parallelWriter;
@@ -1394,6 +1549,7 @@ public partial struct GameFormulaFactorySystem : ISystem
             complete.statusType = statusType;
             complete.timeType = timeType;
             complete.commandType = commandType;
+            complete.instanceType = instanceType;
             complete.states = states;
             //complete.entityManager = entityManager.parallelWriter;
             complete.completeResults = __completedResults.AsParallelWriter();

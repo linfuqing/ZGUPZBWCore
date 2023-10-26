@@ -9,6 +9,7 @@ using ZG;
 [EntityComponent(typeof(GameFormulaFactoryTimeScale))]
 [EntityComponent(typeof(GameFormulaFactoryItemTimeScale))]
 [EntityComponent(typeof(GameFormulaFactoryCommand))]
+[EntityComponent(typeof(GameFormulaFactoryInstance))]
 [EntityComponent(typeof(GameFormulaFactoryStorage))]
 public class GameFormulaFactoryComponent : EntityProxyComponent, IEntityComponent
 {
@@ -119,6 +120,7 @@ public class GameFormulaFactoryComponent : EntityProxyComponent, IEntityComponen
         status.value = hasTime ? GameFormulaFactoryStatus.Status.Running : GameFormulaFactoryStatus.Status.Normal;
         status.formulaIndex = _formulaIndex;
         status.level = 0;
+        status.count = 0;
         status.entity = Entity.Null;
         assigner.SetComponentData(entity, status);
 

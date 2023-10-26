@@ -9,7 +9,7 @@ using Unity.Burst;
 
 public enum GameDataConstans
 {
-    Version = 5, 
+    Version = 6, 
     BuiltInCamps = 32,
 }
 
