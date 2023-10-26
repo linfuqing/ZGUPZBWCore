@@ -124,14 +124,14 @@ public class GameFormulaFactoryComponent : EntityProxyComponent, IEntityComponen
         status.entity = Entity.Null;
         assigner.SetComponentData(entity, status);
 
-        if(_time > 0.0f)
+        if (_formulaIndex == -1)
+            assigner.SetComponentEnabled<GameFormulaFactoryTime>(entity, false);
+        else if (_time > 0.0f)
         {
             GameFormulaFactoryTime time;
             time.value = _time;
             assigner.SetComponentData(entity, time);
         }
-        else if(_formulaIndex == -1)
-            assigner.SetComponentEnabled<GameFormulaFactoryTime>(entity, false);
 
         if (_timeScale > 0.0f)
         {
