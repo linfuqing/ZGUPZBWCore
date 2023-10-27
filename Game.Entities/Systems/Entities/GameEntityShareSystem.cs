@@ -1331,7 +1331,7 @@ public partial struct GameEntityActionSharedSystem : ISystem
                     }
                     else
                     {
-                        if (!isSourceTransformed)
+                        /*if (!isSourceTransformed)
                         {
                             isSourceTransformed = __GetTransform(data.entity, out sourceTransform);
                             if (!isSourceTransformed)
@@ -1340,9 +1340,9 @@ public partial struct GameEntityActionSharedSystem : ISystem
 
                                 sourceTransform = transform;
                             }
-                        }
+                        }*/
 
-                        command.instance.transform = sourceTransform;
+                        command.instance.transform = transform;// sourceTransform;
                         command.parent.value = Entity.Null;
                     }
 
