@@ -228,6 +228,12 @@ public partial struct GameActionFixedExecutorSystem : ISystem
 
         public NativeArray<GameActionFixedInfo> infos;
 
+        public NativeArray<GameNodeCharacterAngle> characterAngles;
+
+        public NativeArray<GameNodeAngle> angles;
+
+        public NativeArray<GameNodeSurface> surfaces;
+
         public NativeArray<Rotation> rotations;
 
         public NativeArray<GameNavMeshAgentTarget> targets;
@@ -289,6 +295,28 @@ public partial struct GameActionFixedExecutorSystem : ISystem
                 info.time = time + random.NextFloat(frame.minTime, frame.maxTime);
                 //if(frame.minTime < frame.maxTime)
                 {
+                    if(index < characterAngles.Length || index < angles.Length)
+                    {
+                        var surfaceRotation = index < surfaces.Length ? math.mul(math.inverse(surfaces[index].rotation), frame.rotation) : frame.rotation;
+                        half eulerY = (half)ZG.Mathematics.Math.GetEulerY(surfaceRotation);
+
+                        if(index < characterAngles.Length)
+                        {
+                            GameNodeCharacterAngle angle;
+                            angle.value = eulerY;
+
+                            characterAngles[index] = angle;
+                        }
+
+                        if (index < angles.Length)
+                        {
+                            GameNodeAngle angle;
+                            angle.value = eulerY;
+
+                            angles[index] = angle;
+                        }
+                    }
+
                     Rotation rotation;
                     rotation.Value = frame.rotation;
                     rotations[index] = rotation;
@@ -347,6 +375,12 @@ public partial struct GameActionFixedExecutorSystem : ISystem
         public ComponentTypeHandle<GameActionFixedData> instanceType;
         public ComponentTypeHandle<GameActionFixedInfo> infoType;
 
+        public ComponentTypeHandle<GameNodeCharacterAngle> characterAngleType;
+
+        public ComponentTypeHandle<GameNodeAngle> angleType;
+
+        public ComponentTypeHandle<GameNodeSurface> surfaceType;
+
         public ComponentTypeHandle<Rotation> rotationType;
 
         public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
@@ -371,6 +405,9 @@ public partial struct GameActionFixedExecutorSystem : ISystem
             executor.translations = chunk.GetNativeArray(ref translationType);
             executor.instances = chunk.GetNativeArray(ref instanceType);
             executor.infos = chunk.GetNativeArray(ref infoType);
+            executor.characterAngles = chunk.GetNativeArray(ref characterAngleType);
+            executor.angles = chunk.GetNativeArray(ref angleType);
+            executor.surfaces = chunk.GetNativeArray(ref surfaceType);
             executor.rotations = chunk.GetNativeArray(ref rotationType);
             executor.targets = chunk.GetNativeArray(ref targetType);
             //executor.entityManager = entityManager;
@@ -393,6 +430,12 @@ public partial struct GameActionFixedExecutorSystem : ISystem
     private ComponentTypeHandle<GameActionFixedData> __instanceType;
     private ComponentTypeHandle<GameActionFixedInfo> __infoType;
 
+    private ComponentTypeHandle<GameNodeCharacterAngle> __characterAngleType;
+
+    private ComponentTypeHandle<GameNodeAngle> __angleType;
+
+    private ComponentTypeHandle<GameNodeSurface> __surfaceType;
+
     private ComponentTypeHandle<Rotation> __rotationType;
 
     private ComponentTypeHandle<GameNavMeshAgentTarget> __targetType;
@@ -411,6 +454,9 @@ public partial struct GameActionFixedExecutorSystem : ISystem
         __translationType = state.GetComponentTypeHandle<Translation>(true);
         __instanceType = state.GetComponentTypeHandle<GameActionFixedData>(true);
         __infoType = state.GetComponentTypeHandle<GameActionFixedInfo>();
+        __characterAngleType = state.GetComponentTypeHandle<GameNodeCharacterAngle>();
+        __angleType = state.GetComponentTypeHandle<GameNodeAngle>();
+        __surfaceType = state.GetComponentTypeHandle<GameNodeSurface>();
         __rotationType = state.GetComponentTypeHandle<Rotation>();
         __targetType = state.GetComponentTypeHandle<GameNavMeshAgentTarget>();
 
@@ -440,6 +486,9 @@ public partial struct GameActionFixedExecutorSystem : ISystem
         executorFactory.translationType = __translationType.UpdateAsRef(ref state);
         executorFactory.instanceType = __instanceType.UpdateAsRef(ref state);
         executorFactory.infoType = __infoType.UpdateAsRef(ref state);
+        executorFactory.characterAngleType = __characterAngleType.UpdateAsRef(ref state);
+        executorFactory.angleType = __angleType.UpdateAsRef(ref state);
+        executorFactory.surfaceType = __surfaceType.UpdateAsRef(ref state);
         executorFactory.rotationType = __rotationType.UpdateAsRef(ref state);
         executorFactory.targetType = __targetType.UpdateAsRef(ref state);
 

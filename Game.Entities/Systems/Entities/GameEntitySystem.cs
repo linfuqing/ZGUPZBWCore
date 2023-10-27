@@ -1243,7 +1243,7 @@ public partial struct GameEntityActorSystem : ISystem
                                     {
                                         forward = math.normalizesafe(transform.pos - source, forward);
 
-                                        if (action.instance.rangeType == GameActionRangeType.Source)
+                                        if ((action.instance.flag & GameActionFlag.MoveInAir) == GameActionFlag.MoveInAir)
                                         {
                                             forward -= Math.ProjectSafe(forward, gravity);
 
@@ -1379,7 +1379,7 @@ public partial struct GameEntityActorSystem : ISystem
                                     if (action.instance.direction.Equals(float3.zero))
                                     {
                                         distance = forward * actionDistance;
-                                        if (action.instance.rangeType != GameActionRangeType.Source)
+                                        //if (action.instance.rangeType != GameActionRangeType.Source)
                                         {
                                             /*float distanceSq = action.info.distance * action.info.distance,
                                                 offsetDistanceSq = math.lengthsq(Math.ProjectSafe(offset, forward)),
