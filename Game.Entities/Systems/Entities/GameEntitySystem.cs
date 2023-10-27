@@ -1196,7 +1196,7 @@ public partial struct GameEntityActorSystem : ISystem
                                     forward = math.forward(rotation);
                                 }
 
-                                if (action.instance.rangeType == GameActionRangeType.Source)
+                                if ((action.instance.flag & GameActionFlag.MoveInAir) == GameActionFlag.MoveInAir)
                                 {
                                     forward -= Math.ProjectSafe(forward, gravity);
 
@@ -1356,8 +1356,11 @@ public partial struct GameEntityActorSystem : ISystem
                                         else
                                         {*/
                                             distance = targetPosition - position;
+                                        if ((action.instance.flag & GameActionFlag.UseGravity) != GameActionFlag.UseGravity && 
+                                            (action.instance.flag & GameActionFlag.MoveInAir) == GameActionFlag.MoveInAir)
+                                            distance -= Math.ProjectSafe(distance, gravity);
 
-                                            float length = math.length(distance);
+                                        float length = math.length(distance);
                                             if (action.info.distance > math.FLT_MIN_NORMAL && action.info.distance < length)
                                                 distance = action.info.distance / length * distance;
                                         //}
