@@ -135,9 +135,17 @@ public struct GameRollbackManager
 
     public GameTime time => new GameTime(realFrameIndex, delta);//__timeSystemGroup.now;
 
+    public RollbackContainerManager containerManager
+    {
+        get;
+
+        private set;
+    }
+
     public void Clear()
     {
-        //containerManager.Clear();
+        if(containerManager.isCreated)
+            containerManager.Clear();
 
         __frameSyncSystemGroup.Clear();
     }
@@ -179,8 +187,11 @@ public struct GameRollbackManager
     {
         __frameSyncSystemGroup = new FrameSyncSystemGroup(ref systemState);
 
+        var systemHandle = systemState.WorldUnmanaged.GetExistingUnmanagedSystem<RollbackSystemGroup>();
+        containerManager = systemHandle == SystemHandle.Null ? default : systemState.WorldUnmanaged.GetUnsafeSystemRef<RollbackSystemGroup>(systemHandle).containerManager;
+
         var entityManager = systemState.EntityManager;
-        var systemHandle = systemState.SystemHandle;
+        systemHandle = systemState.SystemHandle;
         entityManager.AddComponent(systemHandle, new ComponentTypeSet(ComponentType.ReadOnly<GameRollbackFrameDelta>(), ComponentType.ReadOnly<GameRollbackFrameOffset>()));
 
         GameRollbackFrameDelta delta;
@@ -206,7 +217,9 @@ public struct GameRollbackManager
     }
 }
 
-[BurstCompile, CreateAfter(typeof(RollbackCommandSystem)), UpdateInGroup(typeof(GameSyncSystemGroup)), SystemGroupInherit(typeof(FrameSyncSystemGroup))]
+[BurstCompile, CreateAfter(typeof(RollbackCommandSystem)), 
+    UpdateInGroup(typeof(GameSyncSystemGroup)), 
+    SystemGroupInherit(typeof(FrameSyncSystemGroup))]
 public partial struct GameRollbackSystemGroup : ISystem
 {
     public GameRollbackManager manager

@@ -512,12 +512,12 @@ public partial class GameSyncSystemGroup : SystemBase
         private set;
     }
 
-    public RollbackContainerManager containerManager
+    /*public RollbackContainerManager containerManager
     {
         get;
 
         private set;
-    }
+    }*/
 
     public int GetFrameIndex(double time)
     {
@@ -532,7 +532,7 @@ public partial class GameSyncSystemGroup : SystemBase
 
         rollbackManager.Clear();
 
-        containerManager.Clear();
+        //containerManager.Clear();
     }
 
     public void Reset(int frameOffset)
@@ -568,7 +568,7 @@ public partial class GameSyncSystemGroup : SystemBase
 
         var world = World;
         rollbackManager = world.GetExistingSystemUnmanaged<GameRollbackSystemGroup>().manager;
-        containerManager = world.GetExistingSystemUnmanaged<RollbackSystemGroup>().containerManager;
+        //containerManager = world.GetExistingSystemUnmanaged<RollbackSystemGroup>().containerManager;
     }
 
     protected override void OnUpdate()
