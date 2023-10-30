@@ -1351,19 +1351,19 @@ public partial struct GameEntityActorSystem : ISystem
 
                                     if (action.instance.direction.Equals(float3.zero))
                                     {
-                                        /*if (action.instance.rangeType == GameActionRangeType.Source)
+                                        if (action.instance.rangeType == GameActionRangeType.Source)
                                             distance = forward * action.info.distance;
                                         else
-                                        {*/
+                                        {
                                             distance = targetPosition - position;
-                                        if ((action.instance.flag & GameActionFlag.UseGravity) != GameActionFlag.UseGravity && 
-                                            (action.instance.flag & GameActionFlag.MoveInAir) == GameActionFlag.MoveInAir)
-                                            distance -= Math.ProjectSafe(distance, gravity);
+                                            if ((action.instance.flag & GameActionFlag.UseGravity) != GameActionFlag.UseGravity && 
+                                                (action.instance.flag & GameActionFlag.MoveInAir) == GameActionFlag.MoveInAir)
+                                                distance -= Math.ProjectSafe(distance, gravity);
 
-                                        float length = math.length(distance);
+                                            float length = math.length(distance);
                                             if (action.info.distance > math.FLT_MIN_NORMAL && action.info.distance < length)
                                                 distance = action.info.distance / length * distance;
-                                        //}
+                                        }
                                     }
                                     else
                                         distance = math.mul(rotation, action.instance.direction) * action.info.distance;
@@ -1379,7 +1379,7 @@ public partial struct GameEntityActorSystem : ISystem
                                     if (action.instance.direction.Equals(float3.zero))
                                     {
                                         distance = forward * actionDistance;
-                                        //if (action.instance.rangeType != GameActionRangeType.Source)
+                                        if (action.instance.rangeType != GameActionRangeType.Source)
                                         {
                                             /*float distanceSq = action.info.distance * action.info.distance,
                                                 offsetDistanceSq = math.lengthsq(Math.ProjectSafe(offset, forward)),
