@@ -134,7 +134,7 @@ public struct GameRollbackEntryTester : IRollbackEntryTester
 [AutoCreateIn("Client"), 
     BurstCompile, 
     CreateAfter(typeof(RollbackCommandSystem)),
-    CreateAfter(typeof(GameBVHRollbackSystem)),
+    //CreateAfter(typeof(GameBVHRollbackSystem)),
     UpdateInGroup(typeof(TimeSystemGroup)), /*UpdateAfter(typeof(GameRollbackCommandSystemHybrid)), */UpdateBefore(typeof(GameSyncSystemGroup))]
 /*#if !USING_NETCODE
 [WorldSystemFilter(WorldSystemFilterFlags.ClientSimulation)]
@@ -185,7 +185,9 @@ public partial struct GameRollbackCommandSystem : ISystem
 
         var world = state.WorldUnmanaged;
         __commander = world.GetExistingSystemUnmanaged<RollbackCommandSystem>().commander;
-        __bvhs = world.GetExistingSystemUnmanaged<GameBVHRollbackSystem>().bvhs;
+
+        var systemHandle = world.GetExistingUnmanagedSystem<GameBVHRollbackSystem>();
+        __bvhs = systemHandle == SystemHandle.Null ? default : world.GetExistingSystemUnmanaged<GameBVHRollbackSystem>().bvhs;
     }
 
     [BurstCompile]
@@ -200,7 +202,7 @@ public partial struct GameRollbackCommandSystem : ISystem
         var jobHandle = state.Dependency;
         jobHandle = __commander.Update(__frameGroup.GetSingleton<RollbackFrameClear>().maxIndex, jobHandle);
 
-        if ((state.WorldUnmanaged.Flags & WorldFlags.GameClient) == WorldFlags.GameClient)
+        if (__bvhs.isCreated)
         {
             GameRollbackEntryTester tester;
             tester.collisionTolerance = CollisionTolerance;
@@ -229,7 +231,8 @@ public partial struct GameRollbackCommandSystem : ISystem
     }
 }
 
-[BurstCompile, 
+[BurstCompile,
+    CreateBefore(typeof(GameRollbackCommandSystem)),
     CreateAfter(typeof(GamePhysicsWorldBuildSystem)),
     CreateAfter(typeof(RollbackSystemGroup)),
     UpdateInGroup(typeof(RollbackSystemGroup)), AutoCreateIn("Client")]

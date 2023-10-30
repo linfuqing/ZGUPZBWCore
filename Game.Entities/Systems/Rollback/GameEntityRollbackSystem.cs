@@ -74,6 +74,9 @@ public struct GameActionRollbackCreateCommand
     CreateAfter(typeof(RollbackSystemGroup)),
     UpdateInGroup(typeof(EndRollbackSystemGroupEntityCommandSystemGroup)),
     AutoCreateIn("Client")]
+#if !USING_NETCODE
+[WorldSystemFilter(WorldSystemFilterFlags.ClientSimulation)]
+#endif
 public partial struct GameActionRollbackFactroySystem : ISystem
 {
     public RollbackBuffer<GameActionEntity> entities
