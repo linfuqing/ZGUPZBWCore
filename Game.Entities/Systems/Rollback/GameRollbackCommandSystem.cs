@@ -136,6 +136,9 @@ public struct GameRollbackEntryTester : IRollbackEntryTester
     CreateAfter(typeof(RollbackCommandSystem)),
     CreateAfter(typeof(GameBVHRollbackSystem)),
     UpdateInGroup(typeof(TimeSystemGroup)), /*UpdateAfter(typeof(GameRollbackCommandSystemHybrid)), */UpdateBefore(typeof(GameSyncSystemGroup))]
+/*#if !USING_NETCODE
+[WorldSystemFilter(WorldSystemFilterFlags.ClientSimulation)]
+#endif*/
 public partial struct GameRollbackCommandSystem : ISystem
 {
     public static readonly int InnerloopBatchCount = 1;
@@ -197,27 +200,30 @@ public partial struct GameRollbackCommandSystem : ISystem
         var jobHandle = state.Dependency;
         jobHandle = __commander.Update(__frameGroup.GetSingleton<RollbackFrameClear>().maxIndex, jobHandle);
 
-        GameRollbackEntryTester tester;
-        tester.collisionTolerance = CollisionTolerance;
-        tester.bvhs = __bvhs.reader;
-        tester.translations = __translations.UpdateAsRef(ref state);
-        tester.rotations = __rotations.UpdateAsRef(ref state);
-        tester.colliders = __colliders.UpdateAsRef(ref state);
+        if ((state.WorldUnmanaged.Flags & WorldFlags.GameClient) == WorldFlags.GameClient)
+        {
+            GameRollbackEntryTester tester;
+            tester.collisionTolerance = CollisionTolerance;
+            tester.bvhs = __bvhs.reader;
+            tester.translations = __translations.UpdateAsRef(ref state);
+            tester.rotations = __rotations.UpdateAsRef(ref state);
+            tester.colliders = __colliders.UpdateAsRef(ref state);
 
-        ref var lookupJobManager = ref __bvhs.lookupJobManager;
+            ref var lookupJobManager = ref __bvhs.lookupJobManager;
 
-        uint frameIndex = __frameGroup.GetSingleton<RollbackFrame>().index;
-        jobHandle = __commander.Test(
-            tester,
+            uint frameIndex = __frameGroup.GetSingleton<RollbackFrame>().index;
+            jobHandle = __commander.Test(
+                tester,
 #if GAME_DEBUG_COMPARSION
             0, 
 #else
-            frameIndex > MaxRestoreFrameCount/* && __frameSyncFlagGroup.GetSingleton<FrameSyncFlag>().isClear*/ ? frameIndex - MaxRestoreFrameCount : 0, 
+                frameIndex > MaxRestoreFrameCount/* && __frameSyncFlagGroup.GetSingleton<FrameSyncFlag>().isClear*/ ? frameIndex - MaxRestoreFrameCount : 0,
 #endif
-            InnerloopBatchCount, 
-            JobHandle.CombineDependencies(lookupJobManager.readOnlyJobHandle, jobHandle));
+                InnerloopBatchCount,
+                JobHandle.CombineDependencies(lookupJobManager.readOnlyJobHandle, jobHandle));
 
-        lookupJobManager.AddReadOnlyDependency(jobHandle);
+            lookupJobManager.AddReadOnlyDependency(jobHandle);
+        }
 
         state.Dependency = jobHandle;
     }
