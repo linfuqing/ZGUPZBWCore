@@ -1458,7 +1458,7 @@ public partial struct GameEntityActionSharedSystem : ISystem
                 if ((actionObject.flag & GameEntitySharedActionObjectFlag.Hit) == GameEntitySharedActionObjectFlag.Hit &&
                     (actionObject.sourceType & sourceActionType) == sourceActionType &&
                     (actionObject.destinationType & destinationActionType) == destinationActionType &&
-                    (actionObject.mask == actionMask || (actionObject.mask & actionMask) != 0))
+                    (actionObject.mask == actionMask || (actionObject.mask & actionMask) != 0 || actionObject.mask == uint.MaxValue))
                 {
                     //Debug.LogError($"Action Hit {entity.Index} : {data.index} : {data.version} : {(float)(time - data.time)} : {actionObjectIndex}");
 
@@ -1567,7 +1567,7 @@ public partial struct GameEntityActionSharedSystem : ISystem
                     actionObject.flag == 0*/) &&
                     (actionObject.sourceType & sourceActionType) == sourceActionType &&
                     (actionObject.destinationType & destinationActionType) == destinationActionType &&
-                    (actionObject.mask == actionMask || (actionObject.mask & actionMask) != 0))
+                    (actionObject.mask == actionMask || (actionObject.mask & actionMask) != 0 || actionObject.mask == uint.MaxValue))
                 {
                     //Debug.LogError($"Action Damage {entity.Index} : {data.index} : {data.version} : {(float)(time - data.time)} : {actionObjectIndex}");
 

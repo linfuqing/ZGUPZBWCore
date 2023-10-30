@@ -1212,36 +1212,10 @@ public partial struct GameEntityActorSystem : ISystem
                                 if (command.entity != Entity.Null && translationMap.HasComponent(command.entity))
                                 {
                                     float3 destination = translationMap[command.entity].Value;
-                                    RigidTransform transform = math.RigidTransform(rotationMap[command.entity].Value, destination);
-                                    if (physicsMasses.HasComponent(command.entity))
-                                        destination = math.transform(transform, physicsMasses[command.entity].CenterOfMass);
-
-                                    if (actionCollider.IsCreated)
-                                    {
-                                        var collider = physicsColliders.HasComponent(command.entity) ? physicsColliders[command.entity].Value : BlobAssetReference<Collider>.Null;
-                                        if (collider.IsCreated)
-                                        {
-                                            PointDistanceInput pointDistanceInput = default;
-                                            pointDistanceInput.MaxDistance = math.distance(source, destination);
-                                            pointDistanceInput.Position = math.transform(math.inverse(transform), source);
-                                            pointDistanceInput.Filter = actionCollider.Value.Filter;
-                                            pointDistanceInput.Filter.CollidesWith = action.instance.damageMask;
-                                            if (collider.Value.CalculateDistance(pointDistanceInput, out DistanceHit closestHit))
-                                            {
-                                                destination = math.transform(transform, closestHit.Position);
-
-                                                /*distance = destination - source;
-
-                                                length = closestHit.Distance;*/
-
-                                                //UnityEngine.Debug.Log($"Distance : {distance} : {length}");
-                                            }
-                                        }
-                                    }
 
                                     if (isTowardTarget)
                                     {
-                                        forward = math.normalizesafe(transform.pos - source, forward);
+                                        forward = math.normalizesafe(destination - source, forward);
 
                                         if ((action.instance.flag & GameActionFlag.MoveInAir) == GameActionFlag.MoveInAir)
                                         {
@@ -1257,6 +1231,33 @@ public partial struct GameEntityActorSystem : ISystem
 
                                     offset = math.mul(rotation, action.instance.offset);
                                     position = source + offset;
+
+                                    RigidTransform transform = math.RigidTransform(rotationMap[command.entity].Value, destination);
+                                    if (physicsMasses.HasComponent(command.entity))
+                                        destination = math.transform(transform, physicsMasses[command.entity].CenterOfMass);
+
+                                    if (actionCollider.IsCreated)
+                                    {
+                                        var collider = physicsColliders.HasComponent(command.entity) ? physicsColliders[command.entity].Value : BlobAssetReference<Collider>.Null;
+                                        if (collider.IsCreated)
+                                        {
+                                            PointDistanceInput pointDistanceInput = default;
+                                            pointDistanceInput.MaxDistance = math.distance(position, destination);
+                                            pointDistanceInput.Position = math.transform(math.inverse(transform), position);
+                                            pointDistanceInput.Filter = actionCollider.Value.Filter;
+                                            pointDistanceInput.Filter.CollidesWith = action.instance.damageMask;
+                                            if (collider.Value.CalculateDistance(pointDistanceInput, out DistanceHit closestHit))
+                                            {
+                                                destination = math.transform(transform, closestHit.Position);
+
+                                                /*distance = destination - source;
+
+                                                length = closestHit.Distance;*/
+
+                                                //UnityEngine.Debug.Log($"Distance : {distance} : {length}");
+                                            }
+                                        }
+                                    }
 
                                     float3 targetPosition;
                                     bool isTrack = command.entity != Entity.Null &&
@@ -1328,6 +1329,34 @@ public partial struct GameEntityActorSystem : ISystem
                                                 isTrack = false;
                                         }
                                     }
+                                    else if ((action.instance.flag & GameActionFlag.UseGravity) == GameActionFlag.UseGravity)
+                                    {
+                                        float3 targetForward = forward;
+
+                                        float2 angleAndTime = Math.CalculateParabolaAngleAndTime(
+                                            (action.instance.flag & GameActionFlag.MoveWithActor) != GameActionFlag.MoveWithActor,
+                                            action.info.actionMoveSpeed,
+                                            math.length(gravity),
+                                            destination - position,
+                                            ref targetForward);
+
+                                        if (angleAndTime.y > math.FLT_MIN_NORMAL)
+                                            targetPosition = position + targetForward * (action.info.actionMoveSpeed * angleAndTime.y);
+                                        else if (action.info.distance > math.FLT_MIN_NORMAL)
+                                        {
+                                            //LookRotationSafe防止direction==up
+                                            targetForward = math.mul(quaternion.LookRotationSafe(targetForward, up), Act.forward);
+
+                                            float offsetDistanceSq = math.lengthsq(Math.ProjectSafe(offset, targetForward)),
+                                            forwardLength = math.sqrt(action.info.distance * action.info.distance - offsetDistanceSq) + math.sqrt(offsetDistanceSq);
+
+                                            targetPosition = source + forwardLength * targetForward;
+                                        }
+                                        else
+                                            targetPosition = destination;
+
+                                        isTrack = false;
+                                    }
                                     else
                                         targetPosition = destination;
 
@@ -1351,7 +1380,9 @@ public partial struct GameEntityActorSystem : ISystem
 
                                     if (action.instance.direction.Equals(float3.zero))
                                     {
-                                        if (action.instance.rangeType == GameActionRangeType.Source)
+                                        //此处正确，当GameActionRangeType.Source时方向敏感，distance无意义
+                                        if (action.instance.rangeType == GameActionRangeType.Source && 
+                                            (action.instance.flag & GameActionFlag.UseGravity) != GameActionFlag.UseGravity)
                                             distance = forward * action.info.distance;
                                         else
                                         {
@@ -1379,7 +1410,7 @@ public partial struct GameEntityActorSystem : ISystem
                                     if (action.instance.direction.Equals(float3.zero))
                                     {
                                         distance = forward * actionDistance;
-                                        if (action.instance.rangeType != GameActionRangeType.Source)
+                                        //if (action.instance.rangeType != GameActionRangeType.Source)
                                         {
                                             /*float distanceSq = action.info.distance * action.info.distance,
                                                 offsetDistanceSq = math.lengthsq(Math.ProjectSafe(offset, forward)),
