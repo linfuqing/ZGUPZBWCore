@@ -167,11 +167,13 @@ public struct GameEntityEventInfo : IComponentData, IEquatable<GameEntityEventIn
 {
     public int version;
 
-    public TimeEventHandle timeEventHandle;
+    public double time;
+
+    //public TimeEventHandle timeEventHandle;
 
     public bool Equals(GameEntityEventInfo other)
     {
-        return version == other.version && timeEventHandle.Equals(other.timeEventHandle);
+        return version == other.version;// && timeEventHandle.Equals(other.timeEventHandle);
     }
 
     public override int GetHashCode()
@@ -188,11 +190,11 @@ public struct GameEntityBreakInfo : IComponentData, IEquatable<GameEntityBreakIn
 
     public double commandTime;
 
-    public TimeEventHandle timeEventHandle;
+    //public TimeEventHandle timeEventHandle;
 
     public bool Equals(GameEntityBreakInfo other)
     {
-        return version == other.version && timeEventHandle.Equals(other.timeEventHandle);
+        return version == other.version;// && timeEventHandle.Equals(other.timeEventHandle);
     }
 
     public override int GetHashCode()
@@ -300,13 +302,33 @@ public struct GameEntityCommandVersion : IComponentData
     public int value;
 }
 
+public struct GameEntityCallbackHandle : IComponentData
+{
+    public int version;
+    public CallbackHandle value;
+
+    public static void Command(
+        int index, 
+        ref NativeArray<GameEntityCallbackHandle> callbackHandles, 
+        ref SharedList<CallbackHandle>.ParallelWriter results)
+    {
+        var callbackHandle = callbackHandles[index];
+        if (!callbackHandle.value.Equals(CallbackHandle.Null))
+        {
+            results.AddNoResize(callbackHandle.value);
+
+            callbackHandle.value = CallbackHandle.Null;
+            callbackHandles[index] = callbackHandle;
+        }
+    }
+}
+
 public struct GameEntityEventCommand : IComponentData, IEnableableComponent
 {
     public int version;
     public float performTime;
     public float coolDownTime;
     public GameDeadline time;
-    public TimeEventHandle handle;
 }
 
 public struct GameEntityActionCommand : IComponentData, IEnableableComponent
@@ -354,6 +376,7 @@ public struct GameEntityArchetype : IComponentData
 [EntityComponent(typeof(GameEntityCommandVersion))]
 [EntityComponent(typeof(GameEntityActorActionData))]
 [EntityComponent(typeof(GameEntityActorActionInfo))]
+[EntityComponent(typeof(GameEntityCallbackHandle))]
 //[EntityComponent(typeof(GameEntityActorMass))]
 [EntityComponent(typeof(GameEntityEventCommand))]
 [EntityComponent(typeof(GameEntityActionCommand))]
@@ -560,6 +583,32 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         return this.GetComponentData<GameNodeDelay>().Check(time);
     }
 
+    public int RegisterCallback(Action action)
+    {
+        var callbackHandle = this.GetComponentData<GameEntityCallbackHandle>();
+        callbackHandle.value.Unregister();
+        callbackHandle.version = commandVersion;
+        callbackHandle.value = action.Register();
+
+        this.SetComponentData(callbackHandle);
+
+        return callbackHandle.version;
+    }
+
+    public int RegisterOrCombineCallback(Action action)
+    {
+        var callbackHandle = this.GetComponentData<GameEntityCallbackHandle>();
+        if (action.Combine(callbackHandle.value))
+            return callbackHandle.version;
+
+        callbackHandle.version = commandVersion;
+        callbackHandle.value = action.Register();
+
+        this.SetComponentData(callbackHandle);
+
+        return callbackHandle.version;
+    }
+
     public int Do(
         in GameDeadline time,
         int index,
@@ -617,7 +666,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         return command.version;
     }
 
-    public int Do(EntityCommander commander, in GameDeadline time, in TimeEventHandle timeEventHandle, float performTime, float coolDownTime)
+    public int Do(EntityCommander commander, in GameDeadline time, float performTime, float coolDownTime, int version)
     {
         GameEntityEventCommand command;
         //TODO:
@@ -632,11 +681,10 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
             __timeEventSystem.Cannel(command.handle);
         }*/
 
-        command.version = this.commandVersion;
+        command.version = version == 0 ? this.commandVersion : version;
         command.performTime = performTime;
         command.coolDownTime = coolDownTime;
         command.time = time;
-        command.handle = timeEventHandle;
 
         commander.SetComponentData(entity, command);
 
@@ -651,10 +699,10 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         return command.version;
     }
 
-    public int Do(in GameDeadline time, in TimeEventHandle timeEventHandle, float performTime, float coolDownTime)
+    public int Do(in GameDeadline time, float performTime, float coolDownTime, int version)
     {
         GameEntityEventCommand command;
-        if (this.TryGetComponentData(out command) && !command.handle.Equals(timeEventHandle) &&
+        /*if (this.TryGetComponentData(out command) && !command.handle.Equals(timeEventHandle) &&
             command.handle.isVail)
         {
             Debug.LogError("Force Command!");
@@ -663,13 +711,13 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
                 __timeManager = world.GetExistingSystemUnmanaged<TimeEventSystem>().manager;
 
             __timeManager.Cannel(command.handle);
-        }
+        }*/
 
-        command.version = commandVersion;
+        command.version = version == 0 ? commandVersion : version;
         command.performTime = performTime;
         command.coolDownTime = coolDownTime;
         command.time = time;
-        command.handle = timeEventHandle;
+        //command.handle = timeEventHandle;
 
         this.SetComponentData(command);
         this.SetComponentEnabled<GameEntityEventCommand>(true);
@@ -740,16 +788,16 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         entityArchetype.value = __entityComponent.actionEntityArchetype;
         assigner.SetComponentData(entity, entityArchetype);
 
-        GameEntityEventInfo eventInfo;
+        /*GameEntityEventInfo eventInfo;
         eventInfo.version = 0;
         eventInfo.timeEventHandle = TimeEventHandle.Null;
-        assigner.SetComponentData(entity, eventInfo);
+        assigner.SetComponentData(entity, eventInfo);*/
 
         GameEntityBreakInfo breakInfo;
         breakInfo.version = 0;
         breakInfo.delayIndex = -1;
         breakInfo.commandTime = 0.0;
-        breakInfo.timeEventHandle = TimeEventHandle.Null;
+        //breakInfo.timeEventHandle = TimeEventHandle.Null;
         assigner.SetComponentData(entity, breakInfo);
 
         if (_mass > math.FLT_MIN_NORMAL)

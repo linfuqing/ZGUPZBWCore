@@ -459,6 +459,8 @@ public partial struct GameEntityEventSystem : ISystem
         [WriteOnly, NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameNodeStatus> statusMap;
 
+        public NativeList<Entity>.ParallelWriter entities;
+
 #if GAME_DEBUG_COMPARSION
         public uint frameIndex;
         [ReadOnly]
@@ -482,12 +484,13 @@ public partial struct GameEntityEventSystem : ISystem
             //UnityEngine.Debug.Log($"Do: {entityArray[index]} : {command.time} : {entityIndices[index]} : {frameIndex}");
 #endif
 
+            Entity entity = entityArray[index];
             var status = states[index];
             int value = status.value & GameNodeStatus.MASK;
             if (status.value != value)
             {
                 status.value = value;
-                statusMap[entityArray[index]] = status;
+                statusMap[entity] = status;
             }
 
             if (index < delay.Length)
@@ -519,7 +522,8 @@ public partial struct GameEntityEventSystem : ISystem
                 {
                     GameEntityEventInfo eventInfo;
                     eventInfo.version = version;
-                    eventInfo.timeEventHandle = command.handle;
+                    eventInfo.time = command.time + command.coolDownTime;
+                    //eventInfo.timeEventHandle = command.handle;
                     eventInfos[index] = eventInfo;
                 }
             }
@@ -529,6 +533,8 @@ public partial struct GameEntityEventSystem : ISystem
 
             if (index < positions.Length)
                 positions[index].Clear();
+
+            entities.AddNoResize(entity);
         }
     }
 
@@ -563,6 +569,8 @@ public partial struct GameEntityEventSystem : ISystem
         [WriteOnly, NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameNodeStatus> states;
 
+        public NativeList<Entity>.ParallelWriter entities;
+
 #if GAME_DEBUG_COMPARSION
         public uint frameIndex;
         [ReadOnly]
@@ -584,6 +592,7 @@ public partial struct GameEntityEventSystem : ISystem
             trigger.velocities = chunk.GetNativeArray(ref velocityType);
             trigger.positions = chunk.GetBufferAccessor(ref positionType);
             trigger.statusMap = states;
+            trigger.entities = entities;
 
 #if GAME_DEBUG_COMPARSION
             trigger.frameIndex = frameIndex;
@@ -597,6 +606,56 @@ public partial struct GameEntityEventSystem : ISystem
 
                 chunk.SetComponentEnabled(ref commandType, i, false);
             }
+        }
+    }
+
+    [BurstCompile]
+    private struct Append : IJob
+    {
+        [ReadOnly]
+        public ComponentLookup<GameEntityEventInfo> eventInfos;
+
+        public NativeList<Entity> entities;
+
+        public TimeManager<Entity>.Writer timeManager;
+
+        public void Execute()
+        {
+            foreach (var entity in entities)
+                timeManager.Invoke(eventInfos[entity].time, entity);
+
+            entities.Clear();
+        }
+    }
+
+    [BurstCompile]
+    private struct Apply : IJob
+    {
+        public ComponentLookup<GameEntityCallbackHandle> callbackHandles;
+
+        public NativeList<Entity> entities;
+
+        public SharedList<CallbackHandle>.Writer results;
+
+        public void Execute()
+        {
+            GameEntityCallbackHandle callbackHandle;
+            foreach (var entity in entities)
+            {
+                if (!callbackHandles.HasComponent(entity))
+                    continue;
+
+                callbackHandle = callbackHandles[entity];
+                if (callbackHandle.value.Equals(CallbackHandle.Null))
+                    continue;
+
+                results.Add(callbackHandle.value);
+
+                callbackHandle.value = CallbackHandle.Null;
+                callbackHandles[entity] = callbackHandle;
+            }
+
+            entities.Clear();
         }
     }
 
@@ -631,24 +690,29 @@ public partial struct GameEntityEventSystem : ISystem
 
     private ComponentLookup<GameNodeStatus> __states;
 
+    private ComponentLookup<GameEntityCallbackHandle> __callbackHandles;
+
+    private ComponentLookup<GameEntityEventInfo> __eventInfos;
+
+    private SharedList<CallbackHandle> __results;
+
+    private NativeList<Entity> __entities;
+
+    private TimeManager<Entity> __timeManager;
+
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
 #if GAME_DEBUG_COMPARSION
         __frame = new GameRollbackFrame(ref state);
 #endif
 
-        __group = state.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadWrite<GameEntityEventCommand>(),
-                    ComponentType.ReadWrite<GameEntityCommandVersion>(),
-                    ComponentType.ReadWrite<GameEntityEventInfo>(),
-                    ComponentType.ReadWrite<GameNodeDelay>()
-                },
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                .WithAllRW<GameEntityEventCommand, GameEntityCommandVersion>()
+                .WithAllRW<GameEntityEventInfo, GameNodeDelay>()
+                .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                .Build(ref state);
 
         __entityArrayType = state.GetEntityTypeHandle();
         __disabledType = state.GetComponentTypeHandle<Disabled>(true);
@@ -662,12 +726,23 @@ public partial struct GameEntityEventSystem : ISystem
         __velocityType = state.GetComponentTypeHandle<GameNodeVelocity>();
         __positionType = state.GetBufferTypeHandle<GameNodePosition>();
         __states = state.GetComponentLookup<GameNodeStatus>();
+        __callbackHandles = state.GetComponentLookup<GameEntityCallbackHandle>();
+        __eventInfos = state.GetComponentLookup<GameEntityEventInfo>(true);
         //__group.SetChangedVersionFilter(typeof(GameEntityEventCommand));
+
+        __results = state.WorldUnmanaged.GetExistingSystemUnmanaged<CallbackSystem>().handlesToInvokeAndUnregister;
+
+        __entities = new NativeList<Entity>(Allocator.Persistent);
+
+        __timeManager = new TimeManager<Entity>(Allocator.Persistent);
     }
 
+    //[BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
+        __entities.Dispose();
 
+        __timeManager.Dispose();
     }
 
 #if !GAME_DEBUG_COMPARSION
@@ -675,6 +750,9 @@ public partial struct GameEntityEventSystem : ISystem
 #endif
     public void OnUpdate(ref SystemState state)
     {
+        __entities.Clear();
+        __entities.Capacity = math.max(__entities.Capacity, __group.CalculateChunkCountWithoutFiltering());
+
         TriggerEx trigger;
         trigger.entityArrayType = __entityArrayType.UpdateAsRef(ref state);
         trigger.disabledType = __disabledType.UpdateAsRef(ref state);
@@ -688,6 +766,7 @@ public partial struct GameEntityEventSystem : ISystem
         trigger.velocityType = __velocityType.UpdateAsRef(ref state);
         trigger.positionType = __positionType.UpdateAsRef(ref state);
         trigger.states = __states.UpdateAsRef(ref state);
+        trigger.entities = __entities.AsParallelWriter();
 
 #if GAME_DEBUG_COMPARSION
         uint frameIndex = __frame.index;
@@ -696,7 +775,28 @@ public partial struct GameEntityEventSystem : ISystem
         trigger.entityIndexType = state.GetComponentTypeHandle<GameEntityIndex>(true);
 #endif
 
-        state.Dependency = trigger.ScheduleParallelByRef(__group, state.Dependency);
+        var jobHandle = trigger.ScheduleParallelByRef(__group, state.Dependency);
+
+        Append append;
+        append.eventInfos = __eventInfos.UpdateAsRef(ref state);
+        append.entities = __entities;
+        append.timeManager = __timeManager.writer;
+        jobHandle = append.ScheduleByRef(jobHandle);
+
+        jobHandle = __timeManager.Schedule(SystemAPI.GetSingleton<GameAnimationElapsedTime>().value, ref __entities, jobHandle);
+
+        ref var resultsJobManager = ref __results.lookupJobManager;
+
+        Apply apply;
+        apply.callbackHandles = __callbackHandles.UpdateAsRef(ref state);
+        apply.entities = __entities;
+        apply.results = __results.writer;
+
+        jobHandle = apply.ScheduleByRef(JobHandle.CombineDependencies(resultsJobManager.readWriteJobHandle, jobHandle));
+
+        resultsJobManager.readWriteJobHandle = jobHandle;
+
+        state.Dependency = jobHandle;
     }
 }
 
@@ -2753,13 +2853,13 @@ public partial struct GameEntityBreakSystem : ISystem
                 breakInfo.version = actorInfo.version;
                 breakInfo.delayIndex = delayIndex;
                 breakInfo.commandTime = command.time;
-                breakInfo.timeEventHandle = TimeEventHandle.Null;
-                if (index < eventInfos.Length)
+                //breakInfo.timeEventHandle = TimeEventHandle.Null;
+                /*if (index < eventInfos.Length)
                 {
-                    GameEntityEventInfo eventInfo = eventInfos[index];
+                    var eventInfo = eventInfos[index];
                     if (eventInfo.version == actorInfo.version)
                         breakInfo.timeEventHandle = eventInfo.timeEventHandle;
-                }
+                }*/
 
                 breakInfos[entity] = breakInfo;
 
@@ -3044,21 +3144,21 @@ public partial struct GameEntityStatusSystem : ISystem
         [ReadOnly]
         public NativeArray<GameNodeOldStatus> oldStates;
 
-        [ReadOnly]
-        public NativeArray<GameEntityEventInfo> eventInfos;
+        /*[ReadOnly]
+        public NativeArray<GameEntityEventInfo> eventInfos;*/
+
+        public NativeArray<GameEntityCallbackHandle> callbackHandles;
 
         public NativeArray<GameEntityActorTime> actorTimes;
 
         public NativeArray<GameEntityActorInfo> actorInfos;
-
-        public NativeArray<GameEntityEventCommand> eventCommands;
 
         public BufferAccessor<GameEntityActorActionInfo> actorActionInfos;
 
         [NativeDisableParallelForRestriction]
         public ComponentLookup<GameActionStatus> actionStates;
 
-        public EntityCommandQueue<TimeEventHandle>.ParallelWriter timeEventHandles;
+        public SharedList<CallbackHandle>.ParallelWriter results;
 
         public bool Execute(int index)
         {
@@ -3080,8 +3180,10 @@ public partial struct GameEntityStatusSystem : ISystem
                 for (int i = 0; i < numActorActionInfos; ++i)
                     actorActionInfos[i] = default;
 
-                timeEventHandles.Enqueue(eventInfos[index].timeEventHandle);
-                timeEventHandles.Enqueue(eventCommands[index].handle);
+                /*timeEventHandles.Enqueue(eventInfos[index].timeEventHandle);
+                timeEventHandles.Enqueue(eventCommands[index].handle);*/
+
+                GameEntityCallbackHandle.Command(index, ref callbackHandles, ref results);
             }
 
             return true;
@@ -3089,7 +3191,7 @@ public partial struct GameEntityStatusSystem : ISystem
     }
 
     [BurstCompile]
-    private struct UpdateCommandVersionsEx : IJobChunk, IEntityCommandProducerJob
+    private struct UpdateCommandVersionsEx : IJobChunk//, IEntityCommandProducerJob
     {
         public GameDeadline time;
 
@@ -3100,12 +3202,14 @@ public partial struct GameEntityStatusSystem : ISystem
         public ComponentTypeHandle<GameNodeStatus> statusType;
         [ReadOnly]
         public ComponentTypeHandle<GameNodeOldStatus> oldStatusType;
-        [ReadOnly]
-        public ComponentTypeHandle<GameEntityEventInfo> eventInfoType;
+        //[ReadOnly]
+        //public ComponentTypeHandle<GameEntityEventInfo> eventInfoType;
 
         public ComponentTypeHandle<GameEntityActorTime> actorTimeType;
 
         public ComponentTypeHandle<GameEntityActorInfo> actorInfoType;
+
+        public ComponentTypeHandle<GameEntityCallbackHandle> callbackHandleType;
 
         public ComponentTypeHandle<GameEntityEventCommand> eventCommandType;
         public ComponentTypeHandle<GameEntityActionCommand> actionCommandType;
@@ -3116,7 +3220,7 @@ public partial struct GameEntityStatusSystem : ISystem
         [NativeDisableParallelForRestriction]
         public ComponentLookup<GameActionStatus> actionStates;
 
-        public EntityCommandQueue<TimeEventHandle>.ParallelWriter timeEventHandles;
+        public SharedList<CallbackHandle>.ParallelWriter results;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -3125,13 +3229,13 @@ public partial struct GameEntityStatusSystem : ISystem
             updateCommandVersions.entityActions = chunk.GetBufferAccessor(ref entityActionType);
             updateCommandVersions.states = chunk.GetNativeArray(ref statusType);
             updateCommandVersions.oldStates = chunk.GetNativeArray(ref oldStatusType);
-            updateCommandVersions.eventInfos = chunk.GetNativeArray(ref eventInfoType);
+            //updateCommandVersions.eventInfos = chunk.GetNativeArray(ref eventInfoType);
+            updateCommandVersions.callbackHandles = chunk.GetNativeArray(ref callbackHandleType);
             updateCommandVersions.actorTimes = chunk.GetNativeArray(ref actorTimeType);
             updateCommandVersions.actorInfos = chunk.GetNativeArray(ref actorInfoType);
-            updateCommandVersions.eventCommands = chunk.GetNativeArray(ref eventCommandType);
             updateCommandVersions.actorActionInfos = chunk.GetBufferAccessor(ref actorActionInfoType);
             updateCommandVersions.actionStates = actionStates;
-            updateCommandVersions.timeEventHandles = timeEventHandles;
+            updateCommandVersions.results = results;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -3154,7 +3258,10 @@ public partial struct GameEntityStatusSystem : ISystem
 
     private ComponentTypeHandle<GameNodeStatus> __statusType;
     private ComponentTypeHandle<GameNodeOldStatus> __oldStatusType;
-    private ComponentTypeHandle<GameEntityEventInfo> __eventInfoType;
+
+    private ComponentTypeHandle<GameEntityCallbackHandle> __callbackHandleType;
+
+    //private ComponentTypeHandle<GameEntityEventInfo> __eventInfoType;
 
     private ComponentTypeHandle<GameEntityActorTime> __actorTimeType;
     private ComponentTypeHandle<GameEntityActorInfo> __actorInfoType;
@@ -3167,7 +3274,7 @@ public partial struct GameEntityStatusSystem : ISystem
 
     private ComponentLookup<GameActionStatus> __actionStates;
 
-    private EntityCommandPool<TimeEventHandle> __timeEventHandles;
+    private SharedList<CallbackHandle> __callbackHandles;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
@@ -3186,7 +3293,8 @@ public partial struct GameEntityStatusSystem : ISystem
         __entityActionType = state.GetBufferTypeHandle<GameEntityAction>(true);
         __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
         __oldStatusType = state.GetComponentTypeHandle<GameNodeOldStatus>(true);
-        __eventInfoType = state.GetComponentTypeHandle<GameEntityEventInfo>(true);
+        //__eventInfoType = state.GetComponentTypeHandle<GameEntityEventInfo>(true);
+        __callbackHandleType = state.GetComponentTypeHandle<GameEntityCallbackHandle>();
         __actorTimeType = state.GetComponentTypeHandle<GameEntityActorTime>();
         __actorInfoType = state.GetComponentTypeHandle<GameEntityActorInfo>();
         __eventCommandType = state.GetComponentTypeHandle<GameEntityEventCommand>();
@@ -3195,7 +3303,7 @@ public partial struct GameEntityStatusSystem : ISystem
         __actorActionInfoType = state.GetBufferTypeHandle<GameEntityActorActionInfo>();
         __actionStates = state.GetComponentLookup<GameActionStatus>();
 
-        __timeEventHandles = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameEntityTimeEventSystem>().pool;
+        __callbackHandles = state.WorldUnmanaged.GetExistingSystemUnmanaged<CallbackSystem>().handlesToUnregister;
     }
 
     [BurstCompile]
@@ -3206,14 +3314,19 @@ public partial struct GameEntityStatusSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        var timeEventHandles = __timeEventHandles.Create();
+        //var timeEventHandles = __timeEventHandles.Create();
+
+        ref var callbackHandlesJobManager = ref __callbackHandles.lookupJobManager;
+
+        var writer = __callbackHandles.writer;
+        var jobHandle = writer.Resize(__group, JobHandle.CombineDependencies(callbackHandlesJobManager.readWriteJobHandle, state.Dependency));
 
         UpdateCommandVersionsEx updateCommandVersions;
         updateCommandVersions.time = __time.time;
         updateCommandVersions.entityActionType = __entityActionType.UpdateAsRef(ref state);
         updateCommandVersions.statusType = __statusType.UpdateAsRef(ref state);
         updateCommandVersions.oldStatusType = __oldStatusType.UpdateAsRef(ref state);
-        updateCommandVersions.eventInfoType = __eventInfoType.UpdateAsRef(ref state);
+        updateCommandVersions.callbackHandleType = __callbackHandleType.UpdateAsRef(ref state);
         updateCommandVersions.actorTimeType = __actorTimeType.UpdateAsRef(ref state);
         updateCommandVersions.actorInfoType = __actorInfoType.UpdateAsRef(ref state);
         updateCommandVersions.eventCommandType = __eventCommandType.UpdateAsRef(ref state);
@@ -3221,11 +3334,12 @@ public partial struct GameEntityStatusSystem : ISystem
         updateCommandVersions.breakCommandType = __breakCommandType.UpdateAsRef(ref state);
         updateCommandVersions.actorActionInfoType = __actorActionInfoType.UpdateAsRef(ref state);
         updateCommandVersions.actionStates = __actionStates.UpdateAsRef(ref state);
-        updateCommandVersions.timeEventHandles = timeEventHandles.parallelWriter;
+        updateCommandVersions.results = __callbackHandles.parallelWriter;
 
-        var jobHandle = updateCommandVersions.ScheduleParallelByRef(__group, state.Dependency);
+        jobHandle = updateCommandVersions.ScheduleParallelByRef(__group, jobHandle);
 
-        timeEventHandles.AddJobHandleForProducer<UpdateCommandVersionsEx>(jobHandle);
+        //timeEventHandles.AddJobHandleForProducer<UpdateCommandVersionsEx>(jobHandle);
+        callbackHandlesJobManager.readWriteJobHandle = jobHandle;
 
         state.Dependency = jobHandle;
     }
@@ -3241,7 +3355,9 @@ public partial struct GameEntityCannelEventsSystem : ISystem
         [ReadOnly]
         public NativeArray<GameEntityBreakInfo> breakInfos;
 
-        public EntityCommandQueue<TimeEventHandle>.ParallelWriter timeEventHandles;
+        public NativeArray<GameEntityCallbackHandle> callbackHandles;
+
+        public SharedList<CallbackHandle>.ParallelWriter results;
 
         public void Execute(int index)
         {
@@ -3249,26 +3365,29 @@ public partial struct GameEntityCannelEventsSystem : ISystem
             if (breakInfo.version != actorInfos[index].version)
                 return;
 
-            timeEventHandles.Enqueue(breakInfo.timeEventHandle);
+            GameEntityCallbackHandle.Command(index, ref callbackHandles, ref results);
         }
     }
 
     [BurstCompile]
-    private struct CannelEventsEx : IJobChunk, IEntityCommandProducerJob
+    private struct CannelEventsEx : IJobChunk//, IEntityCommandProducerJob
     {
         [ReadOnly]
         public ComponentTypeHandle<GameEntityActorInfo> actorInfoType;
         [ReadOnly]
         public ComponentTypeHandle<GameEntityBreakInfo> breakInfoType;
 
-        public EntityCommandQueue<TimeEventHandle>.ParallelWriter timeEventHandles;
+        public ComponentTypeHandle<GameEntityCallbackHandle> callbackHandleType;
+
+        public SharedList<CallbackHandle>.ParallelWriter results;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             CannelEvents cannelEvents;
             cannelEvents.actorInfos = chunk.GetNativeArray(ref actorInfoType);
             cannelEvents.breakInfos = chunk.GetNativeArray(ref breakInfoType);
-            cannelEvents.timeEventHandles = timeEventHandles;
+            cannelEvents.callbackHandles = chunk.GetNativeArray(ref callbackHandleType);
+            cannelEvents.results = results;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -3280,7 +3399,9 @@ public partial struct GameEntityCannelEventsSystem : ISystem
     private ComponentTypeHandle<GameEntityActorInfo> __actorInfoType;
     private ComponentTypeHandle<GameEntityBreakInfo> __breakInfoType;
 
-    private EntityCommandPool<TimeEventHandle> __timeEventHandles;
+    private ComponentTypeHandle<GameEntityCallbackHandle> __callbackHandleType;
+
+    private SharedList<CallbackHandle> __callbackHandles;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
@@ -3295,7 +3416,9 @@ public partial struct GameEntityCannelEventsSystem : ISystem
         __actorInfoType = state.GetComponentTypeHandle<GameEntityActorInfo>(true);
         __breakInfoType = state.GetComponentTypeHandle<GameEntityBreakInfo>(true);
 
-        __timeEventHandles = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameEntityTimeEventSystem>().pool;
+        __callbackHandleType = state.GetComponentTypeHandle<GameEntityCallbackHandle>();
+
+        __callbackHandles = state.WorldUnmanaged.GetExistingSystemUnmanaged<CallbackSystem>().handlesToUnregister;
     }
 
     [BurstCompile]
@@ -3306,16 +3429,22 @@ public partial struct GameEntityCannelEventsSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        var timeEventHandles = __timeEventHandles.Create();
+        ref var callbackHandlesJobManager = ref __callbackHandles.lookupJobManager;
+
+        var writer = __callbackHandles.writer;
+        var jobHandle = writer.Resize(__group, JobHandle.CombineDependencies(callbackHandlesJobManager.readWriteJobHandle, state.Dependency));
 
         CannelEventsEx cannelEvents;
         cannelEvents.actorInfoType = __actorInfoType.UpdateAsRef(ref state);
         cannelEvents.breakInfoType = __breakInfoType.UpdateAsRef(ref state);
-        cannelEvents.timeEventHandles = timeEventHandles.parallelWriter;
+        cannelEvents.callbackHandleType = __callbackHandleType.UpdateAsRef(ref state);
+        cannelEvents.results = __callbackHandles.parallelWriter;
 
-        var jobHandle = cannelEvents.ScheduleParallelByRef(__group, state.Dependency);
+        jobHandle = cannelEvents.ScheduleParallelByRef(__group, jobHandle);
 
-        timeEventHandles.AddJobHandleForProducer<CannelEventsEx>(jobHandle);
+        //timeEventHandles.AddJobHandleForProducer<CannelEventsEx>(jobHandle);
+
+        callbackHandlesJobManager.readWriteJobHandle = jobHandle;
 
         state.Dependency = jobHandle;
     }

@@ -460,7 +460,7 @@ public struct GameSyncManager : IComponentData
 }
 
 [CreateAfter(typeof(GameRollbackSystemGroup)), 
-    CreateAfter(typeof(RollbackSystemGroup)),
+    //CreateAfter(typeof(RollbackSystemGroup)),
     UpdateInGroup(typeof(TimeSystemGroup))/*, UpdateAfter(typeof(StateMachineExecutorGroup))*/]
 public partial class GameSyncSystemGroup : SystemBase
 {
