@@ -751,7 +751,7 @@ public partial struct GameEntityEventSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         __entities.Clear();
-        __entities.Capacity = math.max(__entities.Capacity, __group.CalculateChunkCountWithoutFiltering());
+        __entities.Capacity = math.max(__entities.Capacity, __group.CalculateEntityCountWithoutFiltering());
 
         TriggerEx trigger;
         trigger.entityArrayType = __entityArrayType.UpdateAsRef(ref state);
