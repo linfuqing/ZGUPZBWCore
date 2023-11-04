@@ -183,7 +183,9 @@ public partial struct GameRandomSpawnerSystem : ISystem
                     spawnData.transform.pos.z = asset.horizontal * random.NextFloat();
                     spawnData.transform.pos += asset.offset.pos;
                     spawnData.transform.rot = asset.offset.rot;// quaternion.LookRotationSafe(-math.normalize(spawnData.transform.pos), math.up());
-                    spawnData.transform = math.mul(transform, spawnData.transform);
+                    if(asset.space == GameRandomSpawnerAsset.Space.Local)
+                        spawnData.transform = math.mul(transform, spawnData.transform);
+
                     spawnData.itemHandle = GameItemHandle.Empty;
 
                     results.AddNoResize(spawnData);

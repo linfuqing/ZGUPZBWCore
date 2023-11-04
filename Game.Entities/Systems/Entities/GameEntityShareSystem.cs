@@ -14,7 +14,7 @@ using Unity.Jobs;
 
 [assembly: RegisterGenericJobType(typeof(GameEntityActionSharedFactorySytem.Apply<GameActionSharedObjectData>))]
 [assembly: RegisterGenericJobType(typeof(GameEntityActionSharedFactorySytem.Apply<GameActionSharedObjectParent>))]
-[assembly: RegisterGenericJobType(typeof(GameEntityActionSystemCore.PerformEx<GameEntityActionSharedSystem.Handler, GameEntityActionSharedSystem.Factory>))]
+//[assembly: RegisterGenericJobType(typeof(GameEntityActionSystemCore.PerformEx<GameEntityActionSharedSystem.Handler, GameEntityActionSharedSystem.Factory>))]
 
 /*[UpdateBefore(typeof(GameTransformSystem))]
 public class GameEntityActionSharedCommandSytem : EntityCommandSystemHybrid
@@ -542,13 +542,22 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
             {
                 //Debug.LogError($"Create {instance.index} : {entity} : {gameObject.name} : {destroyTime}", gameObject);
 
-                var particleSystem = gameObject.GetComponentInChildren<ParticleSystem>();
-                if (particleSystem != null)
+                var playerDirector = gameObject.GetComponentInChildren<UnityEngine.Playables.PlayableDirector>();
+                if (playerDirector != null)
                 {
-                    //particleSystem.Play(true);
+                    playerDirector.time = elpasedTime;
+                    //playerDirector.Play()
+                }
+                else
+                {
+                    var particleSystem = gameObject.GetComponentInChildren<ParticleSystem>();
+                    if (particleSystem != null)
+                    {
+                        //particleSystem.Play(true);
 
-                    particleSystem.Simulate(elpasedTime, true);
-                    particleSystem.Play(true);
+                        particleSystem.Simulate(elpasedTime, true);
+                        particleSystem.Play(true);
+                    }
                 }
 
                 if(destroyTime > 0.0f)
@@ -1122,10 +1131,11 @@ public partial struct GameEntityActionSharedUpdateSystem : ISystem
 }*/
 
 [BurstCompile,
-    CreateAfter(typeof(GameEntityActionLocationSystem)),
-    CreateAfter(typeof(GamePhysicsWorldBuildSystem)),
+    /*CreateAfter(typeof(GameEntityActionLocationSystem)),
+    CreateAfter(typeof(GamePhysicsWorldBuildSystem)),*/
     CreateAfter(typeof(GameEntityActionSharedFactorySytem)),
-    UpdateInGroup(typeof(GameEntityActionSystemGroup))]
+    CreateAfter(typeof(GameEntityActionSystem)), 
+    UpdateInGroup(typeof(GameEntityActionSystemGroup), OrderLast = true)]
 [WorldSystemFilter(WorldSystemFilterFlags.Presentation)]
 public partial struct GameEntityActionSharedSystem : ISystem
 {
@@ -1152,83 +1162,113 @@ public partial struct GameEntityActionSharedSystem : ISystem
         public int count;
     }*/
 
-    public struct Handler : IGameEntityActionHandler
+    /// <summary>
+    /// 以前用来检测Rollback时候删除的技能被创建后特效不重复创建，现在没有意义了，因为原技能被删除后子特效全部被清除
+    /// </summary>
+    /// <param name="index"></param>
+    /// <param name="version"></param>
+    /// <param name="elapsedTime"></param>
+    /// <param name="entity"></param>
+    /// <returns></returns>
+    public bool Check(int index, int version, float elapsedTime, Entity entity)
     {
-        /*[ReadOnly]
-        public NativeArray<ActionObject> actionObjects;
+        /*if (!this.actions.HasBuffer(entity))
+            return false;
 
+        var actions = this.actions[entity];
+        GameEntitySharedAction action;
+        int numActions = actions.Length;
+        //string log = "";
+        for (int i = 0; i < numActions; ++i)
+        {
+            action = actions[i];
+
+            //log += action;
+
+            if (action.index == index && action.version == version)
+            {
+                if (action.elapsedTime < elapsedTime)
+                {
+                    //Debug.LogError($"Fail: {action.index} : {action.elapsedTime} : {elapsedTime}");
+                    break;
+                }
+
+                //Debug.Log("Ok:" + log + "(Index: " + index + ", Version" + version + ", Time: " + elapsedTime + ")");
+
+                return false;
+            }
+        }*/
+
+        //Debug.Log(log + "(Index: " + index + ", Version" + version + ", Time: " + elapsedTime + ")");
+        return true;
+    }
+
+    private struct TransformLookup
+    {
         [ReadOnly]
-        public NativeArray<ActionObjectRange> actionObjectRanges;
-
-        [ReadOnly]
-        public NativeArray<Item> items;*/
-
-        public BlobAssetReference<GameEntityActionSharedDefinition> definition;
-
-        [ReadOnly]
-        public BufferLookup<GameEntityItem> entityItems;
-
-        [ReadOnly, NativeDisableContainerSafetyRestriction]
         public ComponentLookup<Translation> translations;
 
-        [ReadOnly, NativeDisableContainerSafetyRestriction]
+        [ReadOnly]
         public ComponentLookup<Rotation> rotations;
 
+        public TransformLookup(ref SystemState state)
+        {
+            translations = state.GetComponentLookup<Translation>(true);
+            rotations = state.GetComponentLookup<Rotation>(true);
+        }
+
+        public TransformLookup UpdateAsRef(ref SystemState state)
+        {
+            TransformLookup result;
+            result.translations = translations.UpdateAsRef(ref state);
+            result.rotations = rotations.UpdateAsRef(ref state);
+
+            return result;
+        }
+
+        public bool Get(in Entity entity, out RigidTransform transform)
+        {
+            if (!translations.HasComponent(entity))
+            {
+                transform = RigidTransform.identity;
+
+                return false;
+            }
+
+            transform = math.RigidTransform(
+                    rotations.HasComponent(entity) ? rotations[entity].Value : quaternion.identity,
+                    translations[entity].Value);
+
+            return true;
+        }
+    }
+
+    private struct ActionMaskLookup
+    {
         [ReadOnly]
-        public ComponentLookup<GameEntitySharedActionType> actionTypes;
+        public BufferLookup<GameEntityItem> entityItems;
 
         [ReadOnly]
         public ComponentLookup<GameEntitySharedActionMask> actionMasks;
 
-        /*[ReadOnly]
-        public BufferLookup<GameEntitySharedAction> actions;*/
-
-        public NativeFactory<EntityData<GameEntitySharedHit>>.ParallelWriter hits;
-
-        public EntityCommandQueue<GameEntityActionSharedFactorySytem.Command>.ParallelWriter entityManager;
-
-        /// <summary>
-        /// 以前用来检测Rollback时候删除的技能被创建后特效不重复创建，现在没有意义了，因为原技能被删除后子特效全部被清除
-        /// </summary>
-        /// <param name="index"></param>
-        /// <param name="version"></param>
-        /// <param name="elapsedTime"></param>
-        /// <param name="entity"></param>
-        /// <returns></returns>
-        public bool Check(int index, int version, float elapsedTime, Entity entity)
+        public ActionMaskLookup(ref SystemState state)
         {
-            /*if (!this.actions.HasBuffer(entity))
-                return false;
-
-            var actions = this.actions[entity];
-            GameEntitySharedAction action;
-            int numActions = actions.Length;
-            //string log = "";
-            for (int i = 0; i < numActions; ++i)
-            {
-                action = actions[i];
-
-                //log += action;
-
-                if (action.index == index && action.version == version)
-                {
-                    if (action.elapsedTime < elapsedTime)
-                    {
-                        //Debug.LogError($"Fail: {action.index} : {action.elapsedTime} : {elapsedTime}");
-                        break;
-                    }
-
-                    //Debug.Log("Ok:" + log + "(Index: " + index + ", Version" + version + ", Time: " + elapsedTime + ")");
-
-                    return false;
-                }
-            }*/
-
-            //Debug.Log(log + "(Index: " + index + ", Version" + version + ", Time: " + elapsedTime + ")");
-            return true;
+            entityItems = state.GetBufferLookup<GameEntityItem>(true);
+            actionMasks = state.GetComponentLookup<GameEntitySharedActionMask>(true);
         }
 
-        public uint ComputeActionMask(in Entity target, ref BlobArray<GameEntityActionSharedDefinition.Item> items)
+        public ActionMaskLookup UpdateAsRef(ref SystemState state)
+        {
+            ActionMaskLookup result;
+            result.entityItems = entityItems.UpdateAsRef(ref state);
+            result.actionMasks = actionMasks.UpdateAsRef(ref state);
+
+            return result;
+        }
+
+        public uint Compute(
+            in Entity target,
+            ref BlobArray<GameEntityActionSharedDefinition.Item> items)
         {
             uint actionMask = actionMasks.HasComponent(target) ? actionMasks[target].value : 0u,
                 negativeActionMask = 0,
@@ -1256,30 +1296,54 @@ public partial struct GameEntityActionSharedSystem : ISystem
             return actionMask;
         }
 
-        public bool Create(
-            int index,
-            double time,
-            in float3 targetPosition,
-            in Entity entity,
-            in RigidTransform transform,
-            in GameActionData data)
+    }
+
+    [BurstCompile]
+    private struct ApplyCreateors : IJobParallelForDefer, IEntityCommandProducerJob
+    {
+        public BlobAssetReference<GameEntityActionSharedDefinition> definition;
+
+        public TransformLookup transformLookup;
+
+        [ReadOnly]
+        public SharedList<GameEntityActionCreator>.Reader creators;
+
+        [ReadOnly]
+        public ComponentLookup<GameActionData> instances;
+
+        [ReadOnly]
+        public ComponentLookup<GameActionDataEx> instancesEx;
+
+        [ReadOnly]
+        public ComponentLookup<GameEntitySharedActionType> actionTypes;
+
+        [NativeDisableContainerSafetyRestriction]
+        public ComponentLookup<GameActionStatus> states;
+
+        public EntityCommandQueue<GameEntityActionSharedFactorySytem.Command>.ParallelWriter entityManager;
+
+        public void Execute(int index)
         {
-            if (!Check(data.index, data.version, (float)(time - data.time), data.entity))
-                return false;
+            /*if (!Check(data.index, data.version, (float)(time - data.time), data.entity))
+                return false;*/
+
+            var creator = creators[index];
+
+            var instance = instances[creator.entity];
 
             ref var definition = ref this.definition.Value;
-            ref var action = ref definition.actions[data.actionIndex];
+            ref var action = ref definition.actions[instance.actionIndex];
 
             GameEntityActionSharedFactorySytem.Command command;
             command.entity = Entity.Null;
-            command.instance.time = data.time;
+            command.instance.time = instance.time;
             /*command.instance.transform = math.RigidTransform(
                 rotations.HasComponent(data.entity) ? rotations[data.entity].Value : quaternion.identity, 
                 translations.HasComponent(data.entity) ? translations[data.entity].Value : float3.zero);*/
-            command.instance.parentEntity = entity;
+            command.instance.parentEntity = creator.entity;
 
             bool result = false, isSourceTransformed = false, isDestinationTransformed = false;
-            var actionType = actionTypes.HasComponent(data.entity) ? actionTypes[data.entity].value : 0;
+            var actionType = actionTypes.HasComponent(instance.entity) ? actionTypes[instance.entity].value : 0;
             int actionObjectIndex, numActionObjects = action.objectIndices.Length;
             RigidTransform sourceTransform = RigidTransform.identity, destaintionTransform = RigidTransform.identity;
             for (int i = 0; i < numActionObjects; ++i)
@@ -1296,7 +1360,7 @@ public partial struct GameEntityActionSharedSystem : ISystem
                     if ((actionObject.flag & GameEntitySharedActionObjectFlag.Source) == GameEntitySharedActionObjectFlag.Source)
                     {
                         command.instance.transform = RigidTransform.identity;
-                        command.parent.value = data.entity;
+                        command.parent.value = instance.entity;
                     }
                     else if ((actionObject.flag & GameEntitySharedActionObjectFlag.Destination) == GameEntitySharedActionObjectFlag.Destination)
                     {
@@ -1304,17 +1368,17 @@ public partial struct GameEntityActionSharedSystem : ISystem
                         {
                             if (!isSourceTransformed)
                             {
-                                isSourceTransformed = __GetTransform(data.entity, out sourceTransform);
+                                isSourceTransformed = transformLookup.Get(instance.entity, out sourceTransform);
                                 if (!isSourceTransformed)
                                 {
                                     isSourceTransformed = true;
 
-                                    sourceTransform = transform;
+                                    sourceTransform = instancesEx[creator.entity].transform;
                                 }
                             }
 
                             destaintionTransform.rot = sourceTransform.rot;
-                            destaintionTransform.pos = targetPosition;
+                            destaintionTransform.pos = creator.targetPosition;
 
                             isDestinationTransformed = true;
                             /*isDestinationTransformed = __GetTransform(target, out destaintionTransform);
@@ -1342,7 +1406,7 @@ public partial struct GameEntityActionSharedSystem : ISystem
                             }
                         }*/
 
-                        command.instance.transform = transform;// sourceTransform;
+                        command.instance.transform = instancesEx[creator.entity].transform;// sourceTransform;
                         command.parent.value = Entity.Null;
                     }
 
@@ -1352,30 +1416,55 @@ public partial struct GameEntityActionSharedSystem : ISystem
                 }
             }
 
-            return result;
+            if (result)
+            {
+                var status = states[creator.entity];
+                status.value |= GameActionStatus.Status.Managed;
+                states[creator.entity] = status;
+            }
         }
+    }
 
-        public bool Init(
-            int index,
-            float elapsedTime,
-            double time,
-            in Entity entity,
-            in RigidTransform transform,
-            in GameActionData data)
+    [BurstCompile]
+    private struct ApplyInitializers : IJobParallelForDefer, IEntityCommandProducerJob
+    {
+        public BlobAssetReference<GameEntityActionSharedDefinition> definition;
+
+        public TransformLookup transformLookup;
+
+        [ReadOnly]
+        public SharedList<GameEntityActionInitializer>.Reader initializers;
+
+        [ReadOnly]
+        public ComponentLookup<GameActionData> instances;
+
+        [ReadOnly]
+        public ComponentLookup<GameEntitySharedActionType> actionTypes;
+
+        [NativeDisableContainerSafetyRestriction]
+        public ComponentLookup<GameActionStatus> states;
+
+        public EntityCommandQueue<GameEntityActionSharedFactorySytem.Command>.ParallelWriter entityManager;
+
+        public void Execute(int index)
         {
-            if (!Check(data.index, data.version, (float)(time - data.time), data.entity))
-                return false;
+            /*if (!Check(data.index, data.version, (float)(time - data.time), data.entity))
+                return false;*/
+
+            var initializer = initializers[index];
+
+            var instance = instances[initializer.entity];
 
             ref var definition = ref this.definition.Value;
-            ref var action = ref definition.actions[data.actionIndex];
+            ref var action = ref definition.actions[instance.actionIndex];
 
             GameEntityActionSharedFactorySytem.Command command;
-            command.entity = entity;
-            command.instance.time = data.time + elapsedTime;
+            command.entity = initializer.entity;
+            command.instance.time = instance.time + initializer.elapsedTime;
             command.instance.parentEntity = Entity.Null;
 
             bool result = false, isSourceTransformed = false;
-            var actionType = actionTypes.HasComponent(data.entity) ? actionTypes[data.entity].value : 0;
+            var actionType = actionTypes.HasComponent(instance.entity) ? actionTypes[instance.entity].value : 0;
             int actionObjectIndex, numActionObjects = action.objectIndices.Length;
             RigidTransform sourceTransform = RigidTransform.identity;
             for (int i = 0; i < numActionObjects; ++i)
@@ -1397,9 +1486,9 @@ public partial struct GameEntityActionSharedSystem : ISystem
                         {
                             if (!isSourceTransformed)
                             {
-                                isSourceTransformed = __GetTransform(data.entity, out sourceTransform);
+                                isSourceTransformed = transformLookup.Get(instance.entity, out sourceTransform);
 
-                                sourceTransform = isSourceTransformed ? math.mul(math.inverse(sourceTransform), transform) : RigidTransform.identity;
+                                sourceTransform = isSourceTransformed ? math.mul(math.inverse(sourceTransform), initializer.transform) : RigidTransform.identity;
 
                                 isSourceTransformed = true;
                             }
@@ -1407,11 +1496,11 @@ public partial struct GameEntityActionSharedSystem : ISystem
                             command.instance.transform = sourceTransform;
                         }
 
-                        command.parent.value = data.entity;
+                        command.parent.value = instance.entity;
                     }
                     else
                     {
-                        command.instance.transform = transform;
+                        command.instance.transform = initializer.transform;
                         command.parent.value = Entity.Null;
                     }
 
@@ -1421,34 +1510,54 @@ public partial struct GameEntityActionSharedSystem : ISystem
                 }
             }
 
-            return result;
+            if (result)
+            {
+                var status = states[initializer.entity];
+                status.value |= GameActionStatus.Status.Managed;
+                states[initializer.entity] = status;
+            }
         }
+    }
 
-        public unsafe void Hit(
-            int index,
-            float elapsedTime,
-            double time,
-            in Entity entity,
-            in Entity target,
-            in RigidTransform transform,
-            in GameActionData data)
+    [BurstCompile]
+    private struct ApplyHiters : IJob, IEntityCommandProducerJob
+    {
+        public BlobAssetReference<GameEntityActionSharedDefinition> definition;
+
+        public TransformLookup transformLookup;
+        public ActionMaskLookup actionMaskLookup;
+
+        [ReadOnly]
+        public NativeFactory<GameEntityActionHiter> hiters;
+
+        [ReadOnly]
+        public ComponentLookup<GameActionData> instances;
+
+        [ReadOnly]
+        public ComponentLookup<GameEntitySharedActionType> actionTypes;
+
+        public EntityCommandQueue<GameEntityActionSharedFactorySytem.Command>.ParallelWriter entityManager;
+
+        public void Execute(in GameEntityActionHiter hiter)
         {
-            if (!Check(data.index, data.version, (float)(time - data.time), data.entity))
-                return;
+            /*if (!Check(data.index, data.version, (float)(time - data.time), data.entity))
+                return false;*/
+
+            var instance = instances[hiter.entity];
 
             ref var definition = ref this.definition.Value;
-            ref var action = ref definition.actions[data.actionIndex];
+            ref var action = ref definition.actions[instance.actionIndex];
 
             GameEntityActionSharedFactorySytem.Command command;
             command.entity = Entity.Null;
-            command.instance.time = data.time + elapsedTime;
+            command.instance.time = instance.time + hiter.elapsedTime;
             command.instance.parentEntity = Entity.Null;// (actionObject.flag & GameEntitySharedActionObjectFlag.Init) == GameEntitySharedActionObjectFlag.Init ? entity : Entity.Null;
 
             bool isSourceTransformed = false, isDestinationTransformed = false;
             int actionObjectIndex, numActionObjects = action.objectIndices.Length;
-            uint actionMask = ComputeActionMask(target, ref definition.items);
-            GameSharedActionType sourceActionType = actionTypes.HasComponent(data.entity) ? actionTypes[data.entity].value : 0,
-                destinationActionType = actionTypes.HasComponent(target) ? actionTypes[target].value : 0;
+            uint actionMask = actionMaskLookup.Compute(hiter.target, ref definition.items);
+            GameSharedActionType sourceActionType = actionTypes.HasComponent(instance.entity) ? actionTypes[instance.entity].value : 0,
+                destinationActionType = actionTypes.HasComponent(hiter.target) ? actionTypes[hiter.target].value : 0;
             RigidTransform sourceTransform = RigidTransform.identity, destinationTranform = RigidTransform.identity;
             for (int i = 0; i < numActionObjects; ++i)
             {
@@ -1477,9 +1586,9 @@ public partial struct GameEntityActionSharedSystem : ISystem
                             {
                                 if (!isDestinationTransformed)
                                 {
-                                    isDestinationTransformed = __GetTransform(target, out destinationTranform);
+                                    isDestinationTransformed = transformLookup.Get(hiter.target, out destinationTranform);
 
-                                    destinationTranform = isDestinationTransformed ? math.mul(math.inverse(destinationTranform), transform) : RigidTransform.identity;
+                                    destinationTranform = isDestinationTransformed ? math.mul(math.inverse(destinationTranform), hiter.transform) : RigidTransform.identity;
 
                                     isDestinationTransformed = true;
                                 }
@@ -1487,7 +1596,7 @@ public partial struct GameEntityActionSharedSystem : ISystem
                                 command.instance.transform = destinationTranform;
                             }
 
-                            command.parent.value = target;
+                            command.parent.value = hiter.target;
                         }
                         else if ((actionObject.flag & GameEntitySharedActionObjectFlag.Source) == GameEntitySharedActionObjectFlag.Source)
                         {
@@ -1497,9 +1606,9 @@ public partial struct GameEntityActionSharedSystem : ISystem
                             {
                                 if (!isSourceTransformed)
                                 {
-                                    isSourceTransformed = __GetTransform(data.entity, out sourceTransform);
+                                    isSourceTransformed = transformLookup.Get(instance.entity, out sourceTransform);
 
-                                    sourceTransform = isSourceTransformed ? math.mul(math.inverse(sourceTransform), transform) : RigidTransform.identity;
+                                    sourceTransform = isSourceTransformed ? math.mul(math.inverse(sourceTransform), hiter.transform) : RigidTransform.identity;
 
                                     isSourceTransformed = true;
                                 }
@@ -1507,11 +1616,11 @@ public partial struct GameEntityActionSharedSystem : ISystem
                                 command.instance.transform = sourceTransform;
                             }
 
-                            command.parent.value = data.entity;
+                            command.parent.value = instance.entity;
                         }
                         else
                         {
-                            command.instance.transform = transform;
+                            command.instance.transform = hiter.transform;
                             command.parent.value = Entity.Null;
                         }
 
@@ -1521,41 +1630,62 @@ public partial struct GameEntityActionSharedSystem : ISystem
             }
         }
 
-        public void Damage(
-            int index,
-            int count,
-            float elapsedTime,
-            double time,
-            in Entity entity,
-            in Entity target,
-            in float3 position,
-            in float3 normal,
-            in GameActionData data)
+        public void Execute()
         {
-            if (!Check(data.index, data.version, (float)(time - data.time), data.entity))
-                return;
+            foreach (var hit in hiters)
+                Execute(hit);
+        }
+    }
+
+    [BurstCompile]
+    private struct ApplyDamagers : IJob, IEntityCommandProducerJob
+    {
+        public BlobAssetReference<GameEntityActionSharedDefinition> definition;
+
+        public TransformLookup transformLookup;
+        public ActionMaskLookup actionMaskLookup;
+
+        [ReadOnly]
+        public NativeFactory<GameEntityActionDamager> damagers;
+
+        [ReadOnly]
+        public ComponentLookup<GameActionData> instances;
+
+        [ReadOnly]
+        public ComponentLookup<GameEntitySharedActionType> actionTypes;
+
+        public NativeFactory<EntityData<GameEntitySharedHit>>.ParallelWriter hits;
+
+        public EntityCommandQueue<GameEntityActionSharedFactorySytem.Command>.ParallelWriter entityManager;
+
+        public void Execute(in GameEntityActionDamager damager)
+        {
+            /*if (!Check(data.index, data.version, (float)(time - data.time), data.entity))
+                return false;*/
+
+            var instance = instances[damager.entity];
 
             ref var definition = ref this.definition.Value;
-            ref var action = ref definition.actions[data.actionIndex];
+            ref var action = ref definition.actions[instance.actionIndex];
 
             EntityData<GameEntitySharedHit> hit;
-            hit.value.version = data.version;
-            hit.value.actionIndex = data.actionIndex;
-            hit.value.time = data.time + elapsedTime;
-            hit.value.entity = data.entity;
-            hit.entity = target;
+            hit.value.version = instance.version;
+            hit.value.actionIndex = instance.actionIndex;
+            hit.value.time = instance.time + damager.elapsedTime;
+            hit.value.entity = instance.entity;
+            hit.entity = damager.target;
             hits.Create().value = hit;
 
             GameEntityActionSharedFactorySytem.Command command;
             command.entity = Entity.Null;
-            command.instance.time = data.time + elapsedTime;
+            command.instance.time = instance.time + damager.elapsedTime;
             command.instance.parentEntity = Entity.Null;
 
             bool isTransformed = false, isSourceTransformed = false, isDestinationTransformed = false;
             int actionObjectIndex, numActionObjects = action.objectIndices.Length;
-            uint actionMask = ComputeActionMask(target, ref definition.items);
-            GameSharedActionType sourceActionType = actionTypes.HasComponent(data.entity) ? actionTypes[data.entity].value : 0,
-                destinationActionType = actionTypes.HasComponent(target) ? actionTypes[target].value : 0;
+            uint actionMask = actionMaskLookup.Compute(damager.target, ref definition.items);
+            GameSharedActionType sourceActionType = actionTypes.HasComponent(instance.entity) ? actionTypes[instance.entity].value : 0,
+                destinationActionType = actionTypes.HasComponent(damager.target) ? actionTypes[damager.target].value : 0;
             float3 up = math.up();
             RigidTransform transform = RigidTransform.identity, sourceTransform = RigidTransform.identity, destinationTranform = RigidTransform.identity;
             for (int i = 0; i < numActionObjects; ++i)
@@ -1585,10 +1715,10 @@ public partial struct GameEntityActionSharedSystem : ISystem
                                 {
                                     isTransformed = true;
 
-                                    transform = math.RigidTransform(quaternion.LookRotationSafe(-normal, up), position);
+                                    transform = math.RigidTransform(quaternion.LookRotationSafe(-damager.normal, up), damager.position);
                                 }
 
-                                isDestinationTransformed = __GetTransform(target, out destinationTranform);
+                                isDestinationTransformed = transformLookup.Get(damager.target, out destinationTranform);
 
                                 destinationTranform = isDestinationTransformed ? math.mul(math.inverse(destinationTranform), transform) : RigidTransform.identity;
 
@@ -1598,7 +1728,7 @@ public partial struct GameEntityActionSharedSystem : ISystem
                             command.instance.transform = destinationTranform;
                         }
 
-                        command.parent.value = target;
+                        command.parent.value = damager.target;
                     }
                     else if ((actionObject.flag & GameEntitySharedActionObjectFlag.Source) == GameEntitySharedActionObjectFlag.Source)
                     {
@@ -1612,10 +1742,10 @@ public partial struct GameEntityActionSharedSystem : ISystem
                                 {
                                     isTransformed = true;
 
-                                    transform = math.RigidTransform(quaternion.LookRotationSafe(-normal, up), position);
+                                    transform = math.RigidTransform(quaternion.LookRotationSafe(-damager.normal, up), damager.position);
                                 }
 
-                                isSourceTransformed = __GetTransform(data.entity, out sourceTransform);
+                                isSourceTransformed = transformLookup.Get(instance.entity, out sourceTransform);
 
                                 sourceTransform = isSourceTransformed ? math.mul(math.inverse(sourceTransform), transform) : RigidTransform.identity;
 
@@ -1626,7 +1756,7 @@ public partial struct GameEntityActionSharedSystem : ISystem
                             command.instance.transform = sourceTransform;
                         }
 
-                        command.parent.value = data.entity;
+                        command.parent.value = instance.entity;
                     }
                     else
                     {
@@ -1634,7 +1764,7 @@ public partial struct GameEntityActionSharedSystem : ISystem
                         {
                             isTransformed = true;
 
-                            transform = math.RigidTransform(quaternion.LookRotationSafe(-normal, up), position);
+                            transform = math.RigidTransform(quaternion.LookRotationSafe(-damager.normal, up), damager.position);
                         }
 
                         command.instance.transform = transform;
@@ -1646,85 +1776,10 @@ public partial struct GameEntityActionSharedSystem : ISystem
             }
         }
 
-        public void Destroy(
-            int index,
-            float elapsedTime,
-            double time,
-            in Entity entity,
-            in RigidTransform transform,
-            in GameActionData data)
+        public void Execute()
         {
-        }
-
-        private bool __GetTransform(in Entity entity, out RigidTransform transform)
-        {
-            if (!translations.HasComponent(entity))
-            {
-                transform = RigidTransform.identity;
-
-                return false;
-            }
-
-            transform = math.RigidTransform(
-                    rotations.HasComponent(entity) ? rotations[entity].Value : quaternion.identity,
-                    translations[entity].Value);
-
-            return true;
-        }
-    }
-
-    public struct Factory : IGameEntityActionFactory<Handler>, IEntityCommandProducerJob
-    {
-        /*[ReadOnly]
-        public NativeArray<ActionObject> actionObjects;
-
-        [ReadOnly]
-        public NativeArray<ActionObjectRange> actionObjectRanges;
-
-        [ReadOnly]
-        public NativeArray<Item> items;*/
-
-        public BlobAssetReference<GameEntityActionSharedDefinition> definition;
-
-        [ReadOnly]
-        public BufferLookup<GameEntityItem> entityItems;
-
-        [ReadOnly, NativeDisableContainerSafetyRestriction]
-        public ComponentLookup<Translation> translations;
-
-        [ReadOnly, NativeDisableContainerSafetyRestriction]
-        public ComponentLookup<Rotation> rotations;
-
-        [ReadOnly]
-        public ComponentLookup<GameEntitySharedActionType> actionTypes;
-
-        [ReadOnly]
-        public ComponentLookup<GameEntitySharedActionMask> actionMasks;
-
-        /*[ReadOnly]
-        public BufferLookup<GameEntitySharedAction> actions;*/
-
-        public NativeFactory<EntityData<GameEntitySharedHit>>.ParallelWriter hits;
-
-        public EntityCommandQueue<GameEntityActionSharedFactorySytem.Command>.ParallelWriter entityManager;
-
-        public Handler Create(in ArchetypeChunk chunk)
-        {
-            Handler handler;
-            /*handler.actionObjects = actionObjects;
-            handler.actionObjectRanges = actionObjectRanges;
-            handler.items = items;*/
-            handler.definition = definition;
-            handler.entityItems = entityItems;
-            handler.translations = translations;
-            handler.rotations = rotations;
-            handler.actionTypes = actionTypes;
-            handler.actionMasks = actionMasks;
-            //handler.actions = actions;
-            handler.hits = hits;
-            handler.entityManager = entityManager;
-
-            return handler;
+            foreach (var damager in damagers)
+                Execute(damager);
         }
     }
 
@@ -1767,140 +1822,191 @@ public partial struct GameEntityActionSharedSystem : ISystem
         }
     }
 
+    private EntityQuery __definitionGroup;
+
     private EntityQuery __hitGroup;
 
-    /*private NativeArray<ActionObject> __actionObjects;
-    private NativeArray<ActionObjectRange> __actionObjectRanges;
-    private NativeArray<Item> __items;*/
-    private NativeFactory<EntityData<GameEntitySharedHit>> __hits;
-    //private EntityCommandQueue<GameEntityActionSharedFactorySytem.Command> __entityManager;
-    private EntityCommandPool<GameEntityActionSharedFactorySytem.Command> __endFrameBarrier;
-    private GameEntityActionSystemCore __core;
+    private TransformLookup __transformLookup;
 
-    private BufferLookup<GameEntityItem> __entityItems;
-    private ComponentLookup<Translation> __translations;
-    private ComponentLookup<Rotation> __rotations;
+    private ActionMaskLookup __actionMaskLookup;
+
+    private ComponentLookup<GameActionData> __instances;
+
+    private ComponentLookup<GameActionDataEx> __instancesEx;
+
+    private ComponentLookup<GameActionStatus> __states;
+
     private ComponentLookup<GameEntitySharedActionType> __actionTypes;
-    private ComponentLookup<GameEntitySharedActionMask> __actionMasks;
-    //private BufferLookup<GameEntitySharedAction> __actions;
 
     private BufferTypeHandle<GameEntitySharedHit> __hitType;
     private BufferLookup<GameEntitySharedHit> __hitResults;
 
-    /*public void Create(
-        NativeArray<Item> items,
-        NativeArray<ActionObject> actionObjects,
-        NativeArray<ActionObjectRange> actionObjectRanges)
-    {
-        if (__items.IsCreated)
-            __items.Dispose();
+    private EntityCommandPool<GameEntityActionSharedFactorySytem.Command> __endFrameBarrier;
 
-        __items = new NativeArray<Item>(items.Length, Allocator.Persistent);
+    private GameEntityActionManager __actionManager;
 
-        NativeArray<Item>.Copy(items, __items);
+    private NativeFactory<EntityData<GameEntitySharedHit>> __hits;
 
-        if (__actionObjects.IsCreated)
-            __actionObjects.Dispose();
-
-        __actionObjects = new NativeArray<ActionObject>(actionObjects.Length, Allocator.Persistent);
-
-        NativeArray<ActionObject>.Copy(actionObjects, __actionObjects);
-
-        if (__actionObjectRanges.IsCreated)
-            __actionObjectRanges.Dispose();
-
-        __actionObjectRanges = new NativeArray<ActionObjectRange>(actionObjectRanges.Length, Allocator.Persistent);
-
-        NativeArray<ActionObjectRange>.Copy(actionObjectRanges, __actionObjectRanges);
-    }*/
+    public readonly static int InnerloopBatchCount = 4;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __definitionGroup = builder
+                .WithAll<GameEntityActionSharedData>()
+                //.WithOptions(EntityQueryOptions.IncludeSystems)
+                .Build(ref state);
+
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __hitGroup = builder
                 .WithAllRW<GameEntitySharedHit>()
                 .Build(ref state);
 
-        __hits = new NativeFactory<EntityData<GameEntitySharedHit>>(Allocator.Persistent, true);
-
-        __endFrameBarrier = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameEntityActionSharedFactorySytem>().pool;
-
-        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+        /*using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __core = new GameEntityActionSystemCore(builder
                 .WithAll<GameEntitySharedActionData>(),
-                ref state);
+                ref state);*/
 
-        __entityItems = state.GetBufferLookup<GameEntityItem>(true);
-        __translations = state.GetComponentLookup<Translation>(true);
-        __rotations = state.GetComponentLookup<Rotation>(true);
+        __transformLookup = new TransformLookup(ref state);
+        __actionMaskLookup = new ActionMaskLookup(ref state);
+
+        __instances = state.GetComponentLookup<GameActionData>(true);
+        __instancesEx = state.GetComponentLookup<GameActionDataEx>(true);
+
+        __states = state.GetComponentLookup<GameActionStatus>(true);
+
         __actionTypes = state.GetComponentLookup<GameEntitySharedActionType>(true);
-        __actionMasks = state.GetComponentLookup<GameEntitySharedActionMask>(true);
         //__actions = state.GetBufferLookup<GameEntitySharedAction>(true);
 
         __hitType = state.GetBufferTypeHandle<GameEntitySharedHit>();
 
         __hitResults = state.GetBufferLookup<GameEntitySharedHit>();
+
+
+        var world = state.WorldUnmanaged;
+
+        __endFrameBarrier = world.GetExistingSystemUnmanaged<GameEntityActionSharedFactorySytem>().pool;
+
+        __actionManager = world.GetExistingSystemUnmanaged<GameEntityActionSystem>().actionManager;
+
+        __hits = new NativeFactory<EntityData<GameEntitySharedHit>>(Allocator.Persistent, true);
     }
 
     public void OnDestroy(ref SystemState state)
     {
-        /*if (__items.IsCreated)
-            __items.Dispose();
-
-        if (__actionObjects.IsCreated)
-            __actionObjects.Dispose();
-
-        if (__actionObjectRanges.IsCreated)
-            __actionObjectRanges.Dispose();*/
-
         __hits.Dispose();
-
-        __core.Dispose();
     }
 
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        /*if (!__actionObjects.IsCreated)
-            return;*/
-        if (!SystemAPI.HasSingleton<GameEntityActionSharedData>())
+        if (!__definitionGroup.HasSingleton<GameEntityActionSharedData>())
             return;
+
+        var inputDeps = state.Dependency;
+
+        var definition = __definitionGroup.GetSingleton<GameEntityActionSharedData>().definition;
+        var transformLookup = __transformLookup.UpdateAsRef(ref state);
+        var actionMaskLookup = __actionMaskLookup.UpdateAsRef(ref state);
+        var instances = __instances.UpdateAsRef(ref state);
+        var instancesEx = __instancesEx.UpdateAsRef(ref state);
+        var states = __states.UpdateAsRef(ref state);
+        var actionTypes = __actionTypes.UpdateAsRef(ref state);
+
+        var commandCreators = __endFrameBarrier.Create();
+        var creators = __actionManager.creators;
+
+        ApplyCreateors applyCreateors;
+        applyCreateors.definition = definition;
+        applyCreateors.transformLookup = transformLookup;
+        applyCreateors.creators = creators.reader;
+        applyCreateors.instances = instances;
+        applyCreateors.instancesEx = instancesEx;
+        applyCreateors.states = states;
+        applyCreateors.actionTypes = actionTypes;
+        //applyCreateors.hits = __hits.parallelWriter;
+        applyCreateors.entityManager = commandCreators.parallelWriter;
+
+        ref var creatersJobManager = ref creators.lookupJobManager;
+        var applyCreateorsJobHandle = JobHandle.CombineDependencies(creatersJobManager.readOnlyJobHandle, inputDeps);
+        applyCreateorsJobHandle = applyCreateors.ScheduleByRef(creators.AsList(), InnerloopBatchCount, applyCreateorsJobHandle);
+
+        creatersJobManager.AddReadOnlyDependency(applyCreateorsJobHandle);
+        commandCreators.AddJobHandleForProducer<ApplyCreateors>(applyCreateorsJobHandle);
+
+        var commandInitializers = __endFrameBarrier.Create();
+        var initializers = __actionManager.initializers;
+
+        ApplyInitializers applyInitializers;
+        applyInitializers.definition = definition;
+        applyInitializers.transformLookup = transformLookup;
+        applyInitializers.initializers = initializers.reader;
+        applyInitializers.instances = instances;
+        applyInitializers.states = states;
+        applyInitializers.actionTypes = actionTypes;
+        applyInitializers.entityManager = commandInitializers.parallelWriter;
+
+        ref var initializersJobManager = ref initializers.lookupJobManager;
+        var applyInitializersJobHandle = JobHandle.CombineDependencies(initializersJobManager.readOnlyJobHandle, inputDeps);
+        applyInitializersJobHandle = applyInitializers.ScheduleByRef(initializers.AsList(), InnerloopBatchCount, applyInitializersJobHandle);
+
+        initializersJobManager.AddReadOnlyDependency(applyInitializersJobHandle);
+        commandInitializers.AddJobHandleForProducer<ApplyInitializers>(applyInitializersJobHandle);
+
+        var commandHiters = __endFrameBarrier.Create();
+        var hiters = __actionManager.hiters;
+
+        ApplyHiters applyHiters;
+        applyHiters.definition = definition;
+        applyHiters.transformLookup = transformLookup;
+        applyHiters.actionMaskLookup = actionMaskLookup;
+        applyHiters.hiters = hiters.value;
+        applyHiters.instances = instances;
+        applyHiters.actionTypes = actionTypes;
+        applyHiters.entityManager = commandHiters.parallelWriter;
+
+        ref var hitersJobManager = ref hiters.lookupJobManager;
+        var applyHitersJobHandle = JobHandle.CombineDependencies(hitersJobManager.readOnlyJobHandle, inputDeps);
+        applyHitersJobHandle = applyHiters.ScheduleByRef(applyHitersJobHandle);
+
+        hitersJobManager.AddReadOnlyDependency(applyHitersJobHandle);
+        commandHiters.AddJobHandleForProducer<ApplyHiters>(applyHitersJobHandle);
+
+        var commandDamagers = __endFrameBarrier.Create();
+        var damagers = __actionManager.damagers;
+
+        ApplyDamagers applyDamagers;
+        applyDamagers.definition = definition;
+        applyDamagers.transformLookup = transformLookup;
+        applyDamagers.actionMaskLookup = actionMaskLookup;
+        applyDamagers.damagers = damagers.value;
+        applyDamagers.instances = instances;
+        applyDamagers.actionTypes = actionTypes;
+        applyDamagers.hits = __hits.parallelWriter;
+        applyDamagers.entityManager = commandDamagers.parallelWriter;
+
+        ref var damagersJobManager = ref damagers.lookupJobManager;
+        var applyDamagersJobHandle = JobHandle.CombineDependencies(damagersJobManager.readOnlyJobHandle, inputDeps);
+        applyDamagersJobHandle = applyDamagers.ScheduleByRef(applyDamagersJobHandle);
+
+        damagersJobManager.AddReadOnlyDependency(applyDamagersJobHandle);
+        commandDamagers.AddJobHandleForProducer<ApplyDamagers>(applyDamagersJobHandle);
 
         ClearHits clearHits;
         clearHits.hitType = __hitType.UpdateAsRef(ref state);
-        var jobHandle = clearHits.ScheduleParallel(__hitGroup, state.Dependency);
+        var jobHandle = clearHits.ScheduleParallelByRef(__hitGroup, inputDeps);
 
-        var entityManager = __endFrameBarrier.Create();
+        ApplyHits applyHits;
+        applyHits.sources = __hits;
+        applyHits.destinations = __hitResults.UpdateAsRef(ref state);
+        applyDamagersJobHandle = applyHits.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, applyDamagersJobHandle));
 
-        Factory factory;
-        /*factory.actionObjects = __actionObjects;
-        factory.actionObjectRanges = __actionObjectRanges;
-        factory.items = __items;*/
-        factory.definition = SystemAPI.GetSingleton<GameEntityActionSharedData>().definition;
-        factory.entityItems = __entityItems.UpdateAsRef(ref state);
-        factory.translations = __translations.UpdateAsRef(ref state);
-        factory.rotations = __rotations.UpdateAsRef(ref state);
-        factory.actionTypes = __actionTypes.UpdateAsRef(ref state);
-        factory.actionMasks = __actionMasks.UpdateAsRef(ref state);
-        //factory.actions = __actions.UpdateAsRef(ref state);
-        factory.hits = __hits.parallelWriter;
-        factory.entityManager = entityManager.parallelWriter;
-
-        if (__core.Update<Handler, Factory>(factory, ref state))
-        {
-            var performJob = __core.performJob;
-
-            entityManager.AddJobHandleForProducer<Factory>(performJob);
-
-            ApplyHits applyHits;
-            applyHits.sources = __hits;
-            applyHits.destinations = __hitResults.UpdateAsRef(ref state);
-            jobHandle = applyHits.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, performJob));
-
-            state.Dependency = JobHandle.CombineDependencies(jobHandle, state.Dependency);
-        }
-        else
-            state.Dependency = jobHandle;
+        state.Dependency = JobHandle.CombineDependencies(
+            JobHandle.CombineDependencies(
+                applyCreateorsJobHandle, 
+                applyInitializersJobHandle, 
+                applyHitersJobHandle), 
+            applyDamagersJobHandle);
     }
 }

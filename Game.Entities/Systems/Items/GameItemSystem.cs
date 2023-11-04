@@ -398,10 +398,19 @@ public struct GameItemStructChangeManager : IComponentData
 [BurstCompile, UpdateInGroup(typeof(EntityObjectSystemGroup))]
 public partial struct GameItemStructChangeSystem : ISystem
 {
+    public GameItemStructChangeManager manager
+    {
+        get;
+
+        private set;
+    }
+
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        state.EntityManager.AddComponentData(state.SystemHandle, new GameItemStructChangeManager(Allocator.Persistent));
+        manager = new GameItemStructChangeManager(Allocator.Persistent);
+
+        state.EntityManager.AddComponentData(state.SystemHandle, manager);
     }
 
     //[BurstCompile]

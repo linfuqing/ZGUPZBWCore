@@ -1,14 +1,16 @@
 ﻿using System.Collections.Generic;
 using Unity.Jobs;
+using Unity.Burst.Intrinsics;
 using Unity.Burst;
 using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Collections;
 using Unity.Physics;
 using ZG;
-using Unity.Burst.Intrinsics;
+using ZG.Unsafe;
+using Unity.Collections.LowLevel.Unsafe;
 
-[assembly: RegisterGenericJobType(typeof(GameEntityActionSystemCore.PerformEx<GameEntityActionDataSystem.Handler, GameEntityActionDataSystem.Factory>))]
+//[assembly: RegisterGenericJobType(typeof(GameEntityActionSystemCore.PerformEx<GameEntityActionDataSystem.Handler, GameEntityActionDataSystem.Factory>))]
 
 /*public struct GameEntityActionDataDefinition
 {
@@ -55,10 +57,13 @@ using Unity.Burst.Intrinsics;
 }*/
 
 [BurstCompile,
-    CreateAfter(typeof(GameEntityActionLocationSystem)),
-    CreateAfter(typeof(GamePhysicsWorldBuildSystem)),
-    CreateAfter(typeof(GameItemSystem)), 
-    UpdateInGroup(typeof(GameEntityActionSystemGroup))]
+    //CreateAfter(typeof(GameEntityActionLocationSystem)),
+    //CreateAfter(typeof(GamePhysicsWorldBuildSystem)),
+    CreateAfter(typeof(GameItemSystem)),
+    CreateAfter(typeof(GameItemStructChangeSystem)), 
+    CreateAfter(typeof(GameRandomSpawnerSystem)), 
+    CreateAfter(typeof(GameEntityActionSystem)), 
+    UpdateInGroup(typeof(GameEntityActionSystemGroup), OrderLast = true)]
 public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProducerJob //GameEntityActionSystem<GameEntityActionDataSystem.Handler, GameEntityActionDataSystem.Factory>, IEntityCommandProducerJob
 {
     public struct Action
@@ -175,23 +180,14 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         }
     }
 
-    public struct Handler : IGameEntityActionHandler
+
+    private struct PropertyCalculator
     {
-        public int propertyCount;
-
-        public int hitCount;
+        [ReadOnly]
+        public NativeArray<Level> levels;
 
         [ReadOnly]
-        public SharedHashMap<Entity, Entity>.Reader handleEntities;
-
-        [ReadOnly]
-        public GameItemManager.Hierarchy hierarchy;
-
-        [ReadOnly]
-        public ComponentLookup<GameNodeStatus> nodeStates;
-
-        [ReadOnly]
-        public ComponentLookup<GameItemRoot> itemRoots;
+        public NativeArray<Property> properties;
 
         [ReadOnly]
         public ComponentLookup<GameItemVariant> entityVariants;
@@ -205,53 +201,23 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         [ReadOnly]
         public ComponentLookup<GameItemLevel> entityLevels;
 
-        [ReadOnly]
-        public NativeHashMap<int, int> itemTypeIndices;
+        public PropertyCalculator(
+            in NativeArray<Level> levels,
+            in NativeArray<Property> properties,
+            in ComponentLookup<GameItemVariant> entityVariants,
+            in ComponentLookup<GameItemExp> entityExps,
+            in ComponentLookup<GameItemPower> entityPowers,
+            in ComponentLookup<GameItemLevel> entityLevels)
+        {
+            this.levels = levels;
+            this.properties = properties;
+            this.entityVariants = entityVariants;
+            this.entityExps = entityExps;
+            this.entityPowers = entityPowers;
+            this.entityLevels = entityLevels;
+        }
 
-        [ReadOnly]
-        public NativeArray<Level> levels;
-
-        [ReadOnly]
-        public NativeArray<Property> properties;
-
-        [ReadOnly]
-        public NativeArray<GameActionSpawn> spawns;
-
-        [ReadOnly]
-        public NativeArray<ItemData> items;
-
-        [ReadOnly]
-        public NativeArray<ActionData> actions;
-
-        [ReadOnly]
-        public NativeArray<GameActionAttack> actionAttacks;
-
-        [ReadOnly]
-        public NativeArray<GameActionAttack> itemAttacks;
-
-        [ReadOnly]
-        public NativeArray<GameEntityDefence> itemDefences;
-
-        //[ReadOnly]
-        //public BufferLookup<GameEntityItem> entityItems;
-
-        [ReadOnly]
-        public BufferLookup<GameEntityDefence> defences;
-        
-        public BufferAccessor<GameActionAttack> attacks;
-        
-        public NativeArray<GameActionBuff> buffs;
-
-        [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameEntityHealthDamage> healthDamages;
-
-        public NativeFactory<BufferElementData<GameEntityHealthBuff>>.ParallelWriter healthBuffs;
-
-        public NativeFactory<BufferElementData<GameEntityTorpidityBuff>>.ParallelWriter torpidityBuffs;
-
-        public SharedList<GameSpawnData>.ParallelWriter results;
-
-        public void CalculateProperties(bool isAttack, in Entity entity, ref NativeArray<float> properties)
+        public void Calculate(bool isAttack, in Entity entity, ref NativeArray<float> properties)
         {
             if (!entityLevels.HasComponent(entity))
                 return;
@@ -267,7 +233,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
             float power = entityPowers[entity].value,
                 stage = GameSoulManager.GetStage(entityExps[entity].value, level.stageExpFactor),
                 propertyValue;
-            var propertyIndices = new NativeList<int>(propertyCount, Allocator.Temp);
+            var propertyIndices = new NativeList<int>(Allocator.Temp);
             for (int i = 0; i < level.attackCount; ++i)
             {
                 property = this.properties[level.attackStartIndex + i];
@@ -381,33 +347,176 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
             propertyIndices.Dispose();
         }
+    }
 
-        public bool CalculateProperties(
+    private struct BuffCalculator
+    {
+        public int propertyCount;
+
+        public int hitCount;
+
+        [ReadOnly]
+        public GameItemManager.Hierarchy hierarchy;
+
+        [ReadOnly]
+        public NativeArray<ItemData> items;
+
+        [ReadOnly]
+        public NativeHashMap<int, int> itemTypeIndices;
+
+        public BuffCalculator(
+            int propertyCount, 
+            int hitCount,
+            in GameItemManager.Hierarchy hierarchy, 
+            in NativeArray<ItemData> items, 
+            in NativeHashMap<int, int> itemTypeIndices)
+        {
+            this.propertyCount = propertyCount;
+            this.hitCount = hitCount;
+            this.hierarchy = hierarchy;
+            this.items = items;
+            this.itemTypeIndices = itemTypeIndices;
+        }
+
+        public bool Calculate(
             in GameItemHandle handle,
             in NativeArray<float> inputs,
             ref NativeArray<float> outputs)
         {
-            return __CalculateProperties(
+            return __Calculate(
                 false,
                 handle,
                 inputs,
-                ref outputs, 
+                ref outputs,
                 out _);
         }
 
-        public bool CalculateProperties(
+        public bool Calculate(
             in GameItemHandle handle,
             ref GameBuff buff)
         {
-            return __CalculateProperties(false, handle, ref buff, out _);
+            return __Calculate(false, handle, ref buff, out _);
+        }
+
+        public bool __Calculate(
+            bool isSibling,
+            in GameItemHandle handle,
+            in NativeArray<float> inputs,
+            ref NativeArray<float> outputs,
+            out GameItemInfo item)
+        {
+            if (hierarchy.GetChildren(handle, out var enumerator, out item))
+            {
+                __Calculate(
+                    true,
+                    item.siblingHandle,
+                    inputs,
+                    ref outputs,
+                    out _);
+
+                if (isSibling)
+                {
+                    GameItemInfo childItem;
+                    while (enumerator.MoveNext())
+                    {
+                        if (__Calculate(
+                            false,
+                            enumerator.Current.handle,
+                            inputs,
+                            ref outputs,
+                            out childItem) &&
+                            itemTypeIndices.TryGetValue(childItem.type, out int itemIndex))
+                        {
+                            int temp = itemIndex * propertyCount;
+                            for (int j = 0; j < propertyCount; ++j)
+                                outputs[j] += inputs[temp++];
+                        }
+                    }
+                }
+                else
+                {
+                    while (enumerator.MoveNext())
+                        __Calculate(
+                            false,
+                            enumerator.Current.handle,
+                            inputs,
+                            ref outputs,
+                            out _);
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+        public bool __Calculate(
+            bool isSibling,
+            in GameItemHandle handle,
+            ref GameBuff buff,
+            out GameItemInfo item)
+        {
+            if (hierarchy.GetChildren(handle, out var enumerator, out item))
+            {
+                __Calculate(
+                    true,
+                    item.siblingHandle,
+                    ref buff,
+                    out _);
+
+                if (isSibling)
+                {
+                    GameItemInfo childItem;
+                    while (enumerator.MoveNext())
+                    {
+                        if (__Calculate(
+                            false,
+                            enumerator.Current.handle,
+                            ref buff,
+                            out childItem) &&
+                            itemTypeIndices.TryGetValue(childItem.type, out int itemIndex))
+                            buff += items[itemIndex].buff;
+                    }
+                }
+                else
+                {
+                    while (enumerator.MoveNext())
+                        __Calculate(
+                            false,
+                            enumerator.Current.handle,
+                            ref buff,
+                            out _);
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+    }
+
+    private struct Spawner
+    {
+        [ReadOnly]
+        public NativeArray<GameActionSpawn> spawns;
+
+        [NativeDisableContainerSafetyRestriction]
+        public SharedList<GameSpawnData>.ParallelWriter results;
+
+        public Spawner(
+            in NativeArray<GameActionSpawn> spawns, 
+            SharedList<GameSpawnData>.ParallelWriter results)
+        {
+            this.spawns = spawns;
+            this.results = results;
         }
 
         public void Spawn(
-            int startIndex, 
-            int count, 
-            GameActionSpawnType type, 
-            double time, 
-            Entity entity, 
+            int startIndex,
+            int count,
+            GameActionSpawnType type,
+            //double time,
+            Entity entity,
             RigidTransform transform)
         {
             if (count > 0)
@@ -457,126 +566,206 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                 }
             }
         }
+    }
 
-        public bool Create(
-            int index,
-            double time,
-            in float3 targetPosition,
-            in Entity entity,
-            in RigidTransform transform, 
-            in GameActionData data)
+    [BurstCompile]
+    private struct ApplyInitializers : IJobParallelForDefer
+    {
+        public PropertyCalculator propertyCalculator;
+        public BuffCalculator buffCalculator;
+        public Spawner spawner;
+
+        [ReadOnly]
+        public NativeArray<ActionData> actions;
+
+        [ReadOnly]
+        public SharedList<GameEntityActionInitializer>.Reader initializers;
+
+        [ReadOnly]
+        public SharedHashMap<Entity, Entity>.Reader handleEntities;
+
+        [ReadOnly]
+        public ComponentLookup<GameActionData> instances;
+
+        [ReadOnly]
+        public ComponentLookup<GameItemRoot> itemRoots;
+
+        [ReadOnly]
+        public NativeArray<GameActionAttack> actionAttacks;
+
+        [ReadOnly]
+        public NativeArray<GameActionAttack> itemAttacks;
+
+        [NativeDisableParallelForRestriction]
+        public BufferLookup<GameActionAttack> attacks;
+
+        [NativeDisableParallelForRestriction]
+        public ComponentLookup<GameActionBuff> buffs;
+
+        public void Execute(int index)
         {
-            return false;
-        }
+            var initializer = initializers[index];
 
-        public bool Init(
-            int index,
-            float elapsedTime,
-            double time,
-            in Entity entity,
-            in RigidTransform transform,
-            in GameActionData data)
-        {
-            ActionData action = actions[data.actionIndex];
-            GameActionBuff buff;
-            buff.value = action.buff;
+            var instance = instances[initializer.entity];
 
-            var attacks = this.attacks[index].Reinterpret<float>();
-            attacks.ResizeUninitialized(propertyCount);
-
-            int temp = data.actionIndex * propertyCount;
-            for (int i = 0; i < propertyCount; ++i)
-                attacks[i] = actionAttacks[temp++].value;
-
-            if (itemRoots.HasComponent(data.entity))
+            var action = actions[instance.actionIndex];
+            if (this.attacks.HasBuffer(initializer.entity))
             {
-                var handle = itemRoots[data.entity].handle;
-                var attackArray = attacks.AsNativeArray();
-                CalculateProperties(true, handleEntities[GameItemStructChangeFactory.Convert(handle)], ref attackArray);
+                GameActionBuff buff;
+                buff.value = action.buff;
 
-                CalculateProperties(handle, itemAttacks.Reinterpret<float>(), ref attackArray);
+                var attacks = this.attacks[initializer.entity].Reinterpret<float>();
+                attacks.ResizeUninitialized(buffCalculator.propertyCount);
 
-                CalculateProperties(handle, ref buff.value);
+                int temp = instance.actionIndex * buffCalculator.propertyCount;
+                for (int i = 0; i < buffCalculator.propertyCount; ++i)
+                    attacks[i] = actionAttacks[temp++].value;
+
+                if (itemRoots.HasComponent(instance.entity))
+                {
+                    var handle = itemRoots[instance.entity].handle;
+                    var attackArray = attacks.AsNativeArray();
+                    propertyCalculator.Calculate(true, handleEntities[GameItemStructChangeFactory.Convert(handle)], ref attackArray);
+
+                    buffCalculator.Calculate(handle, itemAttacks.Reinterpret<float>(), ref attackArray);
+
+                    buffCalculator.Calculate(handle, ref buff.value);
+                }
+
+                /*if (this.entityItems.HasComponent(data.entity))
+                {
+                    DynamicBuffer<GameEntityItem> entityItems = this.entityItems[data.entity];
+                    GameEntityItem entityItem;
+                    int numItems = entityItems.Length, length = items.Length;
+                    for (int i = 0; i < numItems; ++i)
+                    {
+                        entityItem = entityItems[i];
+
+                        if (entityItem.index >= 0 && entityItem.index < length)
+                        {
+                            buff.value += items[entityItem.index].buff;
+
+                            temp = entityItem.index * count;
+                            for (int j = 0; j < count; ++j)
+                                attacks[j] += itemAttacks[temp++];
+                        }
+                    }
+                }*/
+
+                if (buffs.HasComponent(initializer.entity))
+                    buffs[initializer.entity] = buff;
             }
 
-            /*if (this.entityItems.HasComponent(data.entity))
-            {
-                DynamicBuffer<GameEntityItem> entityItems = this.entityItems[data.entity];
-                GameEntityItem entityItem;
-                int numItems = entityItems.Length, length = items.Length;
-                for (int i = 0; i < numItems; ++i)
-                {
-                    entityItem = entityItems[i];
-
-                    if (entityItem.index >= 0 && entityItem.index < length)
-                    {
-                        buff.value += items[entityItem.index].buff;
-
-                        temp = entityItem.index * count;
-                        for (int j = 0; j < count; ++j)
-                            attacks[j] += itemAttacks[temp++];
-                    }
-                }
-            }*/
-
-            buffs[index] = buff;
-
-            Spawn(
-                action.spawnStartIndex, 
-                action.spawnCount, 
-                GameActionSpawnType.Init, 
-                data.time + elapsedTime, 
-                data.entity, 
-                transform);
-
-            return false;
+            spawner.Spawn(
+                action.spawnStartIndex,
+                action.spawnCount,
+                GameActionSpawnType.Init,
+                //instance.time + initializer.elapsedTime,
+                instance.entity,
+                initializer.transform);
         }
+    }
 
-        public void Hit(
-            int index,
-            float elapsedTime,
-            double time,
-            in Entity entity,
-            in Entity target,
-            in RigidTransform transform,
-            in GameActionData data)
+    [BurstCompile]
+    private struct ApplyHiters : IJob
+    {
+        public Spawner spawner;
+
+        [ReadOnly]
+        public NativeArray<ActionData> actions;
+
+        [ReadOnly]
+        public NativeFactory<GameEntityActionHiter> hiters;
+
+        [ReadOnly]
+        public ComponentLookup<GameActionData> instances;
+
+        public void Execute(in GameEntityActionHiter hiter)
         {
-            ActionData action = actions[data.actionIndex];
-            Spawn(action.spawnStartIndex,
+            var instance = instances[hiter.entity];
+
+            var action = actions[instance.actionIndex];
+            spawner.Spawn(action.spawnStartIndex,
                 action.spawnCount,
                 GameActionSpawnType.Hit,
-                data.time + elapsedTime,
-                data.entity,
-                transform);
+                //instance.time + elapsedTime,
+                instance.entity,
+                hiter.transform);
         }
 
-        public void Damage(
-            int index,
-            int count,
-            float elapsedTime, 
-            double time,
-            in Entity entity,
-            in Entity target,
-            in float3 position,
-            in float3 normal,
-            in GameActionData data)
+        public void Execute()
         {
-            var attacks = this.attacks[index];
-            int numAttacks = math.min(attacks.Length, propertyCount);
+            foreach (var hiter in hiters)
+                Execute(hiter);
+        }
+    }
+
+    [BurstCompile]
+    private struct ApplyDamagers : IJob
+    {
+        public PropertyCalculator propertyCalculator;
+        public BuffCalculator buffCalculator;
+        public Spawner spawner;
+
+        [ReadOnly]
+        public NativeArray<ActionData> actions;
+
+        [ReadOnly]
+        public NativeFactory<GameEntityActionDamager> damagers;
+
+        [ReadOnly]
+        public SharedHashMap<Entity, Entity>.Reader handleEntities;
+
+        [ReadOnly]
+        public ComponentLookup<GameActionData> instances;
+
+        [ReadOnly]
+        public ComponentLookup<GameItemRoot> itemRoots;
+
+        [ReadOnly]
+        public ComponentLookup<GameNodeStatus> nodeStates;
+
+        [ReadOnly]
+        public NativeArray<GameEntityDefence> itemDefences;
+
+        //[ReadOnly]
+        //public BufferLookup<GameEntityItem> entityItems;
+
+        [ReadOnly]
+        public BufferLookup<GameEntityDefence> defences;
+
+        [ReadOnly]
+        public BufferLookup<GameActionAttack> attacks;
+
+        [ReadOnly]
+        public ComponentLookup<GameActionBuff> buffs;
+
+        [NativeDisableParallelForRestriction]
+        public ComponentLookup<GameEntityHealthDamage> healthDamages;
+
+        public NativeFactory<BufferElementData<GameEntityHealthBuff>>.ParallelWriter healthBuffs;
+
+        public NativeFactory<BufferElementData<GameEntityTorpidityBuff>>.ParallelWriter torpidityBuffs;
+
+        public void Execute(in GameEntityActionDamager damager, ref NativeArray<float> defences)
+        {
+            var instance = instances[damager.entity];
+
+            var attacks = this.attacks.HasBuffer(damager.entity) ? this.attacks[damager.entity] : default;
+            int numAttacks = math.min(attacks.IsCreated ? attacks.Length : 0, buffCalculator.propertyCount);
             if (numAttacks < 1)
                 return;
 
-            var defences = new NativeArray<float>(propertyCount, Allocator.Temp);
-            if (this.defences.HasBuffer(target))
+            if (this.defences.HasBuffer(damager.target))
             {
-                var temp = this.defences[target].Reinterpret<float>().AsNativeArray();
+                var temp = this.defences[damager.target].Reinterpret<float>().AsNativeArray();
                 NativeArray<float>.Copy(temp, defences, math.min(temp.Length, defences.Length));
             }
 
-            if (itemRoots.HasComponent(target))
+            if (itemRoots.HasComponent(damager.target))
             {
-                var handle = itemRoots[target].handle;
-                CalculateProperties(handle, itemDefences.Reinterpret<float>(), ref defences);
+                var handle = itemRoots[damager.target].handle;
+                buffCalculator.Calculate(handle, itemDefences.Reinterpret<float>(), ref defences);
 
                 /*if(this.entityItems.HasComponent(target))
                 {
@@ -595,7 +784,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                     }
                 }*/
 
-                CalculateProperties(false, handleEntities[GameItemStructChangeFactory.Convert(handle)], ref defences);
+                propertyCalculator.Calculate(false, handleEntities[GameItemStructChangeFactory.Convert(handle)], ref defences);
             }
 
             float attack, defence, value, hit = 0.0f, torpor = 0.0f;
@@ -609,280 +798,77 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                 else
                     value = math.max(attack, defence) - defence;
 
-                if (i < hitCount)
+                if (i < buffCalculator.hitCount)
                     hit += value;
                 else
                     torpor += value;
             }
 
-            defences.Dispose();
+            //defences.Dispose();
 
-            hit *= count;
-            torpor *= count;
+            hit *= damager.count;
+            torpor *= damager.count;
 
-            double now = data.time + elapsedTime;
+            double now = instance.time + damager.elapsedTime;
 
-            if (healthDamages.HasComponent(target))
+            if (healthDamages.HasComponent(damager.target))
             {
-                GameEntityHealthDamage healthDamage = healthDamages[target];
+                GameEntityHealthDamage healthDamage = healthDamages[damager.target];
                 healthDamage.value += hit;
                 healthDamage.time = now;
-                healthDamage.entity = data.entity;
+                healthDamage.entity = instance.entity;
 
-                healthDamages[target] = healthDamage;
+                healthDamages[damager.target] = healthDamage;
             }
 
-            GameActionBuff buff = buffs[index];
-            if (buff.value.healthTime > math.FLT_MIN_NORMAL)
+            if (buffs.HasComponent(damager.entity))
             {
-                BufferElementData<GameEntityHealthBuff> healthBuff;
+                var buff = buffs[damager.entity];
+                if (buff.value.healthTime > math.FLT_MIN_NORMAL)
+                {
+                    BufferElementData<GameEntityHealthBuff> healthBuff;
 
-                healthBuff.entity = target;
-                healthBuff.value.value = buff.value.healthPerTime;
-                healthBuff.value.duration = buff.value.healthTime;
-                healthBuffs.Create().value = healthBuff;
+                    healthBuff.entity = damager.target;
+                    healthBuff.value.value = buff.value.healthPerTime;
+                    healthBuff.value.duration = buff.value.healthTime;
+                    healthBuffs.Create().value = healthBuff;
+                }
+
+                if (math.abs(torpor) > math.FLT_MIN_NORMAL &&
+                    buff.value.torpidityTime > math.FLT_MIN_NORMAL &&
+                    nodeStates.HasComponent(damager.target) &&
+                    (nodeStates[damager.target].value & (int)GameEntityStatus.KnockedOut) != (int)GameEntityStatus.KnockedOut)
+                {
+                    BufferElementData<GameEntityTorpidityBuff> torpidityBuff;
+
+                    torpidityBuff.entity = damager.target;
+                    torpidityBuff.value.value = -torpor / buff.value.torpidityTime;
+                    torpidityBuff.value.duration = buff.value.torpidityTime;
+                    torpidityBuffs.Create().value = torpidityBuff;
+                }
             }
 
-            if (math.abs(torpor) > math.FLT_MIN_NORMAL && 
-                buff.value.torpidityTime > math.FLT_MIN_NORMAL && 
-                nodeStates.HasComponent(target) && 
-                (nodeStates[target].value & (int)GameEntityStatus.KnockedOut) != (int)GameEntityStatus.KnockedOut)
-            {
-                BufferElementData<GameEntityTorpidityBuff> torpidityBuff;
-
-                torpidityBuff.entity = target;
-                torpidityBuff.value.value = -torpor / buff.value.torpidityTime;
-                torpidityBuff.value.duration = buff.value.torpidityTime;
-                torpidityBuffs.Create().value = torpidityBuff;
-            }
-            
-            ActionData action = actions[data.actionIndex];
-            Spawn(action.spawnStartIndex,
+            var action = actions[instance.actionIndex];
+            spawner.Spawn(
+                action.spawnStartIndex,
                 action.spawnCount,
                 GameActionSpawnType.Damage,
-                data.time + elapsedTime,
-                data.entity,
-                math.RigidTransform(Math.FromToRotation(math.up(), normal), position));
+                //instance.time + elapsedTime,
+                instance.entity,
+                math.RigidTransform(Math.FromToRotation(math.up(), damager.normal), damager.position));
         }
 
-        public void Destroy(
-            int index,
-            float elapsedTime,
-            double time,
-            in Entity entity,
-            in RigidTransform transform,
-            in GameActionData data)
+        public void Execute()
         {
-        }
+            var defences = new NativeArray<float>(buffCalculator.propertyCount, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
 
-        public bool __CalculateProperties(
-            bool isSibling, 
-            in GameItemHandle handle,
-            in NativeArray<float> inputs,
-            ref NativeArray<float> outputs, 
-            out GameItemInfo item)
-        {
-            if (hierarchy.GetChildren(handle, out var enumerator, out item))
-            {
-                __CalculateProperties(
-                    true,
-                    item.siblingHandle,
-                    inputs,
-                    ref outputs, 
-                    out _);
+            foreach (var damager in damagers)
+                Execute(damager, ref defences);
 
-                if (isSibling)
-                {
-                    GameItemInfo childItem;
-                    while (enumerator.MoveNext())
-                    {
-                        if (__CalculateProperties(
-                            false,
-                            enumerator.Current.handle,
-                            inputs,
-                            ref outputs,
-                            out childItem) &&
-                            itemTypeIndices.TryGetValue(childItem.type, out int itemIndex))
-                        {
-                            int temp = itemIndex * propertyCount;
-                            for (int j = 0; j < propertyCount; ++j)
-                                outputs[j] += inputs[temp++];
-                        }
-                    }
-                }
-                else
-                {
-                    while (enumerator.MoveNext())
-                        __CalculateProperties(
-                            false,
-                            enumerator.Current.handle,
-                            inputs,
-                            ref outputs,
-                            out _);
-                }
-
-                return true;
-            }
-
-            return false;
-        }
-
-        public bool __CalculateProperties(
-            bool isSibling,
-            in GameItemHandle handle,
-            ref GameBuff buff, 
-            out GameItemInfo item)
-        {
-            if (hierarchy.GetChildren(handle, out var enumerator, out item))
-            {
-                __CalculateProperties(
-                    true,
-                    item.siblingHandle,
-                    ref buff, 
-                    out _);
-
-                if (isSibling)
-                {
-                    GameItemInfo childItem;
-                    while (enumerator.MoveNext())
-                    {
-                        if (__CalculateProperties(
-                            false,
-                            enumerator.Current.handle,
-                            ref buff, 
-                            out childItem) &&
-                            itemTypeIndices.TryGetValue(childItem.type, out int itemIndex))
-                            buff += items[itemIndex].buff;
-                    }
-                }
-                else
-                {
-                    while (enumerator.MoveNext())
-                        __CalculateProperties(
-                            false,
-                            enumerator.Current.handle,
-                            ref buff, 
-                            out _);
-                }
-
-                return true;
-            }
-
-            return false;
+            defences.Dispose();
         }
     }
-    
-    public struct Factory : IGameEntityActionFactory<Handler>
-    {
-        public int propertyCount;
 
-        public int hitCount;
-
-        [ReadOnly]
-        public SharedHashMap<Entity, Entity>.Reader handleEntities;
-
-        [ReadOnly]
-        public GameItemManager.Hierarchy hierarchy;
-
-        [ReadOnly]
-        public ComponentLookup<GameNodeStatus> nodeStates;
-
-        [ReadOnly]
-        public ComponentLookup<GameItemRoot> itemRoots;
-
-        [ReadOnly]
-        public ComponentLookup<GameItemVariant> entityVariants;
-
-        [ReadOnly]
-        public ComponentLookup<GameItemExp> entityExps;
-
-        [ReadOnly]
-        public ComponentLookup<GameItemPower> entityPowers;
-
-        [ReadOnly]
-        public ComponentLookup<GameItemLevel> entityLevels;
-
-        [ReadOnly]
-        public NativeArray<Level> levels;
-
-        [ReadOnly]
-        public NativeArray<Property> properties;
-
-        [ReadOnly]
-        public NativeArray<GameActionSpawn> spawns;
-
-        [ReadOnly]
-        public NativeArray<ItemData> items;
-
-        [ReadOnly]
-        public NativeArray<ActionData> actions;
-
-        [ReadOnly]
-        public NativeArray<GameActionAttack> actionAttacks;
-
-        [ReadOnly]
-        public NativeArray<GameActionAttack> itemAttacks;
-
-        [ReadOnly]
-        public NativeArray<GameEntityDefence> itemDefences;
-
-        [ReadOnly]
-        public NativeHashMap<int, int> itemTypeIndices;
-
-        //[ReadOnly]
-        //public BufferLookup<GameEntityItem> entityItems;
-
-        [ReadOnly]
-        public BufferLookup<GameEntityDefence> defences;
-        
-        public BufferTypeHandle<GameActionAttack> attackType;
-
-        public ComponentTypeHandle<GameActionBuff> buffType;
-
-        [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameEntityHealthDamage> healthDamages;
-
-        public NativeFactory<BufferElementData<GameEntityHealthBuff>>.ParallelWriter healthBuffs;
-
-        public NativeFactory<BufferElementData<GameEntityTorpidityBuff>>.ParallelWriter torpidityBuffs;
-
-        public SharedList<GameSpawnData>.ParallelWriter results;
-
-        public Handler Create(in ArchetypeChunk chunk)
-        {
-            Handler handler;
-            handler.propertyCount = propertyCount;
-            handler.hitCount = hitCount;
-            handler.handleEntities = handleEntities;
-            handler.hierarchy = hierarchy;
-            handler.nodeStates = nodeStates;
-            handler.itemRoots = itemRoots;
-            handler.entityVariants = entityVariants;
-            handler.entityExps = entityExps;
-            handler.entityPowers = entityPowers;
-            handler.entityLevels = entityLevels;
-            handler.levels = levels;
-            handler.properties = properties;
-            handler.spawns = spawns;
-            handler.items = items;
-            handler.actions = actions;
-            handler.actionAttacks = actionAttacks;
-            handler.itemAttacks = itemAttacks;
-            handler.itemDefences = itemDefences;
-            //handler.entityItems = entityItems;
-            handler.itemTypeIndices = itemTypeIndices;
-            handler.defences = defences;
-            handler.attacks = chunk.GetBufferAccessor(ref attackType);
-            handler.buffs = chunk.GetNativeArray(ref buffType);
-            handler.healthDamages = healthDamages;
-            handler.healthBuffs = healthBuffs;
-            handler.torpidityBuffs = torpidityBuffs;
-            handler.results = results;
-
-            return handler;
-        }
-    }
-    
     [BurstCompile]
     private struct Convert : IJob
     {
@@ -918,12 +904,16 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
             torpidityInputs.Clear();
         }
     }
-    
+
     private int __hitCount;
 
     private int __propertyCount;
 
+    private EntityQuery __group;
+
     private ComponentTypeHandle<GameActionData> __instanceType;
+
+    private ComponentLookup<GameActionData> __instances;
 
     private ComponentLookup<GameNodeStatus> __nodeStates;
 
@@ -939,31 +929,35 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
     private BufferLookup<GameEntityDefence> __defences;
 
-    private BufferTypeHandle<GameActionAttack> __attackType;
+    private BufferLookup<GameActionAttack> __attacks;
 
-    private ComponentTypeHandle<GameActionBuff> __buffType;
+    private ComponentLookup<GameActionBuff> __buffs;
 
     private ComponentLookup<GameEntityHealthDamage> __healthDamages;
 
     private BufferLookup<GameEntityHealthBuff> __healthOutputs;
     private BufferLookup<GameEntityTorpidityBuff> __torpidityOutputs;
 
-    private NativeArray<GameActionSpawn> __spawns;
-    private NativeArray<ActionData> __actions;
-    private NativeArray<ItemData> __items;
-    private NativeArray<Level> __levels;
-    private NativeArray<Property> __properties;
-    private NativeArray<GameActionAttack> __actionAttacks;
-    private NativeArray<GameActionAttack> __itemAttacks;
-    private NativeArray<GameEntityDefence> __itemDefences;
+    private GameEntityActionManager __actionManager;
+
+    private GameItemManagerShared __itemManager;
+    private SharedHashMap<Entity, Entity> __handleEntities;
+    private SharedList<GameSpawnData> __commands;
+
+    private NativeList<GameActionSpawn> __spawns;
+    private NativeList<ActionData> __actions;
+    private NativeList<ItemData> __items;
+    private NativeList<Level> __levels;
+    private NativeList<Property> __properties;
+    private NativeList<GameActionAttack> __actionAttacks;
+    private NativeList<GameActionAttack> __itemAttacks;
+    private NativeList<GameEntityDefence> __itemDefences;
     private NativeHashMap<int, int> __itemTypeIndices;
 
     private NativeFactory<BufferElementData<GameEntityHealthBuff>> __healthBuffs;
     private NativeFactory<BufferElementData<GameEntityTorpidityBuff>> __torpidityBuffs;
 
-    private GameEntityActionSystemCore __core;
-
-    private GameItemManagerShared __itemManager;
+    public static readonly int InnerloopBatchCount = 4;
 
     public void Create(
         //World world, 
@@ -977,7 +971,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         __propertyCount = 0;
 
         int numSpawns = 0, numActions = 0;
-        foreach(Action action in actions)
+        foreach (Action action in actions)
         {
             numSpawns += action.spawns == null ? 0 : action.spawns.Length;
 
@@ -999,9 +993,9 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         ActionData actionDestination;
         actionDestination.spawnStartIndex = 0;
 
-        __spawns = new NativeArray<GameActionSpawn>(numSpawns, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-        __actions = new NativeArray<ActionData>(numActions, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-        __actionAttacks = new NativeArray<GameActionAttack>(numActions * __propertyCount, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+        __spawns.Resize(numSpawns, NativeArrayOptions.UninitializedMemory);
+        __actions.Resize(numActions, NativeArrayOptions.UninitializedMemory);
+        __actionAttacks.Resize(numActions * __propertyCount, NativeArrayOptions.UninitializedMemory);
         foreach (Action actionSource in actions)
         {
             actionDestination.spawnCount = actionSource.spawns == null ? 0 : actionSource.spawns.Length;
@@ -1023,13 +1017,13 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
         num = 0;
         index = 0;
-        __items = new NativeArray<ItemData>(numItems, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+        __items.Resize(numItems, NativeArrayOptions.UninitializedMemory);
 
         count = numItems * __propertyCount;
-        __itemAttacks = new NativeArray<GameActionAttack>(count, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-        __itemDefences = new NativeArray<GameEntityDefence>(count, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+        __itemAttacks.Resize(count, NativeArrayOptions.UninitializedMemory);
+        __itemDefences.Resize(count, NativeArrayOptions.UninitializedMemory);
 
-        __itemTypeIndices = new NativeHashMap<int, int>(numItems, Allocator.Persistent);
+        __itemTypeIndices.Clear();// = new NativeHashMap<int, int>(numItems, Allocator.Persistent);
 
         int temp;
         ItemData itemDestination;
@@ -1062,8 +1056,8 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         int numLevels = levels.Length, numProperties = 0;
         LevelData sourceLevel;
         Level destinationLevel;
-        __levels = new NativeArrayLite<Level>(numLevels, Allocator.Persistent);
-        for(i = 0; i < numLevels; ++i)
+        __levels.Resize(numLevels, NativeArrayOptions.UninitializedMemory);// = new NativeArrayLite<Level>(numLevels, Allocator.Persistent);
+        for (i = 0; i < numLevels; ++i)
         {
             sourceLevel = levels[i];
             destinationLevel.stageExpFactor = sourceLevel.stageExpFactor;
@@ -1082,7 +1076,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         }
 
         int propertyIndex = 0, j;
-        __properties = new NativeArrayLite<Property>(numProperties, Allocator.Persistent);
+        __properties.Resize(numProperties, NativeArrayOptions.UninitializedMemory); //= new NativeArrayLite<Property>(numProperties, Allocator.Persistent);
         for (i = 0; i < numLevels; ++i)
         {
             sourceLevel = levels[i];
@@ -1096,15 +1090,17 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                 __properties[propertyIndex++] = sourceLevel.defences[j];
         }
 
-        //__spawnCommander = world.GetExistingSystemManaged<EndTimeSystemGroupEntityCommandSystem>().Create<GameSpawnData, T>(EntityCommandManager.QUEUE_PRESENT, spawnCommander);
     }
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        BurstUtility.InitializeJob<Convert>();
+        __hitCount = 0;
+        __propertyCount = 0;
 
         __instanceType = state.GetComponentTypeHandle<GameActionData>(true);
+
+        __instances = state.GetComponentLookup<GameActionData>(true);
 
         __nodeStates = state.GetComponentLookup<GameNodeStatus>(true);
         __itemRoots = state.GetComponentLookup<GameItemRoot>(true);
@@ -1114,57 +1110,60 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         __entityLevels = state.GetComponentLookup<GameItemLevel>(true);
 
         __defences = state.GetBufferLookup<GameEntityDefence>(true);
-        __attackType = state.GetBufferTypeHandle<GameActionAttack>();
-        __buffType = state.GetComponentTypeHandle<GameActionBuff>();
+        __attacks = state.GetBufferLookup<GameActionAttack>();
+        __buffs = state.GetComponentLookup<GameActionBuff>();
         __healthDamages = state.GetComponentLookup<GameEntityHealthDamage>();
 
         __healthOutputs = state.GetBufferLookup<GameEntityHealthBuff>();
         __torpidityOutputs = state.GetBufferLookup<GameEntityTorpidityBuff>();
 
+        var world = state.WorldUnmanaged;
+        ref var actionSystem = ref world.GetExistingSystemUnmanaged<GameEntityActionSystem>();
+        __group = actionSystem.group;
+
+        state.RequireForUpdate(__group);
+
+        __actionManager = actionSystem.actionManager;
+        __itemManager = world.GetExistingSystemUnmanaged<GameItemSystem>().manager;
+        __handleEntities = world.GetExistingSystemUnmanaged<GameItemStructChangeSystem>().manager.handleEntities;
+        __commands = world.GetExistingSystemUnmanaged<GameRandomSpawnerSystem>().commands;
+
+        __spawns = new NativeList<GameActionSpawn>(Allocator.Persistent);
+        __actions = new NativeList<ActionData>(Allocator.Persistent);
+        __items = new NativeList<ItemData>(Allocator.Persistent);
+        __levels = new NativeList<Level>(Allocator.Persistent);
+        __properties = new NativeList<Property>(Allocator.Persistent);
+        __actionAttacks = new NativeList<GameActionAttack>(Allocator.Persistent);
+        __itemAttacks = new NativeList<GameActionAttack>(Allocator.Persistent);
+        __itemDefences = new NativeList<GameEntityDefence>(Allocator.Persistent);
+        __itemTypeIndices = new NativeHashMap<int, int>(1, Allocator.Persistent);
+
         __healthBuffs = new NativeFactory<BufferElementData<GameEntityHealthBuff>>(Allocator.Persistent, true);
         __torpidityBuffs = new NativeFactory<BufferElementData<GameEntityTorpidityBuff>>(Allocator.Persistent, true);
-
-        using (var builder = new EntityQueryBuilder(Allocator.Temp))
-            __core = new GameEntityActionSystemCore(builder
-                .WithAllRW<GameActionBuff, GameActionAttack>(), 
-                ref state);
-
-        __itemManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>().manager;
     }
 
     public void OnDestroy(ref SystemState state)
     {
-        if (__spawns.IsCreated)
-            __spawns.Dispose();
+        __spawns.Dispose();
 
-        if (__actions.IsCreated)
-            __actions.Dispose();
+        __actions.Dispose();
 
-        if (__items.IsCreated)
-            __items.Dispose();
+        __items.Dispose();
 
-        if (__levels.IsCreated)
-            __levels.Dispose();
+        __levels.Dispose();
 
-        if (__properties.IsCreated)
-            __properties.Dispose();
+        __properties.Dispose();
 
-        if (__actionAttacks.IsCreated)
-            __actionAttacks.Dispose();
+        __actionAttacks.Dispose();
 
-        if (__itemAttacks.IsCreated)
-            __itemAttacks.Dispose();
+        __itemAttacks.Dispose();
 
-        if (__itemDefences.IsCreated)
-            __itemDefences.Dispose();
+        __itemDefences.Dispose();
 
-        if(__itemTypeIndices.IsCreated)
-            __itemTypeIndices.Dispose();
+        __itemTypeIndices.Dispose();
 
         __healthBuffs.Dispose();
         __torpidityBuffs.Dispose();
-
-        __core.Dispose();
     }
 
     [BurstCompile]
@@ -1173,84 +1172,128 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         if (__hitCount < 1)
             return;
 
-        if (!SystemAPI.HasSingleton<GameRandomSpawnerFactory>())
-            return;
-
-        var instanceType = __instanceType.UpdateAsRef(ref state);
-
         var counter = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
+
+        var actions = __actions.AsArray();
 
         CountEx count;
         count.counter = counter;
-        count.actions = __actions;
-        count.instanceType = instanceType;
-        var jobHandle = count.ScheduleByRef(__core.group, state.Dependency);
+        count.actions = actions;
+        count.instanceType = __instanceType.UpdateAsRef(ref state);
+        var inputDeps = count.ScheduleByRef(__group, state.Dependency);
 
-        var commands = SystemAPI.GetSingleton<GameRandomSpawnerFactory>().commands;
-        ref var commandsJobManager = ref commands.lookupJobManager;
+        ref var commandsJobManager = ref __commands.lookupJobManager;
 
         Recapcity recapcity;
         recapcity.counter = counter;
-        recapcity.results = commands.writer;
-        jobHandle = recapcity.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, commandsJobManager.readWriteJobHandle));
+        recapcity.results = __commands.writer;
+        inputDeps = recapcity.ScheduleByRef(JobHandle.CombineDependencies(inputDeps, commandsJobManager.readWriteJobHandle));
 
-        var handleEntities = SystemAPI.GetSingleton<GameItemStructChangeManager>().handleEntities;
-        ref var handleEntitiesJobManager = ref handleEntities.lookupJobManager;
+        ref var handleEntitiesJobManager = ref __handleEntities.lookupJobManager;
         ref var itemManagerJobManager = ref __itemManager.lookupJobManager;
+        var jobHandle = JobHandle.CombineDependencies(inputDeps, handleEntitiesJobManager.readOnlyJobHandle, itemManagerJobManager.readOnlyJobHandle);
 
-        state.Dependency = JobHandle.CombineDependencies(jobHandle, handleEntitiesJobManager.readOnlyJobHandle, itemManagerJobManager.readOnlyJobHandle);
+        var propertyCalculator = new PropertyCalculator(
+            __levels.AsArray(),
+            __properties.AsArray(),
+            __entityVariants.UpdateAsRef(ref state),
+            __entityExps.UpdateAsRef(ref state),
+            __entityPowers.UpdateAsRef(ref state),
+            __entityLevels.UpdateAsRef(ref state));
 
-        Factory factory;
-        factory.propertyCount = __propertyCount;
-        factory.hitCount = __hitCount;
-        factory.handleEntities = handleEntities.reader;
-        factory.hierarchy = __itemManager.hierarchy;
-        factory.nodeStates = __nodeStates.UpdateAsRef(ref state);
-        factory.itemRoots = __itemRoots.UpdateAsRef(ref state);
-        factory.entityVariants = __entityVariants.UpdateAsRef(ref state);
-        factory.entityExps = __entityExps.UpdateAsRef(ref state);
-        factory.entityPowers = __entityPowers.UpdateAsRef(ref state);
-        factory.entityLevels = __entityLevels.UpdateAsRef(ref state);
-        factory.levels = __levels;
-        factory.properties = __properties;
-        factory.spawns = __spawns;
-        factory.items = __items;
-        factory.actions = __actions;
-        factory.actionAttacks = __actionAttacks;
-        factory.itemAttacks = __itemAttacks;
-        factory.itemDefences = __itemDefences;
-        //factory.entityItems = GetBufferLookup<GameEntityItem>(true);
-        factory.itemTypeIndices = __itemTypeIndices;
-        factory.defences = __defences.UpdateAsRef(ref state);
-        factory.attackType = __attackType.UpdateAsRef(ref state);
-        factory.buffType = __buffType.UpdateAsRef(ref state);
-        factory.healthDamages = __healthDamages.UpdateAsRef(ref state);
-        factory.healthBuffs = __healthBuffs.parallelWriter;
-        factory.torpidityBuffs = __torpidityBuffs.parallelWriter;
-        factory.results = commands.parallelWriter;
+        var buffCalculator = new BuffCalculator(
+            __propertyCount,
+            __hitCount,
+            __itemManager.hierarchy,
+            __items.AsArray(),
+            __itemTypeIndices);
 
-        if (__core.Update<Handler, Factory>(factory, ref state))
-        {
-            jobHandle = state.Dependency;
+        var spawner = new Spawner(__spawns.AsArray(), __commands.parallelWriter);
 
-            var performJob = __core.performJob;
+        var instances = __instances.UpdateAsRef(ref state);
+        var itemRoots = __itemRoots.UpdateAsRef(ref state);
+        var attacks = __attacks.UpdateAsRef(ref state);
+        var buffs = __buffs.UpdateAsRef(ref state);
 
-            //spawnCommandQueue.AddJobHandleForProducer<GameEntityActionDataSystem>(jobHandle);
-            handleEntitiesJobManager.AddReadOnlyDependency(performJob);
+        var initializers = __actionManager.initializers;
 
-            itemManagerJobManager.AddReadOnlyDependency(performJob);
+        ApplyInitializers applyInitializers;
+        applyInitializers.propertyCalculator = propertyCalculator;
+        applyInitializers.buffCalculator = buffCalculator;
+        applyInitializers.spawner = spawner;
+        applyInitializers.actions = actions;
+        applyInitializers.initializers = initializers.reader;
+        applyInitializers.handleEntities = __handleEntities.reader;
+        applyInitializers.instances = instances;
+        applyInitializers.itemRoots = itemRoots;
+        applyInitializers.actionAttacks = __actionAttacks.AsArray();
+        applyInitializers.itemAttacks = __itemAttacks.AsArray();
+        applyInitializers.attacks = attacks;
+        applyInitializers.buffs = buffs;
 
-            commandsJobManager.readWriteJobHandle = performJob;
+        ref var initializersJobManager = ref initializers.lookupJobManager;
+        var applyInitializersJobHandle = JobHandle.CombineDependencies(initializersJobManager.readOnlyJobHandle, jobHandle);
+        applyInitializersJobHandle = applyInitializers.ScheduleByRef(initializers.AsList(), InnerloopBatchCount, applyInitializersJobHandle);
 
-            Convert convert;
-            convert.healthInputs = __healthBuffs;
-            convert.torpidityInputs = __torpidityBuffs;
-            convert.healthOutputs = __healthOutputs.UpdateAsRef(ref state);
-            convert.torpidityOutputs = __torpidityOutputs.UpdateAsRef(ref state);
+        initializersJobManager.AddReadOnlyDependency(applyInitializersJobHandle);
 
-            state.Dependency = JobHandle.CombineDependencies(jobHandle, convert.ScheduleByRef(performJob));
-        }
-        else
-            commandsJobManager.readWriteJobHandle = state.Dependency;
+        var hiters = __actionManager.hiters;
+
+        ApplyHiters applyHiters;
+        applyHiters.spawner = spawner;
+        applyHiters.actions = actions;
+        applyHiters.hiters = hiters.value;
+        applyHiters.instances = instances;
+
+        ref var hitersJobManager = ref hiters.lookupJobManager;
+        var applyHitersJobHandle = JobHandle.CombineDependencies(hitersJobManager.readOnlyJobHandle, inputDeps);
+        applyHitersJobHandle = applyHiters.ScheduleByRef(applyHitersJobHandle);
+
+        hitersJobManager.AddReadOnlyDependency(applyHitersJobHandle);
+
+        var damagers = __actionManager.damagers;
+
+        ApplyDamagers applyDamagers;
+        applyDamagers.propertyCalculator = propertyCalculator;
+        applyDamagers.buffCalculator = buffCalculator;
+        applyDamagers.spawner = spawner;
+        applyDamagers.actions = actions;
+        applyDamagers.damagers = damagers.value;
+        applyDamagers.handleEntities = __handleEntities.reader;
+        applyDamagers.instances = instances;
+        applyDamagers.itemRoots = itemRoots;
+        applyDamagers.nodeStates = __nodeStates.UpdateAsRef(ref state);
+        applyDamagers.itemDefences = __itemDefences.AsArray();
+        applyDamagers.defences = __defences.UpdateAsRef(ref state);
+        applyDamagers.attacks = attacks;
+        applyDamagers.buffs = buffs;
+        applyDamagers.healthDamages = __healthDamages.UpdateAsRef(ref state);
+        applyDamagers.healthBuffs = __healthBuffs.parallelWriter;
+        applyDamagers.torpidityBuffs = __torpidityBuffs.parallelWriter;
+
+        ref var damagersJobManager = ref damagers.lookupJobManager;
+        var applyDamagersJobHandle = JobHandle.CombineDependencies(damagersJobManager.readOnlyJobHandle, applyInitializersJobHandle);
+        applyDamagersJobHandle = applyDamagers.ScheduleByRef(applyDamagersJobHandle);
+
+        damagersJobManager.AddReadOnlyDependency(applyDamagersJobHandle);
+
+        jobHandle = applyDamagersJobHandle;// JobHandle.CombineDependencies(applyInitializersJobHandle, applyDamagersJobHandle);
+
+        //spawnCommandQueue.AddJobHandleForProducer<GameEntityActionDataSystem>(jobHandle);
+        handleEntitiesJobManager.AddReadOnlyDependency(jobHandle);
+
+        itemManagerJobManager.AddReadOnlyDependency(jobHandle);
+
+        jobHandle = JobHandle.CombineDependencies(jobHandle, applyHitersJobHandle);
+
+        commandsJobManager.readWriteJobHandle = jobHandle;
+
+        Convert convert;
+        convert.healthInputs = __healthBuffs;
+        convert.torpidityInputs = __torpidityBuffs;
+        convert.healthOutputs = __healthOutputs.UpdateAsRef(ref state);
+        convert.torpidityOutputs = __torpidityOutputs.UpdateAsRef(ref state);
+
+        state.Dependency = JobHandle.CombineDependencies(convert.ScheduleByRef(applyDamagersJobHandle), jobHandle);
     }
 }

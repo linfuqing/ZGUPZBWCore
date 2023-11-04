@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using Unity.Jobs;
 using Unity.Burst;
 using Unity.Burst.Intrinsics;
@@ -81,7 +80,11 @@ public partial struct GameEntityActionLocationSystem : ISystem
     }
 }
 
-public struct GameEntityActionSystemCore
+[BurstCompile,
+    CreateAfter(typeof(GameEntityActionLocationSystem)),
+    CreateAfter(typeof(GamePhysicsWorldBuildSystem)),
+    UpdateInGroup(typeof(GameEntityActionSystemGroup))]
+public partial struct GameEntityActionSystem : ISystem
 {
     [BurstCompile]
     private struct Reset : IJob
@@ -97,11 +100,11 @@ public struct GameEntityActionSystemCore
         }
     }
 
-    private struct DistanceCollector<T> : ICollector<DistanceHit> where T : IGameEntityActionHandler
+    private struct DistanceCollector : ICollector<DistanceHit>// where T : IGameEntityActionHandler
     {
         //public float hitValue;
 
-        private int __index;
+        //private int __index;
         private int __camp;
         private GameActionTargetType __type;
         private float __interval;
@@ -110,7 +113,7 @@ public struct GameEntityActionSystemCore
         private float __impactTime;
         private float __impactMaxSpeed;
         private float __elpasedTime;
-        private double __time;
+        //private double __time;
         private float3 __up;
         private float3 __position;
         private float3 __direction;
@@ -121,7 +124,8 @@ public struct GameEntityActionSystemCore
         private ComponentLookup<GameEntityCamp> __camps;
         private ComponentLookup<GameEntityActorMass> __masses;
         private NativeFactory<EntityData<GameNodeVelocityComponent>>.ParallelWriter __impacts;
-        private T __handler;
+        private NativeFactory<GameEntityActionDamager>.ParallelWriter __damagers;
+        //private T __handler;
 
         public bool EarlyOutOnFirstHit => false;
 
@@ -130,7 +134,7 @@ public struct GameEntityActionSystemCore
         public float MaxFraction { get; }
 
         public DistanceCollector(
-            int index,
+            //int index,
             int camp,
             GameActionTargetType type,
             float interval,
@@ -140,7 +144,7 @@ public struct GameEntityActionSystemCore
             float impactMaxSpeed,
             float distance,
             float elpasedTime,
-            double time,
+            //double time,
             in float3 up,
             in float3 position,
             in float3 direction,
@@ -150,12 +154,12 @@ public struct GameEntityActionSystemCore
             in ComponentLookup<GameEntityCamp> camps,
             in ComponentLookup<GameEntityActorMass> masses,
             ref DynamicBuffer<GameActionEntity> actionEntities,
-            ref NativeFactory<EntityData<GameNodeVelocityComponent>>.ParallelWriter impacts,
-            ref T handler)
+            ref NativeFactory<EntityData<GameNodeVelocityComponent>>.ParallelWriter impacts, 
+            ref NativeFactory<GameEntityActionDamager>.ParallelWriter damagers)
         {
             //hitValue = 0.0f;
 
-            __index = index;
+            //__index = index;
             __camp = camp;
             __type = type;
             __interval = interval;
@@ -164,7 +168,7 @@ public struct GameEntityActionSystemCore
             __impactTime = impactTime;
             __impactMaxSpeed = impactMaxSpeed;
             __elpasedTime = elpasedTime;
-            __time = time;
+            //__time = time;
             __up = up;
             __position = position;
             __position = position;
@@ -176,7 +180,7 @@ public struct GameEntityActionSystemCore
             __masses = masses;
             __actionEntities = actionEntities;
             __impacts = impacts;
-            __handler = handler;
+            __damagers = damagers;
 
             NumHits = 0;
             MaxFraction = distance;
@@ -201,7 +205,16 @@ public struct GameEntityActionSystemCore
             if (count < 1)
                 return false;
 
-            __handler.Damage(
+            GameEntityActionDamager damager;
+            damager.count = count;
+            damager.elapsedTime = __elpasedTime;
+            damager.entity = __entity;
+            damager.target = rigidbody.Entity;
+            damager.position = hit.Position;
+            damager.normal = -normal;
+            __damagers.Create().value = damager;
+
+            /*__handlers.Damage(
                 __index,
                 count,
                 __elpasedTime,
@@ -210,7 +223,7 @@ public struct GameEntityActionSystemCore
                 rigidbody.Entity,
                 hit.Position,
                 -normal,
-                __instance);
+                __instance);*/
 
             if (__impactForce > math.FLT_MIN_NORMAL && __masses.HasComponent(rigidbody.Entity))
             {
@@ -231,13 +244,13 @@ public struct GameEntityActionSystemCore
         }
     }
 
-    private struct CastCollector<TQueryResult, TQueryResultWrapper, THandler> : ICollector<TQueryResult>
+    private struct CastCollector<TQueryResult, TQueryResultWrapper> : ICollector<TQueryResult>
         where TQueryResult : struct, IQueryResult
         where TQueryResultWrapper : struct, IQueryResultWrapper<TQueryResult>
-        where THandler : IGameEntityActionHandler
+        //where THandler : IGameEntityActionHandler
     {
         private bool __isClosestHitOnly;
-        private int __index;
+        //private int __index;
         private int __camp;
         private GameActionTargetType __hitType;
         private GameActionTargetType __damageType;
@@ -248,7 +261,7 @@ public struct GameEntityActionSystemCore
         private float __impactForce;
         private float __impactTime;
         private float __impactMaxSpeed;
-        private double __time;
+        //private double __time;
         private float3 __up;
         private float3 __direction;
         private Entity __entity;
@@ -261,8 +274,9 @@ public struct GameEntityActionSystemCore
         private ComponentLookup<GameEntityCamp> __camps;
         private ComponentLookup<GameEntityActorMass> __masses;
         private NativeFactory<EntityData<GameNodeVelocityComponent>>.ParallelWriter __impacts;
+        private NativeFactory<GameEntityActionHiter>.ParallelWriter __hiters;
+        private NativeFactory<GameEntityActionDamager>.ParallelWriter __damagers;
         private TQueryResultWrapper __wrapper;
-        private THandler __handler;
 
         public bool EarlyOutOnFirstHit => false;
 
@@ -274,7 +288,7 @@ public struct GameEntityActionSystemCore
 
         public CastCollector(
             bool isClosestHitOnly,
-            int index,
+            //int index,
             int camp,
             GameActionTargetType hitType,
             GameActionTargetType damageType,
@@ -286,7 +300,7 @@ public struct GameEntityActionSystemCore
             float dot,
             float distance,
             float maxFraction,
-            double time,
+            //double time,
             in float3 up,
             in float3 direction,
             in Entity entity,
@@ -299,13 +313,14 @@ public struct GameEntityActionSystemCore
             in ComponentLookup<GameEntityActorMass> masses,
             ref DynamicBuffer<GameActionEntity> actionEntities,
             ref NativeFactory<EntityData<GameNodeVelocityComponent>>.ParallelWriter impacts,
-            ref TQueryResultWrapper wrapper,
-            ref THandler handler)
+            ref NativeFactory<GameEntityActionHiter>.ParallelWriter hiters, 
+            ref NativeFactory<GameEntityActionDamager>.ParallelWriter damagers, 
+            ref TQueryResultWrapper wrapper)
         {
             //hitValue = 0.0f;
 
             __isClosestHitOnly = isClosestHitOnly;
-            __index = index;
+            //__index = index;
             __camp = camp;
             __hitType = hitType;
             __damageType = damageType;
@@ -316,7 +331,7 @@ public struct GameEntityActionSystemCore
             __impactMaxSpeed = impactMaxSpeed;
             __dot = dot;
             __distance = distance;
-            __time = time;
+            //__time = time;
             __up = up;
             __direction = direction;
             __entity = entity;
@@ -329,8 +344,9 @@ public struct GameEntityActionSystemCore
             __masses = masses;
             __actionEntities = actionEntities;
             __impacts = impacts;
+            __hiters = hiters;
+            __damagers = damagers;
             __wrapper = wrapper;
-            __handler = handler;
 
             NumHits = 0;
 
@@ -438,18 +454,36 @@ public struct GameEntityActionSystemCore
             in Entity entity,
             in NativeSlice<RigidBody> rigidbodies)
         {
-            __handler.Hit(
+            GameEntityActionHiter hiter;
+            hiter.elapsedTime = transform.elapsedTime;
+            hiter.entity = __entity;
+            hiter.target = entity;
+            hiter.transform = transform.value;
+
+            __hiters.Create().value = hiter;
+
+            /*__handlers.Hit(
                 __index,
                 transform.elapsedTime,
                 __time,
                 __entity,
                 entity,
                 transform.value,
-                __instance);
+                __instance);*/
 
             if (count > 0)
             {
-                __handler.Damage(
+                GameEntityActionDamager damager;
+                damager.count = count;
+                damager.elapsedTime = transform.elapsedTime;
+                damager.entity = __entity;
+                damager.target = entity;
+                damager.position = position;
+                damager.normal = -normal;
+
+                __damagers.Create().value = damager;
+
+                /*__handlers.Damage(
                     __index,
                     count,
                     transform.elapsedTime,
@@ -458,7 +492,7 @@ public struct GameEntityActionSystemCore
                     entity,
                     position,
                     -normal,
-                    __instance);
+                    __instance);*/
 
                 //UnityEngine.Debug.LogError($"Damage {__entity} : {entity}");
 
@@ -489,8 +523,8 @@ public struct GameEntityActionSystemCore
                 pointDistanceInput.Position = position;
                 pointDistanceInput.Filter = __collisionFilter;
 
-                var collector = new DistanceCollector<THandler>(
-                    __index,
+                var collector = new DistanceCollector(
+                    //__index,
                     __camp,
                     __damageType,
                     __interval,
@@ -500,7 +534,7 @@ public struct GameEntityActionSystemCore
                     __impactMaxSpeed,
                     __distance,
                     transform.elapsedTime,
-                    __time,
+                    //__time,
                     __up,
                     position,
                     __direction,
@@ -510,8 +544,8 @@ public struct GameEntityActionSystemCore
                     __camps,
                     __masses,
                     ref __actionEntities,
-                    ref __impacts,
-                    ref __handler);
+                    ref __impacts, 
+                    ref __damagers);
 
                 __collisionWorld.CalculateDistance(pointDistanceInput, ref collector);
 
@@ -525,9 +559,9 @@ public struct GameEntityActionSystemCore
         }
     }
 
-    private struct Perform<THandler, TFactory>
+    private struct Perform/*<THandler, TFactory>
         where THandler : struct, IGameEntityActionHandler
-        where TFactory : struct, IGameEntityActionFactory<THandler>
+        where TFactory : struct, IGameEntityActionFactory<THandler>*/
     {
         public static readonly PhysicsMass DefaultPhysicsMask = new PhysicsMass()
         {
@@ -609,7 +643,9 @@ public struct GameEntityActionSystemCore
         public NativeFactory<EntityData<GameEntityBreakCommand>>.ParallelWriter breakCommands;
         //public EntityCommandQueue<EntityData<GameActionDisabled>>.ParallelWriter entityManager;
 
-        public THandler handler;
+        //public THandler handler;
+
+        public GameEntityActionManager.ParallelWriter actionManager;
 
         public unsafe void Execute(int index)
         {
@@ -769,7 +805,21 @@ public struct GameEntityActionSystemCore
                 maxTime = math.max(actorMoveTime, maxDamageTime);
             if ((value & GameActionStatus.Status.Created) != GameActionStatus.Status.Created)
             {
-                if (handler.Create(
+                GameEntityActionCreator creator;
+                creator.targetPosition = isSourceTransform ? sourceTransform.pos : instanceEx.targetPosition;
+                creator.entity = entity;
+                actionManager.creators.AddNoResize(creator);
+
+                if((value & GameActionStatus.Status.Damage) == GameActionStatus.Status.Damage)
+                {
+                    GameEntityActionInitializer initializer;
+                    initializer.elapsedTime = (float)(maxTime > oldTime ? oldTime - instance.time : maxTime - instance.time);
+                    initializer.entity = entity;
+                    initializer.transform = transform;
+                    actionManager.initializers.AddNoResize(initializer);
+                }
+
+                /*if (handlers.Create(
                         index,
                         time,
                         isSourceTransform ? sourceTransform.pos : instanceEx.targetPosition,
@@ -777,15 +827,15 @@ public struct GameEntityActionSystemCore
                         instanceEx.transform,
                         instance) ||
                         ((value & GameActionStatus.Status.Damage) == GameActionStatus.Status.Damage) &&
-                        handler.Init(
+                        handlers.Init(
                         index,
                         (float)(maxTime > oldTime ? oldTime - instance.time : maxTime - instance.time),
                         time,
                         entity,
                         transform,
                         instance))
-                    value |= /*GameActionStatus.Status.Created | */GameActionStatus.Status.Managed;
-                else
+                    value |= GameActionStatus.Status.Managed;
+                else*/
                     value |= GameActionStatus.Status.Created;
             }
 
@@ -894,14 +944,20 @@ public struct GameEntityActionSystemCore
                             transform.pos = math.transform(sourceTransform, instanceEx.value.offset) + __CalculateOffset(instance.entity);
                     }
 
-                    if (handler.Init(
+                    GameEntityActionInitializer initializer;
+                    initializer.elapsedTime = instanceEx.info.damageTime;
+                    initializer.entity = entity;
+                    initializer.transform = transform;
+                    actionManager.initializers.AddNoResize(initializer);
+
+                    /*if (handlers.Init(
                         index,
                         instanceEx.info.damageTime,
                         time,
                         entity,
                         transform,
                         instance))
-                        value |= GameActionStatus.Status.Managed;
+                        value |= GameActionStatus.Status.Managed;*/
 
                     float3 velocity = instanceEx.direction * instanceEx.info.actionMoveSpeed;
 
@@ -1238,9 +1294,9 @@ public struct GameEntityActionSystemCore
                         //UnityEngine.Debug.LogError($"dd {index} : {entity.Index} : {instance.actionIndex} : {time}");
 
                         ColliderCastHitWrapper wrapper;
-                        var castCollector = new CastCollector<ColliderCastHit, ColliderCastHitWrapper, THandler>(
+                        var castCollector = new CastCollector<ColliderCastHit, ColliderCastHitWrapper>(
                             (instanceEx.value.flag & GameActionFlag.DestroyOnHit) == GameActionFlag.DestroyOnHit,
-                            index,
+                            //index,
                             instanceEx.camp,
                             instanceEx.value.hitType,
                             instanceEx.value.damageType,
@@ -1252,7 +1308,7 @@ public struct GameEntityActionSystemCore
                             instanceEx.info.dot,
                             instanceEx.info.radius,
                             1.0f,
-                            time,
+                            //time,
                             (instanceEx.value.flag & GameActionFlag.TargetInAir) == GameActionFlag.TargetInAir ? up : float3.zero,
                             math.normalizesafe(end.value.pos - start.value.pos, instanceEx.direction),
                             entity,
@@ -1265,8 +1321,9 @@ public struct GameEntityActionSystemCore
                             masses,
                             ref actionEntities,
                             ref impacts,
-                            ref wrapper,
-                            ref handler);
+                            ref actionManager.hiters, 
+                            ref actionManager.damagers, 
+                            ref wrapper);
                         collisionWorld.CastCollider(colliderCastInput, ref castCollector);
                         isDestroy = castCollector.Apply(out result);
                     }
@@ -1283,9 +1340,9 @@ public struct GameEntityActionSystemCore
                         colliderDistanceInput.Collider = collider;
 
                         DistanceHitWrapper wrapper;
-                        var castCollector = new CastCollector<DistanceHit, DistanceHitWrapper, THandler>(
+                        var castCollector = new CastCollector<DistanceHit, DistanceHitWrapper>(
                             (instanceEx.value.flag & GameActionFlag.DestroyOnHit) == GameActionFlag.DestroyOnHit,
-                            index,
+                            //index,
                             instanceEx.camp,
                             instanceEx.value.hitType,
                             instanceEx.value.damageType,
@@ -1297,7 +1354,7 @@ public struct GameEntityActionSystemCore
                             instanceEx.info.dot,
                             instanceEx.info.radius,
                             distance,
-                            time,
+                            //time,
                             (instanceEx.value.flag & GameActionFlag.TargetInAir) == GameActionFlag.TargetInAir ? up : float3.zero,
                             instanceEx.direction,
                             entity,
@@ -1310,8 +1367,9 @@ public struct GameEntityActionSystemCore
                             masses,
                             ref actionEntities,
                             ref impacts,
-                            ref wrapper,
-                            ref handler);
+                            ref actionManager.hiters,
+                            ref actionManager.damagers,
+                            ref wrapper);
                         collisionWorld.CalculateDistance(colliderDistanceInput, ref castCollector);
                         isDestroy = castCollector.Apply(out result);
                     }
@@ -1374,14 +1432,14 @@ public struct GameEntityActionSystemCore
                 }
             }
 
-            if ((value & GameActionStatus.Status.Destroy) == GameActionStatus.Status.Destroy)
+            /*if ((value & GameActionStatus.Status.Destroy) == GameActionStatus.Status.Destroy)
                 handler.Destroy(
                     index,
                     elapsedTime,
                     time,
                     entity,
                     math.RigidTransform(rotations[index].Value, translations[index].Value),
-                    instance);
+                    instance);*/
 
             if (status.value != value)
             {
@@ -1465,9 +1523,9 @@ public struct GameEntityActionSystemCore
     }
 
     [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Deterministic)]
-    public struct PerformEx<THandler, TFactory> : IJobChunk
-        where THandler : struct, IGameEntityActionHandler
-        where TFactory : struct, IGameEntityActionFactory<THandler>
+    public struct PerformEx : IJobChunk
+        /*where THandler : struct, IGameEntityActionHandler
+        where TFactory : struct, IGameEntityActionFactory<THandler>*/
     {
         public GameDeadline deltaTime;
         public GameTime time;
@@ -1541,11 +1599,13 @@ public struct GameEntityActionSystemCore
         public NativeFactory<EntityData<GameEntityBreakCommand>>.ParallelWriter breakCommands;
         //public EntityCommandQueue<EntityData<GameActionDisabled>>.ParallelWriter entityManager;
 
-        public TFactory factory;
+        //public TFactory factory;
+
+        public GameEntityActionManager.ParallelWriter actionManager;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
-            Perform<THandler, TFactory> executor;
+            Perform/*<THandler, TFactory>*/ executor;
             executor.deltaTime = (float)deltaTime;
             executor.now = time;
             executor.gravity = gravity;
@@ -1575,8 +1635,9 @@ public struct GameEntityActionSystemCore
             //perform.directVelocities = directVelocities;
             executor.impacts = impacts;
             executor.breakCommands = breakCommands;
+            executor.actionManager = actionManager;
             //perform.entityManager = entityManager;
-            executor.handler = factory.Create(chunk);
+            //executor.handler = factory.Create(chunk);
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -1806,13 +1867,6 @@ public struct GameEntityActionSystemCore
         }
     }
 
-    public JobHandle performJob
-    {
-        get;
-
-        private set;
-    }
-
     public EntityQuery group
     {
         get;
@@ -1825,8 +1879,6 @@ public struct GameEntityActionSystemCore
     private EntityQuery __physicsStepGroup;
 
     private GameUpdateTime __time;
-
-    private SharedPhysicsWorld __physicsWorld;
 
     private EntityTypeHandle __entityType;
     private ComponentTypeHandle<GameActionData> __instanceType;
@@ -1865,112 +1917,102 @@ public struct GameEntityActionSystemCore
 
     //private EntityCommandPool<EntityData<GameActionDisabled>> __entityManager;
 
+    private SharedPhysicsWorld __physicsWorld;
+
     private SharedHashMap<Entity, float3> __locations;
+
     private NativeFactory<Entity> __unstoppableEntities;
     //private NativeQueue<EntityData<float>> __directVelocities;
     private NativeFactory<EntityData<GameNodeVelocityComponent>> __impacts;
     private NativeFactory<EntityData<GameEntityBreakCommand>> __commands;
 
-    public GameEntityActionSystemCore(EntityQueryBuilder builder, ref SystemState systemState)
+    public GameEntityActionManager actionManager
     {
-        performJob = default;
+        readonly get;
 
-        /*var source = queries;
-        var destination = source == null ? new List<EntityQueryDesc>(1) : new List<EntityQueryDesc>(source);
-        if (destination.Count < 1)
-            destination.Add(new EntityQueryDesc());
+        private set;
+    }
 
-        List<ComponentType> componentTypes = new List<ComponentType>();
-        foreach (EntityQueryDesc query in destination)
-        {
-            componentTypes.Clear();
 
-            componentTypes.Add(ComponentType.ReadOnly<GameActionData>());
-            componentTypes.Add(ComponentType.ReadOnly<GameActionDataEx>());
-            componentTypes.Add(ComponentType.ReadWrite<GameActionEntity>());
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        using(var builder = new EntityQueryBuilder(Allocator.Temp))
+            group = builder
+                .WithAll<GameActionData, GameActionDataEx, GameActionEntity>()
+                .Build(ref state);// systemState.GetEntityQuery(new List<EntityQueryDesc>(destination).ToArray());
 
-            if (query.All != null)
-                componentTypes.AddRange(query.All);
+        __physicsStepGroup = state.GetEntityQuery(ComponentType.ReadOnly<Unity.Physics.PhysicsStep>());
 
-            query.All = componentTypes.ToArray();
+        __time = new GameUpdateTime(ref state);
 
-            componentTypes.Clear();
-            //componentTypes.Add(typeof(GameActionDisabled));
+        __entityType = state.GetEntityTypeHandle();
+        __instanceType = state.GetComponentTypeHandle<GameActionData>(true);
+        __statusType = state.GetComponentTypeHandle<GameActionStatus>(true);
 
-            if (query.None != null)
-                componentTypes.AddRange(query.None);
+        __disabled = state.GetComponentLookup<Disabled>(true);
+        __surfaces = state.GetComponentLookup<GameNodeSurface>(true);
+        __directs = state.GetComponentLookup<GameNodeDirect>(true);
+        __indirects = state.GetComponentLookup<GameNodeIndirect>(true);
+        __actorStates = state.GetComponentLookup<GameNodeActorStatus>(true);
+        __colliders = state.GetComponentLookup<GameNodeCharacterCollider>(true);
+        __camps = state.GetComponentLookup<GameEntityCamp>(true);
+        __masses = state.GetComponentLookup<GameEntityActorMass>(true);
+        __infos = state.GetComponentLookup<GameEntityActorInfo>(true);
+        __commandVersions = state.GetComponentLookup<GameEntityCommandVersion>(true);
 
-            query.None = componentTypes.ToArray();
-        }*/
+        __instanceExType = state.GetComponentTypeHandle<GameActionDataEx>(true);
 
-        group = builder.WithAll<GameActionData, GameActionDataEx, GameActionEntity>().Build(ref systemState);// systemState.GetEntityQuery(new List<EntityQueryDesc>(destination).ToArray());
+        __translationType = state.GetComponentTypeHandle<Translation>();
+        __rotationType = state.GetComponentTypeHandle<Rotation>();
+        __physicsVelocityType = state.GetComponentTypeHandle<PhysicsVelocity>();
+        //perform.physicsGravityFactorType = GetComponentTypeHandle<PhysicsGravityFactor>();
+        __actionEntityType = state.GetBufferTypeHandle<GameActionEntity>();
+        __results = state.GetComponentLookup<GameActionStatus>();
 
-        __physicsStepGroup = systemState.GetEntityQuery(ComponentType.ReadOnly<Unity.Physics.PhysicsStep>());
+        __translations = state.GetComponentLookup<Translation>();
 
-        __time = new GameUpdateTime(ref systemState);
+        __characterflags = state.GetComponentLookup<GameNodeCharacterFlag>();
 
-        var world = systemState.WorldUnmanaged;
+        __rages = state.GetComponentLookup<GameEntityRage>();
+        __hits = state.GetComponentLookup<GameEntityHit>();
+        __actorHits = state.GetComponentLookup<GameEntityActorHit>();
+
+        __breakCommands = state.GetComponentLookup<GameEntityBreakCommand>();
+
+        __velocities = state.GetBufferLookup<GameNodeVelocityComponent>();
+
+        var world = state.WorldUnmanaged;
         __physicsWorld = world.GetExistingSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
 
         __locations = world.GetExistingSystemUnmanaged<GameEntityActionLocationSystem>().locations;
+
         __unstoppableEntities = new NativeFactory<Entity>(Allocator.Persistent, true);
         //__directVelocities = new NativeQueue<EntityData<float>>(Allocator.Persistent);
         __impacts = new NativeFactory<EntityData<GameNodeVelocityComponent>>(Allocator.Persistent, true);
         __commands = new NativeFactory<EntityData<GameEntityBreakCommand>>(Allocator.Persistent, true);
 
-        __entityType = systemState.GetEntityTypeHandle();
-        __instanceType = systemState.GetComponentTypeHandle<GameActionData>(true);
-        __statusType = systemState.GetComponentTypeHandle<GameActionStatus>(true);
-
-        __disabled = systemState.GetComponentLookup<Disabled>(true);
-        __surfaces = systemState.GetComponentLookup<GameNodeSurface>(true);
-        __directs = systemState.GetComponentLookup<GameNodeDirect>(true);
-        __indirects = systemState.GetComponentLookup<GameNodeIndirect>(true);
-        __actorStates = systemState.GetComponentLookup<GameNodeActorStatus>(true);
-        __colliders = systemState.GetComponentLookup<GameNodeCharacterCollider>(true);
-        __camps = systemState.GetComponentLookup<GameEntityCamp>(true);
-        __masses = systemState.GetComponentLookup<GameEntityActorMass>(true);
-        __infos = systemState.GetComponentLookup<GameEntityActorInfo>(true);
-        __commandVersions = systemState.GetComponentLookup<GameEntityCommandVersion>(true);
-
-        __instanceExType = systemState.GetComponentTypeHandle<GameActionDataEx>(true);
-
-        __translationType = systemState.GetComponentTypeHandle<Translation>();
-        __rotationType = systemState.GetComponentTypeHandle<Rotation>();
-        __physicsVelocityType = systemState.GetComponentTypeHandle<PhysicsVelocity>();
-        //perform.physicsGravityFactorType = GetComponentTypeHandle<PhysicsGravityFactor>();
-        __actionEntityType = systemState.GetBufferTypeHandle<GameActionEntity>();
-        __results = systemState.GetComponentLookup<GameActionStatus>();
-
-        __translations = systemState.GetComponentLookup<Translation>();
-
-        __characterflags = systemState.GetComponentLookup<GameNodeCharacterFlag>();
-
-        __rages = systemState.GetComponentLookup<GameEntityRage>();
-        __hits = systemState.GetComponentLookup<GameEntityHit>();
-        __actorHits = systemState.GetComponentLookup<GameEntityActorHit>();
-
-        __breakCommands = systemState.GetComponentLookup<GameEntityBreakCommand>();
-
-        __velocities = systemState.GetBufferLookup<GameNodeVelocityComponent>();
+        actionManager = new GameEntityActionManager(Allocator.Persistent);
     }
 
-    public void Dispose()
+    //[BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
+        actionManager.Dispose();
+
         __unstoppableEntities.Dispose();
         __impacts.Dispose();
         __commands.Dispose();
     }
 
-    public bool Update<THandler, TFactory>(in TFactory factory, ref SystemState systemState)
-        where THandler : struct, IGameEntityActionHandler
-        where TFactory : struct, IGameEntityActionFactory<THandler>
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
-        var group = this.group;
+        /*var group = this.group;
         if (group.IsEmptyIgnoreFilter)
-            return false;
+            return false;*/
 
-        var inputDeps = systemState.Dependency;
+        var inputDeps = state.Dependency;
 
         ref var locationJobManager = ref __locations.lookupJobManager;
         var counter = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
@@ -1983,66 +2025,59 @@ public struct GameEntityActionSystemCore
         reset.locations = __locations.writer;
         jobHandle = reset.ScheduleByRef(jobHandle);
 
-        NativeFactory<Entity> unstoppableEntities = __unstoppableEntities;
-        NativeFactory<EntityData<GameNodeVelocityComponent>> impacts = __impacts;
-        NativeFactory<EntityData<GameEntityBreakCommand>> commands = __commands;
+        var actionManager = this.actionManager;
 
-        var entityType = __entityType.UpdateAsRef(ref systemState);
-        var instanceType = __instanceType.UpdateAsRef(ref systemState);
-        var instanceExType = __instanceExType.UpdateAsRef(ref systemState);
-        var statusType = __statusType.UpdateAsRef(ref systemState);
-        var actionEntityType = __actionEntityType.UpdateAsRef(ref systemState);
+        var entityType = __entityType.UpdateAsRef(ref state);
+        var instanceType = __instanceType.UpdateAsRef(ref state);
+        var instanceExType = __instanceExType.UpdateAsRef(ref state);
+        var statusType = __statusType.UpdateAsRef(ref state);
+        var actionEntityType = __actionEntityType.UpdateAsRef(ref state);
 
-        //var entityManager = __entityManager.Create();
-
-        ref var physicsWorldJobManager = ref __physicsWorld.lookupJobManager;
-
-        jobHandle = JobHandle.CombineDependencies(jobHandle, physicsWorldJobManager.readOnlyJobHandle);
-
-        PerformEx<THandler, TFactory> perform;
+        PerformEx perform;
         perform.deltaTime = __time.delta;
         perform.time = __time.RollbackTime.now;
         perform.gravity = __physicsStepGroup.IsEmptyIgnoreFilter ? Unity.Physics.PhysicsStep.Default.Gravity : __physicsStepGroup.GetSingleton<Unity.Physics.PhysicsStep>().Gravity;
         perform.collisionWorld = __physicsWorld.collisionWorld;
-        perform.disabled = __disabled.UpdateAsRef(ref systemState);
-        perform.surfaces = __surfaces.UpdateAsRef(ref systemState);
-        perform.directs = __directs.UpdateAsRef(ref systemState);
-        perform.indirects = __indirects.UpdateAsRef(ref systemState);
-        perform.actorStates = __actorStates.UpdateAsRef(ref systemState);
-        perform.colliders = __colliders.UpdateAsRef(ref systemState);
-        perform.camps = __camps.UpdateAsRef(ref systemState);
-        perform.masses = __masses.UpdateAsRef(ref systemState);
-        perform.infos = __infos.UpdateAsRef(ref systemState);
-        perform.commandVersions = __commandVersions.UpdateAsRef(ref systemState);
+        perform.disabled = __disabled.UpdateAsRef(ref state);
+        perform.surfaces = __surfaces.UpdateAsRef(ref state);
+        perform.directs = __directs.UpdateAsRef(ref state);
+        perform.indirects = __indirects.UpdateAsRef(ref state);
+        perform.actorStates = __actorStates.UpdateAsRef(ref state);
+        perform.colliders = __colliders.UpdateAsRef(ref state);
+        perform.camps = __camps.UpdateAsRef(ref state);
+        perform.masses = __masses.UpdateAsRef(ref state);
+        perform.infos = __infos.UpdateAsRef(ref state);
+        perform.commandVersions = __commandVersions.UpdateAsRef(ref state);
         perform.entityType = entityType;
         perform.instanceType = instanceType;
         perform.instanceExType = instanceExType;
         perform.statusType = statusType;
-        perform.translationType = __translationType.UpdateAsRef(ref systemState);
-        perform.rotationType = __rotationType.UpdateAsRef(ref systemState);
-        perform.physicsVelocityType = __physicsVelocityType.UpdateAsRef(ref systemState);
+        perform.translationType = __translationType.UpdateAsRef(ref state);
+        perform.rotationType = __rotationType.UpdateAsRef(ref state);
+        perform.physicsVelocityType = __physicsVelocityType.UpdateAsRef(ref state);
         //perform.physicsGravityFactorType = GetComponentTypeHandle<PhysicsGravityFactor>();
         perform.actionEntityType = actionEntityType;
-        perform.results = __results.UpdateAsRef(ref systemState);
+        perform.results = __results.UpdateAsRef(ref state);
         perform.locations = __locations.parallelWriter;
-        perform.unstoppableEntities = unstoppableEntities.parallelWriter;
+        perform.unstoppableEntities = __unstoppableEntities.parallelWriter;
         //perform.directVelocities = __directVelocities.AsParallelWriter();
-        perform.impacts = impacts.parallelWriter;
-        perform.breakCommands = commands.parallelWriter;
-        //perform.entityManager = entityManager.parallelWriter;
-        perform.factory = factory;
+        perform.impacts = __impacts.parallelWriter;
+        perform.breakCommands = __commands.parallelWriter;
+        perform.actionManager = actionManager.parallelWriter;
 
-        JobHandle performJob = perform.ScheduleParallelByRef(group, jobHandle);
+        ref var physicsWorldJobManager = ref __physicsWorld.lookupJobManager;
 
-        //entityManager.AddJobHandleForProducer(performJob);
+        jobHandle = JobHandle.CombineDependencies(jobHandle, physicsWorldJobManager.readOnlyJobHandle, actionManager.Resize(group, inputDeps));
 
-        physicsWorldJobManager.AddReadOnlyDependency(performJob);
+        jobHandle = perform.ScheduleParallelByRef(group, jobHandle);
 
-        locationJobManager.readWriteJobHandle = performJob;
+        actionManager.jobHandle = jobHandle;
 
-        this.performJob = performJob;
+        physicsWorldJobManager.AddReadOnlyDependency(jobHandle);
 
-        var translations = __translations.UpdateAsRef(ref systemState);
+        locationJobManager.readWriteJobHandle = jobHandle;
+
+        var translations = __translations.UpdateAsRef(ref state);
 
         ComputeHitsEx computeHits;
         computeHits.entityArrayType = entityType;
@@ -2051,35 +2086,36 @@ public struct GameEntityActionSystemCore
         computeHits.statusType = statusType;
         computeHits.entityType = actionEntityType;
         computeHits.translations = translations;
-        computeHits.rages = __rages.UpdateAsRef(ref systemState);
-        computeHits.hits = __hits.UpdateAsRef(ref systemState);
-        computeHits.actorHits = __actorHits.UpdateAsRef(ref systemState);
+        computeHits.rages = __rages.UpdateAsRef(ref state);
+        computeHits.hits = __hits.UpdateAsRef(ref state);
+        computeHits.actorHits = __actorHits.UpdateAsRef(ref state);
 
-        var hitJob = computeHits.ScheduleByRef(group, performJob);
+        var hitJob = computeHits.ScheduleByRef(group, jobHandle);
 
         ApplyUnstoppableEntities applyUnstoppableEntities;
-        applyUnstoppableEntities.entities = unstoppableEntities;
-        applyUnstoppableEntities.flags = __characterflags.UpdateAsRef(ref systemState);
-        var flagJob = applyUnstoppableEntities.Schedule(performJob);
+        applyUnstoppableEntities.entities = __unstoppableEntities;
+        applyUnstoppableEntities.flags = __characterflags.UpdateAsRef(ref state);
+        var flagJob = applyUnstoppableEntities.ScheduleByRef(jobHandle);
 
         ApplyImpacts applyImpacts;
-        applyImpacts.sources = impacts;
-        applyImpacts.destinations = __velocities.UpdateAsRef(ref systemState);
-        var impactJob = applyImpacts.Schedule(performJob);
+        applyImpacts.sources = __impacts;
+        applyImpacts.destinations = __velocities.UpdateAsRef(ref state);
+        var impactJob = applyImpacts.ScheduleByRef(jobHandle);
 
         ApplyBreakCommands applyBreakCommands;
-        applyBreakCommands.sources = commands;
-        applyBreakCommands.destinations = __breakCommands.UpdateAsRef(ref systemState);
-        var breakCommandJob = applyBreakCommands.Schedule(performJob);
+        applyBreakCommands.sources = __commands;
+        applyBreakCommands.destinations = __breakCommands.UpdateAsRef(ref state);
+        var breakCommandJob = applyBreakCommands.ScheduleByRef(jobHandle);
 
-        systemState.Dependency = JobHandle.CombineDependencies(
-            hitJob,
-            JobHandle.CombineDependencies(
+        jobHandle = JobHandle.CombineDependencies(
             //directVelocityJob, 
             flagJob,
             impactJob,
-            breakCommandJob));
+            breakCommandJob);
 
-        return true;
+        state.Dependency = JobHandle.CombineDependencies(
+                jobHandle, 
+                hitJob);
+        //return true;
     }
 }
