@@ -357,12 +357,11 @@ public struct GameEntityActionCommander : IComponentData, IEnableableComponent
     public Entity entity;
 }
 
-public struct GameEntityArchetype : IComponentData
+public struct GameEntityActionComponentType : IBufferElementData
 {
-    public EntityArchetype value;
+    public TypeIndex index;
 }
 
-[EntityComponent(typeof(GameEntityArchetype))]
 [EntityComponent(typeof(GameNodeDelay))]
 [EntityComponent(typeof(GameEntityAction))]
 [EntityComponent(typeof(GameEntityHit))]
@@ -378,6 +377,7 @@ public struct GameEntityArchetype : IComponentData
 [EntityComponent(typeof(GameEntityActorActionInfo))]
 [EntityComponent(typeof(GameEntityCallbackHandle))]
 //[EntityComponent(typeof(GameEntityActorMass))]
+[EntityComponent(typeof(GameEntityActionComponentType))]
 [EntityComponent(typeof(GameEntityEventCommand))]
 [EntityComponent(typeof(GameEntityActionCommand))]
 [EntityComponent(typeof(GameEntityBreakCommand))]
@@ -440,24 +440,18 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
 
     private SharedTimeManager __timeManager;
 
-    public static ComponentType[] actionComponentTypes
+    public readonly static TypeIndex[] ActionComponentTypes = new TypeIndex[]
     {
-        get
-        {
-            return new ComponentType[]
-            {
-                //ComponentType.ReadOnly<CollisionWorldProxy>(),
-                ComponentType.ReadOnly<GameActionData>(),
-                ComponentType.ReadOnly<GameActionDataEx>(),
-                ComponentType.ReadWrite<GameActionStatus>(),
-                ComponentType.ReadWrite<GameActionEntity>(),
-                ComponentType.ReadWrite<PhysicsGravityFactor>(),
-                ComponentType.ReadWrite<PhysicsVelocity>(),
-                ComponentType.ReadWrite<Translation>(),
-                ComponentType.ReadWrite<Rotation>()
-            };
-        }
-    }
+        //ComponentType.ReadOnly<CollisionWorldProxy>(),
+        TypeManager.GetTypeIndex<GameActionData>(),
+        TypeManager.GetTypeIndex<GameActionDataEx>(),
+        TypeManager.GetTypeIndex<GameActionStatus>(),
+        TypeManager.GetTypeIndex<GameActionEntity>(),
+        TypeManager.GetTypeIndex<PhysicsGravityFactor>(),
+        TypeManager.GetTypeIndex<PhysicsVelocity>(),
+        TypeManager.GetTypeIndex<Translation>(),
+        TypeManager.GetTypeIndex<Rotation>()
+    };
 
     public int commandVersion
     {
@@ -784,9 +778,11 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         if (__entityComponent == null)
             __entityComponent = transform.GetComponentInParent<GameEntityComponentEx>(true);
 
-        GameEntityArchetype entityArchetype;
-        entityArchetype.value = __entityComponent.actionEntityArchetype;
-        assigner.SetComponentData(entity, entityArchetype);
+        assigner.SetBuffer<TypeIndex, IReadOnlyCollection<TypeIndex>>(
+            EntityComponentAssigner.BufferOption.AppendUnique, 
+            TypeManager.GetTypeIndex<GameEntityActionComponentType>(), 
+            entity, 
+            __entityComponent.actionEntityArchetype);
 
         /*GameEntityEventInfo eventInfo;
         eventInfo.version = 0;

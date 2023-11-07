@@ -217,28 +217,15 @@ public class GameEntityDataComponent : GameEntityComponentEx, IEntityComponent
     [SerializeField]
     internal float[] _defences;
 
-    private EntityArchetype __actionEntityArchetype;
-
-    public static ComponentType[] actionComponentTypes
+    public override IReadOnlyCollection<TypeIndex> actionEntityArchetype
     {
         get
         {
-            List<ComponentType> componentTypes = new List<ComponentType>(GameEntityActorComponent.actionComponentTypes);
-            componentTypes.Add(ComponentType.ReadWrite<GameActionBuff>());
-            componentTypes.Add(ComponentType.ReadWrite<GameActionAttack>());
-
-            return componentTypes.ToArray();
-        }
-    }
-
-    public override EntityArchetype actionEntityArchetype
-    {
-        get
-        {
-            if(!__actionEntityArchetype.Valid)
-                __actionEntityArchetype = entityManager.CreateArchetype(actionComponentTypes);
-
-            return __actionEntityArchetype;
+            return new List<TypeIndex>(GameEntityActorComponent.ActionComponentTypes)
+            {
+                TypeManager.GetTypeIndex<GameActionBuff>(),
+                TypeManager.GetTypeIndex<GameActionAttack>()
+            };
         }
     }
 

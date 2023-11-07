@@ -358,19 +358,46 @@ public partial struct GameEntityActionBeginFactorySystem : ISystem
         }
     }
 
+    private ComponentLookup<Translation> __translations;
+
+    private ComponentLookup<Rotation> __rotations;
+
+    private ComponentLookup<GameActionData> __instances;
+
+    private ComponentLookup<GameActionDataEx> __instancesEx;
+
+    private BufferLookup<GameEntityAction> __actions;
+
     private EntityCommandPool<GameEntityCommandActionCreate>.Context __commander;
 
     public EntityCommandPool<GameEntityCommandActionCreate> pool => __commander.pool;
 
-    public void OnCreate(ref SystemState state)
+    public NativeHashMap<GameActionEntityArchetype, EntityArchetype> entityArchetypes
     {
-        BurstUtility.InitializeJob<SetValues>();
+        get;
 
-        __commander = new EntityCommandPool<GameEntityCommandActionCreate>.Context(Allocator.Persistent);
+        private set;
     }
 
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __translations = state.GetComponentLookup<Translation>();
+        __rotations = state.GetComponentLookup<Rotation>();
+        __instances = state.GetComponentLookup<GameActionData>();
+        __instancesEx = state.GetComponentLookup<GameActionDataEx>();
+        __actions = state.GetBufferLookup<GameEntityAction>();
+
+        __commander = new EntityCommandPool<GameEntityCommandActionCreate>.Context(Allocator.Persistent);
+
+        entityArchetypes = new NativeHashMap<GameActionEntityArchetype, EntityArchetype>(1, Allocator.Persistent);
+    }
+
+    //[BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
+        entityArchetypes.Dispose();
+
         __commander.Dispose();
     }
 
@@ -380,22 +407,42 @@ public partial struct GameEntityActionBeginFactorySystem : ISystem
         if (__commander.isEmpty)
             return;
 
-        var commands = new UnsafeParallelMultiHashMap<EntityArchetype, GameEntityCommandActionCreate>(1, state.WorldUpdateAllocator);
-
+        var entityManager = state.EntityManager;
+        EntityArchetype entityArchetype;
+        NativeList<ComponentType> componentTypes = default;
+        UnsafeParallelMultiHashMap<EntityArchetype, GameEntityCommandActionCreate> commands = default;
+        var entityArchetypes = this.entityArchetypes;
         while (__commander.TryDequeue(out var command))
-            commands.Add(command.valueEx.entityArchetype, command);
-
-        int count = commands.Count();
-        if (count > 0)
         {
-            var entityArray = new NativeArray<Entity>(count, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+            if(!entityArchetypes.TryGetValue(command.valueEx.entityArchetype, out entityArchetype))
+            {
+                if (componentTypes.IsCreated)
+                    componentTypes.Clear();
+                else
+                    componentTypes = new NativeList<ComponentType>(command.valueEx.entityArchetype.componentTypeCount, state.WorldUpdateAllocator);
+
+                command.valueEx.entityArchetype.ToComponentTypes(ref componentTypes);
+
+                entityArchetype = entityManager.CreateArchetype(componentTypes.AsArray());
+
+                entityArchetypes[command.valueEx.entityArchetype] = entityArchetype;
+            }
+
+            if(!commands.IsCreated)
+                commands = new UnsafeParallelMultiHashMap<EntityArchetype, GameEntityCommandActionCreate>(1, state.WorldUpdateAllocator);
+
+            commands.Add(entityArchetype, command);
+        }
+
+        if (!commands.IsEmpty)
+        {
+            var entityArray = new NativeArray<Entity>(commands.Count(), Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
             var keys = commands.GetKeyArray(Allocator.TempJob);
             {
                 //state.CompleteDependency();
 
                 int numKeys = keys.ConvertToUniqueArray(), offset = 0, length;
                 EntityArchetype key;
-                var entityManager = state.EntityManager;
                 for (int i = 0; i < numKeys; ++i)
                 {
                     key = keys[i];
@@ -410,11 +457,11 @@ public partial struct GameEntityActionBeginFactorySystem : ISystem
                 setValues.keys = keys;
                 setValues.entityArray = entityArray;
                 setValues.commands = commands;
-                setValues.translations = state.GetComponentLookup<Translation>();
-                setValues.rotations = state.GetComponentLookup<Rotation>();
-                setValues.instances = state.GetComponentLookup<GameActionData>();
-                setValues.instancesEx = state.GetComponentLookup<GameActionDataEx>();
-                setValues.actions = state.GetBufferLookup<GameEntityAction>();
+                setValues.translations = __translations.UpdateAsRef(ref state);
+                setValues.rotations = __rotations.UpdateAsRef(ref state);
+                setValues.instances = __instances.UpdateAsRef(ref state);
+                setValues.instancesEx = __instancesEx.UpdateAsRef(ref state);
+                setValues.actions = __actions.UpdateAsRef(ref state);
                 state.Dependency = setValues.ScheduleByRef(state.Dependency);
                 //TODO
                 //setValues.Execute();
@@ -1016,13 +1063,13 @@ public partial struct GameEntityActorSystem : ISystem
         public NativeArray<GameEntityActorData> actors;
 
         [ReadOnly]
-        public NativeArray<GameEntityArchetype> archetypes;
-
-        [ReadOnly]
         public NativeArray<GameEntityActionCommand> commands;
 
         [ReadOnly]
         public NativeArray<GameEntityActionCommander> commanders;
+
+        [ReadOnly]
+        public BufferAccessor<GameEntityActionComponentType> componentTypes;
 
         [ReadOnly]
         public BufferAccessor<GameEntityAction> entityActions;
@@ -1825,6 +1872,14 @@ public partial struct GameEntityActorSystem : ISystem
 
                                 GameEntityCommandActionCreate result;
 
+                                ComponentType componentType;
+                                componentType.AccessModeType = ComponentType.AccessMode.ReadWrite;
+
+                                var typeIndices = this.componentTypes[index].Reinterpret<TypeIndex>();
+                                var entityArchetype = new GameActionEntityArchetype();
+                                foreach(var typeIndex in typeIndices)
+                                    entityArchetype.Add(typeIndex);
+
                                 result.value.version = version;
                                 result.value.index = command.index;
                                 result.value.actionIndex = actionIndex;
@@ -1838,7 +1893,7 @@ public partial struct GameEntityActorSystem : ISystem
                                 result.valueEx.target = command.entity;
                                 result.valueEx.info = action.info;
                                 result.valueEx.value = action.instance;
-                                result.valueEx.entityArchetype = archetypes[index].value;
+                                result.valueEx.entityArchetype = entityArchetype;
                                 result.valueEx.collider = actionCollider;
                                 result.valueEx.transform.rot = quaternion.LookRotationSafe(
                                     (action.instance.flag & GameActionFlag.MoveInAir) == GameActionFlag.MoveInAir ? Math.ProjectOnPlaneSafe(direction, up) : direction,
@@ -1940,10 +1995,10 @@ public partial struct GameEntityActorSystem : ISystem
         public ComponentTypeHandle<GameEntityActorData> actorType;
 
         [ReadOnly]
-        public ComponentTypeHandle<GameEntityArchetype> archetypeType;
+        public ComponentTypeHandle<GameEntityActionCommand> commandType;
 
         [ReadOnly]
-        public ComponentTypeHandle<GameEntityActionCommand> commandType;
+        public BufferTypeHandle<GameEntityActionComponentType> componentTypeType;
 
         [ReadOnly]
         public BufferTypeHandle<GameEntityAction> entityActionType;
@@ -2042,9 +2097,9 @@ public partial struct GameEntityActorSystem : ISystem
             act.camps = chunk.GetNativeArray(ref campType);
             act.rageMaxes = chunk.GetNativeArray(ref rageMaxType);
             act.actors = chunk.GetNativeArray(ref actorType);
-            act.archetypes = chunk.GetNativeArray(ref archetypeType);
             act.commands = chunk.GetNativeArray(ref commandType);
             act.commanders = chunk.GetNativeArray(ref commanderType);
+            act.componentTypes = chunk.GetBufferAccessor(ref componentTypeType);
             act.entityActions = chunk.GetBufferAccessor(ref entityActionType);
             act.entityItems = chunk.GetBufferAccessor(ref entityItemType);
             act.actorActions = chunk.GetBufferAccessor(ref actorActionType);
@@ -2138,9 +2193,9 @@ public partial struct GameEntityActorSystem : ISystem
 
     private ComponentTypeHandle<GameEntityActorData> __actorType;
 
-    private ComponentTypeHandle<GameEntityArchetype> __archetypeType;
-
     private ComponentTypeHandle<GameEntityActionCommand> __commandType;
+
+    private BufferTypeHandle<GameEntityActionComponentType> __componentTypeType;
 
     private BufferTypeHandle<GameEntityAction> __entityActionType;
 
@@ -2196,7 +2251,7 @@ public partial struct GameEntityActorSystem : ISystem
     {
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __group = builder
-                    .WithAll<GameNodeStatus, GameEntityCamp, GameEntityActorData, GameEntityArchetype, GameEntityActorActionData>()
+                    .WithAll<GameNodeStatus, GameEntityCamp, GameEntityActorData, GameEntityActionComponentType, GameEntityActorActionData>()
                     .WithAllRW<GameEntityActionCommander>()
                     .WithAllRW<GameEntityCommandVersion>()
                     .WithAllRW<GameEntityActorActionInfo>()
@@ -2243,8 +2298,8 @@ public partial struct GameEntityActorSystem : ISystem
         __campType = state.GetComponentTypeHandle<GameEntityCamp>(true);
         __rageMaxType = state.GetComponentTypeHandle<GameEntityRageMax>(true);
         __actorType = state.GetComponentTypeHandle<GameEntityActorData>(true);
-        __archetypeType = state.GetComponentTypeHandle<GameEntityArchetype>(true);
         __commandType = state.GetComponentTypeHandle<GameEntityActionCommand>(true);
+        __componentTypeType = state.GetBufferTypeHandle<GameEntityActionComponentType>(true);
         __entityActionType = state.GetBufferTypeHandle<GameEntityAction>(true);
         __entityItemType = state.GetBufferTypeHandle<GameEntityItem>(true);
         __actorActionType = state.GetBufferTypeHandle<GameEntityActorActionData>(true);
@@ -2318,8 +2373,8 @@ public partial struct GameEntityActorSystem : ISystem
         act.campType = __campType.UpdateAsRef(ref state);
         act.rageMaxType = __rageMaxType.UpdateAsRef(ref state);
         act.actorType = __actorType.UpdateAsRef(ref state);
-        act.archetypeType = __archetypeType.UpdateAsRef(ref state);
         act.commandType = __commandType.UpdateAsRef(ref state);
+        act.componentTypeType = __componentTypeType.UpdateAsRef(ref state);
         act.entityActionType = __entityActionType.UpdateAsRef(ref state);
         act.entityItemType = __entityItemType.UpdateAsRef(ref state);
         act.actorActionType = __actorActionType.UpdateAsRef(ref state);

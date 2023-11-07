@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 using UnityEngine;
@@ -114,6 +116,39 @@ public struct GameEntityNode
     }
 }
 
+public struct GameActionEntityArchetype : IEquatable<GameActionEntityArchetype>
+{
+    public FixedList64Bytes<TypeIndex> typeIndices;
+
+    public int componentTypeCount => typeIndices.Length;
+
+    public void Add(in TypeIndex typeIndex)
+    {
+        typeIndices.Add(typeIndex);
+    }
+
+    public void ToComponentTypes(ref NativeList<ComponentType> componentTypes)
+    {
+        ComponentType componentType;
+        componentType.AccessModeType = ComponentType.AccessMode.ReadWrite;
+        foreach (var typeIndex in typeIndices)
+        {
+            componentType.TypeIndex = typeIndex;
+            componentTypes.Add(componentType);
+        }
+    }
+
+    public bool Equals(GameActionEntityArchetype other)
+    {
+        return typeIndices.Equals(other.typeIndices);
+    }
+
+    public override int GetHashCode()
+    {
+        return typeIndices.GetHashCode();
+    }
+}
+
 /*public struct GameActionDisabled : IComponentData
 {
     public double time;
@@ -144,7 +179,7 @@ public struct GameActionDataEx : IComponentData
     public Entity target;
     public GameActionInfo info;
     public GameAction value;
-    public EntityArchetype entityArchetype;
+    public GameActionEntityArchetype entityArchetype;
     public BlobAssetReference<Unity.Physics.Collider> collider;
 }
 
@@ -311,5 +346,5 @@ public class GameEntityComponent : EntityProxyComponent, IEntityComponent
 
 public abstract class GameEntityComponentEx : EntityProxyComponent
 {
-    public abstract EntityArchetype actionEntityArchetype { get; }
+    public abstract IReadOnlyCollection<TypeIndex> actionEntityArchetype { get; }
 }

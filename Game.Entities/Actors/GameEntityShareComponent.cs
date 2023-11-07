@@ -121,9 +121,9 @@ public class GameEntityShareComponent : GameEntityComponentEx, IEntityComponent
     //[UnityEngine.SerializeField]
     //internal int _cacheVersionCount = 4;
     
-    private EntityArchetype __actionEntityArchetype;
+    //private EntityArchetype __actionEntityArchetype;
 
-    public override EntityArchetype actionEntityArchetype
+    /*public override EntityArchetype actionEntityArchetype
     {
         get
         {
@@ -137,6 +137,20 @@ public class GameEntityShareComponent : GameEntityComponentEx, IEntityComponent
             }
 
             return __actionEntityArchetype;
+
+        }
+    }*/
+
+    public override IReadOnlyCollection<TypeIndex> actionEntityArchetype
+    {
+        get
+        {
+            return new List<TypeIndex>(GameEntityActorComponent.ActionComponentTypes)
+            {
+                TypeManager.GetTypeIndex<EntityObjects>(),
+                TypeManager.GetTypeIndex<GameTransformVelocity<GameTransform, GameTransformVelocity>>(),
+                TypeManager.GetTypeIndex<GameEntitySharedActionData>()
+            };
         }
     }
 

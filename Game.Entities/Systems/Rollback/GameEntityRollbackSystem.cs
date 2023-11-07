@@ -72,6 +72,7 @@ public struct GameActionRollbackCreateCommand
 
 [BurstCompile,
     CreateAfter(typeof(RollbackSystemGroup)),
+    CreateAfter(typeof(GameEntityActionBeginFactorySystem)),
     UpdateInGroup(typeof(EndRollbackSystemGroupEntityCommandSystemGroup)),
     AutoCreateIn("Client")]
 #if !USING_NETCODE
@@ -86,19 +87,24 @@ public partial struct GameActionRollbackFactroySystem : ISystem
         private set;
     }
 
-    public SharedMultiHashMap<EntityArchetype, GameActionRollbackCreateCommand> commands
+    public SharedMultiHashMap<GameActionEntityArchetype, GameActionRollbackCreateCommand> commands
     {
         get;
 
         private set;
     }
 
+    private NativeHashMap<GameActionEntityArchetype, EntityArchetype> __entityArchetypes;
+
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        commands = new SharedMultiHashMap<EntityArchetype, GameActionRollbackCreateCommand>(Allocator.Persistent);
+        commands = new SharedMultiHashMap<GameActionEntityArchetype, GameActionRollbackCreateCommand>(Allocator.Persistent);
 
-        entities = state.WorldUnmanaged.GetExistingSystemUnmanaged<RollbackSystemGroup>().containerManager.CreateBuffer<GameActionEntity>(ref state);
+        var world = state.WorldUnmanaged;
+        entities = world.GetExistingSystemUnmanaged<RollbackSystemGroup>().containerManager.CreateBuffer<GameActionEntity>(ref state);
+
+        __entityArchetypes = world.GetExistingSystemUnmanaged<GameEntityActionBeginFactorySystem>().entityArchetypes;
     }
 
     //[BurstCompile]
@@ -123,8 +129,8 @@ public partial struct GameActionRollbackFactroySystem : ISystem
         {
             int numKeys = keys.ConvertToUniqueArray(), index;
             GameEntityAction action;
-            EntityArchetype key;
-            NativeParallelMultiHashMapIterator<EntityArchetype> iterator;
+            GameActionEntityArchetype key;
+            NativeParallelMultiHashMapIterator<GameActionEntityArchetype> iterator;
             NativeArray<Entity> entities;
             for (int i = 0; i < numKeys; ++i)
             {
@@ -135,7 +141,7 @@ public partial struct GameActionRollbackFactroySystem : ISystem
                     {
                         index = 0;
 
-                        entityManager.CreateEntity(key, entities);
+                        entityManager.CreateEntity(__entityArchetypes[key], entities);
 
                         do
                         {
@@ -1467,7 +1473,7 @@ public partial struct GameActionRollbackSystem : ISystem, IRollbackCore
         [ReadOnly]
         public NativeArray<int> count;
 
-        public SharedMultiHashMap<EntityArchetype, GameActionRollbackCreateCommand>.Writer entityManager;
+        public SharedMultiHashMap<GameActionEntityArchetype, GameActionRollbackCreateCommand>.Writer entityManager;
 
         public void Execute()
         {
@@ -1501,7 +1507,7 @@ public partial struct GameActionRollbackSystem : ISystem, IRollbackCore
         public RollbackComponentRestoreFunction<GameActionStatus> states;
         public RollbackBufferRestoreFunction<GameActionEntity> entities;
 
-        public SharedMultiHashMap<EntityArchetype, GameActionRollbackCreateCommand>.ParallelWriter entityManager;
+        public SharedMultiHashMap<GameActionEntityArchetype, GameActionRollbackCreateCommand>.ParallelWriter entityManager;
 
         public void Execute(int index, int entityIndex, in Entity entity)
         {
@@ -1655,7 +1661,7 @@ public partial struct GameActionRollbackSystem : ISystem, IRollbackCore
 
     private ComponentLookup<GameEntityActionInfo> __actionInfos;
 
-    private SharedMultiHashMap<EntityArchetype, GameActionRollbackCreateCommand> __entityManager;
+    private SharedMultiHashMap<GameActionEntityArchetype, GameActionRollbackCreateCommand> __entityManager;
 
     private RollbackManager<Restore, Save, Clear> __manager;
 
