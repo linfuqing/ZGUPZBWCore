@@ -1676,8 +1676,7 @@ public partial struct GameEntityActionSystem : ISystem
             var instance = instances[index];
             bool isExists = actorHits.HasComponent(instance.entity);
             var result = isExists ? actorHits[instance.entity] : default;
-            var status = states[index].value;
-            if ((status & GameActionStatus.Status.Destroy) != GameActionStatus.Status.Destroy)
+            //if ((status & GameActionStatus.Status.Destroy) != GameActionStatus.Status.Destroy)
             {
                 float hitResult = 0.0f;
 
@@ -1734,6 +1733,7 @@ public partial struct GameEntityActionSystem : ISystem
 
             if (isExists)
             {
+                var status = states[index].value;
                 if ((status & GameActionStatus.Status.Damaged) == GameActionStatus.Status.Damage)
                     ++result.sourceTimes;
 
