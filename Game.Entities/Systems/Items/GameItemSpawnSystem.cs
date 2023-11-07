@@ -198,7 +198,6 @@ public partial struct GameItemSpawnSystem : ISystem
             if (numCommands < 1)
                 return;
 
-            GameItemSpawnData result;
             //result.entity = entityArray[index];
             //result.transform = math.RigidTransform(rotations[index].Value, translations[index].Value + offsets[index].GetValue(ref random));
 
@@ -206,6 +205,8 @@ public partial struct GameItemSpawnSystem : ISystem
             GameItemInfo item;
             Key key;
             Value value;
+            GameItemSpawnData result;
+            var offset = offsets[index];
             for (i = 0; i < numCommands; ++i)
             {
                 ref readonly var command = ref commands.ElementAt(i);
@@ -223,7 +224,7 @@ public partial struct GameItemSpawnSystem : ISystem
 
                 result.identityType = value.identityType;
                 result.owner = command.owner;
-                result.transform = command.transform;
+                result.transform = math.RigidTransform(command.transform.rot, command.transform.pos + offset.GetValue(ref random));
 
                 switch (value.spawnType)
                 {
@@ -277,12 +278,13 @@ public partial struct GameItemSpawnSystem : ISystem
             if (numCommands < 1)
                 return;
 
-            GameItemSpawnData result;
             //result.transform = math.RigidTransform(rotations[index].Value, translations[index].Value + offsets[index].GetValue(ref random));
 
             int i, j, count;
             Key key;
             Value value;
+            GameItemSpawnData result;
+            var offset = offsets[index];
             for (i = 0; i < numCommands; ++i)
             {
                 ref readonly var command = ref commands.ElementAt(i);
@@ -294,7 +296,7 @@ public partial struct GameItemSpawnSystem : ISystem
 
                 result.identityType = value.identityType;
                 result.owner = command.owner;
-                result.transform = command.transform;
+                result.transform = math.RigidTransform(command.transform.rot, command.transform.pos + offset.GetValue(ref random));
 
                 switch (value.spawnType)
                 {
