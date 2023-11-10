@@ -226,6 +226,8 @@ public partial struct GameRollbackCommandSystem : ISystem
 
             lookupJobManager.AddReadOnlyDependency(jobHandle);
         }
+        /*else
+            __commander.Playback(ref state);*/
 
         state.Dependency = jobHandle;
     }

@@ -124,6 +124,9 @@ public struct GameActionEntityArchetype : IEquatable<GameActionEntityArchetype>
 
     public void Add(in TypeIndex typeIndex)
     {
+        if (typeIndices.Contains(typeIndex))
+            return;
+
         typeIndices.Add(typeIndex);
     }
 
