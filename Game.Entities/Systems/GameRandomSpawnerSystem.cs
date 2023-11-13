@@ -53,6 +53,10 @@ public struct GameSpawnInitializer : IEntityDataInitializer
 
         gameObjectEntity.AddComponentData(instance);
 
+        gameObjectEntity.AddComponent<GameSpawnedInstanceDeadline>();
+
+        gameObjectEntity.SetComponentEnabled<GameSpawnedInstanceData>(true);
+
         if (!__itemHandle.Equals(GameItemHandle.Empty))
         {
             GameItemRoot itemRoot;

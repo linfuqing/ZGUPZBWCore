@@ -5,6 +5,7 @@ using UnityEngine;
 using ZG;
 
 [EntityComponent(typeof(GameSpawnedInstanceData))]
+[EntityComponent(typeof(GameSpawnedInstanceDeadline))]
 public class GameSpawnedInstanceComponent : MonoBehaviour, IEntityComponent
 {
 #if UNITY_EDITOR
@@ -32,6 +33,8 @@ public class GameSpawnedInstanceComponent : MonoBehaviour, IEntityComponent
         GameSpawnedInstanceData instance;
         instance.assetIndex = _assetIndex;
         assigner.SetComponentData(entity, instance);
+
+        assigner.SetComponentEnabled<GameSpawnedInstanceData>(entity, true);
     }
 
     /*void OnValidate()

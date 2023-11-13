@@ -11,15 +11,20 @@ public struct GameSpawnerAsset
     public float deadline;
 }
 
-public struct GameSpawnedInstanceData : IComponentData
+public struct GameSpawnedInstanceData : IComponentData, IEnableableComponent
 {
     public int assetIndex;
 }
 
-public struct GameSpawnedInstanceInfo : IComponentData
+public struct GameSpawnedInstanceDeadline : IComponentData
+{
+    public TimeEventHandle<Entity> handle;
+}
+
+/*public struct GameSpawnedInstanceInfo : IComponentData, IEnableableComponent
 {
     public double time;
-}
+}*/
 
 public struct GameSpawnerAssetCounter : IBufferElementData
 {
