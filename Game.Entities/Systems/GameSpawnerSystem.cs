@@ -112,7 +112,9 @@ public partial struct GameSpawnerTimeSystem : ISystem
             var entityArray = chunk.GetNativeArray(entityType);
             if (chunk.Has(ref disabledType))
             {
-                var negateIterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask.Negate(), chunk.Count);
+                //UnityEngine.Assertions.Assert.AreNotEqual(default, chunkEnabledMask);
+
+                var negateIterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
 
                 while (negateIterator.NextEntityIndex(out int i))
                 {
@@ -332,9 +334,13 @@ public partial struct GameSpawnerTimeSystem : ISystem
     {
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __groupToInit = builder
-                    .WithAll<GameSpawnedInstanceData/*, GameOwner*/>()
+                    .WithAll<GameSpawnedInstanceDeadline, GameSpawnedInstanceData/*, GameOwner*/>()
                     //.WithNone<GameSpawnedInstanceInfo>()
-                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities | EntityQueryOptions.IgnoreComponentEnabledState)
+                    //.WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .AddAdditionalQuery()
+                    .WithAll<GameSpawnedInstanceDeadline, Disabled>()
+                    .WithNone<GameSpawnedInstanceData>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
 
         //__groupToInit.SetChangedVersionFilter(ComponentType.ReadOnly<GameOwner>());
@@ -343,7 +349,7 @@ public partial struct GameSpawnerTimeSystem : ISystem
             __groupToCount = builder
                     .WithAll<GameFollower>()
                     .WithAllRW<GameSpawnerAssetCounter>()
-                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities | EntityQueryOptions.IgnoreComponentEnabledState)
                     .Build(ref state);
         __groupToCount.SetChangedVersionFilter(ComponentType.ReadOnly<GameFollower>());
 

@@ -172,7 +172,7 @@ public struct GameAreaPrefabSystemCore
 
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __instanceGroup = builder
-                    .WithAll<GameAreaNode, GameAreaInstance>()
+                    .WithAll<GameAreaNode, GameAreaInstance, GameNodeOldStatus>()
                     .WithNone<GameAreaPrefab>()
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref systemState);
@@ -185,7 +185,9 @@ public struct GameAreaPrefabSystemCore
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __destroiedActorGroup = builder
                     .WithAll<GameAreaInstance>()
-                    .WithNone<GameAreaNode>()
+                    .WithNone<GameNodeOldStatus>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    //.WithNone<GameAreaNode>()
                     .Build(ref systemState);
 
         __entityType = systemState.GetEntityTypeHandle();

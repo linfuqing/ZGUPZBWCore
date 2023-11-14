@@ -3336,12 +3336,8 @@ public partial struct GameEntityStatusSystem : ISystem
     {
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __group = builder
-                    .WithAll<GameNodeStatus, GameNodeOldStatus>()
                     .WithAllRW<GameEntityCommandVersion>()
-                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
-                    .Build(ref state);
-        __group.AddChangedVersionFilter(ComponentType.ReadOnly<GameNodeStatus>());
-        __group.AddChangedVersionFilter(ComponentType.ReadOnly<GameNodeOldStatus>());
+                    .BuildStatusSystemGroup(ref state);
 
         __time = new GameSyncTime(ref state);
 

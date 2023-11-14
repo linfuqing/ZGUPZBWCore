@@ -31,7 +31,7 @@ public struct GameOwner : IGameDataEntityCompoent, IComponentData
     }
 }
 
-public struct GameFollower : ICleanupBufferElementData
+public struct GameFollower : IBufferElementData, IEnableableComponent
 {
     public Entity entity;
 }
@@ -115,7 +115,6 @@ public partial struct GameOwnerStatusSystem : ISystem
 {
     private struct UpdateStates
     {
-        [ReadOnly]
         public BufferAccessor<GameFollower> followers;
 
         [NativeDisableContainerSafetyRestriction]
@@ -134,13 +133,14 @@ public partial struct GameOwnerStatusSystem : ISystem
 
                 owners[follower.entity] = owner;
             }
+            followers.Clear();
         }
     }
 
     [BurstCompile]
     private struct UpdateStateEx : IJobChunk
     {
-        [ReadOnly]
+        //[ReadOnly]
         public BufferTypeHandle<GameFollower> followerType;
 
         [NativeDisableContainerSafetyRestriction]
@@ -154,7 +154,11 @@ public partial struct GameOwnerStatusSystem : ISystem
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
+            {
                 updateStates.Execute(i);
+
+                chunk.SetComponentEnabled(ref followerType, i, false);
+            }
         }
     }
 
@@ -170,12 +174,12 @@ public partial struct GameOwnerStatusSystem : ISystem
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __group = builder
                     .WithAll<GameFollower>()
-                    .WithNone<GameOwner>()
+                    .WithNone<GameNodeOldStatus>()
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
 
         __owners = state.GetComponentLookup<GameOwner>();
-        __followerType = state.GetBufferTypeHandle<GameFollower>(true);
+        __followerType = state.GetBufferTypeHandle<GameFollower>();
     }
 
     [BurstCompile]
@@ -187,17 +191,17 @@ public partial struct GameOwnerStatusSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        if (__group.IsEmpty)
-            return;
+        /*if (__group.IsEmpty)
+            return;*/
 
-        state.CompleteDependency();
+        //state.CompleteDependency();
 
         UpdateStateEx updateState;
         updateState.followerType = __followerType.UpdateAsRef(ref state);
         updateState.owners = __owners.UpdateAsRef(ref state);
-        updateState.RunByRef(__group);
+        state.Dependency = updateState.ScheduleParallelByRef(__group, state.Dependency);
 
-        state.EntityManager.RemoveComponent<GameFollower>(__group);
+        //state.EntityManager.RemoveComponent<GameFollower>(__group);
     }
 }
 
@@ -388,6 +392,9 @@ public partial struct GameOwnerSystem : ISystem
                         {
                             followers.RemoveAt(i);
 
+                            if(--numFollowers < 1)
+                                this.followers.SetBufferEnabled(origin, false);
+
                             break;
                         }
                     }
@@ -399,6 +406,8 @@ public partial struct GameOwnerSystem : ISystem
             if (followers.HasBuffer(owner))
             {
                 //UnityEngine.Debug.LogError($"{owner} Own {entity}");
+
+                this.followers.SetBufferEnabled(owner, true);
 
                 var followers = this.followers[owner];
                 GameFollower follower;

@@ -526,10 +526,11 @@ public partial class GameWeaponCallbackSystem : SystemBase
         base.OnCreate();
 
         using(var builder = new EntityQueryBuilder(Allocator.Temp))
-        __group = builder
-                .WithAll<GameWeaponCallback>()
-                .WithNone<GameItemRoot>()
-                .Build(this);
+            __group = builder
+                    .WithAll<GameWeaponCallback>()
+                    .WithNone<GameItemRoot>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(this);
 
         __values = World.GetExistingSystemUnmanaged<GameWeaponSystem>().values;
     }

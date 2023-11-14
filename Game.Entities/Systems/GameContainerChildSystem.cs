@@ -495,6 +495,7 @@ public partial struct GameContainerChildSystem : ISystem
 
     //private uint __lastSystemVersion;
     private EntityQuery __group;
+    private EntityTypeHandle __entityType;
     private ComponentTypeHandle<GameContainerStatusDisabled> __disableType;
     private BufferTypeHandle<GameContainerChild> __childrenType;
     private BufferLookup<GameContainerChild> __children;
@@ -505,6 +506,7 @@ public partial struct GameContainerChildSystem : ISystem
     //private BlobAssetReference<uint> __statusLastSystemVersion;
     private NativeList<Entity> __results;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         BurstUtility.InitializeJob<Change>();
@@ -512,17 +514,14 @@ public partial struct GameContainerChildSystem : ISystem
 
         state.SetAlwaysUpdateSystem(true);
 
-        __group = state.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameContainerChild>()
-                },
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
-        __group.SetChangedVersionFilter(typeof(GameContainerChild));
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameContainerChild>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
+        __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameContainerChild>());
 
+        __entityType = state.GetEntityTypeHandle();
         __disableType = state.GetComponentTypeHandle<GameContainerStatusDisabled>(true);
         __childrenType = state.GetBufferTypeHandle<GameContainerChild>(true);
         __children = state.GetBufferLookup<GameContainerChild>();
@@ -539,6 +538,7 @@ public partial struct GameContainerChildSystem : ISystem
         parentIndices = new SharedMultiHashMap<Entity, EntityData<int>>(Allocator.Persistent);
     }
 
+    //[BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
         __results.Dispose();
@@ -569,13 +569,13 @@ public partial struct GameContainerChildSystem : ISystem
             __results.Clear();
 
             DirtyEx dirty;
-            dirty.entityType = state.GetEntityTypeHandle();
+            dirty.entityType = __entityType.UpdateAsRef(ref state);
             dirty.statusDisabled = __disableType.UpdateAsRef(ref state);
             dirty.childType = __childrenType.UpdateAsRef(ref state);
             dirty.childIndices = childIndexWriter;
             dirty.parentIndices = parentIndexWriter;
             dirty.results = __results;
-            jobHandle = dirty.Schedule(__group, jobHandle);
+            jobHandle = dirty.ScheduleByRef(__group, jobHandle);
         }
 
         //uint lastSystemVersion = __statusLastSystemVersion.Value;
@@ -595,14 +595,14 @@ public partial struct GameContainerChildSystem : ISystem
             change.parentIndices = parentIndexWriter;
             change.states = __states.UpdateAsRef(ref state);
             change.results = __results;
-            jobHandle = change.Schedule(JobHandle.CombineDependencies(jobHandle, statusJobManager.readOnlyJobHandle));
+            jobHandle = change.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, statusJobManager.readOnlyJobHandle));
 
             Clear clear;
             clear.entities = statusResults.writer;
             clear.children = __children.UpdateAsRef(ref state);
             clear.childIndices = childIndexWriter;
             clear.parentIndices = parentIndexWriter;
-            jobHandle = clear.Schedule(JobHandle.CombineDependencies(jobHandle, statusJobManager.readWriteJobHandle));
+            jobHandle = clear.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, statusJobManager.readWriteJobHandle));
 
             statusJobManager.readWriteJobHandle = jobHandle;
         }
@@ -614,7 +614,7 @@ public partial struct GameContainerChildSystem : ISystem
     }
 }
 
-[BurstCompile/*AlwaysUpdateSystem*/, UpdateInGroup(typeof(GameStatusSystemGroup))]
+[BurstCompile/*AlwaysUpdateSystem*/, CreateAfter(typeof(GameContainerChildSystem)), UpdateInGroup(typeof(GameStatusSystemGroup))]
 public partial struct GameContainerChildStatusSystem : ISystem
 {
     [BurstCompile]
@@ -710,45 +710,32 @@ public partial struct GameContainerChildStatusSystem : ISystem
 
     private EntityQuery __group;
 
+    private EntityTypeHandle __entityType;
+    private ComponentTypeHandle<GameNodeStatus> __statusType;
+    private ComponentTypeHandle<GameNodeOldStatus> __oldStatusType;
+
     private SharedList<Entity> __results;
 
     //private BlobAssetReference<uint> __lastSystemVersion;
     private SharedMultiHashMap<Entity, EntityData<int>> __childIndices;
     private SharedMultiHashMap<Entity, EntityData<int>> __parentIndices;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         BurstUtility.InitializeJob<Resize>();
 
         //state.SetAlwaysUpdateSystem(true);
 
-        __group = state.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameNodeStatus>(),
-                    ComponentType.ReadOnly<GameNodeOldStatus>(),
-                },
-                Any = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameContainerChild>(),
-                    ComponentType.ReadOnly<GameContainerWeight>(),
-                    ComponentType.ReadOnly<GameContainerBearing>(),
-                },
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                .WithAny<GameContainerChild, GameContainerWeight, GameContainerBearing>()
+                .WithNone<GameContainerStatusDisabled>()
+                .BuildStatusSystemGroup(ref state);
 
-                None = new ComponentType[]
-                {
-                    typeof(GameContainerStatusDisabled)
-                },
-
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
-        __group.SetChangedVersionFilter(new ComponentType[]
-            {
-                typeof(GameNodeStatus),
-                typeof(GameNodeOldStatus)
-            });
+        __entityType = state.GetEntityTypeHandle();
+        __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
+        __oldStatusType = state.GetComponentTypeHandle<GameNodeOldStatus>(true);
 
         /*using (var blobBuilder = new BlobBuilder(Allocator.Temp))
         {
@@ -757,7 +744,7 @@ public partial struct GameContainerChildStatusSystem : ISystem
             __lastSystemVersion = blobBuilder.CreateBlobAssetReference<uint>(Allocator.Persistent);
         }*/
 
-        ref var childSystem = ref state.World.GetOrCreateSystemUnmanaged<GameContainerChildSystem>();
+        ref var childSystem = ref state.WorldUnmanaged.GetExistingSystemUnmanaged<GameContainerChildSystem>();
 
         __childIndices = childSystem.childIndices;
         __parentIndices = childSystem.parentIndices;
@@ -765,6 +752,7 @@ public partial struct GameContainerChildStatusSystem : ISystem
         __results = childSystem.statusResults;
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
         //results.Dispose();
@@ -783,12 +771,12 @@ public partial struct GameContainerChildStatusSystem : ISystem
         Resize resize;
         resize.counter = counter;
         resize.results = __results.writer;
-        jobHandle = resize.Schedule(jobHandle);
+        jobHandle = resize.ScheduleByRef(jobHandle);
 
         InitEx initEx;
-        initEx.entityType = state.GetEntityTypeHandle();
-        initEx.statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
-        initEx.oldStatusType = state.GetComponentTypeHandle<GameNodeOldStatus>(true);
+        initEx.entityType = __entityType.UpdateAsRef(ref state);
+        initEx.statusType = __statusType.UpdateAsRef(ref state);
+        initEx.oldStatusType = __oldStatusType.UpdateAsRef(ref state);
         initEx.childIndices = __childIndices.reader;
         initEx.parentIndices = __parentIndices.reader;
         initEx.results = __results.parallelWriter;
@@ -796,7 +784,7 @@ public partial struct GameContainerChildStatusSystem : ISystem
         ref var childIndicesJobManager = ref __childIndices.lookupJobManager;
         ref var parentIndicesJobManager = ref __parentIndices.lookupJobManager;
 
-        jobHandle = initEx.ScheduleParallel(
+        jobHandle = initEx.ScheduleParallelByRef(
             __group, 
             JobHandle.CombineDependencies(
                 childIndicesJobManager.readOnlyJobHandle, 

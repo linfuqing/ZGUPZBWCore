@@ -4,7 +4,6 @@ using ZG;
 
 //[assembly: RegisterEntityObject(typeof(GameNodeStatusComponent))]
 
-[Serializable]
 public struct GameNodeStatus : IComponentData, IEquatable<GameNodeStatus>
 {
     public const int DELAY = 0x01;
@@ -25,8 +24,7 @@ public struct GameNodeStatus : IComponentData, IEquatable<GameNodeStatus>
     }
 }
 
-[Serializable]
-public struct GameNodeOldStatus : IComponentData, IEquatable<GameNodeOldStatus>
+public struct GameNodeOldStatus : IComponentData, IEnableableComponent, IEquatable<GameNodeOldStatus>
 {
     public int value;
 
