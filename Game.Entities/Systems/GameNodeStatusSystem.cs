@@ -207,7 +207,7 @@ public partial struct GameNodeStatusSystem : ISystem
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __group = builder
                 .WithAll<GameNodeStatus>()
-                .WithAll<GameNodeOldStatus>()
+                .WithAllRW<GameNodeOldStatus>()
                 .WithOptions(EntityQueryOptions.IncludeDisabledEntities | EntityQueryOptions.IgnoreComponentEnabledState)
                 .Build(ref state);
 
@@ -255,7 +255,7 @@ public partial struct GameNodeStatusSystem : ISystem
         updateStates.stream = streamScheduler.Begin(__group.CalculateEntityCount());
         updateStates.entityIndexType = state.GetComponentTypeHandle<GameEntityIndex>(true);
 #endif
-        state.Dependency = updateStates.ScheduleParallel(__group, state.Dependency);
+        state.Dependency = updateStates.ScheduleParallelByRef(__group, state.Dependency);
 
 #if GAME_DEBUG_COMPARSION
         streamScheduler.End(state.Dependency);
