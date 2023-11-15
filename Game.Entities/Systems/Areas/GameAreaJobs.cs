@@ -465,7 +465,7 @@ public struct GameAreaInvokeCommands<T> : IJobParallelForDefer//, IEntityCommand
                         break;
                     }
 
-                    versions.TryAdd(prefab.guid, prefab.version);
+                    //versions.TryAdd(prefab.guid, prefab.version);
 
                     return;
             }
@@ -499,7 +499,11 @@ public struct GameAreaInvokeCommands<T> : IJobParallelForDefer//, IEntityCommand
                 {
                     randomGroup = randomGroups[i + asset.groupStartIndex];
                     if (randomItemHandler.Set(randomGroup.startIndex, randomGroup.count) == RandomResult.Success)
+                    {
+                        versions.TryAdd(prefab.guid, prefab.version);
+
                         return;
+                    }
                 }
             }
 
