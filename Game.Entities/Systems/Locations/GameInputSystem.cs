@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Unity.Jobs;
 using Unity.Burst;
 using Unity.Burst.Intrinsics;
@@ -8,7 +9,6 @@ using Unity.Collections;
 using Unity.Physics;
 using Unity.Transforms;
 using ZG;
-using Unity.Entities.UniversalDelegates;
 
 public enum GameInputButton
 {
@@ -35,6 +35,18 @@ public struct GameInputTarget : IComparable<GameInputTarget>
 
 public struct GameInputActionDefinition
 {
+    private struct Comparer : IComparer<int>
+    {
+        public NativeArray<Action> actions;
+        public DynamicBuffer<GameEntityActorActionData> actorActions;
+        public DynamicBuffer<GameInputActionInstance> actionInstances;
+
+        public int Compare(int x, int y)
+        {
+            return actions[actorActions[actionInstances[x].actorActionIndex].actionIndex].priority.CompareTo(actions[actorActions[actionInstances[y].actorActionIndex].actionIndex].priority);
+        }
+    }
+
     public struct PreAction
     {
         public int actionIndex;
@@ -63,9 +75,11 @@ public struct GameInputActionDefinition
 
         public int layerMask;
 
+        public int actorStatusMask;
+
         public int group;
 
-        public int actorStatusMask;
+        public int priority;
 
         //public uint actorMask;
 
@@ -136,15 +150,26 @@ public struct GameInputActionDefinition
         /*if (actorActionIndex == 20 && button == GameInputButton.Down && group == 2)
             UnityEngine.Debug.Log("-");*/
 
+        int numActionInstances = actionInstances.Length;
+        var indices = new FixedList128Bytes<int>();
+        for (int i = 0; i < numActionInstances; ++i)
+            indices.Add(i);
+
+        Comparer comparer;
+        comparer.actions = actions.AsArray();
+        comparer.actorActions = actorActions;
+        comparer.actionInstances = actionInstances;
+
+        indices.Sort(comparer);
+
         GameEntityActorActionData actorAction;
         GameInputActionInstance actionInstance;
-        int numActionInstances = actionInstances.Length;
         if (actorActionIndex != -1)
         {
             int preActionIndex = actorActions[actorActionIndex].actionIndex;
             for (int i = 0; i < numActionInstances; ++i)
             {
-                actionInstance = actionInstances[i];
+                actionInstance = actionInstances[indices[i]];
                 if (actionInstance.activeCount > 0)
                 {
                     actorAction = actorActions[actionInstance.actorActionIndex];
@@ -189,7 +214,7 @@ public struct GameInputActionDefinition
 
         for (int i = 0; i < numActionInstances; ++i)
         {
-            actionInstance = actionInstances[i];
+            actionInstance = actionInstances[indices[i]];
             if (actionInstance.activeCount > 0)
             {
                 actorAction = actorActions[actionInstance.actorActionIndex];

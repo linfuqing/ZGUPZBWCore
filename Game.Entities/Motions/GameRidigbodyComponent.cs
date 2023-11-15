@@ -10,13 +10,11 @@ public struct GameRidigbodyData : IComponentData
     public UnityEngine.LayerMask layerMask;
 }
 
-[Serializable]
 public struct GameRidigbodyMass : IComponentData
 {
     public float value;
 }
 
-[Serializable]
 public struct GameRidigbodyOrigin : ICleanupComponentData
 {
     public RigidTransform transform;

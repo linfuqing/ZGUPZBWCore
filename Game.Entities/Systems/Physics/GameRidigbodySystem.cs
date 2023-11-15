@@ -226,10 +226,10 @@ public partial struct GameRidigbodyFactorySystem : ISystem
     }
 }
 
-[BurstCompile, 
-    CreateAfter(typeof(GamePhysicsWorldBuildSystem)), 
-    UpdateInGroup(typeof(FixedStepSimulationSystemGroup)), 
-    UpdateBefore(typeof(EndFramePhysicsSystem)), 
+[BurstCompile,
+    CreateAfter(typeof(GamePhysicsWorldBuildSystem)),
+    UpdateInGroup(typeof(FixedStepSimulationSystemGroup)),
+    UpdateBefore(typeof(EndFramePhysicsSystem)),
     UpdateAfter(typeof(ExportPhysicsWorld))]
 public partial struct GameRidigbodySystem : ISystem
 {
@@ -249,6 +249,7 @@ public partial struct GameRidigbodySystem : ISystem
         public NativeArray<GameRidigbodyOrigin> origins;
         public NativeArray<Rotation> rotations;
         public NativeArray<Translation> translations;
+        public NativeArray<LocalToWorld> localToWorlds;
 
         public unsafe void Execute(int index)
         {
@@ -270,7 +271,7 @@ public partial struct GameRidigbodySystem : ISystem
             raycastInput.Filter = filter;
             raycastInput.Start = position;
             raycastInput.End = position + math.up() * waterHeight;
-            if(collisionWorld.CastRay(raycastInput, out var closestRayHit))
+            if (collisionWorld.CastRay(raycastInput, out var closestRayHit))
             {
                 ref var collider = ref rigidbodies[closestRayHit.RigidBodyIndex].Collider.Value;
 
@@ -294,8 +295,8 @@ public partial struct GameRidigbodySystem : ISystem
             colliderCastInput.Orientation = rigidbody.WorldFromBody.rot;
             colliderCastInput.Start = origin.transform.pos;
             colliderCastInput.End = rigidbody.WorldFromBody.pos;
-            
-            if(collisionWorld.CastCollider(colliderCastInput, out var closestHit) && closestHit.Fraction < 1.0f)
+
+            if (collisionWorld.CastCollider(colliderCastInput, out var closestHit) && closestHit.Fraction < 1.0f)
             {
                 position = math.lerp(origin.transform.pos, rigidbody.WorldFromBody.pos, closestHit.Fraction);
                 Aabb aabb = rigidbody.CalculateAabb(math.RigidTransform(quaternion.identity, position - rigidbody.WorldFromBody.pos));
@@ -308,6 +309,10 @@ public partial struct GameRidigbodySystem : ISystem
                     Translation translation;
                     translation.Value = position;
                     translations[index] = translation;
+
+                    LocalToWorld localToWorld;
+                    localToWorld.Value = float4x4.TRS(position, rigidbody.WorldFromBody.rot, 1.0f);
+                    localToWorlds[index] = localToWorld;
                 }
             }
         }
@@ -330,6 +335,7 @@ public partial struct GameRidigbodySystem : ISystem
         public ComponentTypeHandle<GameRidigbodyOrigin> originType;
         public ComponentTypeHandle<Rotation> rotationType;
         public ComponentTypeHandle<Translation> translationType;
+        public ComponentTypeHandle<LocalToWorld> localToWorldType;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -342,6 +348,7 @@ public partial struct GameRidigbodySystem : ISystem
             reset.origins = chunk.GetNativeArray(ref originType);
             reset.rotations = chunk.GetNativeArray(ref rotationType);
             reset.translations = chunk.GetNativeArray(ref translationType);
+            reset.localToWorlds = chunk.GetNativeArray(ref localToWorldType);
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -359,6 +366,7 @@ public partial struct GameRidigbodySystem : ISystem
     private ComponentTypeHandle<GameRidigbodyOrigin> __originType;
     private ComponentTypeHandle<Rotation> __rotationType;
     private ComponentTypeHandle<Translation> __translationType;
+    private ComponentTypeHandle<LocalToWorld> __localToWorldType;
 
     private SharedPhysicsWorld __physicsWorld;
 
@@ -376,6 +384,7 @@ public partial struct GameRidigbodySystem : ISystem
         __originType = state.GetComponentTypeHandle<GameRidigbodyOrigin>(true);
         __rotationType = state.GetComponentTypeHandle<Rotation>();
         __translationType = state.GetComponentTypeHandle<Translation>();
+        __localToWorldType = state.GetComponentTypeHandle<LocalToWorld>();
 
         __physicsWorld = state.WorldUnmanaged.GetExistingSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
     }
@@ -398,6 +407,7 @@ public partial struct GameRidigbodySystem : ISystem
         reset.originType = __originType.UpdateAsRef(ref state);
         reset.rotationType = __rotationType.UpdateAsRef(ref state);
         reset.translationType = __translationType.UpdateAsRef(ref state);
+        reset.localToWorldType = __localToWorldType.UpdateAsRef(ref state);
 
         ref var lookupJobManager = ref __physicsWorld.lookupJobManager;
 
