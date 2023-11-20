@@ -250,6 +250,7 @@ public partial struct GameRidigbodySystem : ISystem
         public NativeArray<Rotation> rotations;
         public NativeArray<Translation> translations;
         public NativeArray<LocalToWorld> localToWorlds;
+        public NativeArray<PhysicsVelocity> physicsVelocities;
 
         public unsafe void Execute(int index)
         {
@@ -313,6 +314,9 @@ public partial struct GameRidigbodySystem : ISystem
                     LocalToWorld localToWorld;
                     localToWorld.Value = float4x4.TRS(position, rigidbody.WorldFromBody.rot, 1.0f);
                     localToWorlds[index] = localToWorld;
+
+                    if(index < physicsVelocities.Length)
+                        physicsVelocities[index] = default;
                 }
             }
         }
@@ -336,6 +340,7 @@ public partial struct GameRidigbodySystem : ISystem
         public ComponentTypeHandle<Rotation> rotationType;
         public ComponentTypeHandle<Translation> translationType;
         public ComponentTypeHandle<LocalToWorld> localToWorldType;
+        public ComponentTypeHandle<PhysicsVelocity> physicsVelocityType;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -349,6 +354,7 @@ public partial struct GameRidigbodySystem : ISystem
             reset.rotations = chunk.GetNativeArray(ref rotationType);
             reset.translations = chunk.GetNativeArray(ref translationType);
             reset.localToWorlds = chunk.GetNativeArray(ref localToWorldType);
+            reset.physicsVelocities = chunk.GetNativeArray(ref physicsVelocityType);
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -367,6 +373,7 @@ public partial struct GameRidigbodySystem : ISystem
     private ComponentTypeHandle<Rotation> __rotationType;
     private ComponentTypeHandle<Translation> __translationType;
     private ComponentTypeHandle<LocalToWorld> __localToWorldType;
+    private ComponentTypeHandle<PhysicsVelocity> __physicsVelocityType;
 
     private SharedPhysicsWorld __physicsWorld;
 
@@ -385,6 +392,7 @@ public partial struct GameRidigbodySystem : ISystem
         __rotationType = state.GetComponentTypeHandle<Rotation>();
         __translationType = state.GetComponentTypeHandle<Translation>();
         __localToWorldType = state.GetComponentTypeHandle<LocalToWorld>();
+        __physicsVelocityType = state.GetComponentTypeHandle<PhysicsVelocity>();
 
         __physicsWorld = state.WorldUnmanaged.GetExistingSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
     }
@@ -408,6 +416,7 @@ public partial struct GameRidigbodySystem : ISystem
         reset.rotationType = __rotationType.UpdateAsRef(ref state);
         reset.translationType = __translationType.UpdateAsRef(ref state);
         reset.localToWorldType = __localToWorldType.UpdateAsRef(ref state);
+        reset.physicsVelocityType = __physicsVelocityType.UpdateAsRef(ref state);
 
         ref var lookupJobManager = ref __physicsWorld.lookupJobManager;
 
