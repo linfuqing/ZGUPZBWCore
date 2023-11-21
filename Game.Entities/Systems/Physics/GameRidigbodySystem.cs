@@ -229,8 +229,9 @@ public partial struct GameRidigbodyFactorySystem : ISystem
 [BurstCompile,
     CreateAfter(typeof(GamePhysicsWorldBuildSystem)),
     UpdateInGroup(typeof(FixedStepSimulationSystemGroup)),
+    UpdateAfter(typeof(EndFramePhysicsSystem))/*,
     UpdateBefore(typeof(EndFramePhysicsSystem)),
-    UpdateAfter(typeof(ExportPhysicsWorld))]
+    UpdateAfter(typeof(ExportPhysicsWorld))*/]
 public partial struct GameRidigbodySystem : ISystem
 {
     private struct Reset
