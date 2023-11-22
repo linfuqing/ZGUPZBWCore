@@ -31,6 +31,7 @@ public partial struct GameDataStatusSystem : ISystem
     private struct Serialize
     {
         public bool isDeadlineTrigger;
+        public bool isNonSerialized;
         public bool isSerialized;
 
         [ReadOnly]
@@ -48,7 +49,7 @@ public partial struct GameDataStatusSystem : ISystem
             switch((GameEntityStatus)value)
             {
                 case GameEntityStatus.KnockedOut:
-                    if(!isSerialized)
+                    if(!isSerialized && !isNonSerialized)
                         addComponentQueue.Enqueue(EntityCommandStructChange.Create<EntityDataSerializable>(entityArray[index]));
                     break;
                 case GameEntityStatus.Dead:
@@ -69,6 +70,9 @@ public partial struct GameDataStatusSystem : ISystem
         public ComponentTypeHandle<EntityDataSerializable> entityDataSerializableType;
 
         [ReadOnly]
+        public ComponentTypeHandle<GameNonSerialized> nonSerializedType;
+
+        [ReadOnly]
         public ComponentTypeHandle<GameDataDeadlineTrigger> deadlineTriggerType;
 
         [ReadOnly]
@@ -81,6 +85,7 @@ public partial struct GameDataStatusSystem : ISystem
         {
             Serialize serialize;
             serialize.isDeadlineTrigger = chunk.Has(ref deadlineTriggerType);
+            serialize.isNonSerialized = chunk.Has(ref nonSerializedType);
             serialize.isSerialized = chunk.Has(ref entityDataSerializableType);
             serialize.entityArray = chunk.GetNativeArray(entityType);
             serialize.states = chunk.GetNativeArray(ref statusType);
@@ -99,6 +104,8 @@ public partial struct GameDataStatusSystem : ISystem
 
     private ComponentTypeHandle<EntityDataSerializable> __entityDataSerializableType;
 
+    private ComponentTypeHandle<GameNonSerialized> __nonSerializedType;
+
     private ComponentTypeHandle<GameNodeStatus> __statusType;
 
     private ComponentTypeHandle<GameDataDeadlineTrigger> __deadlineTriggerType;
@@ -112,13 +119,14 @@ public partial struct GameDataStatusSystem : ISystem
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __group = builder
                     .WithAll<GameNodeStatus>()
-                    .WithNone<GameNonSerialized>()
+                    //.WithNone<GameNonSerialized>()
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
         __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameNodeStatus>());
 
         __entityType = state.GetEntityTypeHandle();
         __entityDataSerializableType = state.GetComponentTypeHandle<EntityDataSerializable>(true);
+        __nonSerializedType = state.GetComponentTypeHandle<GameNonSerialized>(true);
         __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
         __deadlineTriggerType = state.GetComponentTypeHandle<GameDataDeadlineTrigger>(true);
 
@@ -143,6 +151,7 @@ public partial struct GameDataStatusSystem : ISystem
         serialize.entityType = __entityType.UpdateAsRef(ref state);
         serialize.statusType = __statusType.UpdateAsRef(ref state);
         serialize.entityDataSerializableType = __entityDataSerializableType.UpdateAsRef(ref state);
+        serialize.nonSerializedType = __nonSerializedType.UpdateAsRef(ref state);
         serialize.deadlineTriggerType = __deadlineTriggerType.UpdateAsRef(ref state);
         serialize.addComponentQueue = addComponentQueue.parallelWriter;
         serialize.removeComponentQueue = removeComponentQueue.parallelWriter;
