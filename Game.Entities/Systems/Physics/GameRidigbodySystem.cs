@@ -312,9 +312,12 @@ public partial struct GameRidigbodySystem : ISystem
                     translation.Value = position;
                     translations[index] = translation;
 
-                    LocalToWorld localToWorld;
-                    localToWorld.Value = float4x4.TRS(position, rigidbody.WorldFromBody.rot, 1.0f);
-                    localToWorlds[index] = localToWorld;
+                    if (index < localToWorlds.Length)
+                    {
+                        LocalToWorld localToWorld;
+                        localToWorld.Value = float4x4.TRS(position, rigidbody.WorldFromBody.rot, 1.0f);
+                        localToWorlds[index] = localToWorld;
+                    }
 
                     if(index < physicsVelocities.Length)
                         physicsVelocities[index] = default;
