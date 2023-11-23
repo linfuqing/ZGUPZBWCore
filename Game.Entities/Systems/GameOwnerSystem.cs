@@ -9,11 +9,11 @@ using Unity.Mathematics;
 using ZG;
 
 [EntityDataTypeName("GameOwer")]
-public struct GameOwner : IGameDataEntityCompoent, IComponentData
+public struct GameOwner : IComponentData
 {
     public Entity entity;
 
-    public void Serialize(int entityIndex, ref EntityDataWriter writer)
+    /*public void Serialize(int entityIndex, ref EntityDataWriter writer)
     {
         writer.Write(entityIndex);
     }
@@ -28,7 +28,7 @@ public struct GameOwner : IGameDataEntityCompoent, IComponentData
         get => entity;
 
         set => entity = value;
-    }
+    }*/
 }
 
 public struct GameFollower : IBufferElementData, IEnableableComponent

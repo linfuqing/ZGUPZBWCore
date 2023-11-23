@@ -41,9 +41,26 @@ public struct GameItemVariant : ICleanupComponentData
     public int value;
 }
 
-public struct GameItemOwner : ICleanupComponentData
+public struct GameItemOwner : IGameDataEntityCompoent, ICleanupComponentData
 {
     public Entity entity;
+
+    public void Serialize(int entityIndex, ref EntityDataWriter writer)
+    {
+        writer.Write(entityIndex);
+    }
+
+    public int Deserialize(ref EntityDataReader reader)
+    {
+        return reader.Read<int>();
+    }
+
+    Entity IGameDataEntityCompoent.entity
+    {
+        get => entity;
+
+        set => entity = value;
+    }
 }
 
 [BurstCompile,

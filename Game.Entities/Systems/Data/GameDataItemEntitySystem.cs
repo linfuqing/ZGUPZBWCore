@@ -4,6 +4,28 @@ using Unity.Collections;
 using ZG;
 using Unity.Burst;
 
+#region GameItemName
+[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<
+    GameDataItemDeserializationSystemCore<GameItemName, GameItemNameInitSystem.Initializer>.Deserializer,
+    GameDataItemDeserializationSystemCore<GameItemName, GameItemNameInitSystem.Initializer>.DeserializerFactory>))]
+
+[assembly: RegisterEntityCommandProducerJob(typeof(GameDataItemDeserializationSystemCore<GameItemName, GameItemNameInitSystem.Initializer>))]
+
+//[assembly: EntityDataSerialize(typeof(GameItemTime))]
+//[assembly: EntityDataDeserialize(typeof(GameItemTime), typeof(GameDataItemDeserializationSystem<GameItemTime, GameItemTimeInitSystem.Initializer, GameItemTimeInitSystem>), (int)GameDataConstans.Version)]
+#endregion
+
+#region GameItemVariant
+[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<
+    GameDataItemDeserializationSystemCore<GameItemVariant, GameItemVariantInitSystem.Initializer>.Deserializer,
+    GameDataItemDeserializationSystemCore<GameItemVariant, GameItemVariantInitSystem.Initializer>.DeserializerFactory>))]
+
+[assembly: RegisterEntityCommandProducerJob(typeof(GameDataItemDeserializationSystemCore<GameItemVariant, GameItemVariantInitSystem.Initializer>))]
+
+//[assembly: EntityDataSerialize(typeof(GameItemTime))]
+//[assembly: EntityDataDeserialize(typeof(GameItemTime), typeof(GameDataItemDeserializationSystem<GameItemTime, GameItemTimeInitSystem.Initializer, GameItemTimeInitSystem>), (int)GameDataConstans.Version)]
+#endregion
+
 #region GameItemTime
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<
     GameDataItemDeserializationSystemCore<GameItemTime, GameItemTimeInitSystem.Initializer>.Deserializer,
@@ -25,36 +47,6 @@ using Unity.Burst;
 //[assembly: EntityDataSerialize(typeof(GameItemDurability))]
 //[assembly: EntityDataDeserialize(typeof(GameItemDurability), typeof(GameDataItemDeserializationSystem<GameItemDurability, GameItemDurabilityInitSystem.Initializer, GameItemDurabilityInitSystem>), (int)GameDataConstans.Version)]
 #endregion
-
-/*#region GameItemName
-[assembly: RegisterGenericJobType(typeof(GameDataItemDeserialize<
-    GameItemName,
-    GameDataItemDeserializationSystem<GameItemName, GameItemNameInitSystem.Initializer, GameItemNameInitSystem>.Deserializer,
-    GameItemNameInitSystem.Initializer>))]
-
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<ComponentDataSerializationSystem<GameItemName>.Serializer, ComponentDataSerializationSystem<GameItemName>.SerializerFactory>))]
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<
-    GameDataItemDeserializer<GameItemName, GameDataItemDeserializationSystem<GameItemName, GameItemNameInitSystem.Initializer, GameItemNameInitSystem>.Deserializer>,
-    GameDataItemDeserializerFactory<GameItemName, GameDataItemDeserializationSystem<GameItemName, GameItemNameInitSystem.Initializer, GameItemNameInitSystem>.Deserializer>>))]
-
-[assembly: EntityDataSerialize(typeof(GameItemName))]
-[assembly: EntityDataDeserialize(typeof(GameItemName), typeof(GameDataItemDeserializationSystem<GameItemName, GameItemNameInitSystem.Initializer, GameItemNameInitSystem>), (int)GameDataConstans.Version)]
-#endregion
-
-#region GameItemVariant
-[assembly: RegisterGenericJobType(typeof(GameDataItemDeserialize<
-    GameItemVariant,
-    GameDataItemDeserializationSystem<GameItemVariant, GameItemVariantInitSystem.Initializer, GameItemVariantInitSystem>.Deserializer,
-    GameItemVariantInitSystem.Initializer>))]
-
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<ComponentDataSerializationSystem<GameItemVariant>.Serializer, ComponentDataSerializationSystem<GameItemVariant>.SerializerFactory>))]
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<
-    GameDataItemDeserializer<GameItemVariant, GameDataItemDeserializationSystem<GameItemVariant, GameItemVariantInitSystem.Initializer, GameItemVariantInitSystem>.Deserializer>,
-    GameDataItemDeserializerFactory<GameItemVariant, GameDataItemDeserializationSystem<GameItemVariant, GameItemVariantInitSystem.Initializer, GameItemVariantInitSystem>.Deserializer>>))]
-
-[assembly: EntityDataSerialize(typeof(GameItemVariant))]
-[assembly: EntityDataDeserialize(typeof(GameItemVariant), typeof(GameDataItemDeserializationSystem<GameItemVariant, GameItemVariantInitSystem.Initializer, GameItemVariantInitSystem>), (int)GameDataConstans.Version)]
-#endregion*/
 
 #region GameItemExp
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<
@@ -94,6 +86,60 @@ using Unity.Burst;
 //[assembly: EntityDataSerialize(typeof(GameItemLevel))]
 //[assembly: EntityDataDeserialize(typeof(GameItemLevel), typeof(GameDataItemDeserializationSystem<GameItemLevel, GameItemLevelInitSystem.Initializer, GameItemLevelInitSystem>), (int)GameDataConstans.Version)]
 #endregion
+
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameItemName)),
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataItemNameSerializationSystem : ISystem
+{
+    private EntityDataSerializationSystemCoreEx __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = EntityDataSerializationSystemCoreEx.Create<GameItemName>(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        __core.Update(ref state);
+    }
+}
+
+[BurstCompile,
+    EntityDataSerializationSystem(typeof(GameItemVariant)),
+    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
+    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
+public partial struct GameDataItemVariantSerializationSystem : ISystem
+{
+    private EntityDataSerializationSystemCoreEx __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = EntityDataSerializationSystemCoreEx.Create<GameItemVariant>(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        __core.Update(ref state);
+    }
+}
 
 [BurstCompile,
     EntityDataSerializationSystem(typeof(GameItemTime)),
@@ -360,6 +406,66 @@ public struct GameDataItemDeserializationSystemCore<TData, TInitializer> : IEnti
 
         itemManagerJobManager.AddReadOnlyDependency(jobHandle);
 
+        __core.Update(ref state);
+    }
+}
+
+[BurstCompile,
+    EntityDataDeserializationSystem(typeof(GameItemName), (int)GameDataConstans.Version),
+    CreateAfter(typeof(GameItemNameInitSystem)),
+    CreateAfter(typeof(GameDataItemRootDeserializationSystem)),
+    CreateAfter(typeof(EntityDataDeserializationStructChangeSystem)),
+    UpdateInGroup(typeof(EntityDataDeserializationSystemGroup)),
+    UpdateAfter(typeof(GameDataItemRootDeserializationSystem)), AutoCreateIn("Server")]
+public partial struct GameDataItemNameDeserializationSystem : ISystem
+{
+    private GameDataItemDeserializationSystemCore<GameItemName, GameItemNameInitSystem.Initializer> __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = GameDataItemDeserializationSystemCore<GameItemName, GameItemNameInitSystem.Initializer>.Create<GameItemNameInitSystem>(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        __core.Update(ref state);
+    }
+}
+
+[BurstCompile,
+    EntityDataDeserializationSystem(typeof(GameItemVariant), (int)GameDataConstans.Version),
+    CreateAfter(typeof(GameItemVariantInitSystem)),
+    CreateAfter(typeof(GameDataItemRootDeserializationSystem)),
+    CreateAfter(typeof(EntityDataDeserializationStructChangeSystem)),
+    UpdateInGroup(typeof(EntityDataDeserializationSystemGroup)),
+    UpdateAfter(typeof(GameDataItemRootDeserializationSystem)), AutoCreateIn("Server")]
+public partial struct GameDataItemVariantDeserializationSystem : ISystem
+{
+    private GameDataItemDeserializationSystemCore<GameItemVariant, GameItemVariantInitSystem.Initializer> __core;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __core = GameDataItemDeserializationSystemCore<GameItemVariant, GameItemVariantInitSystem.Initializer>.Create<GameItemVariantInitSystem>(ref state);
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __core.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
         __core.Update(ref state);
     }
 }

@@ -7,79 +7,157 @@ using Unity.Mathematics;
 using ZG;
 
 #region GameOwner
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataEntityComponentDataSerializationSystemCore<GameOwner>.Serializer, GameDataEntityComponentDataSerializationSystemCore<GameOwner>.SerializerFactory>))]
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataEntityComponentDataDeserializationSystemCore<GameOwner>.Deserializer, GameDataEntityComponentDataDeserializationSystemCore<GameOwner>.DeserializerFactory>))]
-[assembly: RegisterGenericJobType(typeof(GameDataEntityComponentDataDeserializationSystemCore<GameOwner>.Build))]
+[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataEntityComponentDataSerializer<GameOwner, GameOwnerDataWrapper>, GameDataEntityComponentDataSerializerFactory<GameOwner, GameOwnerDataWrapper>>))]
+[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataEntityComponentDataDeserializer<GameOwner, GameOwnerDataWrapper>, GameDataEntityComponentDataDeserializerFactory<GameOwner, GameOwnerDataWrapper>>))]
+[assembly: RegisterGenericJobType(typeof(GameDataEntityComponentDataBuild<GameOwner, GameOwnerDataWrapper>))]
 //[assembly: EntityDataSerialize(typeof(GameOwner), typeof(GameDataEntityCompoentDataSerializationSystem<GameOwner>))]
 //[assembly: EntityDataDeserialize(typeof(GameOwner), typeof(GameDataEntityCompoentDataDeserializationSystem<GameOwner>), (int)GameDataConstans.Version)]
 #endregion
 
 #region GameActorMaster
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataEntityComponentDataSerializationSystemCore<GameActorMaster>.Serializer, GameDataEntityComponentDataSerializationSystemCore<GameActorMaster>.SerializerFactory>))]
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataEntityComponentDataDeserializationSystemCore<GameActorMaster>.Deserializer, GameDataEntityComponentDataDeserializationSystemCore<GameActorMaster>.DeserializerFactory>))]
-[assembly: RegisterGenericJobType(typeof(GameDataEntityComponentDataDeserializationSystemCore<GameActorMaster>.Build))]
+[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataEntityComponentDataSerializer<GameActorMaster, GameActorMasterDataWrapper>, GameDataEntityComponentDataSerializerFactory<GameActorMaster, GameActorMasterDataWrapper>>))]
+[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataEntityComponentDataDeserializer<GameActorMaster, GameActorMasterDataWrapper>, GameDataEntityComponentDataDeserializerFactory<GameActorMaster, GameActorMasterDataWrapper>>))]
+[assembly: RegisterGenericJobType(typeof(GameDataEntityComponentDataBuild<GameActorMaster, GameActorMasterDataWrapper>))]
 //[assembly: EntityDataSerialize(typeof(GameActorMaster), typeof(GameDataEntityCompoentDataSerializationSystem<GameActorMaster>))]
 //[assembly: EntityDataDeserialize(typeof(GameActorMaster), typeof(GameDataEntityCompoentDataDeserializationSystem<GameActorMaster>), (int)GameDataConstans.Version)]
 #endregion
 
 #region GamePlayerLocator
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataEntityComponentDataSerializationSystemCore<GamePlayerLocator>.Serializer, GameDataEntityComponentDataSerializationSystemCore<GamePlayerLocator>.SerializerFactory>))]
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataEntityComponentDataDeserializationSystemCore<GamePlayerLocator>.Deserializer, GameDataEntityComponentDataDeserializationSystemCore<GamePlayerLocator>.DeserializerFactory>))]
-[assembly: RegisterGenericJobType(typeof(GameDataEntityComponentDataDeserializationSystemCore<GamePlayerLocator>.Build))]
+[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataEntityComponentDataSerializer<GamePlayerLocator, GamePlayerLocatorDataWrapper>, GameDataEntityComponentDataSerializerFactory<GamePlayerLocator, GamePlayerLocatorDataWrapper>>))]
+[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataEntityComponentDataDeserializer<GamePlayerLocator, GamePlayerLocatorDataWrapper>, GameDataEntityComponentDataDeserializerFactory<GamePlayerLocator, GamePlayerLocatorDataWrapper>>))]
+[assembly: RegisterGenericJobType(typeof(GameDataEntityComponentDataBuild<GamePlayerLocator, GamePlayerLocatorDataWrapper>))]
 //[assembly: EntityDataSerialize(typeof(GamePlayerLocator), typeof(GameDataEntityCompoentDataSerializationSystem<GamePlayerLocator>))]
 //[assembly: EntityDataDeserialize(typeof(GamePlayerLocator), typeof(GameDataEntityCompoentDataDeserializationSystem<GamePlayerLocator>), (int)GameDataConstans.Version)]
 #endregion
 
 #region GamePlayerSpawn
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataEntityComponentDataSerializationSystemCore<GamePlayerSpawn>.Serializer, GameDataEntityComponentDataSerializationSystemCore<GamePlayerSpawn>.SerializerFactory>))]
-[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataEntityComponentDataDeserializationSystemCore<GamePlayerSpawn>.Deserializer, GameDataEntityComponentDataDeserializationSystemCore<GamePlayerSpawn>.DeserializerFactory>))]
-[assembly: RegisterGenericJobType(typeof(GameDataEntityComponentDataDeserializationSystemCore<GamePlayerSpawn>.Build))]
+[assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataEntityComponentDataSerializer<GamePlayerSpawn, GamePlayerSpawnDataWrapper>, GameDataEntityComponentDataSerializerFactory<GamePlayerSpawn, GamePlayerSpawnDataWrapper>>))]
+[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<GameDataEntityComponentDataDeserializer<GamePlayerSpawn, GamePlayerSpawnDataWrapper>, GameDataEntityComponentDataDeserializerFactory<GamePlayerSpawn, GamePlayerSpawnDataWrapper>>))]
+[assembly: RegisterGenericJobType(typeof(GameDataEntityComponentDataBuild<GamePlayerSpawn, GamePlayerSpawnDataWrapper>))]
 //[assembly: EntityDataSerialize(typeof(GamePlayerSpawn), typeof(GameDataEntityCompoentDataSerializationSystem<GamePlayerSpawn>))]
 //[assembly: EntityDataDeserialize(typeof(GamePlayerSpawn), typeof(GameDataEntityCompoentDataDeserializationSystem<GamePlayerSpawn>), (int)GameDataConstans.Version)]
 #endregion
 
-public struct GamePlayerLocator : IGameDataEntityCompoent, IComponentData
+public struct GameOwnerDataWrapper : IGameDataEntityCompoentWrapper<GameOwner>
 {
-    public Entity entity;
+    public Entity Get(in GameOwner value)
+    {
+        return value.entity;
+    }
 
-    public void Serialize(int entityIndex, ref EntityDataWriter writer)
+    public void Set(ref GameOwner value, in Entity entity, in Entity instance)
+    {
+        value.entity = entity;
+    }
+
+    public void Serialize(in GameOwner value, int entityIndex, ref EntityDataWriter writer)
     {
         writer.Write(entityIndex);
     }
 
-    public int Deserialize(ref EntityDataReader reader)
+    public int Deserialize(ref GameOwner value, ref EntityDataReader reader)
     {
         return reader.Read<int>();
     }
 
-    Entity IGameDataEntityCompoent.entity
+    public bool Fallback(in Entity entity, in GameOwner value)
     {
-        get => entity;
+        return false;
+    }
+}
 
-        set => entity = value;
+public struct GameActorMasterDataWrapper : IGameDataEntityCompoentWrapper<GameActorMaster>
+{
+    public Entity Get(in GameActorMaster value)
+    {
+        return value.entity;
+    }
+
+    public void Set(ref GameActorMaster value, in Entity entity, in Entity instance)
+    {
+        value.entity = entity;
+    }
+
+    public void Serialize(in GameActorMaster value, int entityIndex, ref EntityDataWriter writer)
+    {
+        writer.Write(entityIndex);
+    }
+
+    public int Deserialize(ref GameActorMaster value, ref EntityDataReader reader)
+    {
+        return reader.Read<int>();
+    }
+
+    public bool Fallback(in Entity entity, in GameActorMaster value)
+    {
+        return false;
+    }
+}
+
+public struct GamePlayerLocator : IComponentData
+{
+    public Entity entity;
+}
+
+public struct GamePlayerLocatorDataWrapper : IGameDataEntityCompoentWrapper<GamePlayerLocator>
+{
+    public Entity Get(in GamePlayerLocator value)
+    {
+        return value.entity;
+    }
+
+    public void Set(ref GamePlayerLocator value, in Entity entity, in Entity instance)
+    {
+        value.entity = entity;
+    }
+
+    public void Serialize(in GamePlayerLocator value, int entityIndex, ref EntityDataWriter writer)
+    {
+        writer.Write(entityIndex);
+    }
+
+    public int Deserialize(ref GamePlayerLocator value, ref EntityDataReader reader)
+    {
+        return reader.Read<int>();
+    }
+
+    public bool Fallback(in Entity entity, in GamePlayerLocator value)
+    {
+        return false;
     }
 }
 
 [EntityDataTypeName("GameSpawn")]
-public struct GamePlayerSpawn : IGameDataEntityCompoent, IComponentData
+public struct GamePlayerSpawn : IComponentData
 {
     public Entity entity;
+}
 
-    public void Serialize(int entityIndex, ref EntityDataWriter writer)
+public struct GamePlayerSpawnDataWrapper : IGameDataEntityCompoentWrapper<GamePlayerSpawn>
+{
+    public Entity Get(in GamePlayerSpawn value)
+    {
+        return value.entity;
+    }
+
+    public void Set(ref GamePlayerSpawn value, in Entity entity, in Entity instance)
+    {
+        value.entity = entity;
+    }
+
+    public void Serialize(in GamePlayerSpawn value, int entityIndex, ref EntityDataWriter writer)
     {
         writer.Write(entityIndex);
     }
 
-    public int Deserialize(ref EntityDataReader reader)
+    public int Deserialize(ref GamePlayerSpawn value, ref EntityDataReader reader)
     {
         return reader.Read<int>();
     }
 
-    Entity IGameDataEntityCompoent.entity
+    public bool Fallback(in Entity entity, in GamePlayerSpawn value)
     {
-        get => entity;
-
-        set => entity = value;
+        return false;
     }
 }
 
@@ -90,12 +168,12 @@ public struct GamePlayerSpawn : IGameDataEntityCompoent, IComponentData
     UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
 public partial struct GameDataOwnerSerializationSystem : ISystem
 {
-    private GameDataEntityComponentDataSerializationSystemCore<GameOwner> __core;
+    private GameDataEntityComponentDataSerializationSystemCore __core;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __core = new GameDataEntityComponentDataSerializationSystemCore<GameOwner>(ref state);
+        __core = new GameDataEntityComponentDataSerializationSystemCore(TypeManager.GetTypeIndex<GameOwner>(), ref state);
     }
 
     [BurstCompile]
@@ -107,7 +185,8 @@ public partial struct GameDataOwnerSerializationSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        __core.Update(ref state);
+        GameOwnerDataWrapper wrapper;
+        __core.Update<GameOwner, GameOwnerDataWrapper>(ref wrapper, ref state);
     }
 }
 
@@ -117,12 +196,12 @@ public partial struct GameDataOwnerSerializationSystem : ISystem
     UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
 public partial struct GameDataActorMasterSerializationSystem : ISystem
 {
-    private GameDataEntityComponentDataSerializationSystemCore<GameActorMaster> __core;
+    private GameDataEntityComponentDataSerializationSystemCore __core;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __core = new GameDataEntityComponentDataSerializationSystemCore<GameActorMaster>(ref state);
+        __core = new GameDataEntityComponentDataSerializationSystemCore(TypeManager.GetTypeIndex<GameActorMaster>(), ref state);
     }
 
     [BurstCompile]
@@ -134,7 +213,8 @@ public partial struct GameDataActorMasterSerializationSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        __core.Update(ref state);
+        GameActorMasterDataWrapper wrapper;
+        __core.Update<GameActorMaster, GameActorMasterDataWrapper>(ref wrapper, ref state);
     }
 }
 
@@ -144,12 +224,12 @@ public partial struct GameDataActorMasterSerializationSystem : ISystem
     UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
 public partial struct GameDataPlayerLocatorSerializationSystem : ISystem
 {
-    private GameDataEntityComponentDataSerializationSystemCore<GamePlayerLocator> __core;
+    private GameDataEntityComponentDataSerializationSystemCore __core;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __core = new GameDataEntityComponentDataSerializationSystemCore<GamePlayerLocator>(ref state);
+        __core = new GameDataEntityComponentDataSerializationSystemCore(TypeManager.GetTypeIndex<GamePlayerLocator>(), ref state);
     }
 
     [BurstCompile]
@@ -161,7 +241,8 @@ public partial struct GameDataPlayerLocatorSerializationSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        __core.Update(ref state);
+        GamePlayerLocatorDataWrapper wrapper;
+        __core.Update<GamePlayerLocator, GamePlayerLocatorDataWrapper>(ref wrapper, ref state);
     }
 }
 
@@ -171,12 +252,12 @@ public partial struct GameDataPlayerLocatorSerializationSystem : ISystem
     UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
 public partial struct GameDataPlayerSpawnSerializationSystem : ISystem
 {
-    private GameDataEntityComponentDataSerializationSystemCore<GamePlayerSpawn> __core;
+    private GameDataEntityComponentDataSerializationSystemCore __core;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __core = new GameDataEntityComponentDataSerializationSystemCore<GamePlayerSpawn>(ref state);
+        __core = new GameDataEntityComponentDataSerializationSystemCore(TypeManager.GetTypeIndex<GamePlayerSpawn>(), ref state);
     }
 
     [BurstCompile]
@@ -188,7 +269,8 @@ public partial struct GameDataPlayerSpawnSerializationSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        __core.Update(ref state);
+        GamePlayerSpawnDataWrapper wrapper;
+        __core.Update<GamePlayerSpawn, GamePlayerSpawnDataWrapper>(ref wrapper, ref state);
     }
 }
 #endregion
@@ -201,12 +283,12 @@ public partial struct GameDataPlayerSpawnSerializationSystem : ISystem
     UpdateInGroup(typeof(EntityDataDeserializationSystemGroup)), AutoCreateIn("Server")]
 public partial struct GameDataOwnerDeserializationSystem : ISystem
 {
-    private GameDataEntityComponentDataDeserializationSystemCore<GameOwner> __core;
+    private GameDataEntityComponentDataDeserializationSystemCore __core;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __core = new GameDataEntityComponentDataDeserializationSystemCore<GameOwner>(ref state);
+        __core = new GameDataEntityComponentDataDeserializationSystemCore(TypeManager.GetTypeIndex<GameOwner>(), ref state);
     }
 
     [BurstCompile]
@@ -218,7 +300,8 @@ public partial struct GameDataOwnerDeserializationSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        __core.Update(ref state);
+        GameOwnerDataWrapper wrapper;
+        __core.Update<GameOwner, GameOwnerDataWrapper, GameOwnerDataWrapper>(ref wrapper, ref wrapper, ref state, out _);
     }
 }
 
@@ -229,12 +312,12 @@ public partial struct GameDataOwnerDeserializationSystem : ISystem
     UpdateInGroup(typeof(EntityDataDeserializationSystemGroup)), AutoCreateIn("Server")]
 public partial struct GameDataActorMasterDeserializationSystem : ISystem
 {
-    private GameDataEntityComponentDataDeserializationSystemCore<GameActorMaster> __core;
+    private GameDataEntityComponentDataDeserializationSystemCore __core;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __core = new GameDataEntityComponentDataDeserializationSystemCore<GameActorMaster>(ref state);
+        __core = new GameDataEntityComponentDataDeserializationSystemCore(TypeManager.GetTypeIndex<GameActorMaster>(), ref state);
     }
 
     [BurstCompile]
@@ -246,7 +329,8 @@ public partial struct GameDataActorMasterDeserializationSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        __core.Update(ref state);
+        GameActorMasterDataWrapper wrapper;
+        __core.Update<GameActorMaster, GameActorMasterDataWrapper, GameActorMasterDataWrapper>(ref wrapper, ref wrapper, ref state, out _);
     }
 }
 
@@ -257,12 +341,12 @@ public partial struct GameDataActorMasterDeserializationSystem : ISystem
     UpdateInGroup(typeof(EntityDataDeserializationSystemGroup)), AutoCreateIn("Server")]
 public partial struct GameDataPlayerLocatorDeserializationSystem : ISystem
 {
-    private GameDataEntityComponentDataDeserializationSystemCore<GamePlayerLocator> __core;
+    private GameDataEntityComponentDataDeserializationSystemCore __core;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __core = new GameDataEntityComponentDataDeserializationSystemCore<GamePlayerLocator>(ref state);
+        __core = new GameDataEntityComponentDataDeserializationSystemCore(TypeManager.GetTypeIndex<GamePlayerLocator>(), ref state);
     }
 
     [BurstCompile]
@@ -274,7 +358,8 @@ public partial struct GameDataPlayerLocatorDeserializationSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        __core.Update(ref state);
+        GamePlayerLocatorDataWrapper wrapper;
+        __core.Update<GamePlayerLocator, GamePlayerLocatorDataWrapper, GamePlayerLocatorDataWrapper>(ref wrapper, ref wrapper, ref state, out _);
     }
 }
 
@@ -285,12 +370,12 @@ public partial struct GameDataPlayerLocatorDeserializationSystem : ISystem
     UpdateInGroup(typeof(EntityDataDeserializationSystemGroup)), AutoCreateIn("Server")]
 public partial struct GameDataPlayerSpawnDeserializationSystem : ISystem
 {
-    private GameDataEntityComponentDataDeserializationSystemCore<GamePlayerSpawn> __core;
+    private GameDataEntityComponentDataDeserializationSystemCore __core;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __core = new GameDataEntityComponentDataDeserializationSystemCore<GamePlayerSpawn>(ref state);
+        __core = new GameDataEntityComponentDataDeserializationSystemCore(TypeManager.GetTypeIndex<GamePlayerSpawn>(), ref state);
     }
 
     [BurstCompile]
@@ -302,7 +387,8 @@ public partial struct GameDataPlayerSpawnDeserializationSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        __core.Update(ref state);
+        GamePlayerSpawnDataWrapper wrapper;
+        __core.Update<GamePlayerSpawn, GamePlayerSpawnDataWrapper, GamePlayerSpawnDataWrapper>(ref wrapper, ref wrapper, ref state, out _);
     }
 }
 #endregion
