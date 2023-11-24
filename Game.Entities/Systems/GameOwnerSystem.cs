@@ -391,7 +391,6 @@ public partial struct GameOwnerSystem : ISystem
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __groupToChange = builder
                     .WithAll<GameOwner, GameNodeStatus>()
-                    .WithNone<GameSoul>()
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
         __groupToChange.AddChangedVersionFilter(ComponentType.ReadOnly<GameOwner>());
