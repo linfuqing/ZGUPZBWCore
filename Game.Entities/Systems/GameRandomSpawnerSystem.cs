@@ -73,7 +73,7 @@ public struct GameSpawnInitializer : IEntityDataInitializer
     UpdateAfter(typeof(GameSyncSystemGroup))]
 public partial struct GameRandomSpawnerSystem : ISystem
 {
-    private struct Count
+    /*private struct Count
     {
         [NativeDisableParallelForRestriction]
         public NativeArray<int> counter;
@@ -149,7 +149,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
         {
             results.Capacity = math.max(results.Capacity, results.Length + counter[0]);
         }
-    }
+    }*/
 
     private struct Spawn
     {
@@ -161,47 +161,135 @@ public partial struct GameRandomSpawnerSystem : ISystem
 
             //public double time;
 
+            public int itemIdentityType;
+
+            public double time;
+
             public RigidTransform transform;
+
+            public Random random;
 
             public Entity entity;
 
-            public Random random;
+            public EntityArchetype itemEntityArchetype;
+
+            public EntityArchetype ownerEntityArchetype;
+
+            public EntityArchetype levelEntityArchetype;
+
+            public BlobAssetReference<GameRandomSpawnerDefinition> definition;
+
+            public GameItemObjectInitSystem.Initializer initializer;
+
+            public GameItemManager itemManager;
 
             [ReadOnly]
             public DynamicBuffer<GameRandomSpawnerAsset> assets;
 
-            public SharedList<GameSpawnData>.ParallelWriter results;
+            public TimeManager<GameSpawnData>.Writer results;
+
+            public EntityComponentAssigner.Writer itemAssigner;
+
+            public SharedHashMap<GameItemHandle, EntityArchetype>.Writer itemCreateEntityCommander;
+
+            public SharedHashMap<Hash128, Entity>.Writer guidEntities;
 
             public RandomResult Set(int startIndex, int count)
             {
-                GameSpawnData spawnData;
+                float halfHorizontal;
+                GameSpawnData result;
                 //spawnData.time = time;
-                spawnData.entity = entity;
+                result.entity = entity;
                 GameRandomSpawnerAsset asset;
                 for (int i = 0; i < count; ++i)
                 {
                     asset = assets[startIndex + i];
-                    spawnData.assetIndex = asset.index;
-                    spawnData.transform.pos.x = asset.horizontal * random.NextFloat();
-                    spawnData.transform.pos.y = asset.vertical;
-                    spawnData.transform.pos.z = asset.horizontal * random.NextFloat();
-                    spawnData.transform.pos += asset.offset.pos;
-                    spawnData.transform.rot = asset.offset.rot;// quaternion.LookRotationSafe(-math.normalize(spawnData.transform.pos), math.up());
+                    result.itemHandle = Create(asset.index, entity);
+                    if (result.itemHandle.Equals(GameItemHandle.Empty))
+                        continue;
+
+                    halfHorizontal = asset.horizontal * 0.5f;
+                    result.assetIndex = asset.index;
+                    result.transform.pos.x = asset.horizontal * random.NextFloat() - halfHorizontal;
+                    result.transform.pos.y = asset.vertical * random.NextFloat() - asset.vertical * 0.5f;
+                    result.transform.pos.z = asset.horizontal * random.NextFloat() - halfHorizontal;
+                    result.transform.pos += asset.offset.pos;
+                    result.transform.rot = asset.offset.rot;// quaternion.LookRotationSafe(-math.normalize(spawnData.transform.pos), math.up());
                     if(asset.space == GameRandomSpawnerAsset.Space.Local)
-                        spawnData.transform = math.mul(transform, spawnData.transform);
+                        result.transform = math.mul(transform, result.transform);
 
-                    spawnData.itemHandle = GameItemHandle.Empty;
-
-                    results.AddNoResize(spawnData);
+                    results.Invoke(random.NextFloat(asset.minTime, asset.maxTime) + time, result);
                 }
 
                 return RandomResult.Pass;
             }
+
+            public GameItemHandle Create(int assetIndex, in Entity entity)
+            {
+                ref var asset = ref definition.Value.assets[assetIndex];
+                int numItemTypes = asset.itemTypes.Length;
+                if (numItemTypes < 1)
+                    return GameItemHandle.Empty;
+
+                GameItemHandle result = itemManager.Add(asset.itemTypes[numItemTypes - 1], 1), handle;
+                for (int i = numItemTypes - 2; i >= 0; --i)
+                {
+                    handle = itemManager.Add(asset.itemTypes[i]);
+
+                    itemManager.AttachSibling(handle, result);
+
+                    result = handle;
+                }
+
+                if (initializer.IsVail(asset.itemTypes[0]))
+                {
+                    itemCreateEntityCommander.Add(result, asset.levelHandle == 0 ? ownerEntityArchetype : levelEntityArchetype);
+
+                    var handleEntity = GameItemStructChangeFactory.Convert(result);
+
+                    GameItemSystem.Init(
+                        itemIdentityType,
+                        result,
+                        entity,
+                        ref random,
+                        ref guidEntities,
+                        ref itemAssigner);
+
+                    GameItemOwner owner;
+                    owner.entity = entity;
+                    itemAssigner.SetComponentData(handleEntity, owner);
+
+                    if (asset.levelHandle != 0)
+                    {
+                        GameItemLevel level;
+                        level.handle = asset.levelHandle;
+                        itemAssigner.SetComponentData(handleEntity, level);
+                    }
+                }
+                else
+                    itemCreateEntityCommander.Add(result, itemEntityArchetype);
+
+                return result;
+            }
         }
-        
-        //public double time;
+
+        public int itemIdentityType;
+
+        public double time;
 
         public Random random;
+
+        public EntityArchetype itemEntityArchetype;
+
+        public EntityArchetype ownerEntityArchetype;
+
+        public EntityArchetype levelEntityArchetype;
+
+        public BlobAssetReference<GameRandomSpawnerDefinition> definition;
+
+        public GameItemObjectInitSystem.Initializer initializer;
+
+        public GameItemManager itemManager;
 
         [ReadOnly]
         public NativeArray<Entity> entityArray;
@@ -222,8 +310,14 @@ public partial struct GameRandomSpawnerSystem : ISystem
         public BufferAccessor<GameRandomSpawnerGroup> groups;
 
         public BufferAccessor<GameRandomSpawnerNode> nodes;
-        
-        public SharedList<GameSpawnData>.ParallelWriter results;
+
+        public TimeManager<GameSpawnData>.Writer results;
+
+        public EntityComponentAssigner.Writer itemAssigner;
+
+        public SharedHashMap<GameItemHandle, EntityArchetype>.Writer itemCreateEntityCommander;
+
+        public SharedHashMap<Hash128, Entity>.Writer guidEntities;
 
         public void Execute(int index)
         {
@@ -235,12 +329,22 @@ public partial struct GameRandomSpawnerSystem : ISystem
             Entity entity = entityArray[index];
 
             AssetHandler assetHandler;
-            //assetHandler.time = time;
-            assetHandler.entity = entity;
-            assetHandler.random = random;
+            assetHandler.itemIdentityType = itemIdentityType;
+            assetHandler.time = time;
             assetHandler.transform = math.RigidTransform(rotations[index].Value, translations[index].Value);
+            assetHandler.random = random;
+            assetHandler.entity = entity;
+            assetHandler.itemEntityArchetype = itemEntityArchetype;
+            assetHandler.ownerEntityArchetype = ownerEntityArchetype;
+            assetHandler.levelEntityArchetype = levelEntityArchetype;
+            assetHandler.definition = definition;
+            assetHandler.initializer = initializer;
+            assetHandler.itemManager = itemManager;
             assetHandler.assets = assets[index];
             assetHandler.results = results;
+            assetHandler.itemAssigner = itemAssigner;
+            assetHandler.itemCreateEntityCommander = itemCreateEntityCommander;
+            assetHandler.guidEntities = guidEntities;
 
             var groups = this.groups[index].Reinterpret<RandomGroup>().AsNativeArray();
             var slices = this.slices[index];
@@ -261,7 +365,21 @@ public partial struct GameRandomSpawnerSystem : ISystem
     [BurstCompile]
     private struct SpawnEx : IJobChunk//, IEntityCommandProducerJob
     {
+        public int itemIdentityType;
+
         public double time;
+
+        public EntityArchetype itemEntityArchetype;
+
+        public EntityArchetype ownerEntityArchetype;
+
+        public EntityArchetype levelEntityArchetype;
+
+        public BlobAssetReference<GameRandomSpawnerDefinition> definition;
+
+        public GameItemObjectInitSystem.Initializer initializer;
+
+        public GameItemManager itemManager;
 
         [ReadOnly]
         public EntityTypeHandle entityType;
@@ -286,14 +404,27 @@ public partial struct GameRandomSpawnerSystem : ISystem
         [NativeDisableParallelForRestriction]
         public ComponentLookup<GameEntityActionCommand> commands;
 
-        public SharedList<GameSpawnData>.ParallelWriter results;
+        public TimeManager<GameSpawnData>.Writer results;
+
+        public EntityComponentAssigner.Writer itemAssigner;
+
+        public SharedHashMap<GameItemHandle, EntityArchetype>.Writer itemCreateEntityCommander;
+
+        public SharedHashMap<Hash128, Entity>.Writer guidEntities;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             Spawn spawn;
-            //spawn.time = time;
-            long hash = math.aslong(time);
-            spawn.random = new Random((uint)((int)(hash >> 32) ^ ((int)hash) ^ unfilteredChunkIndex));
+            spawn.itemIdentityType = itemIdentityType;
+            spawn.time = time;
+            uint hash = RandomUtility.Hash(time);
+            spawn.random = new Random(hash ^ (uint)unfilteredChunkIndex);
+            spawn.itemEntityArchetype = itemEntityArchetype;
+            spawn.ownerEntityArchetype = ownerEntityArchetype;
+            spawn.levelEntityArchetype = levelEntityArchetype;
+            spawn.definition = definition;
+            spawn.initializer = initializer;
+            spawn.itemManager = itemManager;
             spawn.entityArray = chunk.GetNativeArray(entityType);
             spawn.rotations = chunk.GetNativeArray(ref rotationType);
             spawn.translations = chunk.GetNativeArray(ref translationType);
@@ -302,6 +433,9 @@ public partial struct GameRandomSpawnerSystem : ISystem
             spawn.assets = chunk.GetBufferAccessor(ref assetType);
             spawn.nodes = chunk.GetBufferAccessor(ref nodeType);
             spawn.results = results;
+            spawn.itemAssigner = itemAssigner;
+            spawn.itemCreateEntityCommander = itemCreateEntityCommander;
+            spawn.guidEntities = guidEntities;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -313,7 +447,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
         }
     }
 
-    [BurstCompile]
+    /*[BurstCompile]
     private struct CreateItems : IJob
     {
         public double time;
@@ -339,6 +473,8 @@ public partial struct GameRandomSpawnerSystem : ISystem
         public SharedHashMap<GameItemHandle, EntityArchetype>.Writer itemCreateEntityCommander;
 
         public NativeList<GameSpawnData> results;
+
+        public TimeManager<GameSpawnData>.Writer timeManager;
 
         public void Execute()
         {
@@ -394,10 +530,12 @@ public partial struct GameRandomSpawnerSystem : ISystem
                     }
                     else
                         itemCreateEntityCommander.Add(result.itemHandle, itemEntityArchetype);
+
+                    timeManager.Invoke(result);
                 }
             }
         }
-    }
+    }*/
 
     private EntityQuery __group;
     //private EntityQuery __factoryGroup;
@@ -423,9 +561,11 @@ public partial struct GameRandomSpawnerSystem : ISystem
 
     private ComponentLookup<GameEntityActionCommand> __commands;
 
+    private TimeManager<GameSpawnData> __timeManager;
+
     private GameItemManagerShared __itemManager;
 
-    public GameItemObjectInitSystem.Initializer __initializer;
+    private GameItemObjectInitSystem.Initializer __initializer;
 
     private SharedHashMap<Hash128, Entity> __guidEntities;
 
@@ -485,6 +625,8 @@ public partial struct GameRandomSpawnerSystem : ISystem
             componentTypeList.Dispose();
         }
 
+        __timeManager = new TimeManager<GameSpawnData>(Allocator.Persistent);
+
         __itemManager = itemSystem.manager;
 
         __initializer = world.GetExistingSystemUnmanaged<GameItemObjectInitSystem>().initializer;
@@ -501,13 +643,18 @@ public partial struct GameRandomSpawnerSystem : ISystem
     [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
+        __timeManager.Dispose();
+
         commands.Dispose();
     }
 
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        var sliceType = __sliceType.UpdateAsRef(ref state);
+        if (!SystemAPI.HasSingleton<GameRandomSpawnerData>() || !SystemAPI.HasSingleton<GameItemIdentityType>())
+            return;
+
+        /*var sliceType = __sliceType.UpdateAsRef(ref state);
         var groupType = __groupType.UpdateAsRef(ref state);
         var nodeType = __nodeType.UpdateAsRef(ref state);
 
@@ -526,59 +673,58 @@ public partial struct GameRandomSpawnerSystem : ISystem
         Recapcity recapcity;
         recapcity.counter = counter;
         recapcity.results = commands.writer;
-        jobHandle = recapcity.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, commandsJobManager.readWriteJobHandle));
+        jobHandle = recapcity.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, commandsJobManager.readWriteJobHandle));*/
+
+        double time = __time.nextTime;
+
+        var itemStructChangeManager = SystemAPI.GetSingleton<GameItemStructChangeManager>();
+        var itemAssigner = itemStructChangeManager.assigner;
+        var createEntityCommander = itemStructChangeManager.createEntityCommander;
 
         SpawnEx spawn;
-        spawn.time = __time.nextTime;
+        spawn.time = time;
+        spawn.itemIdentityType = SystemAPI.GetSingleton<GameItemIdentityType>().value;
+        spawn.itemEntityArchetype = __itemEntityArchetype;
+        spawn.ownerEntityArchetype = __ownerEntityArchetype;
+        spawn.levelEntityArchetype = __levelEntityArchetype;
+        spawn.definition = SystemAPI.GetSingleton<GameRandomSpawnerData>().definition;
+        spawn.initializer = __initializer;
+        spawn.itemManager = __itemManager.value;
         spawn.entityType = __entityType.UpdateAsRef(ref state);
         spawn.rotationType = __rotationType.UpdateAsRef(ref state);
         spawn.translationType = __translationType.UpdateAsRef(ref state);
         spawn.assetType = __assetType.UpdateAsRef(ref state);
-        spawn.sliceType = sliceType;
-        spawn.groupType = groupType;
-        spawn.nodeType = nodeType;
+        spawn.sliceType = __sliceType.UpdateAsRef(ref state);// sliceType;
+        spawn.groupType = __groupType.UpdateAsRef(ref state);// groupType;
+        spawn.nodeType = __nodeType.UpdateAsRef(ref state);// nodeType;
         spawn.commands = __commands.UpdateAsRef(ref state);
-        spawn.results = commands.parallelWriter;
+        spawn.itemAssigner = itemAssigner.writer;
+        spawn.guidEntities = __guidEntities.writer;
+        spawn.itemCreateEntityCommander = createEntityCommander.writer;
+        spawn.results = __timeManager.writer;
 
-        jobHandle = spawn.ScheduleParallelByRef(__group, jobHandle);
+        ref var createEntityCommanderJobManager = ref createEntityCommander.lookupJobManager;
+        ref var guidEntitiesJobManager = ref __guidEntities.lookupJobManager;
+        ref var itemManagerJobManager = ref __itemManager.lookupJobManager;
+        var jobHandle = JobHandle.CombineDependencies(
+            guidEntitiesJobManager.readWriteJobHandle,
+            createEntityCommanderJobManager.readWriteJobHandle,
+            itemManagerJobManager.readWriteJobHandle);
 
-        //entityManager.AddJobHandleForProducer<SpawnEx>(jobHandle);
+        jobHandle = JobHandle.CombineDependencies(jobHandle, itemAssigner.jobHandle, state.Dependency);
+        jobHandle = spawn.ScheduleByRef(__group, jobHandle);
 
-        if (SystemAPI.HasSingleton<GameRandomSpawnerData>() && SystemAPI.HasSingleton<GameItemIdentityType>())
-        {
-            var itemStructChangeManager = SystemAPI.GetSingleton<GameItemStructChangeManager>();
-            var itemAssigner = itemStructChangeManager.assigner;
-            var createEntityCommander = itemStructChangeManager.createEntityCommander;
+        itemManagerJobManager.readWriteJobHandle = jobHandle;
+        guidEntitiesJobManager.readWriteJobHandle = jobHandle;
+        createEntityCommanderJobManager.readWriteJobHandle = jobHandle;
 
-            CreateItems createItems;
-            createItems.time = state.WorldUnmanaged.Time.ElapsedTime;
-            createItems.itemIdentityType = SystemAPI.GetSingleton<GameItemIdentityType>().value;
-            createItems.itemEntityArchetype = __itemEntityArchetype;
-            createItems.ownerEntityArchetype = __ownerEntityArchetype;
-            createItems.levelEntityArchetype = __levelEntityArchetype;
-            createItems.definition = SystemAPI.GetSingleton<GameRandomSpawnerData>().definition;
-            createItems.itemManager = __itemManager.value;
-            createItems.initializer = __initializer;
-            createItems.itemAssigner = itemAssigner.writer;
-            createItems.guidEntities = __guidEntities.writer;
-            createItems.itemCreateEntityCommander = createEntityCommander.writer;
-            createItems.results = commands.writer;
+        itemAssigner.jobHandle = jobHandle;
 
-            ref var createEntityCommanderJobManager = ref createEntityCommander.lookupJobManager;
-            ref var guidEntitiesJobManager = ref __guidEntities.lookupJobManager;
-            ref var itemManagerJobManager = ref __itemManager.lookupJobManager;
-            var temp = JobHandle.CombineDependencies(
-                guidEntitiesJobManager.readWriteJobHandle, 
-                createEntityCommanderJobManager.readWriteJobHandle, 
-                itemManagerJobManager.readWriteJobHandle);
+        var commands = this.commands;
+        NativeList<GameSpawnData> commandsWriter = commands.writer;
+        ref var commandsJobManager = ref commands.lookupJobManager;
 
-            jobHandle = createItems.ScheduleByRef(JobHandle.CombineDependencies(temp, itemAssigner.jobHandle, jobHandle));
-            itemManagerJobManager.readWriteJobHandle = jobHandle;
-            guidEntitiesJobManager.readWriteJobHandle = jobHandle;
-            createEntityCommanderJobManager.readWriteJobHandle = jobHandle;
-
-            itemAssigner.jobHandle = jobHandle;
-        }
+        jobHandle = __timeManager.Schedule(time, ref commandsWriter, JobHandle.CombineDependencies(jobHandle, commandsJobManager.readWriteJobHandle));
 
         commandsJobManager.readWriteJobHandle = jobHandle;
 
