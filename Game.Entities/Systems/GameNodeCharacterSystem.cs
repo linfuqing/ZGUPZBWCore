@@ -2501,8 +2501,12 @@ public partial struct GameNodeCharacterRotationSystem : ISystem
         public NativeArray<GameNodeCharacterAngle> angles;
         [ReadOnly]
         public NativeArray<GameNodeSurface> surfaces;
+        [ReadOnly]
+        public NativeArray<Translation> translations;
 
         public NativeArray<Rotation> rotations;
+
+        public NativeArray<LocalToWorld> localToWorlds;
 
         public void Execute(int index)
         {
@@ -2514,6 +2518,13 @@ public partial struct GameNodeCharacterRotationSystem : ISystem
                 rotationY;
             
             rotations[index] = rotation;
+
+            if (index < localToWorlds.Length)
+            {
+                LocalToWorld localToWorld;
+                localToWorld.Value = float4x4.TRS(translations[index].Value, rotation.Value, 1.0f);
+                localToWorlds[index] = localToWorld;
+            }
         }
     }
 
@@ -2526,8 +2537,12 @@ public partial struct GameNodeCharacterRotationSystem : ISystem
         public ComponentTypeHandle<GameNodeCharacterAngle> angleType;
         [ReadOnly]
         public ComponentTypeHandle<GameNodeSurface> surfaceType;
+        [ReadOnly]
+        public ComponentTypeHandle<Translation> translationType;
 
         public ComponentTypeHandle<Rotation> rotationType;
+
+        public ComponentTypeHandle<LocalToWorld> localToWorldType;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -2535,7 +2550,9 @@ public partial struct GameNodeCharacterRotationSystem : ISystem
             buildRotations.instances = chunk.GetNativeArray(ref instanceType);
             buildRotations.angles = chunk.GetNativeArray(ref angleType);
             buildRotations.surfaces = chunk.GetNativeArray(ref surfaceType);
+            buildRotations.translations = chunk.GetNativeArray(ref translationType);
             buildRotations.rotations = chunk.GetNativeArray(ref rotationType);
+            buildRotations.localToWorlds = chunk.GetNativeArray(ref localToWorldType);
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -2545,23 +2562,34 @@ public partial struct GameNodeCharacterRotationSystem : ISystem
 
     private EntityQuery __group;
 
+    private ComponentTypeHandle<GameNodeCharacterData> __instanceType;
+    private ComponentTypeHandle<GameNodeCharacterAngle> __angleType;
+    private ComponentTypeHandle<GameNodeSurface> __surfaceType;
+    private ComponentTypeHandle<Translation> __translationType;
+
+    private ComponentTypeHandle<Rotation> __rotationType;
+
+    private ComponentTypeHandle<LocalToWorld> __localToWorldType;
+
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameNodeCharacterRotationDirty>(),
-                    ComponentType.ReadOnly<GameNodeCharacterData>(),
-                    ComponentType.ReadOnly<GameNodeCharacterAngle>(),
-                    ComponentType.ReadOnly<GameNodeSurface>(),
-                    ComponentType.ReadWrite<Rotation>()
-                },
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameNodeCharacterRotationDirty, GameNodeCharacterData, GameNodeCharacterAngle, GameNodeSurface>()
+                    .WithAllRW<Rotation>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
+
+        __instanceType = state.GetComponentTypeHandle<GameNodeCharacterData>(true);
+        __angleType = state.GetComponentTypeHandle<GameNodeCharacterAngle>(true);
+        __surfaceType = state.GetComponentTypeHandle<GameNodeSurface>(true);
+        __translationType = state.GetComponentTypeHandle<Translation>(true);
+        __rotationType = state.GetComponentTypeHandle<Rotation>();
+        __localToWorldType = state.GetComponentTypeHandle<LocalToWorld>();
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
     }
@@ -2570,10 +2598,12 @@ public partial struct GameNodeCharacterRotationSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         BuildRotationsEx buildRotations;
-        buildRotations.instanceType = state.GetComponentTypeHandle<GameNodeCharacterData>(true);
-        buildRotations.angleType = state.GetComponentTypeHandle<GameNodeCharacterAngle>(true);
-        buildRotations.surfaceType = state.GetComponentTypeHandle<GameNodeSurface>(true);
-        buildRotations.rotationType = state.GetComponentTypeHandle<Rotation>();
+        buildRotations.instanceType = __instanceType.UpdateAsRef(ref state);
+        buildRotations.angleType = __angleType.UpdateAsRef(ref state);
+        buildRotations.surfaceType = __surfaceType.UpdateAsRef(ref state);
+        buildRotations.translationType = __translationType.UpdateAsRef(ref state);
+        buildRotations.rotationType = __rotationType.UpdateAsRef(ref state);
+        buildRotations.localToWorldType = __localToWorldType.UpdateAsRef(ref state);
 
         state.Dependency = buildRotations.ScheduleParallel(__group, state.Dependency);
     }
