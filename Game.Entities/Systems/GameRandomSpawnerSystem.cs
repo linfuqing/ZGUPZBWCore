@@ -205,9 +205,6 @@ public partial struct GameRandomSpawnerSystem : ISystem
                 {
                     asset = assets[startIndex + i];
                     result.itemHandle = Create(asset.index, entity);
-                    if (result.itemHandle.Equals(GameItemHandle.Empty))
-                        continue;
-
                     halfHorizontal = asset.horizontal * 0.5f;
                     result.assetIndex = asset.index;
                     result.transform.pos.x = asset.horizontal * random.NextFloat() - halfHorizontal;
