@@ -1100,24 +1100,37 @@ public partial struct GameNodeSpeedScaleSystem : ISystem
 
     private EntityQuery __group;
 
+    private EntityTypeHandle __entityType;
+    private ComponentTypeHandle<GameNodeSpeedScale> __instanceType;
+    private BufferTypeHandle<GameNodeSpeedScaleComponent> __componentType;
+    private ComponentLookup<GameNodeSpeedScale> __instances;
+
 #if GAME_DEBUG_COMPARSION
     private GameRollbackTime __time;
 #endif
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            ComponentType.ReadWrite<GameNodeSpeedScale>(),
-            ComponentType.ReadOnly<GameNodeSpeedScaleComponent>(),
-            ComponentType.Exclude<Disabled>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                    .WithAll<GameNodeSpeedScaleComponent>()
+                    .WithAllRW<GameNodeSpeedScale>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
+        __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameNodeSpeedScaleComponent>());
 
-        __group.SetChangedVersionFilter(typeof(GameNodeSpeedScaleComponent));
+        __entityType = state.GetEntityTypeHandle();
+        __instanceType = state.GetComponentTypeHandle<GameNodeSpeedScale>(true);
+        __componentType = state.GetBufferTypeHandle<GameNodeSpeedScaleComponent>(true);
+        __instances = state.GetComponentLookup<GameNodeSpeedScale>();
 
 #if GAME_DEBUG_COMPARSION
         __time = new GameRollbackTime(ref state);
 #endif
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 
@@ -1131,12 +1144,12 @@ public partial struct GameNodeSpeedScaleSystem : ISystem
         updateSpeedScale.frameIndex = __time.frameIndex;
 #endif
 
-        updateSpeedScale.entityType = state.GetEntityTypeHandle();
-        updateSpeedScale.instanceType = state.GetComponentTypeHandle<GameNodeSpeedScale>(true);
-        updateSpeedScale.componentType = state.GetBufferTypeHandle<GameNodeSpeedScaleComponent>(true);
-        updateSpeedScale.instances = state.GetComponentLookup<GameNodeSpeedScale>();
+        updateSpeedScale.entityType = __entityType.UpdateAsRef(ref state);
+        updateSpeedScale.instanceType = __instanceType.UpdateAsRef(ref state);
+        updateSpeedScale.componentType = __componentType.UpdateAsRef(ref state);
+        updateSpeedScale.instances = __instances.UpdateAsRef(ref state);
 
-        state.Dependency = updateSpeedScale.ScheduleParallel(__group, state.Dependency);
+        state.Dependency = updateSpeedScale.ScheduleParallelByRef(__group, state.Dependency);
     }
 }
 
