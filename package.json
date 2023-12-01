@@ -1,14 +1,15 @@
 {
   "name": "cn.com.zerogame.unitypackages.zbw.core",
   "displayName": "ZGUP ZBW Core",
-  "version": "2.10.26",
+  "version": "2.10.27",
   "unity": "2022.2",
   "unityRelease": "0f1",
   "dependencies": {
+    "cn.com.zerogame.unitypackages.urp": "2.2.1",
     "cn.com.zerogame.unitypackages.entities.networking": "2.2.1",
     "cn.com.zerogame.unitypackages.entities.physics": "2.2.1",
     "cn.com.zerogame.unitypackages.entities.animations": "2.2.1",
-    "cn.com.zerogame.unitypackages.urp": "2.2.1"
+    "cn.com.zerogame.unitypackages.game.common": "2.2.1"
   },
   "description": "Zero Game Unity Package Zero-based World Core",
   "keywords": [
