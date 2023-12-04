@@ -165,6 +165,7 @@ public partial struct GameTimeActorSystem : ISystem
                                 spawnData.assetIndex = action.assetIndex;
                                 //spawnData.time = time;
                                 spawnData.entity = entity;
+                                spawnData.velocity = float3.zero;
                                 spawnData.transform = math.RigidTransform(transform.rot, math.transform(transform, action.spawnOffset));
                                 spawnData.itemHandle = GameItemHandle.Empty;
 

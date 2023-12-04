@@ -558,6 +558,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                         destination.assetIndex = source.assetIndex;
                         //destination.time = time;
                         destination.entity = entity;
+                        destination.velocity = float3.zero;
                         destination.transform = transform;
                         destination.itemHandle = GameItemHandle.Empty;
 
