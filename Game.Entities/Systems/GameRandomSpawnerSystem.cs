@@ -6,6 +6,7 @@ using Unity.Collections;
 using Unity.Mathematics;
 using Unity.Transforms;
 using ZG;
+using Unity.Physics;
 
 public struct GameRandomSpawnerDefinition
 {
@@ -32,13 +33,19 @@ public struct GameRandomSpawnerFactory : IComponentData
 public struct GameSpawnInitializer : IEntityDataInitializer
 {
     private int __assetIndex;
+    private float3 __velocity;
     private GameItemHandle __itemHandle;
 
     //private double __time;
 
-    public GameSpawnInitializer(int assetIndex, in GameItemHandle itemHandle)
+    public GameSpawnInitializer(
+        int assetIndex,
+        in float3 velocity, 
+        in GameItemHandle itemHandle)
     {
         __assetIndex = assetIndex;
+
+        __velocity = velocity;
 
         __itemHandle = itemHandle;
 
@@ -47,6 +54,11 @@ public struct GameSpawnInitializer : IEntityDataInitializer
 
     public void Invoke<T>(ref T gameObjectEntity) where T : IGameObjectEntity
     {
+        PhysicsVelocity physicsVelocity;
+        physicsVelocity.Angular = float3.zero;
+        physicsVelocity.Linear = __velocity;
+        gameObjectEntity.SetComponentData(physicsVelocity);
+
         GameSpawnedInstanceData instance;
         instance.assetIndex = __assetIndex;
         //instance.time = __time;
@@ -196,7 +208,8 @@ public partial struct GameRandomSpawnerSystem : ISystem
 
             public RandomResult Set(int startIndex, int count)
             {
-                float halfHorizontal;
+                float halfHorizontal, halfVertical;
+                float2 distance;
                 GameSpawnData result;
                 //spawnData.time = time;
                 result.entity = entity;
@@ -205,11 +218,21 @@ public partial struct GameRandomSpawnerSystem : ISystem
                 {
                     asset = assets[startIndex + i];
                     result.itemHandle = Create(asset.index, entity);
-                    halfHorizontal = asset.horizontal * 0.5f;
                     result.assetIndex = asset.index;
-                    result.transform.pos.x = asset.horizontal * random.NextFloat() - halfHorizontal;
-                    result.transform.pos.y = asset.vertical * random.NextFloat() - asset.vertical * 0.5f;
-                    result.transform.pos.z = asset.horizontal * random.NextFloat() - halfHorizontal;
+
+                    distance = random.NextFloat2Direction() * random.NextFloat(-asset.velocityRadius, asset.velocityRadius);
+                    result.velocity = asset.velocityOffset + math.float3(distance.x, 0.0f, distance.y);
+                    result.velocity = math.mul(quaternion.LookRotationSafe(asset.velocityOffset, math.up()), result.velocity) + asset.velocityOffset;
+
+                    halfHorizontal = asset.horizontal * 0.5f;
+                    distance = random.NextFloat2Direction() * random.NextFloat(-halfHorizontal, halfHorizontal);
+
+                    halfVertical = asset.vertical * 0.5f;
+                    result.transform.pos =  math.float3(distance.x, random.NextFloat(-halfVertical, halfVertical), distance.y);
+                    result.velocity -= result.transform.pos;
+                    result.velocity = math.normalizesafe(result.velocity) * random.NextFloat(asset.minVelocity, asset.maxVelocity);
+                    //result.velocity = math.mul(asset.offset.rot, result.velocity);
+
                     result.transform.pos += asset.offset.pos;
                     result.transform.rot = asset.offset.rot;// quaternion.LookRotationSafe(-math.normalize(spawnData.transform.pos), math.up());
                     if(asset.space == GameRandomSpawnerAsset.Space.Local)

@@ -34,6 +34,11 @@ public struct GameRandomSpawnerAsset : IBufferElementData
     public float minTime;
     public float maxTime;
 
+    public float minVelocity;
+    public float maxVelocity;
+    public float velocityRadius;
+    public float3 velocityOffset;
+
     public RigidTransform offset;
 }
 
@@ -87,8 +92,19 @@ public class GameRandomSpawnerComponent : EntityProxyComponent, IEntityComponent
         [Tooltip("横向掉落范围")]
         public float horizontal;
 
+        [Tooltip("随机时间最小值")]
         public float minTime;
+        [Tooltip("随机时间最大值")]
         public float maxTime;
+
+        [Tooltip("随机发射速度")]
+        public float maxVelocity;
+        [Tooltip("随机发射速度")]
+        public float minVelocity;
+        [Tooltip("发射速度的圆锥半径")]
+        public float velocityRadius;
+        [Tooltip("发射速度的圆锥偏移")]
+        public Vector3 velocityOffset;
 
         public Vector3 position;
         public Quaternion rotation;
@@ -128,6 +144,10 @@ public class GameRandomSpawnerComponent : EntityProxyComponent, IEntityComponent
             destination.horizontal = source.horizontal;
             destination.minTime = source.minTime;
             destination.maxTime = source.maxTime;
+            destination.minVelocity = source.minVelocity;
+            destination.maxVelocity = source.maxVelocity;
+            destination.velocityRadius = source.velocityRadius;
+            destination.velocityOffset = source.velocityOffset;
             destination.offset = math.RigidTransform(source.rotation.normalized, source.position);
         }
 

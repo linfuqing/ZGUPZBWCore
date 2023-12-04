@@ -37,6 +37,7 @@ public struct GameSpawnData
     public int assetIndex;
     //public double time;
     public Entity entity;
+    public float3 velocity;
     public RigidTransform transform;
     public GameItemHandle itemHandle;
 }
