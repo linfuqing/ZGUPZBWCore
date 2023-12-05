@@ -1,22 +1,22 @@
 using UnityEngine;
 using ZG;
 
-[EntityComponent(typeof(GameItemSpawnOffset))]
+[EntityComponent(typeof(GameItemSpawnRange))]
 //[EntityComponent(typeof(GameItemSpawnCommandVersion))]
 [EntityComponent(typeof(GameItemSpawnCommand))]
 [EntityComponent(typeof(GameItemSpawnHandleCommand))]
 public class GameItemSpawnComponent : MonoBehaviour, IEntityComponent
 {
-    public Vector3 offsetMin;
-    public Vector3 offsetMax;
+    public float radius;
+    public Unity.Mathematics.RigidTransform center;
 
     void IEntityComponent.Init(in Unity.Entities.Entity entity, EntityComponentAssigner assigner)
     {
-        GameItemSpawnOffset offset;
-        offset.min = offsetMin;
-        offset.max = offsetMax;
+        GameItemSpawnRange range;
+        range.radius = radius;
+        range.center = Unity.Mathematics.math.RigidTransform(center.rot.Equals(default) ? Unity.Mathematics.quaternion.identity : center.rot, center.pos);
 
-        assigner.SetComponentData(entity, offset);
+        assigner.SetComponentData(entity, range);
         assigner.SetComponentEnabled<GameItemSpawnCommand>(entity, false);
         assigner.SetComponentEnabled<GameItemSpawnHandleCommand>(entity, false);
     }

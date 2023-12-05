@@ -93,14 +93,14 @@ public struct GameItemSpawnInitializer : IEntityDataInitializer
     }
 }
 
-public struct GameItemSpawnOffset : IComponentData
+public struct GameItemSpawnRange : IComponentData
 {
-    public float3 min;
-    public float3 max;
+    public float radius;
+    public RigidTransform center;
 
-    public float3 GetValue(ref Random random)
+    public RigidTransform Next(ref Random random)
     {
-        return random.NextFloat3(min, max);
+        return math.RigidTransform(center.rot, center.pos + random.NextFloat3Direction() * random.NextFloat(radius));
     }
 }
 
@@ -185,7 +185,7 @@ public partial struct GameItemSpawnSystem : ISystem
         //public NativeArray<Rotation> rotations;
 
         [ReadOnly]
-        public NativeArray<GameItemSpawnOffset> offsets;
+        public NativeArray<GameItemSpawnRange> ranges;
 
         public BufferAccessor<GameItemSpawnHandleCommand> commands;
 
@@ -206,7 +206,7 @@ public partial struct GameItemSpawnSystem : ISystem
             Key key;
             Value value;
             GameItemSpawnData result;
-            var offset = offsets[index];
+            var range = ranges[index];
             for (i = 0; i < numCommands; ++i)
             {
                 ref readonly var command = ref commands.ElementAt(i);
@@ -224,7 +224,7 @@ public partial struct GameItemSpawnSystem : ISystem
 
                 result.identityType = value.identityType;
                 result.owner = command.owner;
-                result.transform = math.RigidTransform(command.transform.rot, command.transform.pos + offset.GetValue(ref random));
+                result.transform = math.mul(command.transform, range.Next(ref random));
 
                 switch (value.spawnType)
                 {
@@ -265,7 +265,7 @@ public partial struct GameItemSpawnSystem : ISystem
         //public NativeArray<Rotation> rotations;
 
         [ReadOnly]
-        public NativeArray<GameItemSpawnOffset> offsets;
+        public NativeArray<GameItemSpawnRange> ranges;
 
         public BufferAccessor<GameItemSpawnCommand> commands;
 
@@ -284,7 +284,7 @@ public partial struct GameItemSpawnSystem : ISystem
             Key key;
             Value value;
             GameItemSpawnData result;
-            var offset = offsets[index];
+            var range = ranges[index];
             for (i = 0; i < numCommands; ++i)
             {
                 ref readonly var command = ref commands.ElementAt(i);
@@ -296,7 +296,7 @@ public partial struct GameItemSpawnSystem : ISystem
 
                 result.identityType = value.identityType;
                 result.owner = command.owner;
-                result.transform = math.RigidTransform(command.transform.rot, command.transform.pos + offset.GetValue(ref random));
+                result.transform = math.mul(command.transform, range.Next(ref random));
 
                 switch (value.spawnType)
                 {
@@ -338,7 +338,7 @@ public partial struct GameItemSpawnSystem : ISystem
         //public ComponentTypeHandle<Rotation> rotationType;
 
         [ReadOnly]
-        public ComponentTypeHandle<GameItemSpawnOffset> offsetType;
+        public ComponentTypeHandle<GameItemSpawnRange> rangeType;
 
         public BufferTypeHandle<GameItemSpawnCommand> commandType;
 
@@ -351,7 +351,7 @@ public partial struct GameItemSpawnSystem : ISystem
             var random = new Random(hash ^ (uint)unfilteredChunkIndex);
             //var translations = chunk.GetNativeArray(ref translationType);
             //var rotations = chunk.GetNativeArray(ref rotationType);
-            var offsets = chunk.GetNativeArray(ref offsetType);
+            var ranges = chunk.GetNativeArray(ref rangeType);
             if (chunk.Has(ref commandType))
             {
                 Spawn spawn;
@@ -360,7 +360,7 @@ public partial struct GameItemSpawnSystem : ISystem
                 spawn.values = values;
                 //spawn.translations = translations;
                 //spawn.rotations = rotations;
-                spawn.offsets = offsets;
+                spawn.ranges = ranges;
                 spawn.commands = chunk.GetBufferAccessor(ref commandType);
                 spawn.results = results;
 
@@ -384,7 +384,7 @@ public partial struct GameItemSpawnSystem : ISystem
                 spawn.values = values;
                 //spawn.translations = translations;
                 //spawn.rotations = rotations;
-                spawn.offsets = offsets;
+                spawn.ranges = ranges;
                 spawn.commands = chunk.GetBufferAccessor(ref handleCommandType);
                 spawn.results = results;
 
@@ -408,7 +408,7 @@ public partial struct GameItemSpawnSystem : ISystem
 
     //private ComponentTypeHandle<Rotation> __rotationType;
 
-    private ComponentTypeHandle<GameItemSpawnOffset> __offsetType;
+    private ComponentTypeHandle<GameItemSpawnRange> __rangeType;
 
     private BufferTypeHandle<GameItemSpawnCommand> __commandType;
 
@@ -447,7 +447,7 @@ public partial struct GameItemSpawnSystem : ISystem
 
         //__translationType = state.GetComponentTypeHandle<Translation>(true);
         //__rotationType = state.GetComponentTypeHandle<Rotation>(true);
-        __offsetType = state.GetComponentTypeHandle<GameItemSpawnOffset>(true);
+        __rangeType = state.GetComponentTypeHandle<GameItemSpawnRange>(true);
         __commandType = state.GetBufferTypeHandle<GameItemSpawnCommand>();
         __handleCommandType = state.GetBufferTypeHandle<GameItemSpawnHandleCommand>();
 
@@ -480,7 +480,7 @@ public partial struct GameItemSpawnSystem : ISystem
         spawn.values = __values;
         //spawn.translationType = __translationType.UpdateAsRef(ref state);
         //spawn.rotationType = __rotationType.UpdateAsRef(ref state);
-        spawn.offsetType = __offsetType.UpdateAsRef(ref state);
+        spawn.rangeType = __rangeType.UpdateAsRef(ref state);
         spawn.commandType = __commandType.UpdateAsRef(ref state);
         spawn.handleCommandType = __handleCommandType.UpdateAsRef(ref state);
         spawn.results = commands.writer;
