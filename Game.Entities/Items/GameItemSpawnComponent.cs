@@ -8,13 +8,14 @@ using ZG;
 public class GameItemSpawnComponent : MonoBehaviour, IEntityComponent
 {
     public float radius;
-    public Unity.Mathematics.RigidTransform center;
+    public Vector3 center;
+    public Quaternion rotation;
 
     void IEntityComponent.Init(in Unity.Entities.Entity entity, EntityComponentAssigner assigner)
     {
         GameItemSpawnRange range;
         range.radius = radius;
-        range.center = Unity.Mathematics.math.RigidTransform(center.rot.Equals(default) ? Unity.Mathematics.quaternion.identity : center.rot, center.pos);
+        range.center = Unity.Mathematics.math.RigidTransform(rotation.Equals(default) ? Unity.Mathematics.quaternion.identity : rotation, center);
 
         assigner.SetComponentData(entity, range);
         assigner.SetComponentEnabled<GameItemSpawnCommand>(entity, false);
