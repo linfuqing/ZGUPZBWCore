@@ -42,7 +42,7 @@ public struct GameNodeOldStatus : IComponentData, IEnableableComponent, IEquatab
 //[EntityComponent]
 [EntityComponent(typeof(GameNodeStatus))]
 [EntityComponent(typeof(GameNodeOldStatus))]
-public class GameNodeStatusComponent : EntityProxyComponent
+public class GameNodeStatusComponent : EntityProxyComponent, IEntityComponent
 {
     public int value
     {
@@ -64,5 +64,11 @@ public class GameNodeStatusComponent : EntityProxyComponent
             status.value = value;
             this.SetComponentData(status);
         }
+    }
+
+    void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
+    {
+        assigner.SetComponentData(entity, default(GameNodeStatus));
+        assigner.SetComponentData(entity, default(GameNodeOldStatus));
     }
 }

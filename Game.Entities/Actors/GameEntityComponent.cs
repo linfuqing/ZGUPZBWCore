@@ -236,6 +236,8 @@ public class GameEntityComponent : EntityProxyComponent, IEntityComponent
     [SerializeField]
     internal int[] _itemIndices;
 
+    public int campDefault => _camp;
+
     public int camp
     {
         get
