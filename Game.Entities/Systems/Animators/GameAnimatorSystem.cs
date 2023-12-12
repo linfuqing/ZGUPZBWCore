@@ -7,7 +7,6 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using UnityEngine;
 using ZG;
-using AnimatorControllerParameter = ZG.AnimatorControllerParameter;
 
 [BurstCompile, UpdateInGroup(typeof(GameRollbackSystemGroup), OrderLast = true)/*, UpdateAfter(typeof(GameUpdateSystemGroup))*/]
 public partial struct GameAnimatorTimeSystem : ISystem
@@ -962,7 +961,7 @@ public partial struct GameAnimatorSystem : ISystem
         [NativeDisableContainerSafetyRestriction]
         public EntityCommandQueue<GameAnimatorApplySystem.Result>.ParallelWriter results;
 
-        public void Execute(int index)
+        public bool Execute(int index)
         {
             DynamicBuffer<MeshInstanceAnimatorParameterCommand> paramterCommands = default;
 
@@ -1150,6 +1149,8 @@ public partial struct GameAnimatorSystem : ISystem
                     }
                 }
             }
+
+            return paramterCommands.IsCreated;
         }
     }
 
@@ -1199,7 +1200,10 @@ public partial struct GameAnimatorSystem : ISystem
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
-                applyTime.Execute(i);
+            {
+                if (applyTime.Execute(i))
+                    chunk.SetComponentEnabled(ref paramterCommandType, i, true);
+            }
         }
     }
 
@@ -1218,7 +1222,7 @@ public partial struct GameAnimatorSystem : ISystem
 
         public EntityCommandQueue<GameAnimatorApplySystem.Result>.ParallelWriter results;
 
-        public void Execute(int index)
+        public bool Execute(int index)
         {
             DynamicBuffer<MeshInstanceAnimatorParameterCommand> paramterCommands = default;
 
@@ -1290,6 +1294,8 @@ public partial struct GameAnimatorSystem : ISystem
                     //animator.SetFloat(GameAnimatorFlag.triggerHashTurn, transformInfo.turnAmount);
                 }
             }
+
+            return paramterCommands.IsCreated;
         }
     }
 
@@ -1319,7 +1325,10 @@ public partial struct GameAnimatorSystem : ISystem
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
-                applySimulation.Execute(i);
+            {
+                if (applySimulation.Execute(i))
+                    chunk.SetComponentEnabled(ref paramterCommandType, i, true);
+            }
         }
     }
 
@@ -1403,7 +1412,7 @@ public partial struct GameAnimatorSystem : ISystem
         applySimulation.animatorType = animatorType;
         applySimulation.results = resultParallelWriter;
 
-        var jobHandle = applySimulation.ScheduleParallel(__simulationGroup, inputDeps);
+        var jobHandle = applySimulation.ScheduleParallelByRef(__simulationGroup, inputDeps);
 
         ApplyTimeEx applyTime;
         applyTime.time = __animationElapsedTimeGroup.GetSingleton<GameAnimationElapsedTime>().value;// + Time.DeltaTime;
@@ -1420,7 +1429,7 @@ public partial struct GameAnimatorSystem : ISystem
         applyTime.animatorType = animatorType;
         applyTime.results = resultParallelWriter;
 
-        jobHandle = applyTime.ScheduleParallel(__timeGroup, jobHandle);
+        jobHandle = applyTime.ScheduleParallelByRef(__timeGroup, jobHandle);
 
         results.AddJobHandleForProducer<ApplyTimeEx>(jobHandle);
 
