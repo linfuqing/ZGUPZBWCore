@@ -270,7 +270,7 @@ public class GameAnimatorComponent : EntityProxyComponent, IEntityComponent
         assigner.SetComponentData(entity, actorTimeToLive);
 
         GameAnimatorParameterData parameters;
-        var animatorController = GetComponentInChildren<IAnimatorController>();
+        var animatorController = GetComponentInChildren<IAnimatorController>(true);
         //flag.value = __GetFlag(animator == null ? null : animator.parameters);
         if (animatorController == null)
             parameters = default;
