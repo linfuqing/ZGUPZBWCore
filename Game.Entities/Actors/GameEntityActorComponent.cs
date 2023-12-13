@@ -812,7 +812,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
 
         var actionIndices = __GetActionIndices(_actionIndices);
         assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, actionIndices);
-        assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, new GameEntityActorActionInfo[actionIndices.Length]);
+        //assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, new GameEntityActorActionInfo[actionIndices.Length]);
 
         if (_delay != null)
             assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, _delay);
