@@ -194,7 +194,7 @@ public struct GameInputActionDefinition
                         time,
                         actorTime*/) &&
                         filter.Check(actorAction.actionIndex, time) &&
-                        actorActionInfos[actionInstance.actorActionIndex].coolDownTime < time)
+                        (actorActionInfos.Length <= actionInstance.actorActionIndex || actorActionInfos[actionInstance.actorActionIndex].coolDownTime < time))
                     {
                         //if (actorActionInfos[actionInstance.actorActionIndex].coolDownTime < time)
                         {
@@ -236,7 +236,7 @@ public struct GameInputActionDefinition
                         time,
                         actorTime*/) &&
                         filter.Check(actorAction.actionIndex, time) &&
-                        actorActionInfos[actionInstance.actorActionIndex].coolDownTime < time)
+                        (actorActionInfos.Length <= actionInstance.actorActionIndex || actorActionInfos[actionInstance.actorActionIndex].coolDownTime < time))
                 {
                     actorActionIndex = actionInstance.actorActionIndex;
                     layerMask = action.layerMask;
