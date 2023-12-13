@@ -229,6 +229,11 @@ public struct GameEntityActorHit : IComponentData
     public float destinationHit;
 }
 
+public struct GameEntityActorHitTarget : IBufferElementData
+{
+    public Entity entity;
+}
+
 [InternalBufferCapacity(2)]
 public struct GameEntityActorActionData : IBufferElementData
 {

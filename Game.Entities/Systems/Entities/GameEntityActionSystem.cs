@@ -1671,73 +1671,78 @@ public partial struct GameEntityActionSystem : ISystem
 
         public ComponentLookup<GameEntityActorHit> actorHits;
 
+        public BufferLookup<GameEntityActorHitTarget> actorHitTargets;
+
         public void Execute(int index)
         {
             var instance = instances[index];
-            bool isExists = actorHits.HasComponent(instance.entity);
-            var result = isExists ? actorHits[instance.entity] : default;
-            //if ((status & GameActionStatus.Status.Destroy) != GameActionStatus.Status.Destroy)
+
+            float hitResult = 0.0f;
+
+            GameEntityHit hit;
+            GameEntityActorHit actorHit;
+            GameEntityActorHitTarget actorHitTarget;
+            GameActionEntity entity;
+            GameDeadline time;
+            var entities = this.entities[index];
+            int length = entities.Length;
+            //string log = "";
+            for (int i = 0; i < length; ++i)
             {
-                float hitResult = 0.0f;
-
-                GameEntityHit hit;
-                GameEntityActorHit actorHit;
-                GameActionEntity entity;
-                GameDeadline time;
-                var entities = this.entities[index];
-                int length = entities.Length;
-                //string log = "";
-                for (int i = 0; i < length; ++i)
+                entity = entities[i];
+                if (entity.delta > math.FLT_MIN_NORMAL)
                 {
-                    entity = entities[i];
-                    if (entity.delta > math.FLT_MIN_NORMAL)
+                    hitResult += entity.delta;
+
+                    //log += entity.ToString();
+                    if (actorHits.HasComponent(entity.target))
                     {
-                        hitResult += entity.delta;
+                        actorHit = actorHits[entity.target];
+                        ++actorHit.destinationTimes;
+                        actorHit.destinationHit += entity.delta;
 
-                        //log += entity.ToString();
-                        if (actorHits.HasComponent(entity.target))
-                        {
-                            actorHit = actorHits[entity.target];
-                            ++actorHit.destinationTimes;
-                            actorHit.destinationHit += entity.delta;
-
-                            actorHits[entity.target] = actorHit;
-                        }
-
-                        if (hits.HasComponent(entity.target))
-                        {
-                            hit = hits[entity.target];
-                            hit.delta += entity.delta;
-                            hit.value += entity.delta;
-
-                            time = instance.time;
-                            time += entity.elaspedTime;
-                            hit.time = GameDeadline.Max(hit.time, time);
-                            hit.normal += entity.normal;
-                            hits[entity.target] = hit;
-
-                            //log += "-hit: " + hit.value + ", time: " + hit.time + ", elapsedTime: " + (instance.time + entity.elaspedTime);
-                        }
+                        actorHits[entity.target] = actorHit;
                     }
-                }
 
-                result.sourceHit += hitResult;
+                    if (actorHitTargets.HasBuffer(entity.target))
+                    {
+                        actorHitTarget.entity = instance.entity;
+                        actorHitTargets[entity.target].Add(actorHitTarget);
+                    }
 
-                if (rages.HasComponent(instance.entity))
-                {
-                    var rage = rages[instance.entity];
-                    rage.value += hitResult * instancesEx[index].info.rageScale;
-                    rages[instance.entity] = rage;
+                    if (hits.HasComponent(entity.target))
+                    {
+                        hit = hits[entity.target];
+                        hit.delta += entity.delta;
+                        hit.value += entity.delta;
+
+                        time = instance.time;
+                        time += entity.elaspedTime;
+                        hit.time = GameDeadline.Max(hit.time, time);
+                        hit.normal += entity.normal;
+                        hits[entity.target] = hit;
+
+                        //log += "-hit: " + hit.value + ", time: " + hit.time + ", elapsedTime: " + (instance.time + entity.elaspedTime);
+                    }
                 }
             }
 
-            if (isExists)
+            if (rages.HasComponent(instance.entity))
             {
+                var rage = rages[instance.entity];
+                rage.value += hitResult * instancesEx[index].info.rageScale;
+                rages[instance.entity] = rage;
+            }
+
+            if (actorHits.HasComponent(instance.entity))
+            {
+                actorHit = actorHits[instance.entity];
+
                 var status = states[index].value;
                 if ((status & GameActionStatus.Status.Damaged) == GameActionStatus.Status.Damage)
-                    ++result.sourceTimes;
+                    ++actorHit.sourceTimes;
 
-                actorHits[instance.entity] = result;
+                actorHits[instance.entity] = actorHit;
             }
             /*if (log.Length > 1)
                 UnityEngine.Debug.Log(log);*/
@@ -1771,6 +1776,8 @@ public partial struct GameEntityActionSystem : ISystem
 
         public ComponentLookup<GameEntityActorHit> actorHits;
 
+        public BufferLookup<GameEntityActorHitTarget> actorHitTargets;
+
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             ComputeHits executor;
@@ -1783,6 +1790,7 @@ public partial struct GameEntityActionSystem : ISystem
             executor.rages = rages;
             executor.hits = hits;
             executor.actorHits = actorHits;
+            executor.actorHitTargets = actorHitTargets;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -1907,11 +1915,13 @@ public partial struct GameEntityActionSystem : ISystem
 
     private ComponentLookup<GameNodeCharacterFlag> __characterflags;
 
+    private ComponentLookup<GameEntityBreakCommand> __breakCommands;
+
     private ComponentLookup<GameEntityRage> __rages;
     private ComponentLookup<GameEntityHit> __hits;
     private ComponentLookup<GameEntityActorHit> __actorHits;
 
-    private ComponentLookup<GameEntityBreakCommand> __breakCommands;
+    private BufferLookup<GameEntityActorHitTarget> __actorHitTargets;
 
     private BufferLookup<GameNodeVelocityComponent> __velocities;
 
@@ -1974,11 +1984,12 @@ public partial struct GameEntityActionSystem : ISystem
 
         __characterflags = state.GetComponentLookup<GameNodeCharacterFlag>();
 
+        __breakCommands = state.GetComponentLookup<GameEntityBreakCommand>();
+
         __rages = state.GetComponentLookup<GameEntityRage>();
         __hits = state.GetComponentLookup<GameEntityHit>();
         __actorHits = state.GetComponentLookup<GameEntityActorHit>();
-
-        __breakCommands = state.GetComponentLookup<GameEntityBreakCommand>();
+        __actorHitTargets = state.GetBufferLookup<GameEntityActorHitTarget>();
 
         __velocities = state.GetBufferLookup<GameNodeVelocityComponent>();
 
@@ -2089,6 +2100,7 @@ public partial struct GameEntityActionSystem : ISystem
         computeHits.rages = __rages.UpdateAsRef(ref state);
         computeHits.hits = __hits.UpdateAsRef(ref state);
         computeHits.actorHits = __actorHits.UpdateAsRef(ref state);
+        computeHits.actorHitTargets = __actorHitTargets.UpdateAsRef(ref state);
 
         var hitJob = computeHits.ScheduleByRef(group, jobHandle);
 

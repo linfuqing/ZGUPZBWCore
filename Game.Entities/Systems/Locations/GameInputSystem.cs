@@ -294,6 +294,7 @@ public struct GameInputAction : IComponentData
     public double minActionTime;
     public double maxActionTime;
 
+    //public double targetTime;
     public Entity target;
 
     public static bool Check(GameActionTargetType type, int sourceCamp, int destinationCamp)
@@ -307,6 +308,19 @@ public struct GameInputAction : IComponentData
         return false;
     }
 
+    public bool Predicate(
+        int camp,
+        in Entity entity,
+        in ComponentLookup<GameNodeStatus> states,
+        in ComponentLookup<GameEntityCamp> camps,
+        in ComponentLookup<PhysicsShapeCompoundCollider> colliders)
+    {
+        return states.HasComponent(entity) &&
+           (((GameEntityStatus)states[entity].value & GameEntityStatus.Mask) != GameEntityStatus.Dead) &&
+           (layerMask == 0 || (colliders[entity].value.Value.Filter.BelongsTo & layerMask) != 0) &&
+           Check(targetType == 0 ? GameActionTargetType.Enemy : targetType, camp, camps[entity].value);
+    }
+
     public bool Did(
         GameInputButton button,
         int actorActionIndex,
@@ -315,8 +329,9 @@ public struct GameInputAction : IComponentData
         int actorStatus,
         float actorVelocity,
         float dot,
+        float rage,
         float maxDistance,
-        float rage, 
+        //float targetTime,
         //float responseTime,
         double time,
         in float3 position,
@@ -338,7 +353,9 @@ public struct GameInputAction : IComponentData
         in BlobAssetReference<GameActionItemSetDefinition> actionItemSetDefinition,
         out bool isTimeout)
     {
-        if (!states.HasComponent(target) ||
+        isTimeout = time > maxActionTime;
+        if (isTimeout || 
+            !states.HasComponent(target) ||
             (((GameEntityStatus)states[target].value & GameEntityStatus.Mask) == GameEntityStatus.Dead) ||
             math.distancesq(translations[target].Value, position) > this.distance * this.distance)
         {
@@ -371,7 +388,6 @@ public struct GameInputAction : IComponentData
         bool result = false;
         float delta = (float)(time - minActionTime), distance = 0.0f;
         var filter = new Filter(rage, actorTime, actionSetDefinition);
-        isTimeout = time > maxActionTime;
         if (actorActionIndex != -1 && actorActionIndex != this.actorActionIndex)
         {
             distance = 0.0f;
@@ -426,7 +442,7 @@ public struct GameInputAction : IComponentData
         {
             if (target == Entity.Null && targetType != 0)
             {
-                if (__Predicate(camp, selection, states, camps, colliders))
+                if (Predicate(camp, selection, states, camps, colliders))
                     target = selection;
 
                 this.distance = math.max(distance, maxDistance);
@@ -438,7 +454,7 @@ public struct GameInputAction : IComponentData
                     for (int i = 0; i < numTargets; ++i)
                     {
                         target = targets[i];
-                        if (__Predicate(camp, target.entity, states, camps, colliders) &&
+                        if (Predicate(camp, target.entity, states, camps, colliders) &&
                             target.distance < this.distance)
                         {
                             this.target = target.entity;
@@ -458,19 +474,6 @@ public struct GameInputAction : IComponentData
         }
 
         return false;
-    }
-
-    private bool __Predicate(
-        int camp,
-        in Entity entity,
-        in ComponentLookup<GameNodeStatus> states,
-        in ComponentLookup<GameEntityCamp> camps,
-        in ComponentLookup<PhysicsShapeCompoundCollider> colliders)
-    {
-        return states.HasComponent(entity) &&
-           (((GameEntityStatus)states[entity].value & GameEntityStatus.Mask) != GameEntityStatus.Dead) &&
-           (layerMask == 0 || (colliders[entity].value.Value.Filter.BelongsTo & layerMask) != 0) &&
-           Check(targetType == 0 ? GameActionTargetType.Enemy : targetType, camp, camps[entity].value);
     }
 }
 
@@ -1542,9 +1545,10 @@ public partial struct GameInputActionSystem : ISystem
                 group,
                 index,
                 direction,
-                out _);
+                out _, 
+                out int camp);
 
-            __Apply(result, GameInputStatus.As(button), index, direction, ref action);
+            __Apply(result, GameInputStatus.As(button), index, camp, direction, ref action);
         }
 
         public void Execute(
@@ -1574,7 +1578,7 @@ public partial struct GameInputActionSystem : ISystem
             var status = states[index];
             var value = CollectKeys(status.value, keys);
             var actionTargetStatus = value;
-
+            int camp;
             switch (value)
             {
                 case GameInputStatus.Value.KeyDown:
@@ -1587,7 +1591,8 @@ public partial struct GameInputActionSystem : ISystem
                         0,
                         index,
                         direction,
-                        out isTimeout);
+                        out isTimeout, 
+                        out camp);
                     if (value == GameInputStatus.Value.KeyUp)
                     {
                         if (result || isTimeout)
@@ -1604,7 +1609,8 @@ public partial struct GameInputActionSystem : ISystem
                         0,
                         index,
                         direction,
-                        out _);
+                        out _,
+                        out camp);
                     if (result)
                         value = GameInputStatus.Value.KeyDown;
                     else //if (isTimeout || actorTime < time)
@@ -1616,7 +1622,8 @@ public partial struct GameInputActionSystem : ISystem
                             0,
                             index,
                             direction,
-                            out _);
+                            out _,
+                            out camp);
                         
                         value = result ? GameInputStatus.Value.KeyHold : GameInputStatus.Value.KeyDown;
                     }
@@ -1629,7 +1636,8 @@ public partial struct GameInputActionSystem : ISystem
                         0,
                         index,
                         direction,
-                        out _);
+                        out _,
+                        out camp);
                     value = result ? GameInputStatus.Value.KeyHoldAndUp : GameInputStatus.Value.KeyUp;
                     break;
                 case GameInputStatus.Value.KeyHoldAndUp:
@@ -1640,7 +1648,8 @@ public partial struct GameInputActionSystem : ISystem
                         0,
                         index,
                         direction,
-                        out _);
+                        out _,
+                        out camp);
                     value = GameInputStatus.Value.KeyUp;
                     break;
                 case GameInputStatus.Value.KeyUpAndDownAndUp:
@@ -1651,7 +1660,8 @@ public partial struct GameInputActionSystem : ISystem
                         0,
                         index,
                         direction,
-                        out _);
+                        out _,
+                        out camp);
                     value = GameInputStatus.Value.KeyDownAndUp;
                     break;
                 default:
@@ -1662,11 +1672,12 @@ public partial struct GameInputActionSystem : ISystem
                         0,
                         index,
                         direction,
-                        out _);
+                        out _,
+                        out camp);
                     break;
             }
 
-            __Apply(result, actionTargetStatus, index, direction, ref action);
+            __Apply(result, actionTargetStatus, index, camp, direction, ref action);
 
             if (value != status.value)
             {
@@ -1682,23 +1693,25 @@ public partial struct GameInputActionSystem : ISystem
             int group,
             int index,
             in float3 direction,
-            out bool isTimeout/*,
+            out bool isTimeout, 
+            out int camp/*,
             out double actorTimeValue*/)
         {
             var entity = GameNodeParent.GetRootMain(entityArray[index], parents);
             //var actorTime = actorTimes[entity];
             //actorTimeValue = actorTime.value;
             float3 forward = math.forward(rotations[entity].Value);
+            camp = camps[entity].value;
             return action.Did(
                 button,
                 actorActionIndex,
                 group,
-                camps[entity].value,
+                camp,
                 (int)actorStates[entity].value,
                 velocities[entity].value,
                 math.dot(math.normalizesafe(direction, forward), forward),
+                rages.HasComponent(entity) ? rages[entity].value : 0.0f,
                 maxDistance,
-                rages.HasComponent(entity) ? rages[entity].value : 0.0f, 
                 time,
                 translations[entity].Value,
                 selection,
@@ -1722,6 +1735,7 @@ public partial struct GameInputActionSystem : ISystem
             bool result,
             GameInputStatus.Value status,
             int index,
+            int camp, 
             in float3 direction,
             ref GameInputAction action)
         {
@@ -1730,7 +1744,7 @@ public partial struct GameInputActionSystem : ISystem
                 GameInputActionTarget actionTarget;
                 actionTarget.status = status;
                 actionTarget.actorActionIndex = action.actorActionIndex;
-                actionTarget.entity = action.target == Entity.Null ? __GetActionTarget(index) : action.target;
+                actionTarget.entity = action.target == Entity.Null ? __GetActionTarget(index, camp, action) : action.target;
                 actionTarget.direction = direction;
 
                 if (actionTarget.isDo)
@@ -1743,20 +1757,21 @@ public partial struct GameInputActionSystem : ISystem
                 GameInputActionTarget actionTarget;
                 actionTarget.status = status;
                 actionTarget.actorActionIndex = -1;
-                actionTarget.entity = __GetActionTarget(index);
+                actionTarget.entity = __GetActionTarget(index, camp, action);
                 actionTarget.direction = direction;
 
                 actionTargets[index] = actionTarget;
             }
         }
 
-        private Entity __GetActionTarget(int index)
+        private Entity __GetActionTarget(int index, int camp, in GameInputAction action)
         {
             Entity entity = actionTargets[index].entity;
-            if (nodeStates.HasComponent(entity) && ((GameEntityStatus)nodeStates[entity].value & GameEntityStatus.Mask) != GameEntityStatus.Dead)
+            return action.Predicate(camp, entity, nodeStates, camps, colliders) ? entity : Entity.Null;
+            /*if (nodeStates.HasComponent(entity) && ((GameEntityStatus)nodeStates[entity].value & GameEntityStatus.Mask) != GameEntityStatus.Dead)
                 return entity;
 
-            return Entity.Null;
+            return Entity.Null;*/
         }
     }
 

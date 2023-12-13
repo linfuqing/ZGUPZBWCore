@@ -3734,6 +3734,8 @@ public partial struct GameEntityActionHitClearSystem : ISystem
     {
         public ComponentTypeHandle<GameEntityActorHit> instanceType;
 
+        public BufferTypeHandle<GameEntityActorHitTarget> targetType;
+
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             /*ClearActorHits clearActorHits;
@@ -3744,11 +3746,21 @@ public partial struct GameEntityActionHitClearSystem : ISystem
             {
                 var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
                 while (iterator.NextEntityIndex(out int i))
+                {
                     //clearActorHits.Execute(i);
                     instances[i] = default;
+                }
             }
             else
                 instances.MemClear();
+
+            if (chunk.Has(ref targetType))
+            {
+                var targets = chunk.GetBufferAccessor(ref targetType);
+                var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+                while (iterator.NextEntityIndex(out int i))
+                    targets[i].Clear();
+            }
         }
     }
 
@@ -3756,12 +3768,15 @@ public partial struct GameEntityActionHitClearSystem : ISystem
 
     private ComponentTypeHandle<GameEntityActorHit> __instanceType;
 
+    private BufferTypeHandle<GameEntityActorHitTarget> __targetType;
+
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         __group = state.GetEntityQuery(ComponentType.ReadWrite<GameEntityActorHit>());
 
         __instanceType = state.GetComponentTypeHandle<GameEntityActorHit>();
+        __targetType = state.GetBufferTypeHandle<GameEntityActorHitTarget>();
     }
 
     [BurstCompile]
@@ -3775,6 +3790,7 @@ public partial struct GameEntityActionHitClearSystem : ISystem
     {
         ClearActorHitsEx clearActorHits;
         clearActorHits.instanceType = __instanceType.UpdateAsRef(ref state);
+        clearActorHits.targetType = __targetType.UpdateAsRef(ref state);
         state.Dependency = clearActorHits.ScheduleParallelByRef(__group, state.Dependency);
     }
 }
