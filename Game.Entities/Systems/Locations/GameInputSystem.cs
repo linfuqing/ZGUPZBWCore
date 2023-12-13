@@ -409,7 +409,7 @@ public struct GameInputAction : IComponentData
 
             if (result)
             {
-                result = actorActionInfos[actorActionIndex].coolDownTime < time;
+                result = actorActionInfos.Length <= actorActionIndex || actorActionInfos[actorActionIndex].coolDownTime < time;
                 if (result)
                     distance = action.distance;
             }
