@@ -387,7 +387,7 @@ public struct GameEntityActionComponentType : IBufferElementData
 [EntityComponent(typeof(GameEntityActionCommand))]
 [EntityComponent(typeof(GameEntityBreakCommand))]
 [EntityComponent(typeof(GameEntityActionCommander))]
-public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>, IEntitySystemStateComponent
+public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>, IEntityComponent
 {
 #if UNITY_EDITOR
     [CSVField(CSVFieldFlag.OverrideNearestPrefab)]
@@ -776,9 +776,9 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
     {
         base.Init(entity, assigner);
 
-        GameEntityCommandVersion version;
+        /*GameEntityCommandVersion version;
         version.value = 1;
-        assigner.SetComponentData(entity, version);
+        assigner.SetComponentData(entity, version);*/
 
         if (__entityComponent == null)
             __entityComponent = transform.GetComponentInParent<GameEntityComponentEx>(true);
@@ -794,12 +794,12 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         eventInfo.timeEventHandle = TimeEventHandle.Null;
         assigner.SetComponentData(entity, eventInfo);*/
 
-        GameEntityBreakInfo breakInfo;
+        /*GameEntityBreakInfo breakInfo;
         breakInfo.version = 0;
         breakInfo.delayIndex = -1;
         breakInfo.commandTime = 0.0;
         //breakInfo.timeEventHandle = TimeEventHandle.Null;
-        assigner.SetComponentData(entity, breakInfo);
+        assigner.SetComponentData(entity, breakInfo);*/
 
         if (_mass > math.FLT_MIN_NORMAL)
         {
@@ -813,6 +813,9 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         var actionIndices = __GetActionIndices(_actionIndices);
         assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, actionIndices);
         assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, new GameEntityActorActionInfo[actionIndices.Length]);
+
+        if (_delay != null)
+            assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, _delay);
     }
 
     private GameEntityActorActionData[] __GetActionIndices(int[] values)
@@ -832,7 +835,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         return actions;
     }
 
-    void IEntitySystemStateComponent.Init(in Entity entity, EntityComponentAssigner assigner)
+    /*void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
     {
         GameEntityActionInfo actionInfo;
         actionInfo.commandVersion = 0;
@@ -849,5 +852,5 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
 
         if (_delay != null)
             assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, _delay);
-    }
+    }*/
 }
