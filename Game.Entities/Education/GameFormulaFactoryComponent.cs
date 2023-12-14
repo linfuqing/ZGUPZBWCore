@@ -99,13 +99,14 @@ public class GameFormulaFactoryComponent : EntityProxyComponent, IEntityComponen
         timeScale += value;
     }
 
-    public void Command(in Entity entity, int formulaIndex)
+    public void Command(in Entity entity, int formulaIndex, int count)
     {
         GameFormulaFactoryCommand command;
         command.entity = entity;
         command.formulaIndex = formulaIndex;
+        command.count = count;
 
-        this.SetComponentData(command);
+        this.AppendBuffer(command);
         this.SetComponentEnabled<GameFormulaFactoryCommand>(true);
     }
 

@@ -151,7 +151,7 @@ public struct GameInputActionDefinition
             UnityEngine.Debug.Log("-");*/
 
         int numActionInstances = actionInstances.Length;
-        var indices = new FixedList128Bytes<int>();
+        var indices = new FixedList512Bytes<int>();
         for (int i = 0; i < numActionInstances; ++i)
             indices.Add(i);
 
