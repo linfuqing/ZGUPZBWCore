@@ -574,7 +574,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
 
     public double GetCoolDownTime(int index)
     {
-        return this.GetBuffer<GameEntityActorActionInfo>(index).coolDownTime;
+        return this.TryGetBuffer(index, out GameEntityActorActionInfo value) ? value.coolDownTime : 0.0f;
     }
 
     public bool IsDelay(double time)

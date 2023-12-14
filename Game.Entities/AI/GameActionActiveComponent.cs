@@ -64,7 +64,7 @@ public struct GameActionCondition : IBufferElementData
         if (maxSpeed > math.FLT_MIN_NORMAL && maxSpeed < actorVelocity)
             return GameActionConditionResult.OutOfSpeed;
 
-        if (actionInfos[actionIndex].coolDownTime > time)
+        if (actionInfos.Length > actionIndex && actionInfos[actionIndex].coolDownTime > time)
             return GameActionConditionResult.CoolDown;
 
         if (preActionIndex != -1 && actions.IsCreated)
