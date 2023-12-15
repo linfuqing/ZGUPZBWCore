@@ -997,7 +997,7 @@ public partial struct GameFormulaFactorySystem : ISystem
 
                                 instances.RemoveAt(0);
 
-                                instance.formulaIndex = command.formulaIndex;
+                                instance.formulaIndex = formulaIndex;
                                 instance.level = temp.level;
                                 instance.entity = command.entity;
                                 instances.Add(instance);
@@ -1006,7 +1006,7 @@ public partial struct GameFormulaFactorySystem : ISystem
                             }
                             else
                             {
-                                status.formulaIndex = command.formulaIndex;
+                                status.formulaIndex = formulaIndex;
                                 status.level = temp.level;
                                 status.entity = command.entity;
                                 statusMap[entity] = status;
@@ -1018,7 +1018,7 @@ public partial struct GameFormulaFactorySystem : ISystem
                         }
                         else
                         {
-                            instance.formulaIndex = command.formulaIndex;
+                            instance.formulaIndex = formulaIndex;
                             instance.level = temp.level;
                             instance.entity = command.entity;
                             instances.Add(instance);
@@ -1027,8 +1027,9 @@ public partial struct GameFormulaFactorySystem : ISystem
                 }
                 else
                 {
+                    count = -count;
                     instanceIndex = 0;
-                    for (i = 0; i < -count; ++i)
+                    for (i = 0; i < count; ++i)
                     {
                         instanceIndex = GameFormulaFactoryInstance.IndexOf(formulaIndex, instanceIndex, instances);
                         if (instanceIndex == -1)
