@@ -315,9 +315,25 @@ public struct GameInputAction : IComponentData
         in ComponentLookup<GameEntityCamp> camps,
         in ComponentLookup<PhysicsShapeCompoundCollider> colliders)
     {
-        return states.HasComponent(entity) &&
+        if(!states.HasComponent(entity) || ((GameEntityStatus)states[entity].value & GameEntityStatus.Mask) == GameEntityStatus.Dead)
+            return false;
+
+        if(layerMask != 0)
+        {
+            if (!colliders.HasComponent(entity))
+                return false;
+
+            var collider = colliders[entity].value;
+            if (!collider.IsCreated)
+                return false;
+
+            if ((collider.Value.Filter.BelongsTo & layerMask) == 0)
+                return false;
+        }
+
+        return /*states.HasComponent(entity) &&
            (((GameEntityStatus)states[entity].value & GameEntityStatus.Mask) != GameEntityStatus.Dead) &&
-           (layerMask == 0 || (colliders[entity].value.Value.Filter.BelongsTo & layerMask) != 0) &&
+           (layerMask == 0 || colliders.HasComponent(entity) && (colliders[entity].value.Value.Filter.BelongsTo & layerMask) != 0) &&*/
            Check(targetType == 0 ? GameActionTargetType.Enemy : targetType, camp, camps[entity].value);
     }
 
