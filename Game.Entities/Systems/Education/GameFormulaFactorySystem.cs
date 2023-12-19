@@ -1040,6 +1040,8 @@ public partial struct GameFormulaFactorySystem : ISystem
                 }
             }
 
+            commands.Clear();
+
             return time;
         }
     }
