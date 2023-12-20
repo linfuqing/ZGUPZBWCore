@@ -2,8 +2,10 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using Unity.Jobs;
+using Unity.Burst;
 using Unity.Entities;
 using Unity.Collections;
+using Unity.Mathematics;
 using ZG;
 using MoveType = GameItemMoveType;
 using CommandType = GameItemCommandType;
@@ -13,7 +15,6 @@ using Info = GameItemInfo;
 using Child = GameItemChild;
 using Type = GameItemTypeDefinition;
 using Data = GameItemDataDefinition;
-using Unity.Burst;
 
 [Flags]
 public enum GameItemFindFlag
@@ -498,7 +499,7 @@ public struct GameItemManager
         {
             source = datas[i];
 
-            destination.count = source.count;
+            destination.count = math.max(source.count, 1);
             destination.capacity = source.capacity;
 
             __types[i] = destination;
@@ -588,7 +589,7 @@ public struct GameItemManager
         {
             source = datas[i];
 
-            destination.count = source.count;
+            destination.count = math.max(source.count, 1);
             destination.capacity = source.capacity;
 
             __types[i] = destination;

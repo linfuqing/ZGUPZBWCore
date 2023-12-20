@@ -36,12 +36,36 @@ public struct GameNavMeshAgentPathStatus : IComponentData
     public PathQueryStatus pathResult;
     public PathQueryStatus wayResult;
     public int wayPointIndex;
-    public uint frameIndex;
+    //public uint frameIndex;
     public int areaMask;
     public float3 target;
-    public float3 translation;
+    public float3 position;
     public NavMeshLocation destinationLocation;
     public NavMeshLocation sourceLocation;
+
+    public NavMeshLocation Move(
+        in NavMeshQuery navMeshQuery,
+        in float3 extends,
+        in float3 position,
+        int agentTypeID,
+        int areaMask)
+    {
+        if (math.any(math.abs(this.position - position) > extends))
+            return default;
+
+        if (navMeshQuery.IsValid(sourceLocation) && 
+            navMeshQuery.GetAgentTypeIdForPolygon(sourceLocation.polygon) == agentTypeID)
+        {
+            var location = navMeshQuery.MoveLocation(sourceLocation, position, areaMask);
+            if (!navMeshQuery.IsValid(location) || math.any(math.abs((float3)location.position - position) > extends))
+                return default;
+
+            return location;
+        }
+
+        return default;
+    }
+
 
     public override string ToString()
     {

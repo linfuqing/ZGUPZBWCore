@@ -184,7 +184,7 @@ public partial struct GameNavMeshSystem : ISystem
 
     private struct FindPath
     {
-        public uint frameIndex;
+        //public uint frameIndex;
         public float deltaTimeSq;
         [ReadOnly]
         public BufferAccessor<GameNavMeshAgentExtends> extends;
@@ -311,7 +311,7 @@ public partial struct GameNavMeshSystem : ISystem
 
             bool isRepath, isVailTarget, result = false;
             Entity entity = entityArray[index];
-            var translation = translations[index].Value;
+            var position = translations[index].Value;
             var instance = instances[index];
             var status = states[index];
             var target = targets[index];
@@ -340,7 +340,7 @@ public partial struct GameNavMeshSystem : ISystem
             }
             else
             {
-                if (numWayPoints > status.wayPointIndex && math.distancesq(wayPoints[numWayPoints - 1].value.location.position, target.position) < math.distancesq(translation, target.position))
+                if (numWayPoints > status.wayPointIndex && math.distancesq(wayPoints[numWayPoints - 1].value.location.position, target.position) < math.distancesq(position, target.position))
                 {
                     isRepath = false;
 
@@ -359,8 +359,8 @@ public partial struct GameNavMeshSystem : ISystem
                     else
                         result = true;
 
-                    status.frameIndex = frameIndex;
-                    status.translation = translation;
+                    //status.frameIndex = frameIndex;
+                    status.position = position;
                     states[index] = status;
 
                     //UnityEngine.Debug.Log($"{instance.agentTypeID} Target Fail.");
@@ -369,110 +369,95 @@ public partial struct GameNavMeshSystem : ISystem
                 }
             }
 
+            NavMeshLocation location;
             float3 forward = math.forward(rotations[index].Value);
-            if (!isRepath)
+            if (isRepath)
+                location = default;
+            else
             {
-                if (numWayPoints > status.wayPointIndex)
+                location = status.Move(navMeshQuery, extends[0].value, position, instance.agentTypeID, target.sourceAreaMask);
+                if (!navMeshQuery.IsValid(location))
+                    isRepath = true;
+                else if (numWayPoints > status.wayPointIndex)
                 {
-                    if (frameIndex == status.frameIndex)
-                        return result;
+                    var wayPointLocation = wayPoints[status.wayPointIndex].value.location;
+                    float3 wayPointPosition = wayPointLocation.position, wayPointDistance = wayPointPosition - position;
+                    float wayPointLength = math.length(wayPointDistance), minDistance = wayPointLength;
+                    int areaMask = target.sourceAreaMask | target.destinationAreaMask, wayPointIndex = status.wayPointIndex;
 
-                    NavMeshLocation location;
-                    bool isVailLocation = navMeshQuery.IsValid(status.sourceLocation);
-                    if (isVailLocation)
-                    {
-                        location = navMeshQuery.MoveLocation(status.sourceLocation, translation, target.sourceAreaMask);
-                        isVailLocation = navMeshQuery.IsValid(location);
-                    }
+                    if (FindWayPointIndex(
+                        numWayPoints,
+                        areaMask,
+                        forward,
+                        position,
+                        location,
+                        navMeshQuery,
+                        wayPoints,
+                        ref minDistance,
+                        ref wayPointIndex) &&
+                        wayPointIndex > status.wayPointIndex)
+                        status.wayPointIndex = wayPointIndex;
                     else
-                        location = default;
-
-                    if (!isVailLocation ||
-                        navMeshQuery.GetAgentTypeIdForPolygon(location.polygon) != instance.agentTypeID/* ||
-                        math.any(math.abs((float3)location.position - translation) > extends[0].value)*/)
-                        status.wayPointIndex = 0;
-                    else
                     {
-                        var wayPointLocation = wayPoints[status.wayPointIndex].value.location;
-                        float3 wayPointPosition = wayPointLocation.position, wayPointDistance = wayPointPosition - translation;
-                        float wayPointLength = math.length(wayPointDistance), minDistance = wayPointLength;
-                        int areaMask = target.sourceAreaMask | target.destinationAreaMask, wayPointIndex = status.wayPointIndex;
+                        wayPointIndex = 0;
+                        if (!FindWayPointIndex(
+                           status.wayPointIndex + 1,
+                           areaMask,
+                           forward,
+                           position,
+                           location,
+                           navMeshQuery,
+                           wayPoints,
+                           ref minDistance,
+                           ref wayPointIndex))
+                            wayPointIndex = status.wayPointIndex;
 
-                        if (FindWayPointIndex(
-                            numWayPoints,
-                            areaMask,
-                            forward, 
-                            translation,
-                            location,
-                            navMeshQuery,
-                            wayPoints,
-                            ref minDistance,
-                            ref wayPointIndex) &&
-                            wayPointIndex > status.wayPointIndex)
-                            status.wayPointIndex = wayPointIndex;
-                        else
+                        bool isMove = math.distancesq(status.position, position) / deltaTimeSq > staticThresholds[index].value;
+                        if (wayPointIndex == status.wayPointIndex)
                         {
-                            wayPointIndex = 0;
-                            if (!FindWayPointIndex(
-                               status.wayPointIndex + 1,
-                               areaMask,
-                               forward, 
-                               translation,
-                               location,
-                               navMeshQuery,
-                               wayPoints,
-                               ref minDistance,
-                               ref wayPointIndex))
-                                wayPointIndex = status.wayPointIndex;
-
-                            bool isMove = isVailLocation && math.distancesq(status.translation, translation) / deltaTimeSq > staticThresholds[index].value;
-                            if (wayPointIndex == status.wayPointIndex)
+                            /*if (positions.Length < 1)
                             {
-                                /*if (positions.Length < 1)
-                                {
-                                    if (wayPointLocation.polygon == location.polygon ||
-                                        wayPointLength <= stoppingDistance ||
-                                        status.wayPointIndex < numWayPoints - 1 && wayPoints[status.wayPointIndex + 1].value.location.polygon == location.polygon)
-                                        ++status.wayPointIndex;
-                                    else
-                                        status.wayPointIndex = 0;
-                                }
-                                else if (isMove)
-                                {
-                                    status.frameIndex = frameIndex;
-                                    states[index] = status;
-
-                                    return;
-                                }
+                                if (wayPointLocation.polygon == location.polygon ||
+                                    wayPointLength <= stoppingDistance ||
+                                    status.wayPointIndex < numWayPoints - 1 && wayPoints[status.wayPointIndex + 1].value.location.polygon == location.polygon)
+                                    ++status.wayPointIndex;
                                 else
-                                    ++status.wayPointIndex;*/
-
-                                if (isMove && positions.Length > 0)
-                                {
-                                    status.frameIndex = frameIndex;
-                                    status.translation = translation;
-                                    status.sourceLocation = location;
-                                    states[index] = status;
-
-                                    return result;
-                                }
-
-                                ++status.wayPointIndex;
+                                    status.wayPointIndex = 0;
                             }
-                            else if (wayPointIndex < status.wayPointIndex - 1)
+                            else if (isMove)
                             {
-                                if (!isMove)
+                                status.frameIndex = frameIndex;
+                                states[index] = status;
+
+                                return;
+                            }
+                            else
+                                ++status.wayPointIndex;*/
+
+                            if (isMove && positions.Length > 0)
+                            {
+                                status.position = position;
+                                status.sourceLocation = location;
+                                states[index] = status;
+
+                                return result;
+                            }
+
+                            ++status.wayPointIndex;
+                        }
+                        else if (wayPointIndex < status.wayPointIndex - 1)
+                        {
+                            if (!isMove)
+                                status.wayPointIndex = wayPointIndex;
+                            else if (wayPointLength > math.FLT_MIN_NORMAL)
+                            {
+                                if (math.dot(forward, math.normalizesafe((float3)wayPoints[wayPointIndex].value.location.position - position)) > math.dot(forward, wayPointDistance / wayPointLength))
                                     status.wayPointIndex = wayPointIndex;
-                                else if (wayPointLength > math.FLT_MIN_NORMAL)
-                                {
-                                    if (math.dot(forward, math.normalizesafe((float3)wayPoints[wayPointIndex].value.location.position - translation)) > math.dot(forward, wayPointDistance / wayPointLength))
-                                        status.wayPointIndex = wayPointIndex;
-                                }
                             }
                         }
-
-                        status.sourceLocation = location;
                     }
+
+                    status.sourceLocation = location;
 
                     if (status.wayPointIndex > 0)
                     {
@@ -489,8 +474,7 @@ public partial struct GameNavMeshSystem : ISystem
 
                             result = true;
 
-                            status.frameIndex = frameIndex;
-                            status.translation = translation;
+                            status.position = position;
                             states[index] = status;
 
                             return result;
@@ -511,8 +495,7 @@ public partial struct GameNavMeshSystem : ISystem
                     isRepath = (status.pathResult & PathQueryStatus.InProgress) != PathQueryStatus.InProgress;
             }
 
-            status.frameIndex = frameIndex;
-            status.translation = translation;
+            status.position = position;
 
             if (isRepath)
             {
@@ -525,14 +508,13 @@ public partial struct GameNavMeshSystem : ISystem
                 bool isNeedToLocate = true;
                 if (isVailTarget)
                 {
-                    if (navMeshQuery.IsValid(status.sourceLocation) && navMeshQuery.GetAgentTypeIdForPolygon(status.sourceLocation.polygon) == instance.agentTypeID)
+                    if (navMeshQuery.IsValid(location))
                     {
-                        status.sourceLocation = navMeshQuery.MoveLocation(status.sourceLocation, translation, target.sourceAreaMask);
-                        isNeedToLocate = !navMeshQuery.IsValid(status.sourceLocation) || math.any(math.abs((float3)status.sourceLocation.position - translation) > extends[0].value);
+                        status.sourceLocation = location;
+                        isNeedToLocate = false;
                     }
-
-                    if (isNeedToLocate)
-                        isNeedToLocate = !Locate(instance.agentTypeID, target.sourceAreaMask, translation, navMeshQuery, extends, out status.sourceLocation);
+                    else
+                        isNeedToLocate = !Locate(instance.agentTypeID, target.sourceAreaMask, position, navMeshQuery, extends, out status.sourceLocation);
                 }
 
                 if (isNeedToLocate)
@@ -564,7 +546,7 @@ public partial struct GameNavMeshSystem : ISystem
                 //UnityEngine.Debug.Log($"FindPath {status} Source {navMeshQuery.IsValid(location)} Destination {navMeshQuery.IsValid(targetLocation)}");
             }
 
-            float3 position;
+            float3 locationPosition;
             if (status.wayPointIndex >= numWayPoints)
             {
                 if ((status.pathResult & PathQueryStatus.InProgress) == PathQueryStatus.InProgress)
@@ -593,10 +575,10 @@ public partial struct GameNavMeshSystem : ISystem
                     //UnityEngine.Debug.Log($"FindPath {status} Source {location.position} Destination {targetLocation.position}");
 
                     status.sourceLocation = navMeshQuery.MoveLocation(status.sourceLocation, target.position, target.sourceAreaMask | target.destinationAreaMask);
-                    position = status.sourceLocation.position;
-                    if (positions.Length < 1 || !positions[0].value.Equals(position))
+                    locationPosition = status.sourceLocation.position;
+                    if (positions.Length < 1 || !positions[0].value.Equals(locationPosition))
                     {
-                        SetPosition(index, entity, position, ref positions, ref directions, ref versions);
+                        SetPosition(index, entity, locationPosition, ref positions, ref directions, ref versions);
 
                         status.pathResult |= PathQueryStatus.PartialResult;
                     }
@@ -624,7 +606,7 @@ public partial struct GameNavMeshSystem : ISystem
                     navMeshWayPoints = wayPoints.Reinterpret<NavMeshWayPoint>();
                     DynamicBuffer<float> vertexSides = default;
                     status.wayResult = navMeshQuery.FindStraightPath(
-                                translation,
+                                position,
                                 target.position,
                                 polygons,
                                 ref navMeshWayPoints,
@@ -636,10 +618,10 @@ public partial struct GameNavMeshSystem : ISystem
                     //UnityEngine.Debug.Log($"FindStraightPath {(int)status.wayResult}");
 
                     status.sourceLocation = navMeshQuery.MoveLocation(status.sourceLocation, target.position, target.sourceAreaMask | target.destinationAreaMask);
-                    position = status.sourceLocation.position;
-                    if (positions.Length < 1 || !positions[0].value.Equals(position))
+                    locationPosition = status.sourceLocation.position;
+                    if (positions.Length < 1 || !positions[0].value.Equals(locationPosition))
                     {
-                        SetPosition(index, entity, position, ref positions, ref directions, ref versions);
+                        SetPosition(index, entity, locationPosition, ref positions, ref directions, ref versions);
 
                         status.pathResult |= PathQueryStatus.PartialResult;
                     }
@@ -666,13 +648,13 @@ public partial struct GameNavMeshSystem : ISystem
                 }
                 else
                 {
-                    float wayPointDistance = math.distance(translation, navMeshWayPoints[0].location.position);
+                    float wayPointDistance = math.distance(position, navMeshWayPoints[0].location.position);
 
                     if (FindWayPointIndex(
                         numWayPoints,
                         target.sourceAreaMask | target.destinationAreaMask,
                         forward,
-                        translation,
+                        position,
                         status.sourceLocation,
                         navMeshQuery,
                         wayPoints,
@@ -692,9 +674,9 @@ public partial struct GameNavMeshSystem : ISystem
                 }
             }
 
-            position = wayPoints[status.wayPointIndex].value.location.position;
-            if (positions.Length < 1 || !positions[0].value.Equals(position))
-                SetPosition(index, entity, position, ref positions, ref directions, ref versions);
+            locationPosition = wayPoints[status.wayPointIndex].value.location.position;
+            if (positions.Length < 1 || !positions[0].value.Equals(locationPosition))
+                SetPosition(index, entity, locationPosition, ref positions, ref directions, ref versions);
             
             states[index] = status;
 
@@ -705,7 +687,6 @@ public partial struct GameNavMeshSystem : ISystem
     [BurstCompile]
     private struct FindPathEx : IJobChunk, IEntityCommandProducerJob
     {
-        public uint frameIndex;
         public float deltaTimeSq;
         [ReadOnly]
         public EntityTypeHandle entityType;
@@ -745,7 +726,6 @@ public partial struct GameNavMeshSystem : ISystem
                     if (chunk.Has(ref queryType))
                     {
                         FindPath findPath;
-                        findPath.frameIndex = frameIndex;
                         findPath.deltaTimeSq = deltaTimeSq;
                         findPath.extends = chunk.GetBufferAccessor(ref extendType);
                         findPath.entityArray = entityArray;
@@ -847,8 +827,6 @@ public partial struct GameNavMeshSystem : ISystem
 
     private ComponentLookup<GameNodeVersion> __versions;
 
-    private GameUpdateTime __time;
-
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
@@ -871,7 +849,7 @@ public partial struct GameNavMeshSystem : ISystem
         __positionType = state.GetBufferTypeHandle<GameNodePosition>();
         __versions = state.GetComponentLookup<GameNodeVersion>();
 
-        __time = new GameUpdateTime(ref state);
+        //__time = new GameUpdateTime(ref state);
     }
 
     [BurstCompile]
@@ -884,8 +862,8 @@ public partial struct GameNavMeshSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         FindPathEx findPath;
-        findPath.frameIndex = __time.RollbackTime.frameIndex / __time.frameCount;// updateData.GetFrameIndex(syncData.realFrameIndex);
-        findPath.deltaTimeSq = __time.delta;// updateData.GetDelta(syncData.now.delta);
+        //findPath.frameIndex = __time.RollbackTime.frameIndex / __time.frameCount;// updateData.GetFrameIndex(syncData.realFrameIndex);
+        findPath.deltaTimeSq = state.WorldUnmanaged.Time.DeltaTime;//__time.delta;// updateData.GetDelta(syncData.now.delta);
         findPath.deltaTimeSq *= findPath.deltaTimeSq;
         findPath.entityType = __entityType.UpdateAsRef(ref state);
         findPath.extendType = __extendType.UpdateAsRef(ref state);
