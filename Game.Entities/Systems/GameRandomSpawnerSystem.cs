@@ -8,6 +8,8 @@ using Unity.Transforms;
 using ZG;
 using Unity.Physics;
 
+[assembly: RegisterGenericJobType(typeof(TimeManager<GameSpawnData>.UpdateEvents))]
+
 public struct GameRandomSpawnerDefinition
 {
     public struct Asset
