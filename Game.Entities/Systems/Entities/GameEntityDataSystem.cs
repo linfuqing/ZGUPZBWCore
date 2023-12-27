@@ -625,12 +625,18 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                 if (itemRoots.HasComponent(instance.entity))
                 {
                     var handle = itemRoots[instance.entity].handle;
-                    var attackArray = attacks.AsNativeArray();
-                    propertyCalculator.Calculate(true, handleEntities[GameItemStructChangeFactory.Convert(handle)], ref attackArray);
+                    if (handleEntities.TryGetValue(GameItemStructChangeFactory.Convert(handle), out var handleEntity))
+                    {
+                        var attackArray = attacks.AsNativeArray();
+                        propertyCalculator.Calculate(
+                            true, 
+                            handleEntity,
+                            ref attackArray);
 
-                    buffCalculator.Calculate(handle, itemAttacks.Reinterpret<float>(), ref attackArray);
+                        buffCalculator.Calculate(handle, itemAttacks.Reinterpret<float>(), ref attackArray);
 
-                    buffCalculator.Calculate(handle, ref buff.value);
+                        buffCalculator.Calculate(handle, ref buff.value);
+                    }
                 }
 
                 /*if (this.entityItems.HasComponent(data.entity))
@@ -766,26 +772,35 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
             if (itemRoots.HasComponent(damager.target))
             {
                 var handle = itemRoots[damager.target].handle;
-                buffCalculator.Calculate(handle, itemDefences.Reinterpret<float>(), ref defences);
-
-                /*if(this.entityItems.HasComponent(target))
+                if (handleEntities.TryGetValue(GameItemStructChangeFactory.Convert(handle), out Entity handleEntity))
                 {
-                    var entityItems = this.entityItems[target];
-                    GameEntityItem entityItem;
-                    int numEntityItems = entityItems.Length, offset, length = items.Length, i, j;
-                    for (i = 0; i < numEntityItems; ++i)
-                    {
-                        entityItem = entityItems[i];
-                        if (entityItem.index >= 0 && entityItem.index < length)
-                        {
-                            offset = entityItem.index * this.count;
-                            for (j = 0; j < this.count; ++j)
-                                defences[j] += itemDefences[offset + j];
-                        }
-                    }
-                }*/
+                    buffCalculator.Calculate(
+                        handle, 
+                        itemDefences.Reinterpret<float>(), 
+                        ref defences);
 
-                propertyCalculator.Calculate(false, handleEntities[GameItemStructChangeFactory.Convert(handle)], ref defences);
+                    /*if(this.entityItems.HasComponent(target))
+                    {
+                        var entityItems = this.entityItems[target];
+                        GameEntityItem entityItem;
+                        int numEntityItems = entityItems.Length, offset, length = items.Length, i, j;
+                        for (i = 0; i < numEntityItems; ++i)
+                        {
+                            entityItem = entityItems[i];
+                            if (entityItem.index >= 0 && entityItem.index < length)
+                            {
+                                offset = entityItem.index * this.count;
+                                for (j = 0; j < this.count; ++j)
+                                    defences[j] += itemDefences[offset + j];
+                            }
+                        }
+                    }*/
+
+                    propertyCalculator.Calculate(
+                        false, 
+                        handleEntity,
+                        ref defences);
+                }
             }
 
             float attack, defence, value, hit = 0.0f, torpor = 0.0f;

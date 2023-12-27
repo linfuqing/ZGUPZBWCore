@@ -443,7 +443,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
 
     private GameEntityComponentEx __entityComponent;
 
-    private SharedTimeManager __timeManager;
+    private SharedTimeManager<CallbackHandle> __timeManager;
 
     public readonly static TypeIndex[] ActionComponentTypes = new TypeIndex[]
     {
