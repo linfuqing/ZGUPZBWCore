@@ -148,7 +148,7 @@ public partial struct GameEntityTimeEventSystem : ISystem
         }
     }
 
-    private SharedTimeManager __timeManager;
+    private SharedTimeManager<CallbackHandle> __timeManager;
 
     private SharedList<CallbackHandle> __callbackHandles;
 
