@@ -583,8 +583,6 @@ public partial struct GameRandomSpawnerSystem : ISystem
 
     private ComponentLookup<GameEntityActionCommand> __commands;
 
-    private TimeManager<GameSpawnData> __timeManager;
-
     private GameItemManagerShared __itemManager;
 
     private GameItemObjectInitSystem.Initializer __initializer;
@@ -594,6 +592,13 @@ public partial struct GameRandomSpawnerSystem : ISystem
     public SharedList<GameSpawnData> commands
     {
         get;
+
+        private set;
+    }
+    
+    public SharedTimeManager<GameSpawnData> timeManager
+    {
+        readonly get;
 
         private set;
     }
@@ -610,6 +615,11 @@ public partial struct GameRandomSpawnerSystem : ISystem
 
         __group.SetChangedVersionFilter(ComponentType.ReadWrite<GameRandomSpawnerNode>());
 
+        state.RequireForUpdate(__group);
+        state.RequireForUpdate<GameItemStructChangeManager>();
+        state.RequireForUpdate<GameRandomSpawnerData>();
+        state.RequireForUpdate<GameItemIdentityType>();
+        
         /*using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __factoryGroup = builder
                 .WithAll<GameRandomSpawnerFactory>()
@@ -647,7 +657,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
             componentTypeList.Dispose();
         }
 
-        __timeManager = new TimeManager<GameSpawnData>(Allocator.Persistent);
+        timeManager = new SharedTimeManager<GameSpawnData>(Allocator.Persistent);
 
         __itemManager = itemSystem.manager;
 
@@ -665,7 +675,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
     [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
-        __timeManager.Dispose();
+        timeManager.Dispose();
 
         commands.Dispose();
     }
@@ -673,9 +683,6 @@ public partial struct GameRandomSpawnerSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        if (!SystemAPI.HasSingleton<GameRandomSpawnerData>() || !SystemAPI.HasSingleton<GameItemIdentityType>())
-            return;
-
         /*var sliceType = __sliceType.UpdateAsRef(ref state);
         var groupType = __groupType.UpdateAsRef(ref state);
         var nodeType = __nodeType.UpdateAsRef(ref state);
@@ -723,7 +730,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
         spawn.itemAssigner = itemAssigner.writer;
         spawn.guidEntities = __guidEntities.writer;
         spawn.itemCreateEntityCommander = createEntityCommander.writer;
-        spawn.results = __timeManager.writer;
+        spawn.results = timeManager.value.writer;
 
         ref var createEntityCommanderJobManager = ref createEntityCommander.lookupJobManager;
         ref var guidEntitiesJobManager = ref __guidEntities.lookupJobManager;
@@ -746,7 +753,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
         NativeList<GameSpawnData> commandsWriter = commands.writer;
         ref var commandsJobManager = ref commands.lookupJobManager;
 
-        jobHandle = __timeManager.Schedule(time, ref commandsWriter, JobHandle.CombineDependencies(jobHandle, commandsJobManager.readWriteJobHandle));
+        jobHandle = timeManager.Update(time, ref commandsWriter, JobHandle.CombineDependencies(jobHandle, commandsJobManager.readWriteJobHandle));
 
         commandsJobManager.readWriteJobHandle = jobHandle;
 

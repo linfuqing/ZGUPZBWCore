@@ -271,14 +271,7 @@ public partial struct GameActionFixedExecutorSystem : ISystem
 
             var frames = this.frames[index];
             var frame = frames[info.frameIndex];
-            if (math.distancesq(translations[index].Value, frame.position) > frame.rangeSq)
-            {
-                /*if (info.status == GameActionFixedInfo.Status.Moving)
-                    return 0;*/
-
-                isMove = true;
-            }
-            else if(info.status == GameActionFixedInfo.Status.Acting)
+            if(info.status == GameActionFixedInfo.Status.Acting)
             {
                 if (info.time > time)
                     return instances[index].priority;
@@ -286,6 +279,13 @@ public partial struct GameActionFixedExecutorSystem : ISystem
                 info.frameIndex = GameActionFixedNextFrame.FindFrameIndex(frame.nextFrameStartIndex, frame.nextFrameCount, random.NextFloat(), nextFrames);
                 if (info.frameIndex == -1)
                     return 0;
+
+                isMove = true;
+            }
+            else if (math.distancesq(translations[index].Value, frame.position) > frame.rangeSq)
+            {
+                /*if (info.status == GameActionFixedInfo.Status.Moving)
+                    return 0;*/
 
                 isMove = true;
             }

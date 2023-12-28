@@ -13,9 +13,13 @@ public struct GameFactory : IComponentData
 
     public int formulaIndex;
 
-    public int level;
+    //public int level;
 
-    public float time;
+    public int count;
+
+    public int capacity;
+
+    //public float time;
 }
 
 public struct GameFactoryTimeScale : IComponentData
