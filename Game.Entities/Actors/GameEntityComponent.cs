@@ -286,19 +286,11 @@ public class GameEntityComponent : EntityProxyComponent, IEntityComponent
 
             for (int i = length; i < index; ++i)
                 _itemIndices[i] = -1;
-
-            _itemIndices[index] = itemIndex;
-
-            if (gameObjectEntity.isCreated)
-                this.SetBuffer(__GetItemIndices(_itemIndices));
-
-            return;
         }
 
         _itemIndices[index] = itemIndex;
 
-        if (gameObjectEntity.isCreated)
-            this.SetBuffer(__GetItemIndices(_itemIndices));
+        this.SetBuffer(__GetItemIndices(_itemIndices));
     }
 
     public void Set(EntityCommander commander, int index, int itemIndex)
@@ -310,13 +302,6 @@ public class GameEntityComponent : EntityProxyComponent, IEntityComponent
 
             for (int i = length; i < index; ++i)
                 _itemIndices[i] = -1;
-
-            _itemIndices[index] = itemIndex;
-
-            if (gameObjectEntity.isCreated)
-                this.SetBuffer(__GetItemIndices(_itemIndices));
-
-            return;
         }
 
         _itemIndices[index] = itemIndex;
@@ -334,14 +319,14 @@ public class GameEntityComponent : EntityProxyComponent, IEntityComponent
         camp.value = _camp;
         assigner.SetComponentData(entity, camp);
 
-        assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, __GetItemIndices(_itemIndices));
+        //assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, __GetItemIndices(_itemIndices));
     }
 
     private static GameEntityItem[] __GetItemIndices(int[] values)
     {
         int numValues = values == null ? 0 : values.Length;
 
-        GameEntityItem[] items = new GameEntityItem[numValues];
+        var items = new GameEntityItem[numValues];
         for (int i = 0; i < numValues; ++i)
             items[i] = values[i];
 
