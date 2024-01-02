@@ -311,6 +311,9 @@ public class GameEntityComponent : EntityProxyComponent, IEntityComponent
 
     void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
     {
+        if (this.GetFactory().GetEntity(entity) == Entity.Null)
+            return;
+
         GameEntityCampDefault campDefault;
         campDefault.value = _camp;
         assigner.SetComponentData(entity, campDefault);

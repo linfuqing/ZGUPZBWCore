@@ -853,6 +853,9 @@ public class GameNodeComponent : EntityProxyComponent, IEntityComponent
 
     void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
     {
+        if (this.GetFactory().GetEntity(entity) == Entity.Null)
+            return;
+        
         GameNodeSurface surface;
         surface.rotation = quaternion.identity;
         assigner.SetComponentData(entity, surface);
