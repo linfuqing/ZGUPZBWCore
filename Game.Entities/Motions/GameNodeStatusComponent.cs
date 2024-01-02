@@ -42,7 +42,7 @@ public struct GameNodeOldStatus : IComponentData, IEnableableComponent, IEquatab
 //[EntityComponent]
 [EntityComponent(typeof(GameNodeStatus))]
 [EntityComponent(typeof(GameNodeOldStatus))]
-public class GameNodeStatusComponent : EntityProxyComponent, IEntityComponent
+public class GameNodeStatusComponent : EntityProxyComponent//, IEntityComponent
 {
     public int value
     {
@@ -66,12 +66,12 @@ public class GameNodeStatusComponent : EntityProxyComponent, IEntityComponent
         }
     }
 
-    void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
+    /*void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
     {
         if (this.GetFactory().GetEntity(entity, true) != Entity.Null)
             return;
 
         assigner.SetComponentData(entity, default(GameNodeStatus));
         assigner.SetComponentData(entity, default(GameNodeOldStatus));
-    }
+    }*/
 }
