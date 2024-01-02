@@ -853,7 +853,7 @@ public class GameNodeComponent : EntityProxyComponent, IEntityComponent
 
     void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
     {
-        if (this.GetFactory().GetEntity(entity) == Entity.Null)
+        if (this.GetFactory().GetEntity(entity) != Entity.Null)
             return;
         
         GameNodeSurface surface;
