@@ -68,7 +68,7 @@ public class GameNodeStatusComponent : EntityProxyComponent, IEntityComponent
 
     void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
     {
-        if (this.GetFactory().GetEntity(entity) != Entity.Null)
+        if (this.GetFactory().GetEntity(entity, true) != Entity.Null)
             return;
 
         assigner.SetComponentData(entity, default(GameNodeStatus));
