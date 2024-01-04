@@ -28,7 +28,8 @@ public struct GameFormulaFactoryStatus_5 : IComponentData
         result.value = value;
         result.formulaIndex = formulaIndex;
         result.level = level;
-        result.count = 0;
+        result.count = 1;
+        result.usedCount = 0;
         result.entity = entity;
         return result;
     }

@@ -122,6 +122,7 @@ public class GameFormulaFactoryComponent : EntityProxyComponent, IEntityComponen
         status.formulaIndex = _formulaIndex;
         status.level = 0;
         status.count = 0;
+        status.usedCount = 0;
         status.entity = Entity.Null;
         assigner.SetComponentData(entity, status);
 
