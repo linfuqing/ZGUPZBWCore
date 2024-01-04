@@ -988,9 +988,7 @@ public partial struct GameFormulaFactorySystem : ISystem
                             status.formulaIndex = instance.formulaIndex;
                             status.level = instance.level;
                             status.count = instance.count;
-                            status.usedCount = 0;
                             status.entity = instance.entity;
-                            statusMap[entity] = status;
 
                             instances.RemoveAt(0);
 
@@ -1006,8 +1004,10 @@ public partial struct GameFormulaFactorySystem : ISystem
                             status.level = temp.level;
                             status.count = count;
                             status.entity = command.entity;
-                            statusMap[entity] = status;
                         }
+                        
+                        status.usedCount = 0;
+                        statusMap[entity] = status;
 
                         time.value = __CommandToRun(
                             ref definition, 
