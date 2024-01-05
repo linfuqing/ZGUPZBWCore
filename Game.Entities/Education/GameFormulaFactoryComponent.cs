@@ -10,7 +10,7 @@ using ZG;
 [EntityComponent(typeof(GameFormulaFactoryItemTimeScale))]
 [EntityComponent(typeof(GameFormulaFactoryCommand))]
 [EntityComponent(typeof(GameFormulaFactoryInstance))]
-[EntityComponent(typeof(GameFormulaFactoryStorage))]
+[EntityComponent(typeof(GameFormulaFactoryEntity))]
 public class GameFormulaFactoryComponent : EntityProxyComponent, IEntityComponent
 {
 #if UNITY_EDITOR
@@ -27,16 +27,6 @@ public class GameFormulaFactoryComponent : EntityProxyComponent, IEntityComponen
     public float _time = 0.0f;
     [SerializeField]
     public float _timeScale = 1.0f;
-
-    public bool isStorageActive
-    {
-        set
-        {
-            GameFormulaFactoryStorage storage;
-            storage.status = value ? GameFormulaFactoryStorage.Status.Active : GameFormulaFactoryStorage.Status.Invactive;
-            this.SetComponentData(storage);
-        }
-    }
 
     public bool hasTime => _time > 0.0f || _formulaIndex != -1;
 
