@@ -526,21 +526,7 @@ public partial struct GameFormulaFactorySystem : ISystem
 
                     if (status.value == GameFormulaFactoryStatus.Status.Running)
                     {
-                        Entity entity = factory;
-                        var factoryEntities = this.factoryEntities[index];
-                        foreach (var factoryEntity in factoryEntities)
-                        {
-                            if (factoryEntity.value == status.entity)
-                            {
-                                entity = status.entity;
-                                
-                                handle = itemRootMap[status.entity].handle;
-
-                                break;
-                            }
-                        }
-                        
-                        Entity owner;
+                        Entity entity = factory, owner;
                         var mode = modes[index];
                         switch (mode.ownerType)
                         {
@@ -559,8 +545,24 @@ public partial struct GameFormulaFactorySystem : ISystem
                         {
                             case GameFormulaFactoryMode.Mode.Normal:
                             case GameFormulaFactoryMode.Mode.Auto:
+                                var factoryEntities = this.factoryEntities[index];
                                 if (factoryEntities.Length > 0)
                                 {
+                                    if (mode.value == GameFormulaFactoryMode.Mode.Normal)
+                                    {
+                                        foreach (var factoryEntity in factoryEntities)
+                                        {
+                                            if (factoryEntity.value == status.entity)
+                                            {
+                                                entity = status.entity;
+
+                                                handle = itemRootMap[status.entity].handle;
+
+                                                break;
+                                            }
+                                        }
+                                    }
+
                                     if (!Complete(
                                             false, 
                                             status.formulaIndex, 
