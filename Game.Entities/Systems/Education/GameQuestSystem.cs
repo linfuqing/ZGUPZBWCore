@@ -9,63 +9,15 @@ using ZG.Unsafe;
 using Unity.Collections.LowLevel.Unsafe;
 using System.Diagnostics;
 
-[EntityDataTypeName("GameMissionManager")]
-[NativeContainer]
-public struct GameQuestManager
+public struct GameQuestItem
 {
-    /*public enum ConditionType
-    {
-        Make, 
-        Get, 
-        Use, 
-        Kill, 
-        Tame
-    }
+    public int type;
+    public int count;
+    public GameItemHandle handle;
+}
 
-    public enum RewardType
-    {
-        Quest,
-        Formula, 
-        Item
-    }
-
-    [Serializable]
-    public struct Condition : IEquatable<Condition>
-    {
-        public ConditionType type;
-        public int index;
-
-        public bool Equals(Condition other)
-        {
-            return type == other.type && index == other.index;
-        }
-    }
-
-    [Serializable]
-    public struct Reward
-    {
-        public RewardType type;
-        public int index;
-        public int count;
-    }
-
-    [Serializable]
-    public struct Data
-    {
-        public int money;
-
-        public Condition[] conditions;
-
-        public Reward[] rewards;
-    }*/
-
-    public struct Item
-    {
-        public int type;
-        public int count;
-        public GameItemHandle handle;
-    }
-
+internal struct GameQuestManagerData
+{
     private struct Info
     {
         public int money;
@@ -77,224 +29,258 @@ public struct GameQuestManager
         public int rewardCount;
     }
 
-    private struct Data
+    private UnsafeList<Info> __infos;
+    private UnsafeList<GameQuestConditionData> __conditions;
+    private UnsafeList<GameQuestRewardData> __rewards;
+
+    public readonly AllocatorManager.AllocatorHandle allocator => __infos.Allocator;
+
+    public GameQuestManagerData(in AllocatorManager.AllocatorHandle allocator)
     {
-        private UnsafeList<Info> __infos;
-        private UnsafeList<GameQuestConditionData> __conditions;
-        private UnsafeList<GameQuestRewardData> __rewards;
+        __infos = new UnsafeList<Info>(0, allocator, NativeArrayOptions.UninitializedMemory);
+        __conditions = new UnsafeList<GameQuestConditionData>(0, allocator, NativeArrayOptions.UninitializedMemory);
+        __rewards = new UnsafeList<GameQuestRewardData>(0, allocator, NativeArrayOptions.UninitializedMemory);
+    }
 
-        public readonly AllocatorManager.AllocatorHandle allocator => __infos.Allocator;
-
-        public Data(in AllocatorManager.AllocatorHandle allocator)
+    public void Reset(GameQuestData[] datas)
+    {
+        int numInfos = datas.Length, numConditions = 0, numRewards = 0, i;
+        __infos.Resize(numInfos, NativeArrayOptions.UninitializedMemory);
+        for (i = 0; i < numInfos; ++i)
         {
-            __infos = new UnsafeList<Info>(0, allocator, NativeArrayOptions.UninitializedMemory);
-            __conditions = new UnsafeList<GameQuestConditionData>(0, allocator, NativeArrayOptions.UninitializedMemory);
-            __rewards = new UnsafeList<GameQuestRewardData>(0, allocator, NativeArrayOptions.UninitializedMemory);
+            ref var data = ref datas[i];
+            ref var info = ref __infos.ElementAt(i);
+
+            info.money = data.money;
+            info.conditionStartIndex = numConditions;
+            info.conditionCount = data.conditions == null ? 0 : data.conditions.Length;
+            info.rewardStartIndex = numRewards;
+            info.rewardCount = data.rewards == null ? 0 : data.rewards.Length;
+
+            numConditions += info.conditionCount;
+            numRewards += info.rewardCount;
         }
 
-        public void Reset(GameQuestData[] datas)
+        int length;
+
+        __conditions.Resize(numConditions, NativeArrayOptions.UninitializedMemory);
+        var conditions = __conditions.AsArray();
+        __rewards.Resize(numRewards, NativeArrayOptions.UninitializedMemory);
+        var rewards = __rewards.AsArray();
+
+        numConditions = numRewards = 0;
+        for (i = 0; i < numInfos; ++i)
         {
-            int numInfos = datas.Length, numConditions = 0, numRewards = 0, i;
-            __infos.Resize(numInfos, NativeArrayOptions.UninitializedMemory);
-            for (i = 0; i < numInfos; ++i)
+            ref var data = ref datas[i];
+
+            length = data.conditions == null ? 0 : data.conditions.Length;
+            if (length > 0)
             {
-                ref var data = ref datas[i];
-                ref var info = ref __infos.ElementAt(i);
+                NativeArray<GameQuestConditionData>.Copy(data.conditions, 0, conditions, numConditions, length);
 
-                info.money = data.money;
-                info.conditionStartIndex = numConditions;
-                info.conditionCount = data.conditions == null ? 0 : data.conditions.Length;
-                info.rewardStartIndex = numRewards;
-                info.rewardCount = data.rewards == null ? 0 : data.rewards.Length;
-
-                numConditions += info.conditionCount;
-                numRewards += info.rewardCount;
+                numConditions += length;
             }
 
-            int length;
-
-            __conditions.Resize(numConditions, NativeArrayOptions.UninitializedMemory);
-            var conditions = __conditions.AsArray();
-            __rewards.Resize(numRewards, NativeArrayOptions.UninitializedMemory);
-            var rewards = __rewards.AsArray();
-
-            numConditions = numRewards = 0;
-            for (i = 0; i < numInfos; ++i)
+            length = data.rewards == null ? 0 : data.rewards.Length;
+            if (length > 0)
             {
-                ref var data = ref datas[i];
+                NativeArray<GameQuestRewardData>.Copy(data.rewards, 0, rewards, numRewards, length);
 
-                length = data.conditions == null ? 0 : data.conditions.Length;
-                if (length > 0)
-                {
-                    NativeArray<GameQuestConditionData>.Copy(data.conditions, 0, conditions, numConditions, length);
-
-                    numConditions += length;
-                }
-
-                length = data.rewards == null ? 0 : data.rewards.Length;
-                if (length > 0)
-                {
-                    NativeArray<GameQuestRewardData>.Copy(data.rewards, 0, rewards, numRewards, length);
-
-                    numRewards += length;
-                }
+                numRewards += length;
             }
-        }
-
-        public void Dispose()
-        {
-            __infos.Dispose();
-            __conditions.Dispose();
-            __rewards.Dispose();
-        }
-
-        public readonly bool IsClear(in GameQuest quest)
-        {
-            if (quest.status != GameQuestStatus.Normal)
-                return true;
-
-            var info = __infos[quest.index];
-            if (quest.conditionBits == 0)
-                return info.conditionCount == 0;
-
-            int bitOffset = 0, bitCount, bitMask, count;
-            for (int i = 0; i < info.conditionCount; ++i)
-            {
-                count = __conditions[info.conditionStartIndex + i].count;
-
-                bitCount = 32 - math.lzcnt(count);
-                bitMask = (1 << bitCount) - 1;
-                if (((quest.conditionBits >> bitOffset) & bitMask) < count)
-                    return false;
-
-                bitOffset += bitCount;
-            }
-
-            return true;
-        }
-
-        public readonly bool Update(
-            in DynamicBuffer<GameQuestCommandCondition> conditions,
-            int index,
-            ref int conditionBits)
-        {
-            bool result = false;
-            int bitOffset = 0, bitCount;
-            GameQuestConditionData condition;
-            var info = __infos[index];
-            for (int i = 0; i < info.conditionCount; ++i)
-            {
-                condition = __conditions[info.conditionStartIndex + i];
-                bitCount = 32 - math.lzcnt(condition.count);
-
-                result = GameQuestManager.Update(
-                    conditions,
-                    condition.type,
-                    condition.index,
-                    bitCount,
-                    bitOffset,
-                    condition.count,
-                    ref conditionBits) || result;
-
-                bitOffset += bitCount;
-
-                UnityEngine.Assertions.Assert.IsFalse(bitOffset > 12);
-            }
-
-            return result;
-        }
-
-        public readonly bool Finish(
-            int questIndex,
-            ref DynamicBuffer<GameQuest> quests)
-        {
-            int index = IndexOf(questIndex, quests);
-            if (index == -1)
-                return false;
-
-            var quest = quests[index];
-            if (quest.status != GameQuestStatus.Normal)
-                return false;
-
-            if (!IsClear(quest))
-                return false;
-
-            quest.status = GameQuestStatus.Finish;
-            quests[index] = quest;
-
-            return true;
-        }
-
-        public readonly bool Complete(
-            int questIndex,
-            in GameItemHandle itemHandle,
-            ref DynamicBuffer<GameQuest> quests,
-            ref DynamicBuffer<GameFormulaCommand> formulaCommands,
-            ref NativeQueue<Item>.ParallelWriter items,
-            out int money)
-        {
-            money = 0;
-
-            int index = IndexOf(questIndex, quests);
-            if (index == -1)
-                return false;
-
-            var quest = quests[index];
-            if (quest.status == GameQuestStatus.Complete)
-                return false;
-
-            if (!IsClear(quest))
-                return false;
-
-            quest.status = GameQuestStatus.Complete;
-            quests[index] = quest;
-
-            int i, j;
-            var info = __infos[quest.index];
-            GameQuestRewardData reward;
-            for (i = 0; i < info.rewardCount; ++i)
-            {
-                reward = __rewards[info.rewardStartIndex + i];
-                switch (reward.type)
-                {
-                    case GameQuestRewardType.Quest:
-                        if (IndexOf(reward.index, quests) == -1)
-                        {
-                            GameQuest temp;
-                            temp.index = reward.index;
-                            temp.conditionBits = 0;
-                            temp.status = GameQuestStatus.Normal;
-
-                            for (j = 0; j < reward.count; ++j)
-                                quests.Add(temp);
-                        }
-                        break;
-                    case GameQuestRewardType.Formula:
-                        GameFormulaCommand formulaCommand;
-                        formulaCommand.index = reward.index;
-                        formulaCommand.count = reward.count;
-
-                        formulaCommands.Add(formulaCommand);
-                        break;
-                    case GameQuestRewardType.Item:
-                        Item item;
-                        item.type = reward.index;
-                        item.count = reward.count;
-                        item.handle = itemHandle;
-
-                        items.Enqueue(item);
-                        break;
-                }
-            }
-
-            money = info.money;
-
-            return true;
         }
     }
 
+    public void Dispose()
+    {
+        __infos.Dispose();
+        __conditions.Dispose();
+        __rewards.Dispose();
+    }
+
+    public readonly NativeSlice<GameQuestConditionData> GetConditions(int index)
+    {
+        var info = __infos[index];
+
+        return __conditions.AsArray().Slice(info.conditionStartIndex, info.conditionCount);
+    }
+
+    public readonly bool IsClear(in GameQuest quest)
+    {
+        if (quest.status != GameQuestStatus.Normal)
+            return true;
+
+        var info = __infos[quest.index];
+        if (quest.conditionBits == 0)
+            return info.conditionCount == 0;
+
+        int bitOffset = 0, bitCount, bitMask, count;
+        for (int i = 0; i < info.conditionCount; ++i)
+        {
+            count = __conditions[info.conditionStartIndex + i].count;
+
+            bitCount = 32 - math.lzcnt(count);
+            bitMask = (1 << bitCount) - 1;
+            if (((quest.conditionBits >> bitOffset) & bitMask) < count)
+                return false;
+
+            bitOffset += bitCount;
+        }
+
+        return true;
+    }
+
+    public readonly bool Update(
+        in DynamicBuffer<GameQuestCommandCondition> commands,
+        int index,
+        ref int conditionBits)
+    {
+        return GameQuestUtility.Update(
+            GetConditions(index),
+            commands.AsNativeArray(),
+            ref conditionBits);
+    }
+
+    public readonly bool Update(
+        in GameItemManager.Hierarchy itemManager, 
+        in GameItemHandle itemHandle, 
+        int index, 
+        ref int conditionBits)
+    {
+        GameQuestCommandCondition command;
+        command.type = GameQuestConditionType.Get;
+        
+        NativeList<GameQuestCommandCondition> commands = default;
+        var conditions = GetConditions(index);
+
+        foreach (var condition in conditions)
+        {
+            if(condition.type != GameQuestConditionType.Get)
+                continue;
+
+            command.count = itemManager.CountOf(itemHandle, condition.index);
+            if (command.count < 1)
+                continue;
+
+            command.index = condition.index;
+
+            if (!commands.IsCreated)
+                commands = new NativeList<GameQuestCommandCondition>(Allocator.Temp);
+            
+            commands.Add(command);
+        }
+
+        bool result;
+        if (commands.IsCreated)
+        {
+            result = GameQuestUtility.Update(
+                conditions,
+                commands.AsArray(),
+                ref conditionBits);
+
+            commands.Dispose();
+        }
+        else
+            result = false;
+
+        return result;
+    }
+    
+    public readonly bool Finish(
+        int questIndex,
+        ref DynamicBuffer<GameQuest> quests)
+    {
+        int index = GameQuestUtility.IndexOf(questIndex, quests);
+        if (index == -1)
+            return false;
+
+        var quest = quests[index];
+        if (quest.status != GameQuestStatus.Normal)
+            return false;
+
+        if (!IsClear(quest))
+            return false;
+
+        quest.status = GameQuestStatus.Finish;
+        quests[index] = quest;
+
+        return true;
+    }
+
+    public readonly bool Complete(
+        int questIndex,
+        in GameItemHandle itemHandle,
+        ref DynamicBuffer<GameQuest> quests,
+        ref DynamicBuffer<GameFormulaCommand> formulaCommands,
+        ref NativeQueue<GameQuestItem>.ParallelWriter items,
+        out int money)
+    {
+        money = 0;
+
+        int index = GameQuestUtility.IndexOf(questIndex, quests);
+        if (index == -1)
+            return false;
+
+        var quest = quests[index];
+        if (quest.status == GameQuestStatus.Complete)
+            return false;
+
+        if (!IsClear(quest))
+            return false;
+
+        quest.status = GameQuestStatus.Complete;
+        quests[index] = quest;
+
+        int i, j;
+        var info = __infos[quest.index];
+        GameQuestRewardData reward;
+        for (i = 0; i < info.rewardCount; ++i)
+        {
+            reward = __rewards[info.rewardStartIndex + i];
+            switch (reward.type)
+            {
+                case GameQuestRewardType.Quest:
+                    if (GameQuestUtility.IndexOf(reward.index, quests) == -1)
+                    {
+                        GameQuest temp;
+                        temp.index = reward.index;
+                        temp.conditionBits = 0;
+                        temp.status = GameQuestStatus.Normal;
+
+                        for (j = 0; j < reward.count; ++j)
+                            quests.Add(temp);
+                    }
+                    break;
+                case GameQuestRewardType.Formula:
+                    GameFormulaCommand formulaCommand;
+                    formulaCommand.index = reward.index;
+                    formulaCommand.count = reward.count;
+
+                    formulaCommands.Add(formulaCommand);
+                    break;
+                case GameQuestRewardType.Item:
+                    GameQuestItem item;
+                    item.type = reward.index;
+                    item.count = reward.count;
+                    item.handle = itemHandle;
+
+                    items.Enqueue(item);
+                    break;
+            }
+        }
+
+        money = info.money;
+
+        return true;
+    }
+}
+
+[EntityDataTypeName("GameMissionManager")]
+[NativeContainer]
+public struct GameQuestManager
+{
     [NativeDisableUnsafePtrRestriction]
-    private unsafe Data* __data;
+    internal unsafe GameQuestManagerData* _data;
 
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
     internal AtomicSafetyHandle m_Safety;
@@ -302,12 +288,12 @@ public struct GameQuestManager
     internal static readonly SharedStatic<int> StaticSafetyID = SharedStatic<int>.GetOrCreate<GameQuestManager>();
 #endif
 
-    public unsafe bool isCreated => __data != null;
+    public unsafe bool isCreated => _data != null;
 
     public unsafe GameQuestManager(in AllocatorManager.AllocatorHandle allocator)
     {
-        __data = AllocatorManager.Allocate<Data>(allocator);
-        *__data = new Data(allocator);
+        _data = AllocatorManager.Allocate<GameQuestManagerData>(allocator);
+        *_data = new GameQuestManagerData(allocator);
 
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
         m_Safety = CollectionHelper.CreateSafetyHandle(allocator);
@@ -322,10 +308,10 @@ public struct GameQuestManager
         CollectionHelper.DisposeSafetyHandle(ref m_Safety);
 #endif
 
-        var allocator = __data->allocator;
-        __data->Dispose();
-        AllocatorManager.Free(allocator, __data);
-        __data = null;
+        var allocator = _data->allocator;
+        _data->Dispose();
+        AllocatorManager.Free(allocator, _data);
+        _data = null;
     }
 
     public unsafe void Reset(GameQuestData[] datas)
@@ -334,102 +320,70 @@ public struct GameQuestManager
         AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
 #endif
 
-        __data->Reset(datas);
+        _data->Reset(datas);
     }
 
-    public static int IndexOf(
-        int questIndex,
-        in DynamicBuffer<GameQuest> quests)
+    public readonly unsafe bool IsClear(in GameQuest quest)
     {
-        int numQuests = quests.Length;
-        for (int i = 0; i < numQuests; ++i)
-        {
-            if (quests[i].index == questIndex)
-                return i;
-        }
+        __CheckRead();
 
-        return -1;
+        return _data->IsClear(quest);
     }
 
-    public static bool Update(
-        in DynamicBuffer<GameQuestCommandCondition> conditions,
-        GameQuestConditionType type,
-        int index,
-        int bitCount,
-        int bitOffset,
-        int maxCount,
-        ref int conditionBits)
+    public readonly unsafe NativeSlice<GameQuestConditionData> GetConditions(int index)
     {
-        bool result = false;
-        int length = conditions.Length, originCount, count, bitMask;
-        GameQuestCommandCondition condition;
-        for (int i = 0; i < length; ++i)
-        {
-            condition = conditions[i];
-            if (condition.type == type && condition.index == index)
-            {
-                count = condition.count;
+        __CheckRead();
 
-#if !GAME_QUEST
-                count = math.max(count, 0);
+        var conditions = _data->GetConditions(index);
+        
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+        NativeSliceUnsafeUtility.SetAtomicSafetyHandle(ref conditions, m_Safety);
 #endif
 
-                if (count != 0)
-                {
-                    bitMask = (1 << bitCount) - 1;
-                    originCount = (conditionBits >> bitOffset) & bitMask;
-                    count = math.clamp(originCount + count, 0, maxCount);
-                    if (count != originCount)
-                    {
-                        conditionBits &= ~(bitMask << bitOffset);
-                        conditionBits |= count << bitOffset;
-
-                        result = true;
-                    }
-                }
-            }
-        }
-
-        return result;
+        return conditions;
     }
 
-    public unsafe bool IsClear(in GameQuest quest)
-    {
-        __CheckRead();
-
-        return __data->IsClear(quest);
-    }
-
-    public unsafe bool Update(
+    public readonly unsafe bool Update(
         in DynamicBuffer<GameQuestCommandCondition> conditions,
         int index,
         ref int conditionBits)
     {
         __CheckRead();
 
-        return __data->Update(conditions, index, ref conditionBits);
+        return _data->Update(conditions, index, ref conditionBits);
     }
 
-    public unsafe bool Finish(
+    public readonly unsafe bool Update(
+        in GameItemManager.Hierarchy itemManager,
+        in GameItemHandle itemHandle,
+        int index,
+        ref int conditionBits)
+    {
+        __CheckRead();
+
+        return _data->Update(itemManager, itemHandle, index, ref conditionBits);
+    }
+
+    public readonly unsafe bool Finish(
         int questIndex, 
         ref DynamicBuffer<GameQuest> quests)
     {
         __CheckRead();
 
-        return __data->Finish(questIndex, ref quests);
+        return _data->Finish(questIndex, ref quests);
     }
 
-    public unsafe bool Complete(
+    public readonly unsafe bool Complete(
         int questIndex,
         in GameItemHandle itemHandle,
         ref DynamicBuffer<GameQuest> quests,
         ref DynamicBuffer<GameFormulaCommand> formulaCommands,
-        ref NativeQueue<Item>.ParallelWriter items,
+        ref NativeQueue<GameQuestItem>.ParallelWriter items,
         out int money)
     {
         __CheckRead();
 
-        return __data->Complete(
+        return _data->Complete(
             questIndex, 
             itemHandle, 
             ref quests, 
@@ -447,10 +401,88 @@ public struct GameQuestManager
     }
 }
 
+/*public struct GameQuestManagerShared
+{
+    private struct Data
+    {
+        public GameQuestManagerData value;
+
+        public LookupJobManager lookupJobManager;
+    }
+    
+    [NativeDisableUnsafePtrRestriction]
+    private unsafe Data* __data;
+
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+    internal AtomicSafetyHandle m_Safety;
+#endif
+
+    public unsafe ref LookupJobManager lookupJobManager => ref __data->lookupJobManager;
+
+    public unsafe GameQuestManager value
+    {
+        get
+        {
+            GameQuestManager result;
+            result._data = (GameQuestManagerData*)UnsafeUtility.AddressOf(ref __data->value);
+            
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            result.m_Safety = m_Safety;
+#endif
+
+            return result;
+        }
+    }
+    
+    
+    public unsafe bool isCreated => __data != null;
+
+    public unsafe GameQuestManagerShared(in AllocatorManager.AllocatorHandle allocator)
+    {
+        __data = AllocatorManager.Allocate<Data>(allocator);
+        __data->value = new GameQuestManagerData(allocator);
+        __data->lookupJobManager = new LookupJobManager();
+
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+        m_Safety = CollectionHelper.CreateSafetyHandle(allocator);
+
+        CollectionHelper.SetStaticSafetyId<GameQuestManager>(ref m_Safety, ref GameQuestManager.StaticSafetyID.Data);
+#endif
+    }
+
+    public unsafe void Dispose()
+    {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+        CollectionHelper.DisposeSafetyHandle(ref m_Safety);
+#endif
+
+        var allocator = __data->value.allocator;
+        __data->value.Dispose();
+        AllocatorManager.Free(allocator, __data);
+        __data = null;
+    }
+
+    public unsafe void Reset(GameQuestData[] datas)
+    {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+        AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
+#endif
+
+        __data->value.Reset(datas);
+    }
+
+    public GameQuestManager AsReadWrite()
+    {
+        lookupJobManager.CompleteReadWriteDependency();
+
+        return value;
+    }
+}*/
+
 [BurstCompile, CreateAfter(typeof(GameItemSystem)), UpdateInGroup(typeof(GameItemSystemGroup), OrderFirst = true), UpdateBefore(typeof(GameFormulaSystem))/*, UpdateBefore(typeof(GameItemSystem))*/]
 public partial struct GameQuestSystem : ISystem
 {
-    public struct Command
+    private struct Command
     {
         [ReadOnly]
         public GameQuestManager manager;
@@ -466,7 +498,7 @@ public partial struct GameQuestSystem : ISystem
 
         public BufferAccessor<GameFormulaCommand> formulaCommands;
 
-        public NativeQueue<GameQuestManager.Item>.ParallelWriter items;
+        public NativeQueue<GameQuestItem>.ParallelWriter items;
 
         public void Execute(int index, out int money, out bool hasFormulaCommand)
         {
@@ -558,7 +590,7 @@ public partial struct GameQuestSystem : ISystem
     }
 
     [BurstCompile]
-    public struct CommandEx : IJobChunk
+    private struct CommandEx : IJobChunk
     {
         [ReadOnly]
         public GameQuestManager manager;
@@ -574,7 +606,7 @@ public partial struct GameQuestSystem : ISystem
 
         public BufferTypeHandle<GameFormulaCommand> formulaCommandType;
 
-        public NativeQueue<GameQuestManager.Item>.ParallelWriter items;
+        public NativeQueue<GameQuestItem>.ParallelWriter items;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -616,7 +648,7 @@ public partial struct GameQuestSystem : ISystem
     private struct ApplyItems : IJob
     {
         public GameItemManager itemManager;
-        public NativeQueue<GameQuestManager.Item> items;
+        public NativeQueue<GameQuestItem> items;
 
         public void Execute()
         {
@@ -636,7 +668,7 @@ public partial struct GameQuestSystem : ISystem
 
     private EntityQuery __group;
     private GameItemManagerShared __itemManager;
-    private NativeQueue<GameQuestManager.Item> __items;
+    private NativeQueue<GameQuestItem> __items;
 
     private ComponentTypeHandle<GameItemRoot> __itemRootType;
 
@@ -680,7 +712,7 @@ public partial struct GameQuestSystem : ISystem
 
         __itemManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>().manager;
 
-        __items = new NativeQueue<GameQuestManager.Item>(Allocator.Persistent);
+        __items = new NativeQueue<GameQuestItem>(Allocator.Persistent);
 
         manager = new GameQuestManager(Allocator.Persistent);
     }
@@ -696,9 +728,6 @@ public partial struct GameQuestSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        if (!manager.isCreated)
-            return;
-
         CommandEx command;
         command.manager = manager;
         command.itemRootType = __itemRootType.UpdateAsRef(ref state);
@@ -709,7 +738,7 @@ public partial struct GameQuestSystem : ISystem
         command.formulaCommandType = __formulaCommandType.UpdateAsRef(ref state);
         command.items = __items.AsParallelWriter();
 
-        var jobHandle = command.ScheduleParallelByRef(__group, state.Dependency);
+        var jobHandle = command.ScheduleParallelByRef(__group,  state.Dependency);
 
         ApplyItems applyItems;
         applyItems.itemManager = __itemManager.value;
@@ -717,7 +746,7 @@ public partial struct GameQuestSystem : ISystem
 
         ref var lookupJobManager = ref __itemManager.lookupJobManager;
 
-        jobHandle = applyItems.Schedule(JobHandle.CombineDependencies(jobHandle, lookupJobManager.readWriteJobHandle));
+        jobHandle = applyItems.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, lookupJobManager.readWriteJobHandle));
 
         lookupJobManager.readWriteJobHandle = jobHandle;
 
@@ -725,3 +754,91 @@ public partial struct GameQuestSystem : ISystem
     }
 }
 
+public static class GameQuestUtility
+{
+    public static int IndexOf(
+        int questIndex,
+        in DynamicBuffer<GameQuest> quests)
+    {
+        int numQuests = quests.Length;
+        for (int i = 0; i < numQuests; ++i)
+        {
+            if (quests[i].index == questIndex)
+                return i;
+        }
+
+        return -1;
+    }
+
+    public static bool Update(
+        in NativeArray<GameQuestCommandCondition> conditions,
+        GameQuestConditionType type,
+        int index,
+        int bitCount,
+        int bitOffset,
+        int maxCount,
+        ref int conditionBits)
+    {
+        bool result = false;
+        int length = conditions.Length, originCount, count, bitMask;
+        GameQuestCommandCondition condition;
+        for (int i = 0; i < length; ++i)
+        {
+            condition = conditions[i];
+            if (condition.type == type && condition.index == index)
+            {
+                count = condition.count;
+
+#if !GAME_QUEST
+                count = math.max(count, 0);
+#endif
+
+                if (count != 0)
+                {
+                    bitMask = (1 << bitCount) - 1;
+                    originCount = (conditionBits >> bitOffset) & bitMask;
+                    count = math.clamp(originCount + count, 0, maxCount);
+                    if (count != originCount)
+                    {
+                        conditionBits &= ~(bitMask << bitOffset);
+                        conditionBits |= count << bitOffset;
+
+                        result = true;
+                    }
+                }
+            }
+        }
+
+        return result;
+    }
+
+    public static bool Update(
+        in NativeSlice<GameQuestConditionData> conditions, 
+        in NativeArray<GameQuestCommandCondition> commands,
+        ref int conditionBits)
+    {
+        bool result = false;
+        int numConditions = conditions.Length, bitOffset = 0, bitCount;
+        GameQuestConditionData condition;
+        for (int i = 0; i < numConditions; ++i)
+        {
+            condition = conditions[i];
+            bitCount = 32 - math.lzcnt(condition.count);
+
+            result = Update(
+                commands,
+                condition.type,
+                condition.index,
+                bitCount,
+                bitOffset,
+                condition.count,
+                ref conditionBits) || result;
+
+            bitOffset += bitCount;
+
+            UnityEngine.Assertions.Assert.IsFalse(bitOffset > 12);
+        }
+
+        return result;
+    }
+}

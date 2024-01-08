@@ -196,24 +196,22 @@ public struct GameItemManager
 
         public bool TryGetValue(in Handle handle, out Info item) => __infos.TryGetValue(handle, out item);
 
-        public int CountOf(in Handle handle)
+        public int CountOf(in Handle handle, int type = -1)
         {
-            if (!__infos.TryGetValue(handle, out var item))
+            if (!TryGetValue(handle, out var item))
                 return 0;
 
-            int length = 1;
-
-            NativeParallelMultiHashMapIterator<int> iterator;
-            if (__children.TryGetFirstValue(handle.index, out var child, out iterator))
+            int length = type == -1 ? 1 : (item.type == type ? item.count : 0);
+            if (__children.TryGetFirstValue(handle.index, out var child, out var iterator))
             {
                 do
                 {
-                    length += CountOf(child.handle);
+                    length += CountOf(child.handle, type);
 
                 } while (__children.TryGetNextValue(out child, ref iterator));
             }
 
-            length += CountOf(item.siblingHandle);
+            length += CountOf(item.siblingHandle, type);
 
             return length;
         }
@@ -638,30 +636,6 @@ public struct GameItemManager
     }
 
     public bool TryGetValue(in Handle handle, out Info item) => __infos.TryGetValue(handle, out item);
-
-    public int CountOf(in Handle handle, int type)
-    {
-        if (!TryGetValue(handle, out var item))
-            return 0;
-
-        int length;
-        if (item.type == type)
-            length = item.count;
-        else
-            length = 0;
-
-        NativeParallelMultiHashMapIterator<int> iterator;
-        if (__children.TryGetFirstValue(handle.index, out var child, out iterator))
-        {
-            do
-            {
-                length += CountOf(child.handle, type);
-
-            } while (__children.TryGetNextValue(out child, ref iterator));
-        }
-
-        return length;
-    }
 
     /*public unsafe bool Contains(in Handle handle, int type, int count, int[] parentTypes)
     {

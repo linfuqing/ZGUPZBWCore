@@ -8,6 +8,7 @@ using Unity.Burst.Intrinsics;
 using Unity.Jobs;
 using ZG;
 using System.Collections.Generic;
+using ZG.Unsafe;
 
 public struct GameItemCommandManager
 {
@@ -1459,7 +1460,7 @@ public struct GameItemResultManager
 
             if (results.IsCreated)
             {
-                this.results.AddRange(ZG.Unsafe.CollectionUtility.AsArray(ref results));
+                this.results.AddRange(results.AsArray());
 
                 results.Dispose();
             }
