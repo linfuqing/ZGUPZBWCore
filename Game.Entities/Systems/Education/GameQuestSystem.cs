@@ -393,7 +393,7 @@ public struct GameQuestManager
     }
 
     [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-    void __CheckRead()
+    readonly void __CheckRead()
     {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
         AtomicSafetyHandle.CheckReadAndThrow(m_Safety);

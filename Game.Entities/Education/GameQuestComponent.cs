@@ -9,8 +9,9 @@ public enum GameQuestConditionType
     Get,
     Use,
     Kill,
-    Tame,
-    Select
+    Own,
+    Select, 
+    Formula
 }
 
 public enum GameQuestRewardType
