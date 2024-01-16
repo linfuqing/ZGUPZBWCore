@@ -447,7 +447,7 @@ public partial struct GameNavMeshSystem : ISystem
                         }
                         else if (wayPointIndex < status.wayPointIndex - 1)
                         {
-                            if (!isMove)
+                            if (!isMove && !status.position.Equals(position))
                                 status.wayPointIndex = wayPointIndex;
                             else if (wayPointLength > math.FLT_MIN_NORMAL)
                             {
@@ -457,10 +457,10 @@ public partial struct GameNavMeshSystem : ISystem
                         }
                     }
 
-                    status.sourceLocation = location;
-
                     if (status.wayPointIndex > 0)
                     {
+                        status.sourceLocation = location;
+
                         if (status.wayPointIndex >= numWayPoints - 1)
                         {
                             //UnityEngine.Debug.Log("Finish Path");
