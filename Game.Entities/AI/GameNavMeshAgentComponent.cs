@@ -65,8 +65,7 @@ public struct GameNavMeshAgentPathStatus : IComponentData
 
         return default;
     }
-
-
+    
     public override string ToString()
     {
         return $"({pathResult} : {wayResult})";

@@ -367,9 +367,7 @@ public struct GameEffectApply<TEffect, THandler, TFactory> : IJobChunk
                 if (!areasOverride.HasComponent(effector))
                     continue;
 
-                areaIndex = areasOverride[effector].index;
-
-                break;
+                areaIndex = math.max(areaIndex, areasOverride[effector].index);
             }
 
             if (areaIndex == -1)
