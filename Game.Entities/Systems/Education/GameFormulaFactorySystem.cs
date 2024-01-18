@@ -1044,9 +1044,6 @@ public partial struct GameFormulaFactorySystem : ISystem
                     if (GameFormulaManager.IndexOf(formulaIndex, formulas[command.entity], out temp) == -1)
                         temp = default;
 
-                    if (status.value != GameFormulaFactoryStatus.Status.Normal)
-                        status.value = GameFormulaFactoryStatus.Status.Running;
-
                     if (instances.Length > 0)
                     {
                         instance.formulaIndex = formulaIndex;
@@ -1085,6 +1082,9 @@ public partial struct GameFormulaFactorySystem : ISystem
 
                         status.usedCount = 0;
                     }
+
+                    //if (status.value != GameFormulaFactoryStatus.Status.Running)
+                        status.value = GameFormulaFactoryStatus.Status.Running;
 
                     statusMap[entity] = status;
 
