@@ -4,6 +4,7 @@ using Unity.Burst.Intrinsics;
 using Unity.Entities;
 using Unity.Collections;
 using Unity.Mathematics;
+using Unity.Physics;
 using Unity.Transforms;
 using ZG;
 
@@ -332,6 +333,8 @@ public struct GameEffectApply<TEffect, THandler, TFactory> : IJobChunk
         public NativeArray<TEffect>.ReadOnly values;
 
         [ReadOnly]
+        public BufferLookup<GameEffectAreaOverrideBuffer> areasOverrideBuffers;
+        [ReadOnly]
         public ComponentLookup<GameEffectAreaOverride> areasOverride;
         [ReadOnly]
         public ComponentLookup<PhysicsShapeParent> physicsShapeParents;
@@ -359,15 +362,23 @@ public struct GameEffectApply<TEffect, THandler, TFactory> : IJobChunk
         public void Execute(int index)
         {
             var physicsTriggerEvents = this.physicsTriggerEvents[index];
+            DynamicBuffer<GameEffectAreaOverrideBuffer> areaOverrideBuffers;
             Entity effector;
             int areaIndex = -1, i;
             foreach(var physicsTriggerEvent in physicsTriggerEvents)
             {
                 effector = physicsShapeParents.HasComponent(physicsTriggerEvent.entity) ? physicsShapeParents[physicsTriggerEvent.entity].entity : physicsTriggerEvent.entity;
-                if (!areasOverride.HasComponent(effector))
-                    continue;
-
-                areaIndex = math.max(areaIndex, areasOverride[effector].index);
+                if (areasOverride.HasComponent(effector))
+                    areaIndex = math.max(areaIndex, areasOverride[effector].index);
+                else if (areasOverrideBuffers.HasBuffer(effector))
+                {
+                    areaOverrideBuffers = areasOverrideBuffers[effector];
+                    foreach (var areaOverrideBuffer in areaOverrideBuffers)
+                    {
+                        if(areaOverrideBuffer.colliderKey.Equals(ColliderKey.Empty) || areaOverrideBuffer.colliderKey.Equals(physicsTriggerEvent.colliderKeyA))
+                            areaIndex = math.max(areaIndex, areaOverrideBuffer.index);
+                    }
+                }
             }
 
             if (areaIndex == -1)
@@ -428,6 +439,8 @@ public struct GameEffectApply<TEffect, THandler, TFactory> : IJobChunk
     public NativeArray<TEffect>.ReadOnly values;
 
     [ReadOnly]
+    public BufferLookup<GameEffectAreaOverrideBuffer> areasOverrideBuffers;
+    [ReadOnly]
     public ComponentLookup<GameEffectAreaOverride> areasOverride;
     [ReadOnly]
     public ComponentLookup<PhysicsShapeParent> physicsShapeParents;
@@ -453,6 +466,7 @@ public struct GameEffectApply<TEffect, THandler, TFactory> : IJobChunk
         executor.effects = effects;*/
         executor.definition = definition;
         executor.values = values;
+        executor.areasOverrideBuffers = areasOverrideBuffers;
         executor.areasOverride = areasOverride;
         executor.physicsShapeParents = physicsShapeParents;
         executor.physicsTriggerEvents = chunk.GetBufferAccessor(ref physicsTriggerEventType);

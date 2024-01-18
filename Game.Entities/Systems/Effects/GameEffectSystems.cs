@@ -8,6 +8,7 @@ public struct GameEffectSystemCore<TEffect> where TEffect : unmanaged, IGameEffe
 {
     private EntityQuery __defintionGroup;
 
+    private BufferLookup<GameEffectAreaOverrideBuffer> __areasOverrideBuffers;
     private ComponentLookup<GameEffectAreaOverride> __areasOverride;
     private ComponentLookup<PhysicsShapeParent> __physicsShapeParents;
     private BufferTypeHandle<PhysicsTriggerEvent> __physicsTriggerEventType;
@@ -39,6 +40,7 @@ public struct GameEffectSystemCore<TEffect> where TEffect : unmanaged, IGameEffe
                 .WithAll<GameEffectLandscapeData>()
                 .Build(ref state);
 
+        __areasOverrideBuffers = state.GetBufferLookup<GameEffectAreaOverrideBuffer>(true);
         __areasOverride = state.GetComponentLookup<GameEffectAreaOverride>(true);
         __physicsShapeParents = state.GetComponentLookup<PhysicsShapeParent>(true);
         __physicsTriggerEventType = state.GetBufferTypeHandle<PhysicsTriggerEvent>(true);
@@ -61,6 +63,7 @@ public struct GameEffectSystemCore<TEffect> where TEffect : unmanaged, IGameEffe
         GameEffectApply<TEffect, THandler, TFactory> apply;
         apply.definition = __defintionGroup.GetSingleton<GameEffectLandscapeData>().definition;
         apply.values = values;
+        apply.areasOverrideBuffers = __areasOverrideBuffers.UpdateAsRef(ref state);
         apply.areasOverride = __areasOverride.UpdateAsRef(ref state);
         apply.physicsShapeParents = __physicsShapeParents.UpdateAsRef(ref state);
         apply.physicsTriggerEventType = __physicsTriggerEventType.UpdateAsRef(ref state);

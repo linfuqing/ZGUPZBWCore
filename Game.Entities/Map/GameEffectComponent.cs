@@ -1,5 +1,6 @@
 ﻿using System;
 using Unity.Entities;
+using Unity.Physics;
 using ZG;
 
 [assembly: RegisterGenericComponentType(typeof(GameEffectData<GameEffect>))]
@@ -28,11 +29,31 @@ public struct GameEffectArea : IComponentData
     public int index;
 }
 
-[Serializable]
-[EntityDataStream(serializerType = typeof(EntityComponentStreamSerializer<GameEffectAreaOverride>), deserializerType = typeof(EntityComponentDeserializer<GameEffectAreaOverride>))]
+[EntityDataStream(serializerType = typeof(EntityComponentStreamSerializer<GameEffectAreaOverride>), deserializerType = typeof(GameEffectAreaOverrideDeserializer))]
 public struct GameEffectAreaOverride : IComponentData
 {
     public int index;
+}
+
+public struct GameEffectAreaOverrideBuffer : IBufferElementData
+{
+    public int index;
+    public ColliderKey colliderKey;
+}
+
+public struct GameEffectAreaOverrideDeserializer : IEntityDataStreamDeserializer
+{
+    public ComponentTypeSet componentTypeSet => new ComponentTypeSet(ComponentType.ReadWrite<GameEffectAreaOverrideBuffer>());
+
+    public void Deserialize(ref UnsafeBlock.Reader reader, ref EntityComponentAssigner assigner, in Entity entity)
+    {
+        var value = reader.Read<GameEffectAreaOverride>();
+        GameEffectAreaOverrideBuffer buffer;
+        buffer.index = value.index;
+        buffer.colliderKey = reader.isVail ? reader.Read<ColliderKey>() : ColliderKey.Empty;
+        if (assigner.isCreated)
+            assigner.SetBuffer(EntityComponentAssigner.BufferOption.AppendUnique,  entity, buffer);
+    }
 }
 
 [EntityComponent(typeof(PhysicsTriggerEvent))]
