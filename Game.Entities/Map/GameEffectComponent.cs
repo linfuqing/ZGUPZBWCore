@@ -1,4 +1,5 @@
 ﻿using System;
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Physics;
 using ZG;
@@ -43,14 +44,17 @@ public struct GameEffectAreaOverrideBuffer : IBufferElementData
 
 public struct GameEffectAreaOverrideDeserializer : IEntityDataStreamDeserializer
 {
-    public ComponentTypeSet componentTypeSet => new ComponentTypeSet(ComponentType.ReadWrite<GameEffectAreaOverrideBuffer>());
+    public ComponentTypeSet GetComponentTypeSet(in NativeArray<byte> userData)
+    {
+        return new ComponentTypeSet(userData.IsCreated ? ComponentType.ReadWrite<GameEffectAreaOverrideBuffer>() : ComponentType.ReadWrite<GameEffectAreaOverride>());
+    }
 
-    public void Deserialize(ref UnsafeBlock.Reader reader, ref EntityComponentAssigner assigner, in Entity entity)
+    public void Deserialize(ref UnsafeBlock.Reader reader, ref EntityComponentAssigner assigner, in Entity entity, in NativeArray<byte> userData)
     {
         var value = reader.Read<GameEffectAreaOverride>();
         GameEffectAreaOverrideBuffer buffer;
         buffer.index = value.index;
-        buffer.colliderKey = reader.isVail ? reader.Read<ColliderKey>() : ColliderKey.Empty;
+        buffer.colliderKey = userData.IsCreated ? userData.Reinterpret<ColliderKey>(1)[0] : ColliderKey.Empty;
         if (assigner.isCreated)
             assigner.SetBuffer(EntityComponentAssigner.BufferOption.AppendUnique,  entity, buffer);
     }
