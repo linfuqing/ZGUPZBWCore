@@ -2,6 +2,7 @@
 using Unity.Entities;
 using Unity.Collections;
 using Unity.Transforms;
+using Unity.Physics;
 using ZG;
 
 public struct GameEffectSystemCore<TEffect> where TEffect : unmanaged, IGameEffect<TEffect>
@@ -10,6 +11,7 @@ public struct GameEffectSystemCore<TEffect> where TEffect : unmanaged, IGameEffe
 
     private BufferLookup<GameEffectAreaOverrideBuffer> __areasOverrideBuffers;
     private ComponentLookup<GameEffectAreaOverride> __areasOverride;
+    private ComponentLookup<PhysicsCollider> __physicsColliders;
     private ComponentLookup<PhysicsShapeParent> __physicsShapeParents;
     private BufferTypeHandle<PhysicsTriggerEvent> __physicsTriggerEventType;
     private ComponentTypeHandle<Translation> __translationType;
@@ -42,6 +44,7 @@ public struct GameEffectSystemCore<TEffect> where TEffect : unmanaged, IGameEffe
 
         __areasOverrideBuffers = state.GetBufferLookup<GameEffectAreaOverrideBuffer>(true);
         __areasOverride = state.GetComponentLookup<GameEffectAreaOverride>(true);
+        __physicsColliders = state.GetComponentLookup<PhysicsCollider>(true);
         __physicsShapeParents = state.GetComponentLookup<PhysicsShapeParent>(true);
         __physicsTriggerEventType = state.GetBufferTypeHandle<PhysicsTriggerEvent>(true);
         __translationType = state.GetComponentTypeHandle<Translation>(true);
@@ -65,6 +68,7 @@ public struct GameEffectSystemCore<TEffect> where TEffect : unmanaged, IGameEffe
         apply.values = values;
         apply.areasOverrideBuffers = __areasOverrideBuffers.UpdateAsRef(ref state);
         apply.areasOverride = __areasOverride.UpdateAsRef(ref state);
+        apply.physicsColliders = __physicsColliders.UpdateAsRef(ref state);
         apply.physicsShapeParents = __physicsShapeParents.UpdateAsRef(ref state);
         apply.physicsTriggerEventType = __physicsTriggerEventType.UpdateAsRef(ref state);
         apply.translationType = __translationType.UpdateAsRef(ref state);

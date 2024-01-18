@@ -7,6 +7,7 @@ using Unity.Mathematics;
 using Unity.Physics;
 using Unity.Transforms;
 using ZG;
+using Math = ZG.Mathematics.Math;
 
 public interface IGameEffectHandler<T> where T : struct, IGameEffect<T>
 {
@@ -337,6 +338,8 @@ public struct GameEffectApply<TEffect, THandler, TFactory> : IJobChunk
         [ReadOnly]
         public ComponentLookup<GameEffectAreaOverride> areasOverride;
         [ReadOnly]
+        public ComponentLookup<PhysicsCollider> physicsColliders;
+        [ReadOnly]
         public ComponentLookup<PhysicsShapeParent> physicsShapeParents;
         [ReadOnly]
         public BufferAccessor<PhysicsTriggerEvent> physicsTriggerEvents;
@@ -364,6 +367,7 @@ public struct GameEffectApply<TEffect, THandler, TFactory> : IJobChunk
             var physicsTriggerEvents = this.physicsTriggerEvents[index];
             DynamicBuffer<GameEffectAreaOverrideBuffer> areaOverrideBuffers;
             Entity effector;
+            uint numSubKeyBits, colliderIndexA, colliderIndexB;
             int areaIndex = -1, i;
             foreach(var physicsTriggerEvent in physicsTriggerEvents)
             {
@@ -372,10 +376,14 @@ public struct GameEffectApply<TEffect, THandler, TFactory> : IJobChunk
                     areaIndex = math.max(areaIndex, areasOverride[effector].index);
                 else if (areasOverrideBuffers.HasBuffer(effector))
                 {
+                    numSubKeyBits = physicsColliders[physicsTriggerEvent.entity].Value.Value.NumColliderKeyBits;
                     areaOverrideBuffers = areasOverrideBuffers[effector];
                     foreach (var areaOverrideBuffer in areaOverrideBuffers)
                     {
-                        if(areaOverrideBuffer.colliderKey.Equals(ColliderKey.Empty) || areaOverrideBuffer.colliderKey.Equals(physicsTriggerEvent.colliderKeyA))
+                        if(areaOverrideBuffer.colliderKey.Equals(ColliderKey.Empty) || 
+                           areaOverrideBuffer.colliderKey.PopSubKey(numSubKeyBits, out colliderIndexA) && 
+                           physicsTriggerEvent.colliderKeyB.PopSubKey(numSubKeyBits, out colliderIndexB) && 
+                           colliderIndexA == colliderIndexB)
                             areaIndex = math.max(areaIndex, areaOverrideBuffer.index);
                     }
                 }
@@ -443,6 +451,8 @@ public struct GameEffectApply<TEffect, THandler, TFactory> : IJobChunk
     [ReadOnly]
     public ComponentLookup<GameEffectAreaOverride> areasOverride;
     [ReadOnly]
+    public ComponentLookup<PhysicsCollider> physicsColliders;
+    [ReadOnly]
     public ComponentLookup<PhysicsShapeParent> physicsShapeParents;
     [ReadOnly]
     public BufferTypeHandle<PhysicsTriggerEvent> physicsTriggerEventType;
@@ -468,6 +478,7 @@ public struct GameEffectApply<TEffect, THandler, TFactory> : IJobChunk
         executor.values = values;
         executor.areasOverrideBuffers = areasOverrideBuffers;
         executor.areasOverride = areasOverride;
+        executor.physicsColliders = physicsColliders;
         executor.physicsShapeParents = physicsShapeParents;
         executor.physicsTriggerEvents = chunk.GetBufferAccessor(ref physicsTriggerEventType);
         executor.translations = chunk.GetNativeArray(ref translationType);
