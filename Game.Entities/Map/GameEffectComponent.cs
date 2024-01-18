@@ -30,7 +30,7 @@ public struct GameEffectArea : IComponentData
     public int index;
 }
 
-[EntityDataStream(serializerType = typeof(EntityComponentStreamSerializer<GameEffectAreaOverride>), deserializerType = typeof(GameEffectAreaOverrideDeserializer))]
+[Serializable, EntityDataStream(serializerType = typeof(EntityComponentStreamSerializer<GameEffectAreaOverride>), deserializerType = typeof(GameEffectAreaOverrideDeserializer))]
 public struct GameEffectAreaOverride : IComponentData
 {
     public int index;
