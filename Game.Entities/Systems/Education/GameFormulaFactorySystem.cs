@@ -351,13 +351,13 @@ public partial struct GameFormulaFactoryStructChangeSystem : ISystem
 [BurstCompile, CreateAfter(typeof(GameItemSystem))/*, CreateAfter(typeof(GameFormulaFactoryStructChangeSystem))*/]
 public partial struct GameFormulaFactorySystem : ISystem
 {
-    /*public struct Result
+    public struct Result
     {
         public int formulaIndex;
         public GameItemHandle handle;
         public Entity entity;
         public Entity factory;
-    }*/
+    }
 
     [Flags]
     private enum RunningStatus
@@ -1394,7 +1394,7 @@ public partial struct GameFormulaFactorySystem : ISystem
 
         public NativeQueue<CompletedResult> inputs;
 
-        //public SharedList<Result>.Writer outputs;
+        public SharedList<Result>.Writer outputs;
 
         public void Execute()
         {
@@ -1403,15 +1403,15 @@ public partial struct GameFormulaFactorySystem : ISystem
             ref var definition = ref this.definition.Value;
 
             DynamicBuffer<GameItemSibling> siblings;
-            //Result output;
+            Result output;
             GameItemInfo item;
             GameItemHandle sourceHandle, destinationHandle;
             int i, destinationItemCount, sourceItemCount, numSiblings;
             while(inputs.TryDequeue(out var input))
             {
-                /*output.formulaIndex = input.formulaIndex;
+                output.formulaIndex = input.formulaIndex;
                 output.entity = input.entity;
-                output.factory = input.factory;*/
+                output.factory = input.factory;
 
                 ref var result = ref definition.values[input.formulaIndex].results[input.resultIndex];
                 sourceItemCount = result.itemCount * input.count;
@@ -1420,8 +1420,8 @@ public partial struct GameFormulaFactorySystem : ISystem
                 {
                     if (input.parentHandle.Equals(GameItemHandle.Empty))
                     {
-                        /*output.handle = GameItemHandle.Empty;
-                        outputs.Add(output);*/
+                        output.handle = GameItemHandle.Empty;
+                        outputs.Add(output);
 
                         if (commands.HasBuffer(input.entity))
                         {
@@ -1442,12 +1442,13 @@ public partial struct GameFormulaFactorySystem : ISystem
                     {
                         destinationItemCount = sourceItemCount;
 
-                        sourceHandle = itemManager.Add(input.parentHandle, input.parentChildIndex, result.itemType, ref destinationItemCount);
-                        if (itemManager.TryGetValue(sourceHandle, out item))
+                        output.handle = itemManager.Add(input.parentHandle, input.parentChildIndex, result.itemType, ref destinationItemCount);
+                        if (itemManager.TryGetValue(output.handle, out item))
                         {
-                            //outputs.Add(output);
+                            //output.handle = sourceHandle;
+                            outputs.Add(output);
 
-                            //sourceHandle = handle;
+                            sourceHandle = output.handle;
                             destinationHandle = item.siblingHandle;
                             while(itemManager.TryGetValue(destinationHandle, out item))
                             {
@@ -1547,12 +1548,12 @@ public partial struct GameFormulaFactorySystem : ISystem
     /*private EntityCommandPool<Entity> __removeTimeComponentPool;
     private EntityCommandPool<EntityData<GameFormulaFactoryTime>> __addTimeComponentPool;*/
 
-    /*public SharedList<Result> results
+    public SharedList<Result> results
     {
         get;
 
         private set;
-    }*/
+    }
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
@@ -1616,7 +1617,7 @@ public partial struct GameFormulaFactorySystem : ISystem
         __removeTimeComponentPool = endFrameBarrier.removeTimeComponentPool;
         __addTimeComponentPool = endFrameBarrier.addTimeComponentPool;*/
 
-        //results = new SharedList<Result>(Allocator.Persistent);
+        results = new SharedList<Result>(Allocator.Persistent);
     }
 
     //[BurstCompile]
@@ -1625,7 +1626,7 @@ public partial struct GameFormulaFactorySystem : ISystem
         __runningResults.Dispose();
         __completedResults.Dispose();
 
-        //results.Dispose();
+        results.Dispose();
     }
 
     [BurstCompile]
@@ -1756,11 +1757,11 @@ public partial struct GameFormulaFactorySystem : ISystem
             //itemJobManager.readWriteJobHandle = jobHandle;
         }
 
-        //var results = this.results;
+        var results = this.results;
 
-        //ref var resultJobManager = ref results.lookupJobManager;
+        ref var resultJobManager = ref results.lookupJobManager;
 
-        //resultJobManager.CompleteReadWriteDependency();
+        resultJobManager.CompleteReadWriteDependency();
 
         ApplyToComplete applyToComplete;
         applyToComplete.definition = definition;
@@ -1770,7 +1771,7 @@ public partial struct GameFormulaFactorySystem : ISystem
         applyToComplete.siblings = siblings;
         applyToComplete.commands = __itemSpawnCommands.UpdateAsRef(ref state);
         applyToComplete.inputs = __completedResults;
-        //applyToComplete.outputs = results.writer;
+        applyToComplete.outputs = results.writer;
 
         if (itemJobHandle == null)
         {
