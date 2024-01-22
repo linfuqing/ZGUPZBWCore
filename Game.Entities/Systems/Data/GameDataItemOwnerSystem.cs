@@ -53,7 +53,7 @@ public struct GameItemOwnerDataDeserializer : IGameDataEntityCompoentDeserialize
         return true;
     }
 
-    public int Deserialize(ref GameItemData value, ref EntityDataReader reader)
+    public int Deserialize(in Entity entity, ref GameItemData value, ref EntityDataReader reader)
     {
         return reader.Read<int>();
     }

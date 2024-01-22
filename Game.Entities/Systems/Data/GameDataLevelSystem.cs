@@ -63,7 +63,11 @@ public struct GameLevelWrapper : IEntityDataIndexReadWriteWrapper<GameLevel>,
         data.handle = index + 1;
     }
 
-    public void Serialize(ref EntityDataWriter writer, in GameLevel data, in SharedHashMap<int, int>.Reader guidIndices)
+    public void Serialize(
+        ref EntityDataWriter writer, 
+        in GameLevel data, 
+        in SharedHashMap<int, int>.Reader guidIndices, 
+        in SharedHashMap<Hash128, int>.Reader entityIndices)
     {
         EntityDataIndexReadWriteWrapperUtility.Serialize(ref this, ref writer, data, guidIndices);
     }
@@ -95,7 +99,11 @@ public struct GameItemLevelWrapper : IEntityDataIndexReadWriteWrapper<GameItemLe
         data.handle = index + 1;
     }
 
-    public void Serialize(ref EntityDataWriter writer, in GameItemLevel data, in SharedHashMap<int, int>.Reader guidIndices)
+    public void Serialize(
+        ref EntityDataWriter writer, 
+        in GameItemLevel data, 
+        in SharedHashMap<int, int>.Reader guidIndices, 
+        in SharedHashMap<Hash128, int>.Reader entityIndices)
     {
         EntityDataIndexReadWriteWrapperUtility.Serialize(ref this, ref writer, data, guidIndices);
     }
@@ -127,7 +135,11 @@ public struct GameSoulLevelWrapper : IEntityDataIndexReadWriteWrapper<GameSoul>,
         data.data.levelIndex = index;
     }
 
-    public void Serialize(ref EntityDataWriter writer, in GameSoul data, in SharedHashMap<int, int>.Reader guidIndices)
+    public void Serialize(
+        ref EntityDataWriter writer, 
+        in GameSoul data, 
+        in SharedHashMap<int, int>.Reader guidIndices, 
+        in SharedHashMap<Hash128, int>.Reader entityIndices)
     {
         EntityDataIndexReadWriteWrapperUtility.Serialize(ref this, ref writer, data, guidIndices);
     }

@@ -74,7 +74,11 @@ public struct GameItemDataSerializationWrapper : IEntityDataIndexReadOnlyWrapper
         return false;
     }
 
-    public void Serialize(ref EntityDataWriter writer, in GameItemData data, in SharedHashMap<int, int>.Reader guidIndices)
+    public void Serialize(
+        ref EntityDataWriter writer, 
+        in GameItemData data, 
+        in SharedHashMap<int, int>.Reader guidIndices, 
+        in SharedHashMap<Hash128, int>.Reader entityIndices)
     {
         if (!infos.TryGetValue(data.handle, out var item) || !guidIndices.TryGetValue(item.type, out int guidIndex))
         {

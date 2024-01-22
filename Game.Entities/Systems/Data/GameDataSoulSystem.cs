@@ -42,7 +42,11 @@ public struct GameSoulTypeWrapper : IEntityDataIndexReadWriteWrapper<GameSoul>,
         data.data.type = index;
     }
 
-    public void Serialize(ref EntityDataWriter writer, in GameSoul data, in SharedHashMap<int, int>.Reader guidIndices)
+    public void Serialize(
+        ref EntityDataWriter writer, 
+        in GameSoul data, 
+        in SharedHashMap<int, int>.Reader guidIndices, 
+        in SharedHashMap<Hash128, int>.Reader entityIndices)
     {
         EntityDataIndexReadWriteWrapperUtility.Serialize(ref this, ref writer, data, guidIndices);
     }
