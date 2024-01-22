@@ -72,13 +72,6 @@ public struct GameFormulaFactoryStatusSerializationWrapper :
     [ReadOnly]
     public ComponentLookup<EntityDataIdentity> identities;
 
-    public bool TryGet(in GameFormulaFactoryStatus data, out int index)
-    {
-        index = data.formulaIndex;
-
-        return data.formulaIndex != -1;
-    }
-
     public bool TryGet(in GameFormulaFactoryStatusData data, out int index)
     {
         index = data.formulaIndex;
