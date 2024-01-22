@@ -42,7 +42,9 @@ public struct GameLevelManager
 
 }
 
-public struct GameLevelWrapper : IEntityDataIndexReadWriteWrapper<GameLevel>
+public struct GameLevelWrapper : IEntityDataIndexReadWriteWrapper<GameLevel>, 
+    IEntityDataSerializationIndexWrapper<GameLevel>, 
+    IEntityDataDeserializationIndexWrapper<GameLevel>
 {
     public bool TryGet(in GameLevel data, out int index)
     {
@@ -72,7 +74,9 @@ public struct GameLevelWrapper : IEntityDataIndexReadWriteWrapper<GameLevel>
     }
 }
 
-public struct GameItemLevelWrapper : IEntityDataIndexReadWriteWrapper<GameItemLevel>
+public struct GameItemLevelWrapper : IEntityDataIndexReadWriteWrapper<GameItemLevel>, 
+    IEntityDataSerializationIndexWrapper<GameItemLevel>, 
+    IEntityDataDeserializationIndexWrapper<GameItemLevel>
 {
     public bool TryGet(in GameItemLevel data, out int index)
     {
@@ -102,7 +106,9 @@ public struct GameItemLevelWrapper : IEntityDataIndexReadWriteWrapper<GameItemLe
     }
 }
 
-public struct GameSoulLevelWrapper : IEntityDataIndexReadWriteWrapper<GameSoul>
+public struct GameSoulLevelWrapper : IEntityDataIndexReadWriteWrapper<GameSoul>, 
+    IEntityDataSerializationIndexWrapper<GameSoul>, 
+    IEntityDataDeserializationIndexWrapper<GameSoul>
 {
     public bool TryGet(in GameSoul data, out int index)
     {

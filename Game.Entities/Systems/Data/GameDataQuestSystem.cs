@@ -22,7 +22,9 @@ using ZG;
 #endregion
 
 
-public struct GameQuestWrapper : IEntityDataIndexReadWriteWrapper<GameQuest>
+public struct GameQuestWrapper : IEntityDataIndexReadWriteWrapper<GameQuest>, 
+    IEntityDataSerializationIndexWrapper<GameQuest>, 
+    IEntityDataDeserializationIndexWrapper<GameQuest>
 {
     public bool TryGet(in GameQuest data, out int index)
     {

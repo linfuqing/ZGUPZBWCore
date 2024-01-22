@@ -21,7 +21,9 @@ using ZG;
 //[assembly: EntityDataDeserialize(typeof(GameSoulIndex), (int)GameDataConstans.Version)]
 #endregion
 
-public struct GameSoulTypeWrapper : IEntityDataIndexReadWriteWrapper<GameSoul>
+public struct GameSoulTypeWrapper : IEntityDataIndexReadWriteWrapper<GameSoul>, 
+    IEntityDataSerializationIndexWrapper<GameSoul>, 
+    IEntityDataDeserializationIndexWrapper<GameSoul>
 {
     public bool TryGet(in GameSoul data, out int index)
     {

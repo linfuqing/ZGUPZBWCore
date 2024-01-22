@@ -55,7 +55,7 @@ public struct GameOwnerDataWrapper : IGameDataEntityCompoentWrapper<GameOwner>
         writer.Write(entityIndex);
     }
 
-    public int Deserialize(ref GameOwner value, ref EntityDataReader reader)
+    public int Deserialize(in Entity entity, ref GameOwner value, ref EntityDataReader reader)
     {
         return reader.Read<int>();
     }
@@ -83,7 +83,7 @@ public struct GameActorMasterDataWrapper : IGameDataEntityCompoentWrapper<GameAc
         writer.Write(entityIndex);
     }
 
-    public int Deserialize(ref GameActorMaster value, ref EntityDataReader reader)
+    public int Deserialize(in Entity entity, ref GameActorMaster value, ref EntityDataReader reader)
     {
         return reader.Read<int>();
     }
@@ -116,7 +116,7 @@ public struct GamePlayerLocatorDataWrapper : IGameDataEntityCompoentWrapper<Game
         writer.Write(entityIndex);
     }
 
-    public int Deserialize(ref GamePlayerLocator value, ref EntityDataReader reader)
+    public int Deserialize(in Entity entity, ref GamePlayerLocator value, ref EntityDataReader reader)
     {
         return reader.Read<int>();
     }
@@ -150,7 +150,7 @@ public struct GamePlayerSpawnDataWrapper : IGameDataEntityCompoentWrapper<GamePl
         writer.Write(entityIndex);
     }
 
-    public int Deserialize(ref GamePlayerSpawn value, ref EntityDataReader reader)
+    public int Deserialize(in Entity entity, ref GamePlayerSpawn value, ref EntityDataReader reader)
     {
         return reader.Read<int>();
     }

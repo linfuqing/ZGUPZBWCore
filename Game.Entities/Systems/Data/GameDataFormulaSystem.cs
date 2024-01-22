@@ -18,7 +18,9 @@ using ZG;
 //[assembly: EntityDataDeserialize(typeof(GameFormula), typeof(GameDataFormulaDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
-public struct GameFormulaWrapper : IEntityDataIndexReadWriteWrapper<GameFormula>
+public struct GameFormulaWrapper : IEntityDataIndexReadWriteWrapper<GameFormula>, 
+    IEntityDataSerializationIndexWrapper<GameFormula>, 
+    IEntityDataDeserializationIndexWrapper<GameFormula>
 {
     public bool TryGet(in GameFormula data, out int index)
     {

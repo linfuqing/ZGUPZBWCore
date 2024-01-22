@@ -27,7 +27,7 @@ public interface IGameDataEntityCompoentDeserializer<T>
 {
     bool Fallback(in Entity entity, in T value);
 
-    int Deserialize(ref T value, ref EntityDataReader reader);
+    int Deserialize(in Entity entity, ref T value, ref EntityDataReader reader);
 }
 
 public interface IGameDataEntityCompoentBuilder<T>
@@ -35,7 +35,10 @@ public interface IGameDataEntityCompoentBuilder<T>
     void Set(ref T value, in Entity entity, in Entity instance);
 }
 
-public interface IGameDataEntityCompoentWrapper<T> : IGameDataEntityCompoentSerializer<T>, IGameDataEntityCompoentDeserializer<T>, IGameDataEntityCompoentBuilder<T>
+public interface IGameDataEntityCompoentWrapper<T> : 
+    IGameDataEntityCompoentSerializer<T>, 
+    IGameDataEntityCompoentDeserializer<T>, 
+    IGameDataEntityCompoentBuilder<T>
 {
 
 }
@@ -108,12 +111,14 @@ public struct GameDataEntityComponentDataDeserializer<TValue, TDeserializer> : I
     public void Deserialize(int index, ref EntityDataReader reader)
     {
         var instance = instances[index];
+        
+        Entity entity = entityArray[index];
 
-        int entityIndex = deserializer.Deserialize(ref instance, ref reader);
+        int entityIndex = deserializer.Deserialize(entity, ref instance, ref reader);
 
         instances[index] = instance;
 
-        identityIndices.TryAdd(entityArray[index], entityIndex);
+        identityIndices.TryAdd(entity, entityIndex);
     }
 }
 
