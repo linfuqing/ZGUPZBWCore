@@ -7,7 +7,7 @@ using Unity.Jobs;
 using ZG;
 using ZG.Unsafe;
 using Unity.Collections.LowLevel.Unsafe;
-using System.Diagnostics;
+using FixedString = Unity.Collections.FixedString32Bytes;
 
 public struct GameQuestItem
 {
@@ -27,6 +27,8 @@ internal struct GameQuestManagerData
 
         public int rewardStartIndex;
         public int rewardCount;
+
+        public FixedString label;
     }
 
     private UnsafeList<Info> __infos;
@@ -135,9 +137,12 @@ internal struct GameQuestManagerData
         int index,
         ref int conditionBits)
     {
+        var info = __infos[index];
+
         return GameQuestUtility.Update(
-            GetConditions(index),
+            __conditions.AsArray().Slice(info.conditionStartIndex, info.conditionCount),
             commands.AsNativeArray(),
+            info.label, 
             ref conditionBits);
     }
 
@@ -151,7 +156,10 @@ internal struct GameQuestManagerData
         command.type = GameQuestConditionType.Get;
         
         NativeList<GameQuestCommandCondition> commands = default;
-        var conditions = GetConditions(index);
+        
+        var info = __infos[index];
+
+        var conditions = __conditions.AsArray().Slice(info.conditionStartIndex, info.conditionCount);
 
         foreach (var condition in conditions)
         {
@@ -163,6 +171,7 @@ internal struct GameQuestManagerData
                 continue;
 
             command.index = condition.index;
+            command.label = info.label;
 
             if (!commands.IsCreated)
                 commands = new NativeList<GameQuestCommandCondition>(Allocator.Temp);
@@ -176,6 +185,7 @@ internal struct GameQuestManagerData
             result = GameQuestUtility.Update(
                 conditions,
                 commands.AsArray(),
+                info.label, 
                 ref conditionBits);
 
             commands.Dispose();
@@ -392,7 +402,7 @@ public struct GameQuestManager
             out money);
     }
 
-    [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+    [System.Diagnostics.Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
     readonly void __CheckRead()
     {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -772,6 +782,7 @@ public static class GameQuestUtility
 
     public static bool Update(
         in NativeArray<GameQuestCommandCondition> conditions,
+        in FixedString label, 
         GameQuestConditionType type,
         int index,
         int bitCount,
@@ -785,7 +796,8 @@ public static class GameQuestUtility
         for (int i = 0; i < length; ++i)
         {
             condition = conditions[i];
-            if (condition.type == type && condition.index == index)
+            if (condition.type == type && condition.index == index && 
+                (condition.label.IsEmpty || condition.label == label))
             {
                 count = condition.count;
 
@@ -815,6 +827,7 @@ public static class GameQuestUtility
     public static bool Update(
         in NativeSlice<GameQuestConditionData> conditions, 
         in NativeArray<GameQuestCommandCondition> commands,
+        in FixedString label, 
         ref int conditionBits)
     {
         bool result = false;
@@ -823,10 +836,12 @@ public static class GameQuestUtility
         for (int i = 0; i < numConditions; ++i)
         {
             condition = conditions[i];
+            
             bitCount = 32 - math.lzcnt(condition.count);
 
             result = Update(
                 commands,
+                label, 
                 condition.type,
                 condition.index,
                 bitCount,

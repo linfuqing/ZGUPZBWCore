@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using Unity.Collections;
 using Unity.Entities;
 using ZG;
 
@@ -49,6 +50,8 @@ public struct GameQuestData
 {
     public int money;
 
+    public string label;
+
     public GameQuestConditionData[] conditions;
 
     public GameQuestRewardData[] rewards;
@@ -69,6 +72,7 @@ public struct GameQuestCommandCondition : IBufferElementData, IEnableableCompone
     public GameQuestConditionType type;
     public int index;
     public int count;
+    public FixedString32Bytes label;
 }
 
 public struct GameQuestCommand : IBufferElementData, IEnableableComponent

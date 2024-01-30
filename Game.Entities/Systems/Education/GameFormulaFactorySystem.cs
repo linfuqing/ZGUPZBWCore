@@ -1291,6 +1291,7 @@ public partial struct GameFormulaFactorySystem : ISystem
                 {
                     questCommandCondition.index = result.formulaIndex;
                     questCommandCondition.count = result.count;
+                    questCommandCondition.label = default;
                     questCommandConditions[result.entity].Add(questCommandCondition);
                     
                     questCommandConditions.SetBufferEnabled(result.entity, true);

@@ -23,7 +23,8 @@ public class GameActionFixedComponent : EntityProxyComponent, IEntityComponent
 #if UNITY_EDITOR
         public string name;
 #endif
-        public int actionIndex;
+        public string animationTrigger;
+        //public int actionIndex;
         public float range;
         public float minTime;
         public float maxTime;
@@ -73,7 +74,7 @@ public class GameActionFixedComponent : EntityProxyComponent, IEntityComponent
         GameActionFixedFrame targetFrame;
         foreach (var frame in frames)
         {
-            targetFrame.actionIndex = frame.actionIndex;
+            targetFrame.animationTrigger = frame.animationTrigger;
             targetFrame.rangeSq = frame.range * frame.range;
             targetFrame.minTime = frame.minTime;
             targetFrame.maxTime = frame.maxTime;

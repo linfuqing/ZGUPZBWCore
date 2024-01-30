@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using Unity.Animation;
 using Unity.Jobs;
 using Unity.Entities;
 using Unity.Collections;
@@ -47,7 +48,8 @@ public struct GameActionFixedNextFrame : IBufferElementData
 [Serializable]
 public struct GameActionFixedFrame : IBufferElementData
 {
-    public int actionIndex;
+    //public int actionIndex;
+    public StringHash animationTrigger;
     public float rangeSq;
     public float minTime;
     public float maxTime;
@@ -203,8 +205,6 @@ public partial struct GameActionFixedExecutorSystem : ISystem
 
         public ArchetypeChunk chunk;
 
-        public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
-
         [ReadOnly]
         public BufferAccessor<GameActionFixedFrame> frames;
 
@@ -237,6 +237,12 @@ public partial struct GameActionFixedExecutorSystem : ISystem
         public NativeArray<Rotation> rotations;
 
         public NativeArray<GameNavMeshAgentTarget> targets;
+
+        public BufferAccessor<MeshInstanceAnimatorParameterCommand> animatorParameterCommands;
+
+        public BufferTypeHandle<MeshInstanceAnimatorParameterCommand> animatorParameterCommandType;
+
+        public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
 
         //public EntityAddDataQueue.ParallelWriter entityManager;
 
@@ -295,33 +301,44 @@ public partial struct GameActionFixedExecutorSystem : ISystem
                 info.time = time + random.NextFloat(frame.minTime, frame.maxTime);
                 //if(frame.minTime < frame.maxTime)
                 {
-                    if(index < characterAngles.Length || index < angles.Length)
-                    {
-                        var surfaceRotation = index < surfaces.Length ? math.mul(math.inverse(surfaces[index].rotation), frame.rotation) : frame.rotation;
-                        half eulerY = (half)ZG.Mathematics.Math.GetEulerY(surfaceRotation);
-
-                        if(index < characterAngles.Length)
-                        {
-                            GameNodeCharacterAngle angle;
-                            angle.value = eulerY;
-
-                            characterAngles[index] = angle;
-                        }
-
-                        if (index < angles.Length)
-                        {
-                            GameNodeAngle angle;
-                            angle.value = eulerY;
-
-                            angles[index] = angle;
-                        }
-                    }
-
-                    Rotation rotation;
-                    rotation.Value = frame.rotation;
-                    rotations[index] = rotation;
                 }
 
+                if (!StringHash.IsNullOrEmpty(frame.animationTrigger))
+                {
+                    MeshInstanceAnimatorParameterCommand animatorParameterCommand;
+                    animatorParameterCommand.value = 1;
+                    animatorParameterCommand.name = frame.animationTrigger;
+                    animatorParameterCommands[index].Add(animatorParameterCommand);
+                    
+                    chunk.SetComponentEnabled(ref animatorParameterCommandType, index, true);
+                }
+
+                if(index < characterAngles.Length || index < angles.Length)
+                {
+                    var surfaceRotation = index < surfaces.Length ? math.mul(math.inverse(surfaces[index].rotation), frame.rotation) : frame.rotation;
+                    half eulerY = (half)ZG.Mathematics.Math.GetEulerY(surfaceRotation);
+
+                    if(index < characterAngles.Length)
+                    {
+                        GameNodeCharacterAngle angle;
+                        angle.value = eulerY;
+
+                        characterAngles[index] = angle;
+                    }
+
+                    if (index < angles.Length)
+                    {
+                        GameNodeAngle angle;
+                        angle.value = eulerY;
+
+                        angles[index] = angle;
+                    }
+                }
+
+                Rotation rotation;
+                rotation.Value = frame.rotation;
+                rotations[index] = rotation;
+                
                 isMove = false;
             }
 
@@ -385,6 +402,8 @@ public partial struct GameActionFixedExecutorSystem : ISystem
 
         public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
 
+        public BufferTypeHandle<MeshInstanceAnimatorParameterCommand> animatorParameterCommandType;
+
         //public EntityAddDataQueue.ParallelWriter entityManager;
 
         public Executor Create(
@@ -396,7 +415,6 @@ public partial struct GameActionFixedExecutorSystem : ISystem
             long hash = math.aslong(time);
             executor.random = new Random((uint)hash ^ (uint)(hash >> 32) ^ (uint)index);
             executor.chunk = chunk;
-            executor.targetType = targetType;
             //executor.entityArray = chunk.GetNativeArray(entityType);
             executor.frames = chunk.GetBufferAccessor(ref frameType);
             executor.nextFrames = chunk.GetBufferAccessor(ref nextFrameType);
@@ -410,6 +428,9 @@ public partial struct GameActionFixedExecutorSystem : ISystem
             executor.surfaces = chunk.GetNativeArray(ref surfaceType);
             executor.rotations = chunk.GetNativeArray(ref rotationType);
             executor.targets = chunk.GetNativeArray(ref targetType);
+            executor.animatorParameterCommands = chunk.GetBufferAccessor(ref animatorParameterCommandType);
+            executor.animatorParameterCommandType = animatorParameterCommandType;
+            executor.targetType = targetType;
             //executor.entityManager = entityManager;
 
             return executor;
@@ -440,6 +461,8 @@ public partial struct GameActionFixedExecutorSystem : ISystem
 
     private ComponentTypeHandle<GameNavMeshAgentTarget> __targetType;
 
+    private BufferTypeHandle<MeshInstanceAnimatorParameterCommand> __animatorParameterCommandType;
+
     private StateMachineExecutorSystemCore __core;
 
     [BurstCompile]
@@ -459,6 +482,7 @@ public partial struct GameActionFixedExecutorSystem : ISystem
         __surfaceType = state.GetComponentTypeHandle<GameNodeSurface>();
         __rotationType = state.GetComponentTypeHandle<Rotation>();
         __targetType = state.GetComponentTypeHandle<GameNavMeshAgentTarget>();
+        __animatorParameterCommandType = state.GetBufferTypeHandle<MeshInstanceAnimatorParameterCommand>();
 
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __core = new StateMachineExecutorSystemCore(
@@ -491,6 +515,7 @@ public partial struct GameActionFixedExecutorSystem : ISystem
         executorFactory.surfaceType = __surfaceType.UpdateAsRef(ref state);
         executorFactory.rotationType = __rotationType.UpdateAsRef(ref state);
         executorFactory.targetType = __targetType.UpdateAsRef(ref state);
+        executorFactory.animatorParameterCommandType = __animatorParameterCommandType.UpdateAsRef(ref state);
 
         StateMachineFactory<StateMachineEscaper> escaperFactory;
         __core.Update<StateMachineEscaper, Executor, StateMachineFactory<StateMachineEscaper>, ExecutorFactory>(ref state, ref executorFactory, ref escaperFactory);
