@@ -363,6 +363,12 @@ public partial struct GameEntitySharedActionTransformSystem : ISystem
 [UpdateInGroup(typeof(PresentationSystemGroup)), UpdateAfter(typeof(GameEntityActionSharedFactorySytem))]
 public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
 {
+    private struct Instance
+    {
+        public int version;
+        public GameObject gameObject;
+    }
+    
     private double __time;
     private GameDeadline __now;
     private EntityQuery __groupToCreate;
@@ -373,7 +379,7 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
     private EntityCommander __endFrameBarrier;
 
     private GameActionSharedObjectAsset[] __assets;
-    private Pool<GameObject> __instances;
+    private Pool<Instance> __instances;
 
     public void Create(IEnumerable<GameActionSharedObjectAsset> assets)
     {
@@ -587,9 +593,16 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
 
         GameActionSharedObject target;
         if (__instances == null)
-            __instances = new Pool<GameObject>();
+            __instances = new Pool<Instance>();
 
-        target.index = __instances.Add(gameObject);
+        target.index = __instances.nextIndex;
+        
+        __instances.TryGetValue(target.index, out var temp);
+        target.version = ++temp.version;
+        
+        temp.gameObject = gameObject;
+        __instances.Insert(target.index, temp);
+
         target.flag = asset.flag;
         target.destroyStatus = destroyStatus;
         target.destroyTime = asset.destroyTime;
@@ -613,8 +626,7 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
             //isDisabled can be false after delete the action in rollback.
             //UnityEngine.Assertions.Assert.IsTrue(isDisabled, $"Destory Shared Action {entity} : {target.actionEntity} : {target.destroyStatus}");
 
-            var gameObject = __instances[target.index];
-            if (gameObject != null)
+            if (__instances.TryGetValue(target.index, out var instance) && instance.version == target.version && instance.gameObject != null)
             {
                 //UnityEngine.Debug.LogError($"Destroy {target.index} : {entity} : {gameObject.name} : {isDisabled}", gameObject);
 
@@ -631,38 +643,45 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
                 if (isDisabled)
                 {
                     if(target.destroyStatus == 0)
-                        gameObject.transform.SetParent(parent);
+                        instance.gameObject.transform.SetParent(parent);
                     else if((target.flag & GameActionSharedObjectFlag.EnableWhenBreak) == 0)
-                        gameObject.SetActive(false);
+                        instance.gameObject.SetActive(false);
                 }
                 else
-                    gameObject.SetActive(false);
+                    instance.gameObject.SetActive(false);
 
-                GameObject.Destroy(gameObject, target.destroyTime);
+                GameObject.Destroy(instance.gameObject, target.destroyTime);
             }
         }
 
         __instances.RemoveAt(target.index);
 
-        __endFrameBarrier.RemoveComponent<GameActionSharedObject>(entity);
+        //__endFrameBarrier.RemoveComponent<GameActionSharedObject>(entity);
 
         if (entityManager.HasComponent<GameActionSharedObjectData>(entity))
             __endFrameBarrier.RemoveComponent<GameActionSharedObjectData>(entity);
 
-        //Debug.LogError($"Clear Managed {target.actionEntity} : {isDisabled} : {entityManager.HasComponent<GameEntitySharedActionChild>(target.actionEntity)}");
-        if (isDisabled && !entityManager.HasComponent<GameEntitySharedActionChild>(target.actionEntity))
+        if (isDisabled)
         {
-            //Debug.LogError($"Clear Managed {target.actionEntity.Index} : {status.value}");
-
-            var value = status.value & ~GameActionStatus.Status.Managed;
-            if (value != status.value)
+            //Debug.LogError($"Clear Managed {target.actionEntity} : {isDisabled} : {entityManager.HasComponent<GameEntitySharedActionChild>(target.actionEntity)}");
+            if (!entityManager.HasComponent<GameEntitySharedActionChild>(target.actionEntity))
             {
-                status.value = value;
+                //Debug.LogError($"Clear Managed {target.actionEntity.Index} : {status.value}");
 
-                __endFrameBarrier.SetComponentData(target.actionEntity, status);
+                var value = status.value & ~GameActionStatus.Status.Managed;
+                if (value != status.value)
+                {
+                    status.value = value;
+
+                    __endFrameBarrier.SetComponentData(target.actionEntity, status);
+                }
+
+                __endFrameBarrier.RemoveComponent<GameActionSharedObject>(entity);
             }
         }
-
+        else
+            __endFrameBarrier.RemoveComponent<GameActionSharedObject>(entity);
+        
         /*if (isDisabled)
         {
             var temp = GameObject.CreatePrimitive(PrimitiveType.Sphere);

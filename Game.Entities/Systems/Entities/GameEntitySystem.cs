@@ -1400,7 +1400,8 @@ public partial struct GameEntityActorSystem : ISystem
                                         pointDistanceInput.Filter.CollidesWith = action.instance.damageMask;
                                         if (collider.Value.CalculateDistance(pointDistanceInput, out DistanceHit closestHit))
                                         {
-                                            destination = math.transform(transform, closestHit.Position);
+                                            if(closestHit.Distance < action.info.distance)
+                                                destination = math.transform(transform, closestHit.Position);
 
                                             /*distance = destination - source;
 

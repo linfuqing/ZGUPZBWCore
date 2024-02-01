@@ -85,6 +85,7 @@ public struct GameEntitySharedActionChild : ICleanupBufferElementData
 public struct GameActionSharedObject : ICleanupComponentData
 {
     public int index;
+    public int version;
     public GameActionSharedObjectFlag flag;
     public GameActionStatus.Status destroyStatus;
     public float destroyTime;
