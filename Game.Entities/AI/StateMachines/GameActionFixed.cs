@@ -318,6 +318,9 @@ public partial struct GameActionFixedExecutorSystem : ISystem
 
         public int Execute(bool isEntry, int index)
         {
+            if (index >= instances.Length)
+                return 0;
+            
             if (chunk.IsComponentEnabled(ref targetType, index))
                 return 0;
 
