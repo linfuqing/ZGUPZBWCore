@@ -109,27 +109,9 @@ internal struct GameQuestManagerData
 
     public readonly bool IsClear(in GameQuest quest)
     {
-        if (quest.status != GameQuestStatus.Normal)
-            return true;
-
         var info = __infos[quest.index];
-        if (quest.conditionBits == 0)
-            return info.conditionCount == 0;
-
-        int bitOffset = 0, bitCount, bitMask, count;
-        for (int i = 0; i < info.conditionCount; ++i)
-        {
-            count = __conditions[info.conditionStartIndex + i].count;
-
-            bitCount = 32 - math.lzcnt(count);
-            bitMask = (1 << bitCount) - 1;
-            if (((quest.conditionBits >> bitOffset) & bitMask) < count)
-                return false;
-
-            bitOffset += bitCount;
-        }
-
-        return true;
+        return GameQuestUtility.IsClear(quest,
+            __conditions.AsArray().Slice(info.conditionStartIndex, info.conditionCount));
     }
 
     public readonly bool Update(
@@ -766,6 +748,33 @@ public partial struct GameQuestSystem : ISystem
 
 public static class GameQuestUtility
 {
+    public static bool IsClear(
+        in this GameQuest quest, 
+        in NativeSlice<GameQuestConditionData> conditions)
+    {
+        if (quest.status != GameQuestStatus.Normal)
+            return true;
+
+        int numConditions = conditions.Length;
+        if (quest.conditionBits == 0)
+            return numConditions == 0;
+
+        int bitOffset = 0, bitCount, bitMask, count;
+        for (int i = 0; i < numConditions; ++i)
+        {
+            count = conditions[i].count;
+
+            bitCount = 32 - math.lzcnt(count);
+            bitMask = (1 << bitCount) - 1;
+            if (((quest.conditionBits >> bitOffset) & bitMask) < count)
+                return false;
+
+            bitOffset += bitCount;
+        }
+
+        return true;
+    }
+    
     public static int IndexOf(
         int questIndex,
         in DynamicBuffer<GameQuest> quests)

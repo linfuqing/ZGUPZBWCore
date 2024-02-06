@@ -25,6 +25,7 @@ public class GameActionFixedComponent : EntityProxyComponent, IEntityComponent
 #endif
         public string animationTrigger;
         //public int actionIndex;
+        public float speedScale;
         public float range;
         public float minTime;
         public float maxTime;
@@ -75,6 +76,7 @@ public class GameActionFixedComponent : EntityProxyComponent, IEntityComponent
         foreach (var frame in frames)
         {
             targetFrame.animationTrigger = frame.animationTrigger;
+            targetFrame.speedScale = (Unity.Mathematics.half)frame.speedScale;
             targetFrame.rangeSq = frame.range * frame.range;
             targetFrame.minTime = frame.minTime;
             targetFrame.maxTime = frame.maxTime;

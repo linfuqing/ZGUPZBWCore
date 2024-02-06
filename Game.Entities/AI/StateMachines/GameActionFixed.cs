@@ -11,8 +11,8 @@ using Random = Unity.Mathematics.Random;
 using Unity.Burst;
 
 [assembly: RegisterGenericJobType(typeof(StateMachineSchedulerJob<
-    StateMachineScheduler, 
-    StateMachineFactory<StateMachineScheduler>, 
+    GameActionFixedSchedulerSystem.SchedulerExit, 
+    GameActionFixedSchedulerSystem.FactoryExit, 
     GameActionFixedSchedulerSystem.SchedulerEntry, 
     GameActionFixedSchedulerSystem.FactoryEntry>))]
 [assembly: RegisterGenericJobType(typeof(StateMachineEscaperJob<StateMachineEscaper, StateMachineFactory<StateMachineEscaper>>))]
@@ -50,6 +50,7 @@ public struct GameActionFixedFrame : IBufferElementData
 {
     //public int actionIndex;
     public StringHash animationTrigger;
+    public half speedScale;
     public float rangeSq;
     public float minTime;
     public float maxTime;
@@ -90,6 +91,7 @@ public struct GameActionFixedInfo : IComponentData
     public Status status;
     public int frameIndex;
     public int stageIndex;
+    public half speedScale;
     public double time;
 }
 
@@ -107,6 +109,7 @@ public class GameActionFixed : StateMachineNode
         info.status = GameActionFixedInfo.Status.None;
         info.frameIndex = -1;
         info.stageIndex = -1;
+        info.speedScale = (half)1.0f;
         info.time = 0.0;
         instance.AddComponentData(info);
     }
@@ -114,7 +117,7 @@ public class GameActionFixed : StateMachineNode
     public override void Disable(StateMachineComponentEx instance)
     {
         instance.RemoveComponent<GameActionFixedData>();
-        instance.RemoveComponent<GameActionFixedInfo>();
+        //instance.RemoveComponent<GameActionFixedInfo>();
     }
 }
 
@@ -122,6 +125,57 @@ public class GameActionFixed : StateMachineNode
 [BurstCompile, UpdateInGroup(typeof(StateMachineGroup), OrderLast = true), UpdateAfter(typeof(GameActionActiveSchedulerSystem))]
 public partial struct GameActionFixedSchedulerSystem : ISystem
 {
+    public struct SchedulerExit : IStateMachineScheduler
+    {
+        [ReadOnly]
+        public NativeArray<GameActionFixedInfo> infos;
+        
+        public BufferAccessor<GameNodeSpeedScaleComponent> speedScaleComponents;
+        
+        public bool Execute(
+            int runningStatus,
+            in SystemHandle runningSystemHandle,
+            in SystemHandle nextSystemHandle,
+            in SystemHandle currentSystemHandle,
+            int index)
+        {
+            if(index < infos.Length && index < this.speedScaleComponents.Length)
+            {
+                var speedScaleComponents = this.speedScaleComponents[index];
+                var speedScale = infos[index].speedScale;
+                int length = speedScaleComponents.Length;
+                for(int i = 0; i < length; ++i)
+                {
+                    if(speedScaleComponents[i].value == speedScale)
+                    {
+                        speedScaleComponents.RemoveAt(i);
+
+                        break;
+                    }
+                }
+            }
+
+            return true;
+        }
+    }
+    
+    public struct FactoryExit : IStateMachineFactory<SchedulerExit>
+    {
+        [ReadOnly]
+        public ComponentTypeHandle<GameActionFixedInfo> infoType;
+
+        public BufferTypeHandle<GameNodeSpeedScaleComponent> speedScaleComponentType;
+
+        public SchedulerExit Create(int index, in ArchetypeChunk chunk)
+        {
+            SchedulerExit schedulerExit;
+            schedulerExit.infos = chunk.GetNativeArray(ref infoType);
+            schedulerExit.speedScaleComponents = chunk.GetBufferAccessor(ref speedScaleComponentType);
+
+            return schedulerExit;
+        }
+    }
+
     public struct SchedulerEntry : IStateMachineScheduler
     {
         [ReadOnly]
@@ -161,20 +215,26 @@ public partial struct GameActionFixedSchedulerSystem : ISystem
         }
     }
 
-    private ComponentTypeHandle<GameActionFixedData> __instanceType;
-
     private StateMachineSchedulerSystemCore __core;
+
+    private ComponentTypeHandle<GameActionFixedData> __instanceType;
+    
+    private ComponentTypeHandle<GameActionFixedInfo> __infoType;
+
+    private BufferTypeHandle<GameNodeSpeedScaleComponent> __speedScaleComponentType;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __instanceType = state.GetComponentTypeHandle<GameActionFixedData>(true);
-
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __core = new StateMachineSchedulerSystemCore(
                 ref state,
                 builder
                 .WithAll<GameActionFixedData>());
+        
+        __instanceType = state.GetComponentTypeHandle<GameActionFixedData>(true);
+
+        __speedScaleComponentType = state.GetBufferTypeHandle<GameNodeSpeedScaleComponent>();
     }
 
     [BurstCompile]
@@ -189,8 +249,10 @@ public partial struct GameActionFixedSchedulerSystem : ISystem
         FactoryEntry factoryEntry;
         factoryEntry.instanceType = __instanceType.UpdateAsRef(ref state);
 
-        StateMachineFactory<StateMachineScheduler> factoryExit;
-        __core.Update<StateMachineScheduler, SchedulerEntry, StateMachineFactory<StateMachineScheduler>, FactoryEntry>(ref state, ref factoryEntry, ref factoryExit);
+        FactoryExit factoryExit;
+        factoryExit.infoType = __infoType.UpdateAsRef(ref state);
+        factoryExit.speedScaleComponentType = __speedScaleComponentType.UpdateAsRef(ref state);
+        __core.Update<SchedulerExit, SchedulerEntry, FactoryExit, FactoryEntry>(ref state, ref factoryEntry, ref factoryExit);
     }
 }
 
@@ -236,7 +298,15 @@ public partial struct GameActionFixedExecutorSystem : ISystem
 
         public NativeArray<Rotation> rotations;
 
+        //public NativeArray<LocalToWorld> localToWorlds;
+
         public NativeArray<GameNavMeshAgentTarget> targets;
+
+        public BufferAccessor<GameNodeSpeedScaleComponent> speedScaleComponents;
+
+        public BufferAccessor<GameNodePosition> positions;
+
+        public BufferAccessor<GameTransformKeyframe<GameTransform>> transforms;
 
         public BufferAccessor<MeshInstanceAnimatorParameterCommand> animatorParameterCommands;
 
@@ -339,24 +409,52 @@ public partial struct GameActionFixedExecutorSystem : ISystem
                 rotation.Value = frame.rotation;
                 rotations[index] = rotation;
                 
+                if(index < positions.Length)
+                    positions[index].Clear();
+
+                if (index < transforms.Length)
+                    transforms[index].Clear();
+                
                 isMove = false;
             }
 
             if(isMove)
             {
-                GameNavMeshAgentTarget target;
-                target.sourceAreaMask = -1;
-                target.destinationAreaMask = -1;
-                target.position = frame.position;
-
                 if (index < targets.Length)
                 {
+                    GameNavMeshAgentTarget target;
+                    target.sourceAreaMask = -1;
+                    target.destinationAreaMask = -1;
+                    target.position = frame.position;
+
                     targets[index] = target;
 
                     chunk.SetComponentEnabled(ref targetType, index, true);
                 }
                 /*else
                     entityManager.AddComponentData(entityArray[index], target);*/
+
+                if (index < this.speedScaleComponents.Length)
+                {
+                    var speedScaleComponents = this.speedScaleComponents[index];
+                    
+                    int length = speedScaleComponents.Length;
+                    for(int i = 0; i < length; ++i)
+                    {
+                        if(speedScaleComponents[i].value == info.speedScale)
+                        {
+                            speedScaleComponents.RemoveAt(i);
+
+                            break;
+                        }
+                    }
+
+                    info.speedScale = math.abs(frame.speedScale) > math.FLT_MIN_NORMAL ? frame.speedScale : (half)1.0f;
+
+                    GameNodeSpeedScaleComponent speedScaleComponent;
+                    speedScaleComponent.value = info.speedScale;
+                    speedScaleComponents.Add(speedScaleComponent);
+                }
 
                 info.status = GameActionFixedInfo.Status.Moving;
             }
@@ -402,6 +500,12 @@ public partial struct GameActionFixedExecutorSystem : ISystem
 
         public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
 
+        public BufferTypeHandle<GameNodeSpeedScaleComponent> speedScaleComponentType;
+
+        public BufferTypeHandle<GameNodePosition> positionType;
+
+        public BufferTypeHandle<GameTransformKeyframe<GameTransform>> transformType;
+
         public BufferTypeHandle<MeshInstanceAnimatorParameterCommand> animatorParameterCommandType;
 
         //public EntityAddDataQueue.ParallelWriter entityManager;
@@ -428,6 +532,9 @@ public partial struct GameActionFixedExecutorSystem : ISystem
             executor.surfaces = chunk.GetNativeArray(ref surfaceType);
             executor.rotations = chunk.GetNativeArray(ref rotationType);
             executor.targets = chunk.GetNativeArray(ref targetType);
+            executor.speedScaleComponents = chunk.GetBufferAccessor(ref speedScaleComponentType);
+            executor.positions = chunk.GetBufferAccessor(ref positionType);
+            executor.transforms = chunk.GetBufferAccessor(ref transformType);
             executor.animatorParameterCommands = chunk.GetBufferAccessor(ref animatorParameterCommandType);
             executor.animatorParameterCommandType = animatorParameterCommandType;
             executor.targetType = targetType;
@@ -461,6 +568,12 @@ public partial struct GameActionFixedExecutorSystem : ISystem
 
     private ComponentTypeHandle<GameNavMeshAgentTarget> __targetType;
 
+    private BufferTypeHandle<GameNodeSpeedScaleComponent> __speedScaleComponentType;
+
+    private BufferTypeHandle<GameNodePosition> __positionType;
+
+    private BufferTypeHandle<GameTransformKeyframe<GameTransform>> __transformType;
+
     private BufferTypeHandle<MeshInstanceAnimatorParameterCommand> __animatorParameterCommandType;
 
     private StateMachineExecutorSystemCore __core;
@@ -482,6 +595,9 @@ public partial struct GameActionFixedExecutorSystem : ISystem
         __surfaceType = state.GetComponentTypeHandle<GameNodeSurface>();
         __rotationType = state.GetComponentTypeHandle<Rotation>();
         __targetType = state.GetComponentTypeHandle<GameNavMeshAgentTarget>();
+        __speedScaleComponentType = state.GetBufferTypeHandle<GameNodeSpeedScaleComponent>();
+        __positionType = state.GetBufferTypeHandle<GameNodePosition>();
+        __transformType = state.GetBufferTypeHandle<GameTransformKeyframe<GameTransform>>();
         __animatorParameterCommandType = state.GetBufferTypeHandle<MeshInstanceAnimatorParameterCommand>();
 
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
@@ -515,6 +631,9 @@ public partial struct GameActionFixedExecutorSystem : ISystem
         executorFactory.surfaceType = __surfaceType.UpdateAsRef(ref state);
         executorFactory.rotationType = __rotationType.UpdateAsRef(ref state);
         executorFactory.targetType = __targetType.UpdateAsRef(ref state);
+        executorFactory.speedScaleComponentType = __speedScaleComponentType.UpdateAsRef(ref state);
+        executorFactory.positionType = __positionType.UpdateAsRef(ref state);
+        executorFactory.transformType = __transformType.UpdateAsRef(ref state);
         executorFactory.animatorParameterCommandType = __animatorParameterCommandType.UpdateAsRef(ref state);
 
         StateMachineFactory<StateMachineEscaper> escaperFactory;
