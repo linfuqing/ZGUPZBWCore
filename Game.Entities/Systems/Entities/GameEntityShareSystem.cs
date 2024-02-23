@@ -621,41 +621,45 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
             return;
 
         Transform parent = __GetParent(entity, true);
-        if ((target.destroyStatus & status.value) == 0)
+        if (__instances.TryGetValue(target.index, out var instance) && 
+            instance.version == target.version)
         {
-            //isDisabled can be false after delete the action in rollback.
-            //UnityEngine.Assertions.Assert.IsTrue(isDisabled, $"Destory Shared Action {entity} : {target.actionEntity} : {target.destroyStatus}");
-
-            if (__instances.TryGetValue(target.index, out var instance) && instance.version == target.version && instance.gameObject != null)
+            if ((target.destroyStatus & status.value) == 0)
             {
-                //UnityEngine.Debug.LogError($"Destroy {target.index} : {entity} : {gameObject.name} : {isDisabled}", gameObject);
+                //isDisabled can be false after delete the action in rollback.
+                //UnityEngine.Assertions.Assert.IsTrue(isDisabled, $"Destory Shared Action {entity} : {target.actionEntity} : {target.destroyStatus}");
 
-                /*if (!isDisabled)
+                if (instance.gameObject != null)
                 {
-                    UnityEngine.Debug.LogError(gameObject);
-                    //UnityEngine.Debug.Break();
-                }*/
+                    //UnityEngine.Debug.LogError($"Destroy {target.index} : {entity} : {gameObject.name} : {isDisabled}", gameObject);
 
-                /*if (isDisabled && target.destroyStatus == 0)
-                {
-                    gameObject.transform.SetParent(parent);
-                }*/
-                if (isDisabled)
-                {
-                    if(target.destroyStatus == 0)
-                        instance.gameObject.transform.SetParent(parent);
-                    else if((target.flag & GameActionSharedObjectFlag.EnableWhenBreak) == 0)
+                    /*if (!isDisabled)
+                    {
+                        UnityEngine.Debug.LogError(gameObject);
+                        //UnityEngine.Debug.Break();
+                    }*/
+
+                    /*if (isDisabled && target.destroyStatus == 0)
+                    {
+                        gameObject.transform.SetParent(parent);
+                    }*/
+                    if (isDisabled)
+                    {
+                        if (target.destroyStatus == 0)
+                            instance.gameObject.transform.SetParent(parent);
+                        else if ((target.flag & GameActionSharedObjectFlag.EnableWhenBreak) == 0)
+                            instance.gameObject.SetActive(false);
+                    }
+                    else
                         instance.gameObject.SetActive(false);
+
+                    GameObject.Destroy(instance.gameObject, target.destroyTime);
                 }
-                else
-                    instance.gameObject.SetActive(false);
-
-                GameObject.Destroy(instance.gameObject, target.destroyTime);
             }
+
+            __instances.RemoveAt(target.index);
         }
-
-        __instances.RemoveAt(target.index);
-
+        
         //__endFrameBarrier.RemoveComponent<GameActionSharedObject>(entity);
 
         if (entityManager.HasComponent<GameActionSharedObjectData>(entity))
