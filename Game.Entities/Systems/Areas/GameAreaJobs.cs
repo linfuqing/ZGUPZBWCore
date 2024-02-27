@@ -115,7 +115,7 @@ public struct GameAreaNeighborEnumerator : IGameAreaNeighborEnumerator
                 instance.flag = 0;
                 instance.areaIndex = areaIndex;
                 instance.prefabIndex = prefabIndex;
-                instances.Create().value = instance;
+                //instances.Create().value = instance;
 
             } while (prefabIndices.TryGetNextValue(out prefabIndex, ref iterator));
         }

@@ -205,21 +205,17 @@ public partial struct GameActionNormalSchedulerSystem : ISystem
 
         public BufferTypeHandle<GameNodeSpeedScaleComponent> speedScaleComponentType;
 
-        public SchedulerExit Create(int index, in ArchetypeChunk chunk)
+        public bool Create(int unfilteredChunkIndex, in ArchetypeChunk chunk, out SchedulerExit schedulerExit)
         {
-            SchedulerExit schedulerExit;
             schedulerExit.infos = chunk.GetNativeArray(ref infoType);
             schedulerExit.speedScaleComponents = chunk.GetBufferAccessor(ref speedScaleComponentType);
 
-            return schedulerExit;
+            return true;
         }
     }
     
     public struct SchedulerEntry : IStateMachineScheduler
     {
-        [ReadOnly]
-        public NativeArray<GameActionNormalData> instances;
-
         [WriteOnly]
         public NativeArray<GameActionNormalInfo> infos;
 
@@ -256,13 +252,12 @@ public partial struct GameActionNormalSchedulerSystem : ISystem
         [NativeDisableContainerSafetyRestriction]
         public ComponentTypeHandle<GameActionNormalInfo> infoType;
 
-        public SchedulerEntry Create(int index, in ArchetypeChunk chunk)
+        public bool Create(int unfilteredChunkIndex, in ArchetypeChunk chunk, out SchedulerEntry schedulerEntry)
         {
-            SchedulerEntry schedulerEntry;
-            schedulerEntry.instances = chunk.GetNativeArray(ref instanceType);
+            //schedulerEntry.instances = chunk.GetNativeArray(ref instanceType);
             schedulerEntry.infos = chunk.GetNativeArray(ref infoType);
 
-            return schedulerEntry;
+            return chunk.Has(ref instanceType);
         }
     }
 
@@ -285,7 +280,7 @@ public partial struct GameActionNormalSchedulerSystem : ISystem
             __core = new StateMachineSchedulerSystemCore(
                 ref state,
                 builder
-                .WithAll<GameActionNormalData>()
+                //.WithAll<GameActionNormalData>()
                 .WithAllRW<GameActionNormalInfo>());
     }
 
@@ -358,13 +353,12 @@ public partial struct GameActionNormalExecutorSystem : ISystem, IEntityCommandPr
 
         public ComponentTypeHandle<GameDreamer> dreamerType;
         
-        public Escaper Create(int index, in ArchetypeChunk chunk)
+        public bool Create(int unfilteredChunkIndex, in ArchetypeChunk chunk, out Escaper escaper)
         {
-            Escaper escaper;
             escaper.time = time;
             escaper.dreamers = chunk.GetNativeArray(ref dreamerType);
 
-            return escaper;
+            return true;
         }
     }
     
@@ -820,9 +814,8 @@ public partial struct GameActionNormalExecutorSystem : ISystem, IEntityCommandPr
 
         public EntityAddDataQueue.ParallelWriter entityManager;
 
-        public Executor Create(int index, in ArchetypeChunk chunk)
+        public bool Create(int index, in ArchetypeChunk chunk, out Executor executor)
         {
-            Executor executor;
             executor.time = time;
             long hash = math.aslong(time);
             executor.random = new Random((uint)((int)(hash >> 32) ^ ((int)hash) ^ index));
@@ -853,7 +846,7 @@ public partial struct GameActionNormalExecutorSystem : ISystem, IEntityCommandPr
             executor.speedScaleComponents = speedScaleComponents;
             executor.entityManager = entityManager;
 
-            return executor;
+            return true;
         }
     }
     

@@ -347,9 +347,8 @@ public partial struct GameActionActiveSchedulerSystem : ISystem
         
         public ComponentTypeHandle<GameActionActiveInfo> infoType;
 
-        public SchedulerEntry Create(int index, in ArchetypeChunk chunk)
+        public bool Create(int unfilteredChunkIndex, in ArchetypeChunk chunk, out SchedulerEntry schedulerEntry)
         {
-            SchedulerEntry schedulerEntry;
             schedulerEntry.time = time;
             schedulerEntry.disabled = disabled;
             schedulerEntry.translationMap = translations;
@@ -359,7 +358,7 @@ public partial struct GameActionActiveSchedulerSystem : ISystem
             schedulerEntry.instances = chunk.GetNativeArray(ref instanceType);
             schedulerEntry.infos = chunk.GetNativeArray(ref infoType);
 
-            return schedulerEntry;
+            return true;
         }
     }
 
@@ -525,11 +524,11 @@ public partial struct GameActionActiveExecutorSystem : ISystem
 
         public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
 
-        public Escaper Create(
-            int index, 
-            in ArchetypeChunk chunk)
+        public bool Create(
+            int unfilteredChunkIndex, 
+            in ArchetypeChunk chunk, 
+            out Escaper escaper)
         {
-            Escaper escaper;
             //escaper.time = time;
             escaper.isHasPositions = chunk.Has(ref positionType);
             escaper.chunk = chunk;
@@ -537,7 +536,7 @@ public partial struct GameActionActiveExecutorSystem : ISystem
             //escaper.entityArray = chunk.GetNativeArray(entityType);
             escaper.infos = chunk.GetNativeArray(ref infoType);
             escaper.targets = chunk.GetNativeArray(ref targetType);
-            return escaper;
+            return true;
         }
     }
 
@@ -1275,15 +1274,14 @@ public partial struct GameActionActiveExecutorSystem : ISystem
         //public EntityAddDataQueue.ParallelWriter addComponentCommander;
         //public EntityCommandQueue<EntityCommandStructChange>.ParallelWriter removeComponentCommander;
 
-        public Executor Create(
-            int index, 
-            in ArchetypeChunk chunk)
+        public bool Create(
+            int unfilteredChunkIndex, 
+            in ArchetypeChunk chunk, 
+            out Executor executor)
         {
-            Executor executor;
-            long hash = math.aslong((double)time);
             executor.collisionTolerance = collisionTolerance;
             executor.time = time;
-            executor.random = new Random((uint)(hash ^ hash >> 32) ^ (uint)index);
+            executor.random = new Random(RandomUtility.Hash(time) ^ (uint)unfilteredChunkIndex);
             executor.chunk = chunk;
             executor.targetType = targetType;
             executor.actions = actions;
@@ -1324,7 +1322,7 @@ public partial struct GameActionActiveExecutorSystem : ISystem
             //executor.addComponentCommander = addComponentCommander;
             //executor.removeComponentCommander = removeComponentCommander;
 
-            return executor;
+            return true;
         }
     }
 

@@ -104,17 +104,17 @@ public partial struct GameActionFollowSchedulerSystem : ISystem
         [ReadOnly]
         public ComponentTypeHandle<GameActorMaster> actorMasterType;
         
-        public SchedulerEntry Create(
-            int index, 
-            in ArchetypeChunk chunk)
+        public bool Create(
+            int unfilteredChunkIndex, 
+            in ArchetypeChunk chunk, 
+            out SchedulerEntry schedulerEntry)
         {
-            SchedulerEntry schedulerEntry;
             schedulerEntry.translationMap = translations;
             schedulerEntry.translations = chunk.GetNativeArray(ref translationType);
             schedulerEntry.instances = chunk.GetNativeArray(ref instanceType);
             schedulerEntry.actorMasters = chunk.GetNativeArray(ref actorMasterType);
 
-            return schedulerEntry;
+            return true;
         }
     }
 
@@ -285,11 +285,11 @@ public partial struct GameActionFollowExecutorSystem : ISystem
 
         public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
 
-        public Executor Create(
-            int index, 
-            in ArchetypeChunk chunk)
+        public bool Create(
+            int unfilteredChunkIndex, 
+            in ArchetypeChunk chunk, 
+            out Executor executor)
         {
-            Executor executor;
             executor.isHasPositions = chunk.Has(ref positionType);
             executor.time = time;
             executor.chunk = chunk;
@@ -302,7 +302,7 @@ public partial struct GameActionFollowExecutorSystem : ISystem
             executor.targets = chunk.GetNativeArray(ref targetType);
             //executor.entityManager = entityManager;
 
-            return executor;
+            return true;
         }
     }
 

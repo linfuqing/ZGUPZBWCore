@@ -166,13 +166,12 @@ public partial struct GameActionFixedSchedulerSystem : ISystem
 
         public BufferTypeHandle<GameNodeSpeedScaleComponent> speedScaleComponentType;
 
-        public SchedulerExit Create(int index, in ArchetypeChunk chunk)
+        public bool Create(int unfilteredChunkIndex, in ArchetypeChunk chunk, out SchedulerExit schedulerExit)
         {
-            SchedulerExit schedulerExit;
             schedulerExit.infos = chunk.GetNativeArray(ref infoType);
             schedulerExit.speedScaleComponents = chunk.GetBufferAccessor(ref speedScaleComponentType);
 
-            return schedulerExit;
+            return true;
         }
     }
 
@@ -204,14 +203,14 @@ public partial struct GameActionFixedSchedulerSystem : ISystem
         [ReadOnly]
         public ComponentTypeHandle<GameActionFixedData> instanceType;
 
-        public SchedulerEntry Create(
-            int index, 
-            in ArchetypeChunk chunk)
+        public bool Create(
+            int unfilteredChunkIndex, 
+            in ArchetypeChunk chunk, 
+            out SchedulerEntry schedulerEntry)
         {
-            SchedulerEntry schedulerEntry;
             schedulerEntry.instances = chunk.GetNativeArray(ref instanceType);
 
-            return schedulerEntry;
+            return chunk.Has(ref instanceType);
         }
     }
 
@@ -230,7 +229,7 @@ public partial struct GameActionFixedSchedulerSystem : ISystem
             __core = new StateMachineSchedulerSystemCore(
                 ref state,
                 builder
-                .WithAll<GameActionFixedData>());
+                .WithAll<GameActionFixedInfo>());
         
         __instanceType = state.GetComponentTypeHandle<GameActionFixedData>(true);
 
@@ -513,14 +512,13 @@ public partial struct GameActionFixedExecutorSystem : ISystem
 
         //public EntityAddDataQueue.ParallelWriter entityManager;
 
-        public Executor Create(
-            int index, 
-            in ArchetypeChunk chunk)
+        public bool Create(
+            int unfilteredChunkIndex, 
+            in ArchetypeChunk chunk, 
+            out Executor executor)
         {
-            Executor executor;
             executor.time = time;
-            long hash = math.aslong(time);
-            executor.random = new Random((uint)hash ^ (uint)(hash >> 32) ^ (uint)index);
+            executor.random = new Random(RandomUtility.Hash(time) ^ (uint)unfilteredChunkIndex);
             executor.chunk = chunk;
             //executor.entityArray = chunk.GetNativeArray(entityType);
             executor.frames = chunk.GetBufferAccessor(ref frameType);
@@ -543,7 +541,7 @@ public partial struct GameActionFixedExecutorSystem : ISystem
             executor.targetType = targetType;
             //executor.entityManager = entityManager;
 
-            return executor;
+            return true;
         }
     }
 

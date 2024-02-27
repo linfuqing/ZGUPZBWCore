@@ -116,17 +116,17 @@ public partial struct GameActionFearSchedulerSystem : ISystem
 
         public ComponentTypeHandle<GameActionFearInfo> infoType;
 
-        public SchedulerEntry Create(
-            int index, 
-            in ArchetypeChunk chunk)
+        public bool Create(
+            int unfilteredChunkIndex, 
+            in ArchetypeChunk chunk, 
+            out SchedulerEntry schedulerEntry)
         {
-            SchedulerEntry schedulerEntry;
             schedulerEntry.auraOrigins = chunk.GetBufferAccessor(ref auraOriginType);
             schedulerEntry.translations = chunk.GetNativeArray(ref translationType);
             schedulerEntry.instances = chunk.GetNativeArray(ref instanceType);
             schedulerEntry.infos = chunk.GetNativeArray(ref infoType);
 
-            return schedulerEntry;
+            return true;
         }
     }
 
@@ -223,17 +223,17 @@ public partial struct GameActionFearExecutorSystem : ISystem
 
         public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
 
-        public Escaper Create(
-            int index, 
-            in ArchetypeChunk chunk)
+        public bool Create(
+            int unfilteredChunkIndex, 
+            in ArchetypeChunk chunk, 
+            out Escaper escaper)
         {
-            Escaper escaper;
             escaper.chunk = chunk;
             escaper.targetType = targetType;
             escaper.infos = chunk.GetNativeArray(ref infoType);
             escaper.targets = chunk.GetNativeArray(ref targetType);
 
-            return escaper;
+            return true;
         }
     }
 
@@ -308,11 +308,11 @@ public partial struct GameActionFearExecutorSystem : ISystem
         public ComponentTypeHandle<GameActionFearData> instanceType;
         public ComponentTypeHandle<GameNavMeshAgentTarget> targetType;
 
-        public Executor Create(
-            int index, 
-            in ArchetypeChunk chunk)
+        public bool Create(
+            int unfilteredChunkIndex, 
+            in ArchetypeChunk chunk, 
+            out Executor executor)
         {
-            Executor executor;
             executor.chunk = chunk;
             executor.targetType = targetType;
             executor.translationMap = translations;
@@ -321,7 +321,7 @@ public partial struct GameActionFearExecutorSystem : ISystem
             executor.instances = chunk.GetNativeArray(ref instanceType);
             executor.targets = chunk.GetNativeArray(ref targetType);
 
-            return executor;
+            return true;
         }
     }
 
