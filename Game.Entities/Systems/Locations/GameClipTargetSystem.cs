@@ -619,6 +619,8 @@ public partial class GameClipTargetRenderSystem : SystemBase
                 materialMeshInfo.MaterialID = materialRef.value;
 
                 materialMeshInfos[entity] = materialMeshInfo;
+
+                materialRefs[material] = materialRef;
             }
             else
                 materialToVisible.Add(material, entity);
@@ -802,6 +804,8 @@ public partial class GameClipTargetRenderSystem : SystemBase
         var material = __entitiesGraphicsSystem.GetMaterial(batchMaterialID);
         material = UnityEngine.Object.Instantiate(material);
         material.EnableKeyword(MATERIAL_KEYWORD);
+        material.EnableKeyword("_ALPHATEST_ON");
+        material.renderQueue = (int)RenderQueue.AlphaTest;
         return __entitiesGraphicsSystem.RegisterMaterial(material);
     }
 
