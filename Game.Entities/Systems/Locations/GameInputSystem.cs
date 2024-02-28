@@ -172,6 +172,11 @@ public struct GameInputActionDefinition
                 actionInstance = actionInstances[indices[i]];
                 if (actionInstance.activeCount > 0)
                 {
+                    /*if (actionInstance.actorActionIndex == 29 && actorActionIndex == 27)
+                    {
+                        UnityEngine.Debug.LogError(delta);
+                    }*/
+                    
                     actorAction = actorActions[actionInstance.actorActionIndex];
 
                     //if (actorAction.actionIndex == 19 && actorActionIndex == 3)
@@ -196,6 +201,10 @@ public struct GameInputActionDefinition
                         filter.Check(actorAction.actionIndex, time) &&
                         (actorActionInfos.Length <= actionInstance.actorActionIndex || actorActionInfos[actionInstance.actorActionIndex].coolDownTime < time))
                     {
+                        /*if (actionInstance.actorActionIndex == 20 && actorActionIndex == 16)
+                        {
+                            UnityEngine.Debug.LogError('-');
+                        }*/
                         //if (actorActionInfos[actionInstance.actorActionIndex].coolDownTime < time)
                         {
                             actorActionIndex = actionInstance.actorActionIndex;
@@ -238,6 +247,11 @@ public struct GameInputActionDefinition
                         filter.Check(actorAction.actionIndex, time) &&
                         (actorActionInfos.Length <= actionInstance.actorActionIndex || actorActionInfos[actionInstance.actorActionIndex].coolDownTime < time))
                 {
+                    /*if (actionInstance.actorActionIndex == 20)
+                    {
+                        UnityEngine.Debug.LogError('-');
+                    }*/
+                    
                     actorActionIndex = actionInstance.actorActionIndex;
                     layerMask = action.layerMask;
                     targetType = action.targetType;
@@ -349,6 +363,7 @@ public struct GameInputAction : IComponentData
         float maxDistance,
         //float targetTime,
         //float responseTime,
+        double oldTime, 
         double time,
         in float3 position,
         //in float3 forward,
@@ -369,7 +384,7 @@ public struct GameInputAction : IComponentData
         in BlobAssetReference<GameActionItemSetDefinition> actionItemSetDefinition,
         out bool isTimeout)
     {
-        isTimeout = time > maxActionTime;
+        isTimeout = math.clamp(maxActionTime, oldTime, time) > maxActionTime;
         if (isTimeout || 
             !states.HasComponent(target) ||
             (((GameEntityStatus)states[target].value & GameEntityStatus.Mask) == GameEntityStatus.Dead) ||
@@ -483,7 +498,7 @@ public struct GameInputAction : IComponentData
 
             this.actorActionIndex = actorActionIndex;
 
-            minActionTime = time;// + performTime;
+            minActionTime = time - math.DBL_MIN_NORMAL;// + performTime;
             maxActionTime = time + artTime + actionSetDefinition.Value.values[actorActions[actorActionIndex].actionIndex].info.artTime;// (artTime + responseTime);
 
             return true;
@@ -542,6 +557,7 @@ public struct GameInputStatus : IComponentData
         KeyUpAndDownAndUp
     }
 
+    public double time;
     public Value value;
 
     public bool isDo => IsDo(value);
@@ -1383,7 +1399,9 @@ public partial struct GameInputSystem : ISystem
 }
 
 //[UpdateInGroup(typeof(PresentationSystemGroup), OrderFirst = true)]
-[AutoCreateIn("Client"), BurstCompile, CreateAfter(typeof(GameInputSystem))]//, UpdateInGroup(typeof(GameRollbackSystemGroup), OrderFirst = true)]
+[AutoCreateIn("Client"), 
+ BurstCompile, 
+ CreateAfter(typeof(GameInputSystem))]//, UpdateInGroup(typeof(GameRollbackSystemGroup), OrderFirst = true)]
 public partial struct GameInputActionSystem : ISystem
 {
     public struct Apply
@@ -1546,6 +1564,7 @@ public partial struct GameInputActionSystem : ISystem
             int actorActionIndex,
             int group,
             int index,
+            double oldTime, 
             in float3 direction)
         {
             //UnityEngine.Debug.LogError($"Do {actorActionIndex}");
@@ -1560,6 +1579,7 @@ public partial struct GameInputActionSystem : ISystem
                 actorActionIndex,
                 group,
                 index,
+                oldTime, 
                 direction,
                 out _, 
                 out int camp);
@@ -1574,14 +1594,15 @@ public partial struct GameInputActionSystem : ISystem
             int index,
             in float3 direction)
         {
-            Do(button, actorActionIndex, group, index, direction);
-
             var status = states[index];
+            Do(button, actorActionIndex, group, index, status.time, direction);
+
             var value = CollectKeys(status.value, keys);
 
-            if (value != status.value)
+            if (value != status.value || math.abs(time - status.time) > math.DBL_MIN_NORMAL)
             {
                 status.value = value;
+                status.time = time;
                 states[index] = status;
             }
         }
@@ -1606,6 +1627,7 @@ public partial struct GameInputActionSystem : ISystem
                         -1,
                         0,
                         index,
+                        status.time, 
                         direction,
                         out isTimeout, 
                         out camp);
@@ -1624,6 +1646,7 @@ public partial struct GameInputActionSystem : ISystem
                         -1,
                         0,
                         index,
+                        status.time, 
                         direction,
                         out _,
                         out camp);
@@ -1637,6 +1660,7 @@ public partial struct GameInputActionSystem : ISystem
                             -1,
                             0,
                             index,
+                            status.time, 
                             direction,
                             out _,
                             out camp);
@@ -1651,6 +1675,7 @@ public partial struct GameInputActionSystem : ISystem
                         -1,
                         0,
                         index,
+                        status.time, 
                         direction,
                         out _,
                         out camp);
@@ -1663,6 +1688,7 @@ public partial struct GameInputActionSystem : ISystem
                         -1,
                         0,
                         index,
+                        status.time, 
                         direction,
                         out _,
                         out camp);
@@ -1675,6 +1701,7 @@ public partial struct GameInputActionSystem : ISystem
                         -1,
                         0,
                         index,
+                        status.time, 
                         direction,
                         out _,
                         out camp);
@@ -1687,6 +1714,7 @@ public partial struct GameInputActionSystem : ISystem
                         -1,
                         0,
                         index,
+                        status.time, 
                         direction,
                         out _,
                         out camp);
@@ -1695,9 +1723,10 @@ public partial struct GameInputActionSystem : ISystem
 
             __Apply(result, actionTargetStatus, index, camp, direction, ref action);
 
-            if (value != status.value)
+            if (value != status.value || math.abs(time - status.time) > math.DBL_MIN_NORMAL)
             {
                 status.value = value;
+                status.time = time;
                 states[index] = status;
             }
         }
@@ -1708,6 +1737,7 @@ public partial struct GameInputActionSystem : ISystem
             int actorActionIndex,
             int group,
             int index,
+            double oldTime, 
             in float3 direction,
             out bool isTimeout, 
             out int camp/*,
@@ -1728,6 +1758,7 @@ public partial struct GameInputActionSystem : ISystem
                 math.dot(math.normalizesafe(direction, forward), forward),
                 rages.HasComponent(entity) ? rages[entity].value : 0.0f,
                 maxDistance,
+                oldTime, 
                 time,
                 translations[entity].Value,
                 selection,
