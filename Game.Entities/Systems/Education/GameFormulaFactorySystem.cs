@@ -82,6 +82,7 @@ public struct GameFormulaFactoryDefinition
             if (numChildren > 0)
             {
                 var parentItemTypes = this.parentItemTypes.AsArray();
+                var entityHandle = GameItemHandle.Empty;
                 int itemCount;
                 bool isContains = true;
                 for (int i = 0; i < numChildren; ++i)
@@ -91,28 +92,10 @@ public struct GameFormulaFactoryDefinition
                     itemCount = child.itemCount * count;
                     if (!itemManager.Contains(handle, child.itemType, ref itemCount, parentItemTypes))
                     {
-                        isContains = false;
+                        if (entityHandle.Equals(GameItemHandle.Empty) && source != destination)
+                            entityHandle = itemRoots[source].handle;
 
-                        break;
-                    }
-                }
-
-                if (!isContains)
-                {
-                    //�����
-                    if (source == destination)
-                        return false;
-
-                    if (!itemManager.TryGetValue(handle, out var rootItem) || parentItemTypes.IndexOf(rootItem.type) == -1)
-                        return false;
-
-                    handle = itemRoots[source].handle;
-                    for (int i = 0; i < numChildren; ++i)
-                    {
-                        ref var child = ref children[i];
-
-                        itemCount = child.itemCount * count;
-                        if (!itemManager.Contains(handle, child.itemType, ref itemCount))
+                        if (!itemManager.Contains(entityHandle, child.itemType, ref itemCount))
                             return false;
                     }
                 }
@@ -901,6 +884,7 @@ public partial struct GameFormulaFactorySystem : ISystem
             ref var definition = ref this.definition.Value;
 
             int formulaIndex, instanceIndex, count, i;
+            float timeValue;
             Entity entity = entityArray[index];
             var handle = itemRoots[index].handle;
             GameFormula temp;
@@ -986,23 +970,28 @@ public partial struct GameFormulaFactorySystem : ISystem
                             {
                                 instance = instances[0];
 
-                                status.value = GameFormulaFactoryStatus.Status.Running;
-                                status.formulaIndex = instance.formulaIndex;
-                                status.level = instance.level;
-                                status.count = instance.count;
-                                status.usedCount = 0;
-                                status.entity = instance.entity;
-
                                 instances.RemoveAt(0);
-
-                                time.value = __CommandToRun(
+                                
+                                timeValue = __CommandToRun(
                                     ref definition, 
                                     handle, 
-                                    status.formulaIndex, 
-                                    status.count, 
-                                    status.entity, 
+                                    instance.formulaIndex, 
+                                    instance.count, 
+                                    instance.entity, 
                                     entity, 
                                     mode.ownerType);
+
+                                if (timeValue > 0.0f)
+                                {
+                                    time.value = timeValue;
+                                    
+                                    status.value = GameFormulaFactoryStatus.Status.Running;
+                                    status.formulaIndex = instance.formulaIndex;
+                                    status.level = instance.level;
+                                    status.count = instance.count;
+                                    status.usedCount = 0;
+                                    status.entity = instance.entity;
+                                }
                             }
                             else
                             {
@@ -1063,32 +1052,28 @@ public partial struct GameFormulaFactorySystem : ISystem
                         instance.entity = command.entity;
                     }
 
-                    if (instance.formulaIndex == status.formulaIndex && 
-                        instance.level == status.level && 
-                        instance.entity == status.entity)
-                        status.count += instance.count;
-                    else if (status.usedCount < status.count)
+                    if (instance.formulaIndex != status.formulaIndex ||
+                        instance.level != status.level ||
+                        instance.entity != status.entity)
                     {
-                        instances.Insert(0, instance);
-                        
-                        continue;
+                        if (status.usedCount < status.count)
+                        {
+                            instances.Insert(0, instance);
+
+                            continue;
+                        }
+                        else
+                        {
+                            status.formulaIndex = instance.formulaIndex;
+                            status.level = instance.level;
+                            status.entity = instance.entity;
+
+                            status.count = 0;
+                            status.usedCount = 0;
+                        }
                     }
-                    else
-                    {
-                        status.formulaIndex = instance.formulaIndex;
-                        status.level = instance.level;
-                        status.count = instance.count;
-                        status.entity = instance.entity;
 
-                        status.usedCount = 0;
-                    }
-
-                    //if (status.value != GameFormulaFactoryStatus.Status.Running)
-                        status.value = GameFormulaFactoryStatus.Status.Running;
-
-                    statusMap[entity] = status;
-
-                    time.value = math.max(0.0f, time.value) + __CommandToRun(
+                    timeValue = __CommandToRun(
                         ref definition, 
                         handle, 
                         instance.formulaIndex, 
@@ -1096,8 +1081,19 @@ public partial struct GameFormulaFactorySystem : ISystem
                         instance.entity, 
                         entity, 
                         mode.ownerType);
-                    
-                    times[index] = time;
+
+                    if (timeValue > 0.0f)
+                    {
+                        status.count += instance.count;
+                        //if (status.value != GameFormulaFactoryStatus.Status.Running)
+                        status.value = GameFormulaFactoryStatus.Status.Running;
+
+                        statusMap[entity] = status;
+
+                        time.value = math.max(0.0f, time.value) + timeValue;
+
+                        times[index] = time;
+                    }
                 }
                 else
                 {
