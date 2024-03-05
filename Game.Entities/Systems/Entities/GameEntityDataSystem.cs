@@ -1329,7 +1329,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         applyDamagers.torpidityBuffs = __torpidityBuffs.parallelWriter;
 
         ref var damagersJobManager = ref damagers.lookupJobManager;
-        var applyDamagersJobHandle = JobHandle.CombineDependencies(damagersJobManager.readOnlyJobHandle, applyInitializersJobHandle);
+        var applyDamagersJobHandle = JobHandle.CombineDependencies(damagersJobManager.readOnlyJobHandle, applyInitializersJobHandle, applyHitersJobHandle);
         applyDamagersJobHandle = applyDamagers.ScheduleByRef(applyDamagersJobHandle);
 
         damagersJobManager.AddReadOnlyDependency(applyDamagersJobHandle);
@@ -1341,7 +1341,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
         itemManagerJobManager.AddReadOnlyDependency(jobHandle);
 
-        jobHandle = JobHandle.CombineDependencies(jobHandle, applyHitersJobHandle);
+        //jobHandle = JobHandle.CombineDependencies(jobHandle, applyHitersJobHandle);
 
         commandsJobManager.readWriteJobHandle = jobHandle;
 
