@@ -12,6 +12,21 @@ public enum GameActionSpawnType
     Damage
 }
 
+[Flags]
+public enum GameActionSpawnFlag
+{
+    HitToPicked = 0x01
+}
+
+public struct GameItemSpawnStatus : IComponentData
+{
+    public int health;
+    public int torpidity;
+    public int value;
+    public float chance;
+    public GameItemHandle handle;
+}
+
 [Serializable]
 public struct GameActionSpawn
 {

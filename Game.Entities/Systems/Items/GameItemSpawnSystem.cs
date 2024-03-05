@@ -138,7 +138,7 @@ public struct GameItemSpawnData
 [BurstCompile, CreateAfter(typeof(GameItemSystem))]
 public partial struct GameItemSpawnSystem : ISystem
 {
-    public enum EntitySpwanType
+    public enum EntitySpawnType
     {
         Normal, 
         ItemRoot
@@ -162,7 +162,7 @@ public partial struct GameItemSpawnSystem : ISystem
 
     public struct Value
     {
-        public EntitySpwanType spawnType;
+        public EntitySpawnType spawnType;
         public int identityType;
     }
 
@@ -228,7 +228,7 @@ public partial struct GameItemSpawnSystem : ISystem
 
                 switch (value.spawnType)
                 {
-                    case EntitySpwanType.ItemRoot:
+                    case EntitySpawnType.ItemRoot:
                         itemManager.DetachParent(command.handle);
 
                         result.itemHandle = command.handle;
@@ -300,7 +300,7 @@ public partial struct GameItemSpawnSystem : ISystem
 
                 switch (value.spawnType)
                 {
-                    case EntitySpwanType.ItemRoot:
+                    case EntitySpawnType.ItemRoot:
                         count = command.itemCount;
                         result.itemHandle = itemManager.Add(command.itemType, ref count);
 

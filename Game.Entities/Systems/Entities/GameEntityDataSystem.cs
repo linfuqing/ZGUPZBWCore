@@ -1,14 +1,16 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using Unity.Jobs;
 using Unity.Burst.Intrinsics;
 using Unity.Burst;
 using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Collections;
-using Unity.Physics;
 using ZG;
 using ZG.Unsafe;
 using Unity.Collections.LowLevel.Unsafe;
+using Math = Unity.Physics.Math;
+using Random = Unity.Mathematics.Random;
 
 //[assembly: RegisterGenericJobType(typeof(GameEntityActionSystemCore.PerformEx<GameEntityActionDataSystem.Handler, GameEntityActionDataSystem.Factory>))]
 
@@ -68,6 +70,8 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 {
     public struct Action
     {
+        public GameActionSpawnFlag spawnFlag;
+
         public GameBuff buff;
 
         public GameActionAttack[] attacks;
@@ -87,6 +91,8 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
     public struct ActionData
     {
+        public GameActionSpawnFlag spawnFlag;
+
         public int spawnStartIndex;
         public int spawnCount;
 
@@ -516,8 +522,9 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
             int count,
             GameActionSpawnType type,
             //double time,
-            Entity entity,
-            RigidTransform transform)
+            in Entity entity,
+            in RigidTransform transform, 
+            ref GameItemHandle handle)
         {
             if (count > 0)
             {
@@ -560,7 +567,9 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                         destination.entity = entity;
                         destination.velocity = float3.zero;
                         destination.transform = transform;
-                        destination.itemHandle = GameItemHandle.Empty;
+                        destination.itemHandle = handle;
+                        
+                        handle = GameItemHandle.Empty;
 
                         results.AddNoResize(destination);
                     }
@@ -663,13 +672,15 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                     buffs[initializer.entity] = buff;
             }
 
+            var emptyItem  = GameItemHandle.Empty;
             spawner.Spawn(
                 action.spawnStartIndex,
                 action.spawnCount,
                 GameActionSpawnType.Init,
                 //instance.time + initializer.elapsedTime,
                 instance.entity,
-                initializer.transform);
+                initializer.transform, 
+                ref emptyItem);
         }
     }
 
@@ -687,17 +698,39 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         [ReadOnly]
         public ComponentLookup<GameActionData> instances;
 
+        [ReadOnly]
+        public ComponentLookup<GameItemRoot> itemRoots;
+
+        public ComponentLookup<GameNodeStatus> nodeStates;
+
         public void Execute(in GameEntityActionHiter hiter)
         {
             var instance = instances[hiter.entity];
 
             var action = actions[instance.actionIndex];
-            spawner.Spawn(action.spawnStartIndex,
+
+            var handle =
+                (action.spawnFlag & GameActionSpawnFlag.HitToPicked) == GameActionSpawnFlag.HitToPicked &&
+                itemRoots.HasComponent(hiter.target)
+                    ? itemRoots[hiter.target].handle
+                    : GameItemHandle.Empty;
+            spawner.Spawn(
+                action.spawnStartIndex,
                 action.spawnCount,
                 GameActionSpawnType.Hit,
                 //instance.time + elapsedTime,
                 instance.entity,
-                hiter.transform);
+                hiter.transform,
+                ref handle);
+
+            if ((action.spawnFlag & GameActionSpawnFlag.HitToPicked) == GameActionSpawnFlag.HitToPicked &&
+                handle.Equals(GameItemHandle.Empty) && 
+                nodeStates.HasComponent(hiter.target))
+            {
+                GameNodeStatus nodeStatus;
+                nodeStatus.value = (int)GameItemStatus.Picked;
+                nodeStates[hiter.target] = nodeStatus;
+            }
         }
 
         public void Execute()
@@ -864,6 +897,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                 }
             }
 
+            var emptyItem  = GameItemHandle.Empty;
             var action = actions[instance.actionIndex];
             spawner.Spawn(
                 action.spawnStartIndex,
@@ -871,7 +905,8 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                 GameActionSpawnType.Damage,
                 //instance.time + elapsedTime,
                 instance.entity,
-                math.RigidTransform(Math.FromToRotation(math.up(), damager.normal), damager.position));
+                math.RigidTransform(Math.FromToRotation(math.up(), damager.normal), damager.position), 
+                ref emptyItem);
         }
 
         public void Execute()
@@ -931,8 +966,6 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
     private ComponentLookup<GameActionData> __instances;
 
-    private ComponentLookup<GameNodeStatus> __nodeStates;
-
     private ComponentLookup<GameItemRoot> __itemRoots;
 
     private ComponentLookup<GameItemVariant> __entityVariants;
@@ -950,6 +983,8 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
     private ComponentLookup<GameActionBuff> __buffs;
 
     private ComponentLookup<GameEntityHealthDamage> __healthDamages;
+
+    private ComponentLookup<GameNodeStatus> __nodeStates;
 
     private BufferLookup<GameEntityHealthBuff> __healthOutputs;
     private BufferLookup<GameEntityTorpidityBuff> __torpidityOutputs;
@@ -1014,6 +1049,8 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         __actionAttacks.Resize(numActions * __propertyCount, NativeArrayOptions.UninitializedMemory);
         foreach (Action actionSource in actions)
         {
+            actionDestination.spawnFlag = actionSource.spawnFlag;
+            
             actionDestination.spawnCount = actionSource.spawns == null ? 0 : actionSource.spawns.Length;
             for (i = 0; i < actionDestination.spawnCount; ++i)
                 __spawns[actionDestination.spawnStartIndex + i] = actionSource.spawns[i];
@@ -1118,7 +1155,6 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
         __instances = state.GetComponentLookup<GameActionData>(true);
 
-        __nodeStates = state.GetComponentLookup<GameNodeStatus>(true);
         __itemRoots = state.GetComponentLookup<GameItemRoot>(true);
         __entityVariants = state.GetComponentLookup<GameItemVariant>(true);
         __entityExps = state.GetComponentLookup<GameItemExp>(true);
@@ -1130,6 +1166,8 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         __buffs = state.GetComponentLookup<GameActionBuff>();
         __healthDamages = state.GetComponentLookup<GameEntityHealthDamage>();
 
+        __nodeStates = state.GetComponentLookup<GameNodeStatus>();
+        
         __healthOutputs = state.GetBufferLookup<GameEntityHealthBuff>();
         __torpidityOutputs = state.GetBufferLookup<GameEntityTorpidityBuff>();
 
@@ -1254,13 +1292,16 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         initializersJobManager.AddReadOnlyDependency(applyInitializersJobHandle);
 
         var hiters = __actionManager.hiters;
+        var nodeStates = __nodeStates.UpdateAsRef(ref state);
 
         ApplyHiters applyHiters;
         applyHiters.spawner = spawner;
         applyHiters.actions = actions;
         applyHiters.hiters = hiters.value;
         applyHiters.instances = instances;
-
+        applyHiters.itemRoots = itemRoots;
+        applyHiters.nodeStates = nodeStates;
+        
         ref var hitersJobManager = ref hiters.lookupJobManager;
         var applyHitersJobHandle = JobHandle.CombineDependencies(hitersJobManager.readOnlyJobHandle, inputDeps);
         applyHitersJobHandle = applyHiters.ScheduleByRef(applyHitersJobHandle);
@@ -1278,7 +1319,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         applyDamagers.handleEntities = __handleEntities.reader;
         applyDamagers.instances = instances;
         applyDamagers.itemRoots = itemRoots;
-        applyDamagers.nodeStates = __nodeStates.UpdateAsRef(ref state);
+        applyDamagers.nodeStates = nodeStates;
         applyDamagers.itemDefences = __itemDefences.AsArray();
         applyDamagers.defences = __defences.UpdateAsRef(ref state);
         applyDamagers.attacks = attacks;
