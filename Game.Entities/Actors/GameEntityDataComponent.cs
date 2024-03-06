@@ -20,9 +20,10 @@ public enum GameActionSpawnFlag
 
 public struct GameItemSpawnStatus : IComponentData
 {
-    public int health;
-    public int torpidity;
-    public int value;
+    public int nodeStatus;
+    public float entityHealth;
+    public float entityTorpidity;
+    public float animalValue;
     public float chance;
     public GameItemHandle handle;
 }

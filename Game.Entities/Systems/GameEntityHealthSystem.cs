@@ -170,7 +170,7 @@ public partial struct GameEntityHealthActorSystem : ISystem
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(TimeSystemGroup)), UpdateAfter(typeof(GameSyncSystemGroup))]
+[BurstCompile, UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(GameEntityActionDataPickSystem)), UpdateAfter(typeof(GameSyncSystemGroup))]
 public partial struct GameEntityHealthSystem : ISystem
 {
     private struct UpdateHealthes

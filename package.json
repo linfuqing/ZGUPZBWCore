@@ -1,7 +1,7 @@
 {
   "name": "cn.com.zerogame.unitypackages.zbw.core",
   "displayName": "ZGUP ZBW Core",
-  "version": "2.10.91",
+  "version": "2.10.92",
   "unity": "2022.2",
   "unityRelease": "0f1",
   "dependencies": {
