@@ -172,9 +172,10 @@ public struct GameInputActionDefinition
                 actionInstance = actionInstances[indices[i]];
                 if (actionInstance.activeCount > 0)
                 {
-                    /*if (actionInstance.actorActionIndex == 29 && actorActionIndex == 27)
+                    /*if (actorActionIndex == 132)
                     {
-                        UnityEngine.Debug.LogError(delta);
+                        if(actionInstance.actorActionIndex == 133)
+                            UnityEngine.Debug.LogError(delta);
                     }*/
                     
                     actorAction = actorActions[actionInstance.actorActionIndex];

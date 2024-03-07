@@ -726,11 +726,11 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
             var action = actions[instance.actionIndex];
 
-            var handle =
+            GameItemHandle sourceHandle =
                 (action.spawnFlag & GameActionSpawnFlag.HitToPicked) == GameActionSpawnFlag.HitToPicked &&
                 itemRoots.HasComponent(hiter.target)
                     ? itemRoots[hiter.target].handle
-                    : GameItemHandle.Empty;
+                    : GameItemHandle.Empty, destinationHandle = sourceHandle;
             spawner.Spawn(
                 action.spawnStartIndex,
                 action.spawnCount,
@@ -738,12 +738,12 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                 //instance.time + elapsedTime,
                 instance.entity,
                 hiter.transform,
-                ref handle);
+                ref destinationHandle);
 
             if ((action.spawnFlag & GameActionSpawnFlag.HitToPicked) == GameActionSpawnFlag.HitToPicked &&
-                handle.Equals(GameItemHandle.Empty))
+                destinationHandle.Equals(GameItemHandle.Empty))
             {
-                if (itemHandleEntities.TryGetValue(GameItemStructChangeFactory.Convert(handle), out Entity entity))
+                if (itemHandleEntities.TryGetValue(GameItemStructChangeFactory.Convert(sourceHandle), out Entity entity))
                 {
                     GameItemSpawnStatus status;
                     status.nodeStatus = nodeStates.HasComponent(hiter.target) ? nodeStates[hiter.target].value : 0;
@@ -1428,17 +1428,27 @@ public partial struct GameEntityActionDataPickSystem : ISystem
         public NativeArray<Entity> entities;
 
         [NativeDisableParallelForRestriction] 
-        public ComponentLookup<GameNodeStatus> states;
+        public ComponentLookup<GameItemRoot> itemRoots;
+
+        [NativeDisableParallelForRestriction] 
+        public ComponentLookup<GameNodeStatus> nodeStates;
 
         public void Execute(int index)
         {
             Entity entity = entities[index];
-            if (!states.HasComponent(entity))
-                return;
+            if (itemRoots.HasComponent(entity))
+            {
+                GameItemRoot itemRoot;
+                itemRoot.handle = GameItemHandle.Empty;
+                itemRoots[entity] = itemRoot;
+            }
             
-            GameNodeStatus status;
-            status.value = (int)GameItemStatus.Picked;
-            states[entity] = status;
+            if (nodeStates.HasComponent(entity))
+            {
+                GameNodeStatus status;
+                status.value = (int)GameItemStatus.Picked;
+                nodeStates[entity] = status;
+            }
         }
     }
 
@@ -1457,14 +1467,16 @@ public partial struct GameEntityActionDataPickSystem : ISystem
     
     public SharedList<Entity> entities;
 
-    private ComponentLookup<GameNodeStatus> __states;
+    private ComponentLookup<GameItemRoot> __itemRoots;
+    private ComponentLookup<GameNodeStatus> __nodeStates;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         entities = new SharedList<Entity>(Allocator.Persistent);
 
-        __states = state.GetComponentLookup<GameNodeStatus>();
+        __itemRoots = state.GetComponentLookup<GameItemRoot>();
+        __nodeStates = state.GetComponentLookup<GameNodeStatus>();
     }
 
     [BurstCompile]
@@ -1479,7 +1491,8 @@ public partial struct GameEntityActionDataPickSystem : ISystem
         NativeList<Entity> entities = this.entities.writer;
         Pick pick;
         pick.entities = entities.AsDeferredJobArray();
-        pick.states = __states.UpdateAsRef(ref state);
+        pick.itemRoots = __itemRoots.UpdateAsRef(ref state);
+        pick.nodeStates = __nodeStates.UpdateAsRef(ref state);
 
         ref var entitiesJobManager = ref this.entities.lookupJobManager;
         var jobHandle = pick.ScheduleByRef(
