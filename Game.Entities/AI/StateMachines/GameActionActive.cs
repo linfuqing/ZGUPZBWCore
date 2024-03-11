@@ -141,7 +141,7 @@ public class GameActionActive : StateMachineNode
     public override void Disable(StateMachineComponentEx instance)
     {
         instance.RemoveComponent<GameActionActiveInfo>();
-        instance.RemoveComponent<GameActionActiveInfo>();
+        //instance.RemoveComponent<GameActionActiveInfo>();
     }
 }
 

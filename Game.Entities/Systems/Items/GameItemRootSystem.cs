@@ -1,4 +1,5 @@
-﻿using Unity.Burst;
+﻿using System;
+using Unity.Burst;
 using Unity.Burst.Intrinsics;
 using Unity.Mathematics;
 using Unity.Collections;
@@ -286,11 +287,38 @@ public partial struct GameItemRootStatusSystem : ISystem
 [BurstCompile, CreateAfter(typeof(GameItemSystem)), UpdateInGroup(typeof(GameItemInitSystemGroup), OrderFirst = true)/*, UpdateAfter(typeof(EntityObjectSystemGroup))*/]
 public partial struct GameItemRootEntitySystem : ISystem
 {
+    [Flags]
+    private enum Flag
+    {
+        Root = 0x01, 
+        New = 0x02
+    }
+    
     private struct Result
     {
-        public bool isRoot;
+        public Flag flag;
         public GameItemHandle handle;
         public Entity entity;
+        
+        public bool isRoot
+        {
+            get => (flag & Flag.Root) == Flag.Root;
+
+            set
+            {
+                flag |= Flag.Root;
+            }
+        }
+        
+        public bool isNew
+        {
+            get => (flag & Flag.New) == Flag.New;
+
+            set
+            {
+                flag |= Flag.New;
+            }
+        }
     }
 
     [BurstCompile]
@@ -485,12 +513,12 @@ public partial struct GameItemRootEntitySystem : ISystem
             if (infos.TryGetValue(handle, out var item))
             {
                 Result result;
-                result.entity = Entity.Null;
+                result.entity = entity;
                 result.handle = handle;
-                result.isRoot = true;
+                result.flag = Flag.Root;
                 results.Enqueue(result);
 
-                result.isRoot = false;
+                result.flag = 0;
 
                 handle = item.siblingHandle;
                 while (infos.TryGetValue(handle, out item))
@@ -507,10 +535,10 @@ public partial struct GameItemRootEntitySystem : ISystem
                 Result result;
                 result.entity = entity;
                 result.handle = root;
-                result.isRoot = true;
+                result.flag =  Flag.Root | Flag.New;
                 results.Enqueue(result);
 
-                result.isRoot = false;
+                result.flag = Flag.New;
 
                 handle = item.siblingHandle;
                 while (infos.TryGetValue(handle, out item))
@@ -567,25 +595,19 @@ public partial struct GameItemRootEntitySystem : ISystem
             Entity entity;
             while (results.TryDequeue(out var result))
             {
-                if(result.entity == Entity.Null)
+                if (result.isNew)
                 {
                     if (result.isRoot)
-                    {
-                        if (entities.TryGetValue(result.handle, out entity))
-                        {
-                            handles.Remove(entity);
-                            entities.Remove(result.handle);
-                        }
-                    }
-                    else
-                        entities.Remove(result.handle);
-                }
-                else
-                {
-                    if(result.isRoot)
                         handles[result.entity] = result.handle;
 
                     entities[result.handle] = result.entity;
+                }
+                else if (entities.TryGetValue(result.handle, out entity) && entity == result.entity)
+                {
+                    if (result.isRoot)
+                        handles.Remove(entity);
+                    
+                    entities.Remove(result.handle);
                 }
             }
         }
@@ -670,7 +692,7 @@ public partial struct GameItemRootEntitySystem : ISystem
 
         ref var itemManagerJobManager = ref __itemManager.lookupJobManager;
 
-        JobHandle jobHandle = change.Schedule(JobHandle.CombineDependencies(itemManagerJobManager.readOnlyJobHandle, state.Dependency)), result = jobHandle;
+        JobHandle jobHandle = change.ScheduleByRef(JobHandle.CombineDependencies(itemManagerJobManager.readOnlyJobHandle, state.Dependency)), result = jobHandle;
         if (!__group.IsEmptyIgnoreFilter)
         {
             RefreshEx refresh;
