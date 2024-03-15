@@ -567,6 +567,17 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                         destination.entity = entity;
                         destination.velocity = float3.zero;
                         destination.transform = transform;
+                        /*if(handle.Equals(GameItemHandle.Empty))
+                            destination.transform = transform;
+                        else
+                        {
+                            var forward = math.forward(transform.rot);
+                            forward = ZG.Mathematics.Math.ProjectOnPlane(forward, math.up());
+                            destination.transform = math.RigidTransform(
+                                ZG.Mathematics.Math.FromToRotation(math.float3(0.0f, 0.0f, 1.0f), forward), 
+                                transform.pos);
+                        }*/
+                        
                         destination.itemHandle = handle;
                         
                         handle = GameItemHandle.Empty;
@@ -689,9 +700,6 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
     {
         public Spawner spawner;
 
-        [ReadOnly] 
-        public SharedHashMap<Entity, Entity>.Reader itemHandleEntities;
-
         [ReadOnly]
         public NativeArray<ActionData> actions;
 
@@ -701,36 +709,13 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         [ReadOnly]
         public ComponentLookup<GameActionData> instances;
 
-        [ReadOnly]
-        public ComponentLookup<GameItemRoot> itemRoots;
-
-        [ReadOnly]
-        public ComponentLookup<GameAnimalInfo> animalInfos;
-
-        [ReadOnly]
-        public ComponentLookup<GameEntityTorpidity> torpidities;
-
-        [ReadOnly]
-        public ComponentLookup<GameEntityHealth> healthes;
-
-        [ReadOnly]
-        public ComponentLookup<GameNodeStatus> nodeStates;
-
-        public NativeList<Entity> entitiesToPick;
-
-        public EntityAddDataQueue.Writer entityManager;
-
         public void Execute(in GameEntityActionHiter hiter)
         {
             var instance = instances[hiter.entity];
 
             var action = actions[instance.actionIndex];
 
-            GameItemHandle sourceHandle =
-                (action.spawnFlag & GameActionSpawnFlag.HitToPicked) == GameActionSpawnFlag.HitToPicked &&
-                itemRoots.HasComponent(hiter.target)
-                    ? itemRoots[hiter.target].handle
-                    : GameItemHandle.Empty, destinationHandle = sourceHandle;
+            var emptyItem = GameItemHandle.Empty;
             spawner.Spawn(
                 action.spawnStartIndex,
                 action.spawnCount,
@@ -738,34 +723,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                 //instance.time + elapsedTime,
                 instance.entity,
                 hiter.transform,
-                ref destinationHandle);
-
-            if ((action.spawnFlag & GameActionSpawnFlag.HitToPicked) == GameActionSpawnFlag.HitToPicked &&
-                destinationHandle.Equals(GameItemHandle.Empty))
-            {
-                if (itemHandleEntities.TryGetValue(GameItemStructChangeFactory.Convert(sourceHandle), out Entity entity))
-                {
-                    GameItemSpawnStatus status;
-                    status.nodeStatus = nodeStates.HasComponent(hiter.target) ? nodeStates[hiter.target].value : 0;
-                    status.entityHealth = healthes.HasComponent(hiter.target)
-                        ? healthes[hiter.target].value
-                        : 0.0f;
-                    status.entityTorpidity = torpidities.HasComponent(hiter.target)
-                        ? torpidities[hiter.target].value
-                        : 0.0f;
-                    status.animalValue = animalInfos.HasComponent(hiter.target)
-                        ? animalInfos[hiter.target].value
-                        : 0.0f;
-                    status.chance = 1.0f;
-                    status.handle = itemRoots.HasComponent(instance.entity)
-                        ? itemRoots[instance.entity].handle
-                        : GameItemHandle.Empty;
-
-                    entityManager.AddComponentData(entity, status);
-                }
-
-                entitiesToPick.Add(hiter.target);
-            }
+                ref emptyItem);
         }
 
         public void Execute()
@@ -789,7 +747,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         public NativeFactory<GameEntityActionDamager> damagers;
 
         [ReadOnly]
-        public SharedHashMap<Entity, Entity>.Reader handleEntities;
+        public SharedHashMap<Entity, Entity>.Reader itemHandleEntities;
 
         [ReadOnly]
         public ComponentLookup<GameActionData> instances;
@@ -815,6 +773,15 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         [ReadOnly]
         public ComponentLookup<GameActionBuff> buffs;
 
+        [ReadOnly]
+        public ComponentLookup<GameAnimalInfo> animalInfos;
+
+        [ReadOnly]
+        public ComponentLookup<GameEntityTorpidity> torpidities;
+
+        [ReadOnly]
+        public ComponentLookup<GameEntityHealth> healthes;
+
         [NativeDisableParallelForRestriction]
         public ComponentLookup<GameEntityHealthDamage> healthDamages;
 
@@ -822,87 +789,94 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
         public NativeFactory<BufferElementData<GameEntityTorpidityBuff>>.ParallelWriter torpidityBuffs;
 
+        public NativeList<Entity> entitiesToPick;
+
+        public EntityAddDataQueue.Writer entityManager;
+
         public void Execute(in GameEntityActionDamager damager, ref NativeArray<float> defences)
         {
             var instance = instances[damager.entity];
 
+            float torpor = 0.0f;
             var attacks = this.attacks.HasBuffer(damager.entity) ? this.attacks[damager.entity] : default;
             int numAttacks = math.min(attacks.IsCreated ? attacks.Length : 0, buffCalculator.propertyCount);
-            if (numAttacks < 1)
-                return;
-
-            if (this.defences.HasBuffer(damager.target))
+            if (numAttacks > 0)
             {
-                var temp = this.defences[damager.target].Reinterpret<float>().AsNativeArray();
-                NativeArray<float>.Copy(temp, defences, math.min(temp.Length, defences.Length));
-            }
 
-            if (itemRoots.HasComponent(damager.target))
-            {
-                var handle = itemRoots[damager.target].handle;
-                if (handleEntities.TryGetValue(GameItemStructChangeFactory.Convert(handle), out Entity handleEntity))
+                if (this.defences.HasBuffer(damager.target))
                 {
-                    buffCalculator.Calculate(
-                        handle, 
-                        itemDefences.Reinterpret<float>(), 
-                        ref defences);
-
-                    /*if(this.entityItems.HasComponent(target))
-                    {
-                        var entityItems = this.entityItems[target];
-                        GameEntityItem entityItem;
-                        int numEntityItems = entityItems.Length, offset, length = items.Length, i, j;
-                        for (i = 0; i < numEntityItems; ++i)
-                        {
-                            entityItem = entityItems[i];
-                            if (entityItem.index >= 0 && entityItem.index < length)
-                            {
-                                offset = entityItem.index * this.count;
-                                for (j = 0; j < this.count; ++j)
-                                    defences[j] += itemDefences[offset + j];
-                            }
-                        }
-                    }*/
-
-                    propertyCalculator.Calculate(
-                        false, 
-                        handleEntity,
-                        ref defences);
+                    var temp = this.defences[damager.target].Reinterpret<float>().AsNativeArray();
+                    NativeArray<float>.Copy(temp, defences, math.min(temp.Length, defences.Length));
                 }
-            }
 
-            float attack, defence, value, hit = 0.0f, torpor = 0.0f;
-            for (int i = 0; i < numAttacks; ++i)
-            {
-                attack = attacks[i];
-                defence = defences[i];
+                if (itemRoots.HasComponent(damager.target))
+                {
+                    var handle = itemRoots[damager.target].handle;
+                    if (itemHandleEntities.TryGetValue(GameItemStructChangeFactory.Convert(handle),
+                            out Entity handleEntity))
+                    {
+                        buffCalculator.Calculate(
+                            handle,
+                            itemDefences.Reinterpret<float>(),
+                            ref defences);
 
-                if (defence < 0)
-                    value = attack > 0 ? attack - defence : 0;
-                else
-                    value = math.max(attack, defence) - defence;
+                        /*if(this.entityItems.HasComponent(target))
+                        {
+                            var entityItems = this.entityItems[target];
+                            GameEntityItem entityItem;
+                            int numEntityItems = entityItems.Length, offset, length = items.Length, i, j;
+                            for (i = 0; i < numEntityItems; ++i)
+                            {
+                                entityItem = entityItems[i];
+                                if (entityItem.index >= 0 && entityItem.index < length)
+                                {
+                                    offset = entityItem.index * this.count;
+                                    for (j = 0; j < this.count; ++j)
+                                        defences[j] += itemDefences[offset + j];
+                                }
+                            }
+                        }*/
 
-                if (i < buffCalculator.hitCount)
-                    hit += value;
-                else
-                    torpor += value;
-            }
+                        propertyCalculator.Calculate(
+                            false,
+                            handleEntity,
+                            ref defences);
+                    }
+                }
 
-            //defences.Dispose();
+                float attack, defence, value, hit = 0.0f;
+                for (int i = 0; i < numAttacks; ++i)
+                {
+                    attack = attacks[i];
+                    defence = defences[i];
 
-            hit *= damager.count;
-            torpor *= damager.count;
+                    if (defence < 0)
+                        value = attack > 0 ? attack - defence : 0;
+                    else
+                        value = math.max(attack, defence) - defence;
 
-            double now = instance.time + damager.elapsedTime;
+                    if (i < buffCalculator.hitCount)
+                        hit += value;
+                    else
+                        torpor += value;
+                }
 
-            if (math.abs(hit) > math.FLT_MIN_NORMAL && healthDamages.HasComponent(damager.target))
-            {
-                GameEntityHealthDamage healthDamage = healthDamages[damager.target];
-                healthDamage.value += hit;
-                healthDamage.time = now;
-                healthDamage.entity = instance.entity;
+                //defences.Dispose();
 
-                healthDamages[damager.target] = healthDamage;
+                hit *= damager.count;
+                torpor *= damager.count;
+
+                double now = instance.time + damager.elapsedTime;
+
+                if (math.abs(hit) > math.FLT_MIN_NORMAL && healthDamages.HasComponent(damager.target))
+                {
+                    GameEntityHealthDamage healthDamage = healthDamages[damager.target];
+                    healthDamage.value += hit;
+                    healthDamage.time = now;
+                    healthDamage.entity = instance.entity;
+
+                    healthDamages[damager.target] = healthDamage;
+                }
             }
 
             if (buffs.HasComponent(damager.entity))
@@ -932,16 +906,50 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                 }
             }
 
-            var emptyItem  = GameItemHandle.Empty;
             var action = actions[instance.actionIndex];
+            
+            GameItemHandle sourceHandle =
+                (action.spawnFlag & GameActionSpawnFlag.DamageToPicked) == GameActionSpawnFlag.DamageToPicked &&
+                itemRoots.HasComponent(damager.target)
+                    ? itemRoots[damager.target].handle
+                    : GameItemHandle.Empty, destinationHandle = sourceHandle;
+            
             spawner.Spawn(
                 action.spawnStartIndex,
                 action.spawnCount,
                 GameActionSpawnType.Damage,
                 //instance.time + elapsedTime,
                 instance.entity,
-                math.RigidTransform(Math.FromToRotation(math.up(), damager.normal), damager.position), 
-                ref emptyItem);
+                damager.transform, 
+                //math.RigidTransform(Math.FromToRotation(math.up(), damager.normal), damager.position), 
+                ref destinationHandle);
+            
+            if ((action.spawnFlag & GameActionSpawnFlag.DamageToPicked) == GameActionSpawnFlag.DamageToPicked &&
+                destinationHandle.Equals(GameItemHandle.Empty))
+            {
+                if (itemHandleEntities.TryGetValue(GameItemStructChangeFactory.Convert(sourceHandle), out Entity entity))
+                {
+                    GameItemSpawnStatus status;
+                    status.nodeStatus = nodeStates.HasComponent(damager.target) ? nodeStates[damager.target].value : 0;
+                    status.entityHealth = healthes.HasComponent(damager.target)
+                        ? healthes[damager.target].value
+                        : 0.0f;
+                    status.entityTorpidity = torpidities.HasComponent(damager.target)
+                        ? torpidities[damager.target].value
+                        : 0.0f;
+                    status.animalValue = animalInfos.HasComponent(damager.target)
+                        ? animalInfos[damager.target].value
+                        : 0.0f;
+                    status.chance = 1.0f;
+                    status.handle = itemRoots.HasComponent(instance.entity)
+                        ? itemRoots[instance.entity].handle
+                        : GameItemHandle.Empty;
+
+                    entityManager.AddComponentData(entity, status);
+                }
+
+                entitiesToPick.Add(damager.target);
+            }
         }
 
         public void Execute()
@@ -1345,32 +1353,20 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         var hiters = __actionManager.hiters;
         var nodeStates = __nodeStates.UpdateAsRef(ref state);
 
-        var entityManager = __entityManager.Create();
-
         ApplyHiters applyHiters;
         applyHiters.spawner = spawner;
-        applyHiters.itemHandleEntities = itemHandleEntities;
         applyHiters.actions = actions;
         applyHiters.hiters = hiters.value;
         applyHiters.instances = instances;
-        applyHiters.itemRoots = itemRoots;
-        applyHiters.animalInfos = __animalInfos.UpdateAsRef(ref state);
-        applyHiters.torpidities = __torpidites.UpdateAsRef(ref state);
-        applyHiters.healthes = __healthes.UpdateAsRef(ref state);
-        applyHiters.nodeStates = nodeStates;
-        applyHiters.entitiesToPick = __entitiesToPick.writer;
-        applyHiters.entityManager = entityManager.writer;
         
         ref var hitersJobManager = ref hiters.lookupJobManager;
-        ref var entitiesToPickJobManager = ref __entitiesToPick.lookupJobManager;
-        var applyHitersJobHandle = JobHandle.CombineDependencies(hitersJobManager.readOnlyJobHandle, entitiesToPickJobManager.readWriteJobHandle, inputDeps);
+        var applyHitersJobHandle = JobHandle.CombineDependencies(hitersJobManager.readOnlyJobHandle, inputDeps);
         applyHitersJobHandle = applyHiters.ScheduleByRef(applyHitersJobHandle);
 
-        entitiesToPickJobManager.readWriteJobHandle = applyHitersJobHandle;
         hitersJobManager.AddReadOnlyDependency(applyHitersJobHandle);
 
-        entityManager.AddJobHandleForProducer<ApplyHiters>(applyHitersJobHandle);
-        
+        var entityManager = __entityManager.Create();
+
         var damagers = __actionManager.damagers;
 
         ApplyDamagers applyDamagers;
@@ -1379,7 +1375,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         applyDamagers.spawner = spawner;
         applyDamagers.actions = actions;
         applyDamagers.damagers = damagers.value;
-        applyDamagers.handleEntities = __handleEntities.reader;
+        applyDamagers.itemHandleEntities = __handleEntities.reader;
         applyDamagers.instances = instances;
         applyDamagers.itemRoots = itemRoots;
         applyDamagers.nodeStates = nodeStates;
@@ -1387,15 +1383,26 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         applyDamagers.defences = __defences.UpdateAsRef(ref state);
         applyDamagers.attacks = attacks;
         applyDamagers.buffs = buffs;
+        applyDamagers.animalInfos = __animalInfos.UpdateAsRef(ref state);
+        applyDamagers.torpidities = __torpidites.UpdateAsRef(ref state);
+        applyDamagers.healthes = __healthes.UpdateAsRef(ref state);
         applyDamagers.healthDamages = __healthDamages.UpdateAsRef(ref state);
         applyDamagers.healthBuffs = __healthBuffs.parallelWriter;
         applyDamagers.torpidityBuffs = __torpidityBuffs.parallelWriter;
+        applyDamagers.entitiesToPick = __entitiesToPick.writer;
+        applyDamagers.entityManager = entityManager.writer;
 
         ref var damagersJobManager = ref damagers.lookupJobManager;
-        var applyDamagersJobHandle = JobHandle.CombineDependencies(damagersJobManager.readOnlyJobHandle, applyInitializersJobHandle);
+        ref var entitiesToPickJobManager = ref __entitiesToPick.lookupJobManager;
+        
+        var applyDamagersJobHandle = JobHandle.CombineDependencies(damagersJobManager.readOnlyJobHandle, entitiesToPickJobManager.readWriteJobHandle, applyInitializersJobHandle);
         applyDamagersJobHandle = applyDamagers.ScheduleByRef(applyDamagersJobHandle);
 
+        entitiesToPickJobManager.readWriteJobHandle = applyDamagersJobHandle;
+        
         damagersJobManager.AddReadOnlyDependency(applyDamagersJobHandle);
+
+        entityManager.AddJobHandleForProducer<ApplyHiters>(applyDamagersJobHandle);
 
         jobHandle = applyDamagersJobHandle;// JobHandle.CombineDependencies(applyInitializersJobHandle, applyDamagersJobHandle);
 

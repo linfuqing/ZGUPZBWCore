@@ -15,7 +15,7 @@ public enum GameActionSpawnType
 [Flags]
 public enum GameActionSpawnFlag
 {
-    HitToPicked = 0x01
+    DamageToPicked = 0x01
 }
 
 public struct GameItemSpawnStatus : IComponentData

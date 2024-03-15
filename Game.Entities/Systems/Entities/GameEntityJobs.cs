@@ -44,6 +44,7 @@ public struct GameEntityActionDamager
     public Entity target;
     public float3 position;
     public float3 normal;
+    public RigidTransform transform;
 }
 
 public struct GameEntityActionManager : IDisposable

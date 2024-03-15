@@ -112,11 +112,12 @@ public partial struct GameEntityActionSystem : ISystem
         private float __impactForce;
         private float __impactTime;
         private float __impactMaxSpeed;
-        private float __elpasedTime;
+        private float __elapsedTime;
         //private double __time;
         private float3 __up;
         private float3 __position;
         private float3 __direction;
+        private RigidTransform __transform;
         private Entity __entity;
         private GameActionData __instance;
         private NativeSlice<RigidBody> __rigidBodies;
@@ -143,11 +144,12 @@ public partial struct GameEntityActionSystem : ISystem
             float impactTime,
             float impactMaxSpeed,
             float distance,
-            float elpasedTime,
+            float elapsedTime,
             //double time,
             in float3 up,
             in float3 position,
             in float3 direction,
+            in RigidTransform transform, 
             in Entity entity,
             in GameActionData instance,
             in NativeSlice<RigidBody> rigidBodies,
@@ -167,12 +169,12 @@ public partial struct GameEntityActionSystem : ISystem
             __impactForce = impactForce;
             __impactTime = impactTime;
             __impactMaxSpeed = impactMaxSpeed;
-            __elpasedTime = elpasedTime;
+            __elapsedTime = elapsedTime;
             //__time = time;
             __up = up;
             __position = position;
-            __position = position;
             __direction = direction;
+            __transform = transform;
             __entity = entity;
             __instance = instance;
             __rigidBodies = rigidBodies;
@@ -188,7 +190,7 @@ public partial struct GameEntityActionSystem : ISystem
 
         public bool AddHit(DistanceHit hit)
         {
-            RigidBody rigidbody = __rigidBodies[hit.RigidBodyIndex];
+            var rigidbody = __rigidBodies[hit.RigidBodyIndex];
             if (!__camps.HasComponent(rigidbody.Entity))
                 return false;
 
@@ -201,17 +203,18 @@ public partial struct GameEntityActionSystem : ISystem
                 return false;
 
             float3 normal = math.normalizesafe(hit.Position - __position, __direction);
-            int count = __actionEntities.Hit(rigidbody.Entity, normal, __elpasedTime, __interval, __value);
+            int count = __actionEntities.Hit(rigidbody.Entity, normal, __elapsedTime, __interval, __value);
             if (count < 1)
                 return false;
 
             GameEntityActionDamager damager;
             damager.count = count;
-            damager.elapsedTime = __elpasedTime;
+            damager.elapsedTime = __elapsedTime;
             damager.entity = __entity;
             damager.target = rigidbody.Entity;
             damager.position = hit.Position;
             damager.normal = -normal;
+            damager.transform = __transform;
             __damagers.Create().value = damager;
 
             /*__handlers.Damage(
@@ -230,7 +233,7 @@ public partial struct GameEntityActionSystem : ISystem
                 EntityData<GameNodeVelocityComponent> impact;
                 impact.value.mode = GameNodeVelocityComponent.Mode.Indirect;
                 impact.value.duration = __impactTime;
-                impact.value.time = __instance.time + __elpasedTime;
+                impact.value.time = __instance.time + __elapsedTime;
                 impact.value.value = normal * math.min(__impactForce * __masses[rigidbody.Entity].inverseValue, __impactMaxSpeed > math.FLT_MIN_NORMAL ? __impactMaxSpeed : float.MaxValue);
                 impact.value.value = Math.ProjectOnPlaneSafe(impact.value.value, __up);
                 impact.entity = rigidbody.Entity;
@@ -480,6 +483,7 @@ public partial struct GameEntityActionSystem : ISystem
                 damager.target = entity;
                 damager.position = position;
                 damager.normal = -normal;
+                damager.transform = transform.value;
 
                 __damagers.Create().value = damager;
 
@@ -538,6 +542,7 @@ public partial struct GameEntityActionSystem : ISystem
                     __up,
                     position,
                     __direction,
+                    transform.value, 
                     __entity,
                     __instance,
                     rigidbodies,
@@ -1185,13 +1190,15 @@ public partial struct GameEntityActionSystem : ISystem
                     {
                         float3 velocity = physicsVelocity.Linear;
                         if (isGravity)
-                            //1.5=当前帧实际时间0.5+下一帧时间1.0
+                            //1.5=锟斤拷前帧实锟斤拷时锟斤拷0.5+锟斤拷一帧时锟斤拷1.0
                             velocity += gravity * (deltaTime * 1.5f);
 
                         float speed = math.lengthsq(velocity);
                         if (speed > math.FLT_MIN_NORMAL)
                         {
                             transform.rot = quaternion.LookRotationSafe(velocity, math.up());
+
+                            //UnityEngine.Debug.LogError(((UnityEngine.Quaternion)transform.rot).eulerAngles.ToString() + velocity);
 
                             isRotationDirty = true;
 
