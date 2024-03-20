@@ -213,14 +213,14 @@ public partial struct GameItemRootStatusSystem : ISystem
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __rootGroup = builder
                     .WithAll<GameItemRoot>()
-                    .WithNone<GameNodeStatus>()
+                    .WithNone<GameNodeOldStatus>()
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
 
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __siblingGroup = builder
                 .WithAll<GameItemSibling>()
-                .WithNone<GameNodeStatus>()
+                .WithNone<GameNodeOldStatus>()
                 .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                 .Build(ref state);
 
