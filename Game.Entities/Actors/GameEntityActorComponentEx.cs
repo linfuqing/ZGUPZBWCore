@@ -8,6 +8,7 @@ public class GameEntityActorComponentEx : MonoBehaviour
     public float collectTime = 3.0f;
     public float useTime = 1.0f;
 
+    public float deleteTime = 0.0f;
     public float dropTime = 0.0f;
     public float setTime = 0.0f;
 
@@ -56,6 +57,11 @@ public class GameEntityActorComponentEx : MonoBehaviour
     public int Use(EntityCommander commander, in GameDeadline time, int version)
     {
         return instance.Do(commander, time, useTime, useTime, version);
+    }
+
+    public int Delete(EntityCommander commander, in GameDeadline time, int version)
+    {
+        return instance.Do(commander, time, deleteTime, deleteTime, version);
     }
 
     public int Drop(EntityCommander commander, in GameDeadline time, int version)

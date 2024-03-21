@@ -7,7 +7,6 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Jobs;
-using Unity.Transforms;
 using ZG;
 using Random = Unity.Mathematics.Random;
 
@@ -41,6 +40,12 @@ using Random = Unity.Mathematics.Random;
 
     }
 }*/
+
+[Flags]
+public enum GameValhallaFlag
+{
+    SoulAsItem = 0x01
+}
 
 public struct GameValhallaDefinition
 {
@@ -164,6 +169,7 @@ public partial struct GameValhallaSystem : ISystem
 
     public struct Command
     {
+        public GameValhallaFlag flag;
         public Entity entity;
         public RigidTransform transform;
         public GameSoulData value;
@@ -798,7 +804,7 @@ public partial struct GameValhallaSystem : ISystem
     }
 
     [BurstCompile]
-    private struct ClearSoulIndicess : IJob
+    private struct ClearSoulIndices : IJob
     {
         [ReadOnly, DeallocateOnJobCompletion]
         public NativeArray<int> capacity;
@@ -866,6 +872,7 @@ public partial struct GameValhallaSystem : ISystem
 
             TimeEvent<Command> result;
             result.time = time + command.time;
+            result.value.flag = command.flag;
             result.value.entity = command.entity;
             result.value.transform = command.transform;
             result.value.value = soul.data;
@@ -957,6 +964,9 @@ public partial struct GameValhallaSystem : ISystem
         [ReadOnly]
         public NativeArray<Command> commands;
 
+        [ReadOnly]
+        public ComponentLookup<GameItemRoot> itemRoots;
+
         public GameItemManager itemManager;
 
         //public EntityCommandQueue<GameValhallaCommand>.Writer entityManager;
@@ -979,16 +989,27 @@ public partial struct GameValhallaSystem : ISystem
             int count = 1;
             var handle = itemManager.Add(itemType, ref count);
 
-            GameValhallaCommand result;
-            result.variant = command.value.variant;
-            result.type = command.value.type;
-            result.entity = command.entity;
-            result.transform = command.transform;
-            result.nickname = command.value.nickname;
-            result.itemHandle = handle;
+            if ((command.flag & GameValhallaFlag.SoulAsItem) != GameValhallaFlag.SoulAsItem || 
+                itemRoots.HasComponent(command.entity) || 
+                itemManager.Find(
+                    itemRoots[command.entity].handle, 
+                    itemType, 
+                    1, 
+                    out int parentChildIndex, 
+                    out var parentHandle) || 
+                itemManager.Move(handle, parentHandle, parentChildIndex) == GameItemMoveType.Error)
+            {
+                GameValhallaCommand result;
+                result.variant = command.value.variant;
+                result.type = command.value.type;
+                result.entity = command.entity;
+                result.transform = command.transform;
+                result.nickname = command.value.nickname;
+                result.itemHandle = handle;
 
-            results.Add(result);
-
+                results.Add(result);
+            }
+            
             createItemCommander.Add(handle, itemEntityArchetype);
 
             Entity entity = GameItemStructChangeFactory.Convert(handle);
@@ -1078,6 +1099,8 @@ public partial struct GameValhallaSystem : ISystem
     private BufferLookup<GameSoul> __soulsRO;
 
     private BufferLookup<GameValhallaSacrificer> __sacrificers;
+
+    private ComponentLookup<GameItemRoot> __itemRoots;
 
     private GameItemManagerShared __itemManager;
 
@@ -1187,6 +1210,7 @@ public partial struct GameValhallaSystem : ISystem
         __souls = state.GetBufferLookup<GameSoul>();
         __soulsRO = state.GetBufferLookup<GameSoul>(true);
         __sacrificers = state.GetBufferLookup<GameValhallaSacrificer>(true);
+        __itemRoots = state.GetComponentLookup<GameItemRoot>(true);
 
         var world = state.WorldUnmanaged;
 
@@ -1356,10 +1380,10 @@ public partial struct GameValhallaSystem : ISystem
 
             inputDeps = __respawnGroup.CalculateEntityCountAsync(entityCount, inputDeps);
 
-            ClearSoulIndicess clearSoulIndicess;
-            clearSoulIndicess.capacity = entityCount;
-            clearSoulIndicess.soulIndicess = __soulIndicess;
-            var finalRespawnJobHandle = clearSoulIndicess.ScheduleByRef(inputDeps);
+            ClearSoulIndices clearSoulIndices;
+            clearSoulIndices.capacity = entityCount;
+            clearSoulIndices.soulIndicess = __soulIndicess;
+            var finalRespawnJobHandle = clearSoulIndices.ScheduleByRef(inputDeps);
 
             RespawnEx respawn;
             respawn.time = time;
@@ -1393,6 +1417,7 @@ public partial struct GameValhallaSystem : ISystem
             applyRespawn.random = new Random(math.max(1, hash));
             applyRespawn.definition = definition;
             applyRespawn.commands = __commands.AsDeferredJobArray();
+            applyRespawn.itemRoots = __itemRoots.UpdateAsRef(ref state);
             applyRespawn.itemManager = __itemManager.value;
             applyRespawn.results = commands.writer;
             applyRespawn.createItemCommander = createItemCommander.writer;

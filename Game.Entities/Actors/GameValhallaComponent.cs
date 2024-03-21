@@ -4,6 +4,7 @@ using Unity.Entities;
 using ZG;
 using Unity.Collections;
 using System.Collections.Generic;
+using UnityEngine;
 
 public struct GameValhallaExp : IComponentData
 {
@@ -43,6 +44,7 @@ public struct GameValhallaEvoluteCommand : IComponentData, IEnableableComponent
 
 public struct GameValhallaRespawnCommand : IComponentData, IEnableableComponent
 {
+    public GameValhallaFlag flag;
     public int soulIndex;
     public float time;
     public Entity entity;
@@ -75,8 +77,10 @@ public struct GameValhallaCommand
 [EntityComponent(typeof(GameValhallaSacrificer))]
 public class GameValhallaComponent : EntityProxyComponent, IEntityComponent
 {
+    [Serializable]
     public struct RespawnData
     {
+        public GameValhallaFlag flag;
         public float respawnTime;
         public float3 respawnOffset;
     }
@@ -145,9 +149,10 @@ public class GameValhallaComponent : EntityProxyComponent, IEntityComponent
         this.SetBuffer<GameValhallaSacrificer, T>(sacrificerIndices);
     }
 
-    public void Respwan(int soulIndex, float respawnTime, in Entity entity, in RigidTransform transform)
+    public void Respwan(GameValhallaFlag flag, int soulIndex, float respawnTime, in Entity entity, in RigidTransform transform)
     {
         GameValhallaRespawnCommand command;
+        command.flag = flag;
         command.soulIndex = soulIndex;
         command.time = respawnTime;
         command.entity = entity;
@@ -162,7 +167,7 @@ public class GameValhallaComponent : EntityProxyComponent, IEntityComponent
         var transform = math.RigidTransform(base.transform.rotation, base.transform.position);
 
         transform.pos = math.transform(transform, _respawnData.respawnOffset);
-        Respwan(soulIndex, _respawnData.respawnTime, entity, transform);
+        Respwan(_respawnData.flag, soulIndex, _respawnData.respawnTime, entity, transform);
     }
 
     void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
