@@ -76,6 +76,7 @@ public struct GameItemSpawnInitializer : IEntityDataInitializer
         GameItemRoot itemRoot;
         itemRoot.handle = __itemHandle;
         gameObjectEntity.SetComponentData(itemRoot);
+        gameObjectEntity.SetComponentEnabled<GameItemRoot>(true);
 
         var entity = this.owner;
 

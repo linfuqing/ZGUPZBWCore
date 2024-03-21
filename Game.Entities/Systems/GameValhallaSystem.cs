@@ -107,6 +107,7 @@ public struct GameValhallaInitializer : IEntityDataInitializer
         GameItemRoot itemRoot;
         itemRoot.handle = __itemHandle;
         gameObjectEntity.SetComponentData(itemRoot);
+        gameObjectEntity.SetComponentEnabled<GameItemRoot>(true);
 
         GameNickname nickname;
         nickname.value = __nickname;// __soul.nickname;

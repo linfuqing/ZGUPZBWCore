@@ -1448,6 +1448,7 @@ public partial struct GameEntityActionDataPickSystem : ISystem
                 GameItemRoot itemRoot;
                 itemRoot.handle = GameItemHandle.Empty;
                 itemRoots[entity] = itemRoot;
+                itemRoots.SetComponentEnabled(entity, false);
             }
             
             if (nodeStates.HasComponent(entity))

@@ -102,17 +102,16 @@ public partial class GameItemRootSystem : SystemBase
     }
 }*/
 
-[BurstCompile, CreateAfter(typeof(GameItemSystem)), UpdateInGroup(typeof(GameItemSystemGroup), OrderFirst = true)/*, UpdateBefore(typeof(GameItemSystem))*/]
-public partial struct GameItemRootStatusSystem : ISystem
+[BurstCompile]//, CreateAfter(typeof(GameItemSystem)), UpdateInGroup(typeof(GameItemSystemGroup), OrderFirst = true)/*, UpdateBefore(typeof(GameItemSystem))*/]
+public partial struct GameItemRootStatusSystem : ISystem, IEntityCommandProducerJob
 {
     private struct CollectRoots
     {
         public GameItemManager.ReadOnlyInfos infos;
 
-        [ReadOnly]
         public NativeArray<GameItemRoot> roots;
 
-        public NativeList<GameItemHandle> handles;
+        public NativeQueue<GameItemHandle>.ParallelWriter handles;
 
         public void Execute(int index)
         {
@@ -120,7 +119,11 @@ public partial struct GameItemRootStatusSystem : ISystem
             if (!infos.TryGetValue(handle, out var item) || !item.parentHandle.Equals(GameItemHandle.Empty))
                 return;
 
-            handles.Add(handle);
+            GameItemRoot root;
+            root.handle = GameItemHandle.Empty;
+            roots[index] = root;
+
+            handles.Enqueue(handle);
         }
     }
 
@@ -129,68 +132,116 @@ public partial struct GameItemRootStatusSystem : ISystem
     {
         public GameItemManager.ReadOnlyInfos infos;
 
-        [ReadOnly]
+        //[ReadOnly]
+        //public EntityTypeHandle entityType;
+
+        //[ReadOnly]
+        //public ComponentTypeHandle<GameNodeStatus> statusType;
+
         public ComponentTypeHandle<GameItemRoot> rootType;
 
-        public NativeList<GameItemHandle> handles;
+        public NativeQueue<GameItemHandle>.ParallelWriter handles;
+
+        //public EntityCommandQueue<EntityCommandStructChange>.ParallelWriter entityManager;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
+            //var entityArray = chunk.Has(ref statusType) ? default : chunk.GetNativeArray(entityType);
+            
             CollectRoots collectRoots;
             collectRoots.infos = infos;
             collectRoots.roots = chunk.GetNativeArray(ref rootType);
             collectRoots.handles = handles;
 
+            //EntityCommandStructChange command;
+            //command.componentType = ComponentType.ReadOnly<GameItemRoot>();
+            
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
+            {
                 collectRoots.Execute(i);
+
+                /*if (entityArray.IsCreated)
+                {
+                    command.entity = entityArray[i];
+                    
+                    entityManager.Enqueue(command);
+                }
+                else*/
+                    chunk.SetComponentEnabled(ref rootType, i, false);
+            }
         }
     }
 
     private struct CollectSiblings
     {
-        [ReadOnly]
         public BufferAccessor<GameItemSibling> siblings;
 
-        public NativeList<GameItemHandle> handles;
+        public NativeQueue<GameItemHandle>.ParallelWriter handles;
 
         public void Execute(int index)
         {
-            handles.AddRange(siblings[index].Reinterpret<GameItemHandle>().AsNativeArray());
+            var siblings = this.siblings[index];
+            foreach (var sibling in siblings)
+                handles.Enqueue(sibling.handle);
+            
+            siblings.Clear();
         }
     }
 
     [BurstCompile]
     private struct CollectSiblingsEx : IJobChunk
     {
-        [ReadOnly]
+        //[ReadOnly]
+        //public EntityTypeHandle entityType;
+
+        //[ReadOnly]
+        //public ComponentTypeHandle<GameNodeStatus> statusType;
+
         public BufferTypeHandle<GameItemSibling> siblingType;
 
-        public NativeList<GameItemHandle> handles;
+        public NativeQueue<GameItemHandle>.ParallelWriter handles;
+
+        //public EntityCommandQueue<EntityCommandStructChange>.ParallelWriter entityManager;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
+            //var entityArray = chunk.Has(ref statusType) ? default : chunk.GetNativeArray(entityType);
+
+            //EntityCommandStructChange command;
+            //command.componentType = ComponentType.ReadOnly<GameItemRoot>();
+
             CollectSiblings collectSiblings;
             collectSiblings.siblings = chunk.GetBufferAccessor(ref siblingType);
             collectSiblings.handles = handles;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
+            {
                 collectSiblings.Execute(i);
+                
+                /*if (entityArray.IsCreated)
+                {
+                    command.entity = entityArray[i];
+                    
+                    entityManager.Enqueue(command);
+                }
+                else*/
+                    chunk.SetComponentEnabled(ref siblingType, i, false);
+            }
         }
     }
 
     [BurstCompile]
     private struct RemoveHandles : IJob
     {
-        public NativeList<GameItemHandle> handles;
+        public NativeQueue<GameItemHandle> handles;
         public GameItemManager manager;
 
         public void Execute()
         {
-            int numHandles = handles.Length;
-            for(int i = 0; i < numHandles; ++i)
-                manager.Remove(handles[i], 0);
+            while(handles.TryDequeue(out var handle))
+                manager.Remove(handle, 0);
 
             handles.Clear();
         }
@@ -201,11 +252,14 @@ public partial struct GameItemRootStatusSystem : ISystem
     private EntityQuery __rootGroup;
     private EntityQuery __siblingGroup;
 
+    //private EntityTypeHandle __entityType;
+    //private ComponentTypeHandle<GameNodeStatus> __statusType;
     private ComponentTypeHandle<GameItemRoot> __rootType;
     private BufferTypeHandle<GameItemSibling> __siblingType;
 
     private GameItemManagerShared __itemManager;
-    private NativeList<GameItemHandle> __handles;
+    //private EntityCommandPool<EntityCommandStructChange> __endFrameBarrier;
+    private NativeQueue<GameItemHandle> __handles;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
@@ -224,16 +278,23 @@ public partial struct GameItemRootStatusSystem : ISystem
                 .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                 .Build(ref state);
 
-        __rootType = state.GetComponentTypeHandle<GameItemRoot>(true);
+        //__entityType = state.GetEntityTypeHandle();
+        
+        //__statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
+        
+        __rootType = state.GetComponentTypeHandle<GameItemRoot>();
 
-        __siblingType = state.GetBufferTypeHandle<GameItemSibling>(true);
+        __siblingType = state.GetBufferTypeHandle<GameItemSibling>();
 
-        __itemManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>().manager;
+        var world = state.WorldUnmanaged;
+        __itemManager = world.GetExistingSystemUnmanaged<GameItemSystem>().manager;
 
-        __handles = new NativeList<GameItemHandle>(Allocator.Persistent);
+        //__endFrameBarrier = world.GetExistingSystemUnmanaged<BeginFrameStructChangeSystem>().manager.addComponentPool;
+
+        __handles = new NativeQueue<GameItemHandle>(Allocator.Persistent);
     }
 
-    [BurstCompile]
+    //[BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
         __handles.Dispose();
@@ -242,45 +303,77 @@ public partial struct GameItemRootStatusSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        ref var lookupJobManager = ref __itemManager.lookupJobManager;
-
-        NativeList<GameItemHandle> handles = __handles;
+        //var entityType = __entityType.UpdateAsRef(ref state);
+        //var statusType = __statusType.UpdateAsRef(ref state);
+        //var endFrameBarrier = __endFrameBarrier.Create();
+        
+        //var entityManager = endFrameBarrier.parallelWriter;
+        ref var itemManagerJobManager = ref __itemManager.lookupJobManager;
+        
+        var inputDeps = JobHandle.CombineDependencies(itemManagerJobManager.readOnlyJobHandle, state.Dependency);
+        //JobHandle? result = null;
+        var handles = __handles.AsParallelWriter();
         if (!__rootGroup.IsEmptyIgnoreFilter)
         {
-            state.CompleteDependency();
+            //state.CompleteDependency();
 
-            lookupJobManager.CompleteReadOnlyDependency();
+            //lookupJobManager.CompleteReadOnlyDependency();
 
             CollectRootsEx collect;
             collect.infos = __itemManager.readOnlyInfos;
+            //collect.entityType = entityType;
+            //collect.statusType = statusType;
             collect.rootType = __rootType.UpdateAsRef(ref state);
             collect.handles = handles;
-            collect.Run(__rootGroup);
+            //collect.entityManager = entityManager;
+            var jobHandle = collect.ScheduleParallelByRef(__rootGroup, inputDeps);
+            inputDeps = jobHandle;
+            /*if (result == null)
+                result = jobHandle;
+            else
+                result = JobHandle.CombineDependencies(result.Value, jobHandle);*/
 
-            state.EntityManager.RemoveComponent<GameItemRoot>(__rootGroup);
+            //state.EntityManager.RemoveComponent<GameItemRoot>(__rootGroup);
         }
 
         if (!__siblingGroup.IsEmptyIgnoreFilter)
         {
-            state.CompleteDependency();
+            //state.CompleteDependency();
 
             CollectSiblingsEx collect;
+            //collect.entityType = entityType;
+            //collect.statusType = statusType;
             collect.siblingType = __siblingType.UpdateAsRef(ref state);
             collect.handles = handles;
-            collect.Run(__siblingGroup);
+            //collect.entityManager = entityManager;
+            var jobHandle = collect.ScheduleParallelByRef(__siblingGroup, inputDeps);
+            inputDeps = jobHandle;
+            /*if (result == null)
+                result = jobHandle;
+            else
+                result = JobHandle.CombineDependencies(result.Value, jobHandle);*/
 
-            state.EntityManager.RemoveComponent<GameItemSibling>(__siblingGroup);
+            //state.EntityManager.RemoveComponent<GameItemSibling>(__siblingGroup);
         }
 
-        RemoveHandles removeHandles;
-        removeHandles.handles = handles;
-        removeHandles.manager = __itemManager.value;
+        //if (result != null)
+        {
+            //var jobHandle = result.Value;
+            //endFrameBarrier.AddJobHandleForProducer<GameItemRootStatusSystem>(jobHandle);
+            var jobHandle = inputDeps;
+            
+            RemoveHandles removeHandles;
+            removeHandles.handles = __handles;
+            removeHandles.manager = __itemManager.value;
 
-        var jobHandle = removeHandles.ScheduleByRef(JobHandle.CombineDependencies(lookupJobManager.readWriteJobHandle, state.Dependency));
+            jobHandle =
+                removeHandles.ScheduleByRef(JobHandle.CombineDependencies(itemManagerJobManager.readWriteJobHandle,
+                    jobHandle));
 
-        lookupJobManager.readWriteJobHandle = jobHandle;
-
-        state.Dependency = jobHandle;
+            itemManagerJobManager.readWriteJobHandle = jobHandle;
+            
+            state.Dependency = jobHandle;
+        }
     }
 }
 
@@ -472,6 +565,7 @@ public partial struct GameItemRootEntitySystem : ISystem
                     {
                         root.handle = GameItemHandle.Empty;
                         roots[entity] = root;
+                        roots.SetComponentEnabled(entity, false);
 
                         if (states.HasComponent(entity))
                         {

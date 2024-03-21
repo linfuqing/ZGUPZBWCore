@@ -1312,7 +1312,11 @@ public partial struct GameFormulaFactorySystem : ISystem
                     }
 
                     if (siblings.HasBuffer(result.factory))
+                    {
                         siblings[result.factory].Reinterpret<GameItemHandle>().AddRange(itemSiblingHandles.AsArray());
+                        
+                        siblings.SetComponentEnabled(result.factory, true);
+                    }
                     else
                     {
                         numItemSiblingHandles = itemSiblingHandles.Length;
@@ -1471,6 +1475,8 @@ public partial struct GameFormulaFactorySystem : ISystem
                                 }
 
                                 siblings.Clear();
+                                
+                                this.siblings.SetComponentEnabled(input.factory, false);
                             }
 
                             numSiblings = result.itemSiblingTypes.Length;

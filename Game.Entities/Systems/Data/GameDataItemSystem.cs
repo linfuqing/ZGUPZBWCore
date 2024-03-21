@@ -1616,6 +1616,7 @@ public partial struct GameDataItemRootDeserializationSystem : ISystem
                         root.handle = handle;
 
                         roots[entity] = root;
+                        roots.SetComponentEnabled(entity, true);
                     }
                 }
             }
@@ -1874,6 +1875,7 @@ public partial struct GameDataItemSiblingDeserializationSystem : ISystem
                         siblings = this.siblings[key.entity];
 
                         siblings[key.index] = sibling;
+                        this.siblings.SetComponentEnabled(key.entity, true);
                     }
                 }
             }

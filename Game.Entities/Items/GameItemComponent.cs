@@ -38,12 +38,12 @@ public struct GameItemTimeScale : IComponentData
     public float value;
 }
 
-public struct GameItemRoot : ICleanupComponentData
+public struct GameItemRoot : IComponentData, IEnableableComponent
 {
     public GameItemHandle handle;
 }
 
-public struct GameItemSibling : ICleanupBufferElementData
+public struct GameItemSibling : IBufferElementData, IEnableableComponent
 {
     public GameItemHandle handle;
 }
@@ -79,6 +79,7 @@ public class GameItemComponent : EntityProxyComponent, IEntityComponent
             GameItemRoot root;
             root.handle = value;
             this.SetComponentData(root);
+            this.SetComponentEnabled<GameItemRoot>(true);
         }
     }
 
