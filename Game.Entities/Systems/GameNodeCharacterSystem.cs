@@ -273,8 +273,8 @@ public partial struct GameNodeCharacterSystem : ISystem
                 if (collider.GetLeaf(distanceHit.ColliderKey, out leaf))
                     collider = ref *leaf.Collider;
 
-                if(distanceHit.Distance < 0.0f)
-                    isUnstopping = true;
+                //if(distanceHit.Distance < 0.0f)
+                    //isUnstopping = true;
 
                 layerMask |= collider.Filter.BelongsTo;
             }
@@ -949,8 +949,8 @@ public partial struct GameNodeCharacterSystem : ISystem
 
                                         characterSurface.layerMask |= belongsTo;
 
-                                        if (distanceHit.Distance < 0.0f)
-                                            isUnstopping = true;
+                                        /*if (distanceHit.Distance < 0.0f)
+                                            isUnstopping = true;*/
 
                                         if ((belongsTo & instance.climbMask) != 0)
                                             continue;
