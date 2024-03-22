@@ -7,9 +7,7 @@ using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Collections;
 using ZG;
-using ZG.Unsafe;
 using Unity.Collections.LowLevel.Unsafe;
-using Math = Unity.Physics.Math;
 using Random = Unity.Mathematics.Random;
 
 //[assembly: RegisterGenericJobType(typeof(GameEntityActionSystemCore.PerformEx<GameEntityActionDataSystem.Handler, GameEntityActionDataSystem.Factory>))]
@@ -58,6 +56,32 @@ using Random = Unity.Mathematics.Random;
 
 }*/
 
+[Serializable]
+public struct GameActionPickableData
+{
+    public float healthToPickedChanceMax;
+    public float healthToPickedChanceScale;
+    public float torpidityToPickedChanceMax;
+    public float torpidityToPickedChanceScale;
+    public float animalValueToPickedChanceMax;
+    public float animalValueToPickedChanceScale;
+
+    public float Compute( float entityHealth, float entityTorpidity, float animalValue)
+    {
+        float chance = healthToPickedChanceMax - math.min(
+            healthToPickedChanceMax,
+            healthToPickedChanceScale * entityHealth);
+        chance += torpidityToPickedChanceMax - math.min(
+            torpidityToPickedChanceMax,
+            torpidityToPickedChanceScale * entityTorpidity);
+        chance += animalValueToPickedChanceMax - math.min(
+            animalValueToPickedChanceMax,
+            animalValueToPickedChanceScale * animalValue);
+
+        return chance;
+    }
+}
+
 [BurstCompile,
     //CreateAfter(typeof(GameEntityActionLocationSystem)),
     //CreateAfter(typeof(GamePhysicsWorldBuildSystem)),
@@ -74,6 +98,8 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         public GameActionSpawnFlag spawnFlag;
 
         public GameBuff buff;
+
+        public GameActionPickableData pickable;
 
         public GameActionAttack[] attacks;
 
@@ -96,6 +122,8 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
         public int spawnStartIndex;
         public int spawnCount;
+
+        public GameActionPickableData pickable;
 
         public GameBuff buff;
     }
@@ -174,7 +202,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
     }
 
     [BurstCompile]
-    public struct Recapcity : IJob
+    private struct Recapcity : IJob
     {
         [ReadOnly, DeallocateOnJobCompletion]
         public NativeArray<int> counter;
@@ -362,7 +390,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         public int hitCount;
 
         [ReadOnly]
-        public GameItemManager.Hierarchy hierarchy;
+        public GameItemManager.ReadOnly itemManager;
 
         [ReadOnly]
         public NativeArray<ItemData> items;
@@ -373,13 +401,13 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         public BuffCalculator(
             int propertyCount, 
             int hitCount,
-            in GameItemManager.Hierarchy hierarchy, 
+            in GameItemManager.ReadOnly itemManager, 
             in NativeArray<ItemData> items, 
             in NativeHashMap<int, int> itemTypeIndices)
         {
             this.propertyCount = propertyCount;
             this.hitCount = hitCount;
-            this.hierarchy = hierarchy;
+            this.itemManager = itemManager;
             this.items = items;
             this.itemTypeIndices = itemTypeIndices;
         }
@@ -411,7 +439,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
             ref NativeArray<float> outputs,
             out GameItemInfo item)
         {
-            if (hierarchy.GetChildren(handle, out var enumerator, out item))
+            if (itemManager.hierarchy.GetChildren(handle, out var enumerator, out item))
             {
                 __Calculate(
                     true,
@@ -462,7 +490,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
             ref GameBuff buff,
             out GameItemInfo item)
         {
-            if (hierarchy.GetChildren(handle, out var enumerator, out item))
+            if (itemManager.hierarchy.GetChildren(handle, out var enumerator, out item))
             {
                 __Calculate(
                     true,
@@ -756,6 +784,9 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         public ComponentLookup<GameItemRoot> itemRoots;
 
         [ReadOnly]
+        public ComponentLookup<GameOwner> owners;
+
+        [ReadOnly]
         public ComponentLookup<GameNodeStatus> nodeStates;
 
         [ReadOnly]
@@ -772,6 +803,9 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
         [ReadOnly]
         public ComponentLookup<GameActionBuff> buffs;
+
+        [ReadOnly]
+        public ComponentLookup<GameAnimalData> animals;
 
         [ReadOnly]
         public ComponentLookup<GameAnimalInfo> animalInfos;
@@ -802,7 +836,6 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
             int numAttacks = math.min(attacks.IsCreated ? attacks.Length : 0, buffCalculator.propertyCount);
             if (numAttacks > 0)
             {
-
                 if (this.defences.HasBuffer(damager.target))
                 {
                     var temp = this.defences[damager.target].Reinterpret<float>().AsNativeArray();
@@ -908,11 +941,30 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
             var action = actions[instance.actionIndex];
             
-            GameItemHandle sourceHandle =
-                (action.spawnFlag & GameActionSpawnFlag.DamageToPicked) == GameActionSpawnFlag.DamageToPicked &&
-                itemRoots.HasComponent(damager.target)
-                    ? itemRoots[damager.target].handle
-                    : GameItemHandle.Empty, destinationHandle = sourceHandle;
+            var sourceHandle = GameItemHandle.Empty;
+            if ((action.spawnFlag & GameActionSpawnFlag.DamageToPicked) == GameActionSpawnFlag.DamageToPicked &&
+                (!owners.HasComponent(damager.target) || owners[damager.target].entity == Entity.Null) &&
+                itemRoots.HasComponent(damager.target) && 
+                itemRoots.HasComponent(instance.entity))
+            {
+                var handle = itemRoots[damager.target].handle;
+                if (buffCalculator.itemManager.TryGetValue(handle, out var item) &&
+                    buffCalculator.itemManager.Find(
+                        itemRoots[instance.entity].handle,
+                        item.type,
+                        item.count,
+                        out _,
+                        out _))
+                    sourceHandle = handle;
+            }
+
+            var destinationHandle = sourceHandle;
+            
+            var forward = math.forward( damager.transform.rot);
+            forward = ZG.Mathematics.Math.ProjectOnPlane(forward, math.up());
+            var transform = math.RigidTransform(
+                ZG.Mathematics.Math.FromToRotation(math.float3(0.0f, 0.0f, 1.0f), forward), 
+                damager.transform.pos);
             
             spawner.Spawn(
                 action.spawnStartIndex,
@@ -920,14 +972,15 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                 GameActionSpawnType.Damage,
                 //instance.time + elapsedTime,
                 instance.entity,
-                damager.transform, 
+                transform, 
                 //math.RigidTransform(Math.FromToRotation(math.up(), damager.normal), damager.position), 
                 ref destinationHandle);
             
             if ((action.spawnFlag & GameActionSpawnFlag.DamageToPicked) == GameActionSpawnFlag.DamageToPicked &&
                 destinationHandle.Equals(GameItemHandle.Empty))
             {
-                if (itemHandleEntities.TryGetValue(GameItemStructChangeFactory.Convert(sourceHandle), out Entity entity))
+                if (itemHandleEntities.TryGetValue(GameItemStructChangeFactory.Convert(sourceHandle),
+                        out Entity entity))
                 {
                     GameItemSpawnStatus status;
                     status.nodeStatus = nodeStates.HasComponent(damager.target) ? nodeStates[damager.target].value : 0;
@@ -940,7 +993,11 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                     status.animalValue = animalInfos.HasComponent(damager.target)
                         ? animalInfos[damager.target].value
                         : 0.0f;
-                    status.chance = 1.0f;
+                    status.chance = action.pickable.Compute(
+                        status.entityHealth,
+                        status.entityTorpidity,
+                        (animals.HasComponent(damager.target) ? animals[damager.target].max : status.animalValue) -
+                        status.animalValue);
                     status.handle = itemRoots.HasComponent(instance.entity)
                         ? itemRoots[instance.entity].handle
                         : GameItemHandle.Empty;
@@ -1019,6 +1076,8 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
     private ComponentLookup<GameItemLevel> __entityLevels;
 
+    private ComponentLookup<GameAnimalData> __animals;
+
     private ComponentLookup<GameAnimalInfo> __animalInfos;
 
     private ComponentLookup<GameEntityTorpidity> __torpidites;
@@ -1033,6 +1092,8 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
     private ComponentLookup<GameEntityHealthDamage> __healthDamages;
     
+    private ComponentLookup<GameOwner> __owners;
+
     private ComponentLookup<GameNodeStatus> __nodeStates;
 
     private BufferLookup<GameEntityHealthBuff> __healthOutputs;
@@ -1107,6 +1168,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
             for (i = 0; i < actionDestination.spawnCount; ++i)
                 __spawns[actionDestination.spawnStartIndex + i] = actionSource.spawns[i];
 
+            actionDestination.pickable = actionSource.pickable;
             actionDestination.buff = actionSource.buff;
             __actions[num++] = actionDestination;
 
@@ -1213,8 +1275,11 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         __entityPowers = state.GetComponentLookup<GameItemPower>(true);
         __entityLevels = state.GetComponentLookup<GameItemLevel>(true);
         
+        __owners = state.GetComponentLookup<GameOwner>(true);
+
         __nodeStates = state.GetComponentLookup<GameNodeStatus>(true);
 
+        __animals = state.GetComponentLookup<GameAnimalData>(true);
         __animalInfos = state.GetComponentLookup<GameAnimalInfo>(true);
         __healthes = state.GetComponentLookup<GameEntityHealth>(true);
         __torpidites = state.GetComponentLookup<GameEntityTorpidity>(true);
@@ -1316,7 +1381,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         var buffCalculator = new BuffCalculator(
             __propertyCount,
             __hitCount,
-            __itemManager.hierarchy,
+            __itemManager.value.readOnly,
             __items.AsArray(),
             __itemTypeIndices);
 
@@ -1378,11 +1443,13 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         applyDamagers.itemHandleEntities = __handleEntities.reader;
         applyDamagers.instances = instances;
         applyDamagers.itemRoots = itemRoots;
+        applyDamagers.owners = __owners.UpdateAsRef(ref state);
         applyDamagers.nodeStates = nodeStates;
         applyDamagers.itemDefences = __itemDefences.AsArray();
         applyDamagers.defences = __defences.UpdateAsRef(ref state);
         applyDamagers.attacks = attacks;
         applyDamagers.buffs = buffs;
+        applyDamagers.animals = __animals.UpdateAsRef(ref state);
         applyDamagers.animalInfos = __animalInfos.UpdateAsRef(ref state);
         applyDamagers.torpidities = __torpidites.UpdateAsRef(ref state);
         applyDamagers.healthes = __healthes.UpdateAsRef(ref state);
