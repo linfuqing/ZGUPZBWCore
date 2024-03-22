@@ -59,24 +59,21 @@ using Random = Unity.Mathematics.Random;
 [Serializable]
 public struct GameActionPickableData
 {
-    public float healthToPickedChanceMax;
-    public float healthToPickedChanceScale;
-    public float torpidityToPickedChanceMax;
-    public float torpidityToPickedChanceScale;
-    public float animalValueToPickedChanceMax;
-    public float animalValueToPickedChanceScale;
+    public float healthMax;
+    public float torpidityMax;
+    public float animalMax;
 
-    public float Compute( float entityHealth, float entityTorpidity, float animalValue)
+    public float Compute( 
+        float entityHealthMax, 
+        float entityHealthValue, 
+        float entityTorpidityMax, 
+        float entityTorpidityValue, 
+        float animalMax, 
+        float animalValue)
     {
-        float chance = healthToPickedChanceMax - math.min(
-            healthToPickedChanceMax,
-            healthToPickedChanceScale * entityHealth);
-        chance += torpidityToPickedChanceMax - math.min(
-            torpidityToPickedChanceMax,
-            torpidityToPickedChanceScale * entityTorpidity);
-        chance += animalValueToPickedChanceMax - math.min(
-            animalValueToPickedChanceMax,
-            animalValueToPickedChanceScale * animalValue);
+        float chance = entityHealthMax > math.FLT_MIN_NORMAL ? math.clamp((healthMax - entityHealthValue) / entityHealthMax, 0.0f, 1.0f) : 0.0f;
+        chance += entityTorpidityMax > math.FLT_MIN_NORMAL ? math.clamp((torpidityMax - entityTorpidityValue) / entityTorpidityMax, 0.0f, 1.0f) : 0.0f;
+        chance += animalMax > math.FLT_MIN_NORMAL ? math.clamp((this.animalMax - animalMax + animalValue) / animalMax, 0.0f, 1.0f) : 0.0f;
 
         return chance;
     }
@@ -811,7 +808,13 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         public ComponentLookup<GameAnimalInfo> animalInfos;
 
         [ReadOnly]
+        public ComponentLookup<GameEntityTorpidityData> torpidityMaxes;
+        
+        [ReadOnly]
         public ComponentLookup<GameEntityTorpidity> torpidities;
+
+        [ReadOnly]
+        public ComponentLookup<GameEntityHealthData> healthMaxes;
 
         [ReadOnly]
         public ComponentLookup<GameEntityHealth> healthes;
@@ -994,9 +997,11 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                         ? animalInfos[damager.target].value
                         : 0.0f;
                     status.chance = action.pickable.Compute(
+                        healthMaxes.HasComponent(damager.target) ? healthMaxes[damager.target].max : 0,
                         status.entityHealth,
-                        status.entityTorpidity,
-                        (animals.HasComponent(damager.target) ? animals[damager.target].max : status.animalValue) -
+                        torpidityMaxes.HasComponent(damager.target) ? torpidityMaxes[damager.target].max : 0, 
+                        status.entityTorpidity, 
+                        animals.HasComponent(damager.target) ? animals[damager.target].max : 0, 
                         status.animalValue);
                     status.handle = itemRoots.HasComponent(instance.entity)
                         ? itemRoots[instance.entity].handle
@@ -1080,7 +1085,11 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
     private ComponentLookup<GameAnimalInfo> __animalInfos;
 
+    private ComponentLookup<GameEntityTorpidityData> __torpidityMaxes;
+
     private ComponentLookup<GameEntityTorpidity> __torpidites;
+
+    private ComponentLookup<GameEntityHealthData> __healthMaxes;
 
     private ComponentLookup<GameEntityHealth> __healthes;
 
@@ -1281,7 +1290,9 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
         __animals = state.GetComponentLookup<GameAnimalData>(true);
         __animalInfos = state.GetComponentLookup<GameAnimalInfo>(true);
+        __healthMaxes = state.GetComponentLookup<GameEntityHealthData>(true);
         __healthes = state.GetComponentLookup<GameEntityHealth>(true);
+        __torpidityMaxes = state.GetComponentLookup<GameEntityTorpidityData>(true);
         __torpidites = state.GetComponentLookup<GameEntityTorpidity>(true);
 
         __defences = state.GetBufferLookup<GameEntityDefence>(true);
@@ -1451,7 +1462,9 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         applyDamagers.buffs = buffs;
         applyDamagers.animals = __animals.UpdateAsRef(ref state);
         applyDamagers.animalInfos = __animalInfos.UpdateAsRef(ref state);
+        applyDamagers.torpidityMaxes = __torpidityMaxes.UpdateAsRef(ref state);
         applyDamagers.torpidities = __torpidites.UpdateAsRef(ref state);
+        applyDamagers.healthMaxes = __healthMaxes.UpdateAsRef(ref state);
         applyDamagers.healthes = __healthes.UpdateAsRef(ref state);
         applyDamagers.healthDamages = __healthDamages.UpdateAsRef(ref state);
         applyDamagers.healthBuffs = __healthBuffs.parallelWriter;
