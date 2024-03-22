@@ -872,7 +872,7 @@ public partial struct GameEntityActionSystem : ISystem
                 value |= GameActionStatus.Status.Destroied;
             }
 
-            if (instance.time + (instanceEx.info.actionPerformTime > math.FLT_MIN_NORMAL ? instanceEx.info.actionPerformTime : instanceEx.info.damageTime) <= time)
+            if (instance.time + (instanceEx.info.actionPerformTime > math.FLT_MIN_NORMAL ? instanceEx.info.actionPerformTime : math.min(instanceEx.info.performTime, instanceEx.info.damageTime)) <= time)
             {
                 /*if ((value & GameActionStatus.Status.Perform) == GameActionStatus.Status.Perform)
                     value |= GameActionStatus.Status.Performed;

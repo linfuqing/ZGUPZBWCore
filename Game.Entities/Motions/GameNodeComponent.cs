@@ -892,7 +892,7 @@ public class GameNodeComponent : EntityProxyComponent, IEntityComponent
         list.Add(f);
 
         _speedSections = list.ToArray();*/
-
+        
         assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, _speedSections);
 
         if (__normalizedSpeed != 1.0f)
@@ -908,6 +908,9 @@ public class GameNodeComponent : EntityProxyComponent, IEntityComponent
 
             assigner.SetBuffer<GameNodeSpeedScaleComponent, List<GameNodeSpeedScaleComponent>>(EntityComponentAssigner.BufferOption.Override, entity, __speedScaleComponents);
         }
+        
+        assigner.SetBuffer<GameNodePosition>(EntityComponentAssigner.BufferOption.Override, entity);
+        assigner.SetComponentData<GameNodeDirection>(entity, default);
     }
 
     /*protected new void OnValidate()

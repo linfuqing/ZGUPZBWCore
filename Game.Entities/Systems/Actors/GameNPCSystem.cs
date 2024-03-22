@@ -1,12 +1,13 @@
 using System;
 using System.Diagnostics;
 using Unity.Burst;
+using Unity.Burst.Intrinsics;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
-using UnityEngine;
+using Unity.Transforms;
 using ZG;
 using ZG.Mathematics;
 using ZG.Unsafe;
@@ -27,7 +28,7 @@ public struct GameNPCWorld
     private struct NPC
     {
         public int stageIndex;
-        public int layer;
+        //public int layer;
 
         public float3 position;
         public quaternion rotation;
@@ -101,7 +102,7 @@ public struct GameNPCWorld
         {
             while (__npcIndices.MoveNext())
             {
-                if (__npcs[__npcIndices.Current].layer == Layer)
+                if (__npcs[__npcIndices.Current].quadTreeItem.layer == Layer)
                     return true;
             }
 
@@ -113,7 +114,7 @@ public struct GameNPCWorld
             float minLengthSQ = float.MaxValue;
             foreach (var bound in __bounds)
             {
-                if((bound.layerMask & (1 << __npcs[npcIndex].layer)) == 0)
+                if((bound.layerMask & (1 << __npcs[npcIndex].quadTreeItem.layer)) == 0)
                     continue;
                 
                 minLengthSQ = math.min(minLengthSQ, math.distancesq(bound.position, __npcs[npcIndex].position));
@@ -159,9 +160,24 @@ public struct GameNPCWorld
 
         __world = default;
     }
+    
+    public void Dispose()
+    {
+        __activeIndices.Dispose();
+        __npcs.Dispose();
+        
+        if(__quadTree.isCreated)
+            __quadTree.Dispose();
+        
+        if(__world.isCreated)
+            __world.Dispose();
+    }
 
     public void Reset(int layers, in float3 min, in float3 max)
     {
+        __activeIndices.Clear();
+        __npcs.Clear();
+        
         var allocator = this.allocator;
         
         if(__quadTree.isCreated)
@@ -173,18 +189,6 @@ public struct GameNPCWorld
             __world.Reset(layers);
         else
             __world = new LandscapeWorld<int>(allocator, layers);
-    }
-
-    public void Dispose()
-    {
-        __activeIndices.Dispose();
-        __npcs.Dispose();
-        
-        if(__quadTree.isCreated)
-            __quadTree.Dispose();
-        
-        if(__world.isCreated)
-            __world.Dispose();
     }
 
     public bool Contains(int index) => __npcs.ContainsKey(index);
@@ -202,14 +206,13 @@ public struct GameNPCWorld
         in float3 min, in float3 max)
     {
         if (__npcs.TryGetValue(index, out var npc))
-            __quadTree.Remove(npc.layer, npc.quadTreeItem);
+            __quadTree.Remove(npc.quadTreeItem);
         
         var center = position + (max + min) * 0.5f;
         var box = new Box(center, (max - min) * 0.5f, rotation);
         var worldExtends = box.worldExtents;
         
         npc.stageIndex = stageIndex;
-        npc.layer = layer;
         npc.rotation = rotation;
         npc.position = position;
         npc.quadTreeItem = __quadTree.Add(layer, center - worldExtends, center + worldExtends, index);
@@ -219,16 +222,18 @@ public struct GameNPCWorld
 
     public bool Move(
         int index, 
-        int layer, 
+        int stageIndex, 
         in quaternion rotation, 
         in float3 position)
     {
         if (__npcs.TryGetValue(index, out var npc))
         {
-            npc.quadTreeItem.Get(out _, out float3 min, out float3 max);
+            npc.quadTreeItem.Get(out _, out float3 min, out float3 max, out int layer);
 
-            if (__quadTree.Remove(npc.layer, npc.quadTreeItem))
+            if (__quadTree.Remove(npc.quadTreeItem))
             {
+                npc.stageIndex = stageIndex;
+                
                 float3 offset = position - npc.position;
                 min += offset;
                 max += offset;
@@ -236,7 +241,6 @@ public struct GameNPCWorld
                 var box = new Box(center, (max - min) * 0.5f, math.mul(rotation, math.inverse(npc.rotation)));
                 var worldExtends = box.worldExtents;
 
-                npc.layer = layer;
                 npc.position = position;
                 npc.rotation = rotation;
 
@@ -275,21 +279,19 @@ public struct GameNPCWorld
     public void Apply(in NativeArray<GameNPCBounds> bounds)
     {
         var npcIndices = new NativeList<int>(Allocator.Temp);
-
-        uint layerMask = 0;
-        foreach (var activeIndex in __activeIndices)
-            layerMask |= 1u << __npcs[activeIndex].layer;
+        
+        npcIndices.AddRange(__activeIndices.AsArray());
 
         Filter filter;
         filter.npcIndices = npcIndices;
 
         foreach (var bound in bounds)
-        {
             __quadTree.SearchAll(ref filter, bound.min, bound.max, bound.layerMask);
 
-            layerMask |= bound.layerMask;
-        }
-
+        uint layerMask = 0;
+        foreach (var npcIndex in npcIndices)
+            layerMask |= 1u << __npcs[npcIndex].quadTreeItem.layer;
+        
         if (layerMask == 0)
             return;
 
@@ -537,7 +539,7 @@ public struct GameNPCWorldShared : ILandscapeWorld<int>
             max);
     }
 
-    public unsafe bool Move(int index, int layer, in quaternion rotation, in float3 position)
+    public unsafe bool Move(int index, int stageIndex, in quaternion rotation, in float3 position)
     {
         lookupJobManager.CompleteReadWriteDependency();
 
@@ -545,7 +547,7 @@ public struct GameNPCWorldShared : ILandscapeWorld<int>
         
         return __data->instance.Move(
             index, 
-            layer, 
+            stageIndex, 
             rotation, 
             position);
     }
@@ -671,6 +673,75 @@ public struct GameNPCWorldShared : ILandscapeWorld<int>
 public partial struct GameNPCWorldSystem : ISystem
 {
     [BurstCompile]
+    private struct Reset : IJob
+    {
+        [ReadOnly]
+        public NativeArray<int> baseEntityIndexArray;
+        public NativeList<GameNPCBounds> bounds;
+
+        public void Execute()
+        {
+            bounds.Resize(baseEntityIndexArray[baseEntityIndexArray.Length - 1] + 1, NativeArrayOptions.UninitializedMemory);
+        }
+    }
+    
+    private struct Collect
+    {
+        [ReadOnly]
+        public NativeArray<GameNPCBounds> bounds;
+
+        [ReadOnly]
+        public NativeArray<LocalToWorld> localToWorlds;
+
+        public GameNPCBounds Execute(int index)
+        {
+            var bounds = this.bounds[index];
+            var localToWorld = this.localToWorlds[index];
+            var box = new Box(
+                    (bounds.max + bounds.min) * 0.5f,
+                    (bounds.max - bounds.min) * 0.5f,
+                    localToWorld.Value);
+
+            float3 center = box.center, extends = box.worldExtents;
+
+            bounds.min = center - extends;
+            bounds.max = center + extends;
+            bounds.position = math.transform(localToWorld.Value, bounds.position);
+            
+            return bounds;
+        }
+    }
+
+    [BurstCompile]
+    private struct CollectEx : IJobChunk
+    {
+        [ReadOnly]
+        public ComponentTypeHandle<GameNPCBounds> boundsType;
+
+        [ReadOnly]
+        public ComponentTypeHandle<LocalToWorld> localToWorldType;
+
+        [ReadOnly] 
+        public NativeArray<int> baseEntityIndexArray;
+
+        [NativeDisableParallelForRestriction]
+        public NativeArray<GameNPCBounds> results;
+
+        public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in  v128 chunkEnabledMask)
+        {
+            int entityIndex = baseEntityIndexArray[unfilteredChunkIndex];
+            
+            Collect collect;
+            collect.bounds = chunk.GetNativeArray(ref boundsType);
+            collect.localToWorlds = chunk.GetNativeArray(ref localToWorldType);
+
+            var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+            while (iterator.NextEntityIndex(out int i))
+                results[entityIndex++] = collect.Execute(i);
+        }
+    }
+    
+    [BurstCompile]
     private struct Apply : IJob
     {
         [ReadOnly]
@@ -684,14 +755,20 @@ public partial struct GameNPCWorldSystem : ISystem
         }
     }
 
+    private EntityQuery __group;
+
+    private ComponentTypeHandle<GameNPCBounds> __boundsType;
+
+    private ComponentTypeHandle<LocalToWorld> __localToWorldType;
+
+    private NativeList<GameNPCBounds> __bounds;
+
     public GameNPCWorldShared world
     {
         get;
 
         private set;
     }
-
-    private EntityQuery __group;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
@@ -701,12 +778,20 @@ public partial struct GameNPCWorldSystem : ISystem
                 .WithAll<GameNPCBounds>()
                 .Build(ref state);
         
+        state.RequireForUpdate(__group);
+
+        __boundsType = state.GetComponentTypeHandle<GameNPCBounds>(true);
+        
+        __localToWorldType = state.GetComponentTypeHandle<LocalToWorld>(true);
+
+        __bounds = new NativeList<GameNPCBounds>(Allocator.Persistent);
         world = new GameNPCWorldShared(Allocator.Persistent);
     }
 
     //[BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
+        __bounds.Dispose();
         world.Dispose();
     }
     
@@ -716,15 +801,32 @@ public partial struct GameNPCWorldSystem : ISystem
         var world = this.world;
         if (!world.isVail)
             return;
+
+        var worldUpdateAllocator = state.WorldUpdateAllocator;
+
+        var baseEntityIndexArray = __group.CalculateBaseEntityIndexArrayAsync(worldUpdateAllocator, state.Dependency, out var jobHandle);
+
+        Reset reset;
+        reset.baseEntityIndexArray = baseEntityIndexArray;
+        reset.bounds = __bounds;
+        jobHandle = reset.ScheduleByRef(jobHandle);
+
+        var bounds = __bounds.AsDeferredJobArray();
+
+        CollectEx collect;
+        collect.boundsType = __boundsType.UpdateAsRef(ref state);
+        collect.localToWorldType = __localToWorldType.UpdateAsRef(ref state);
+        collect.baseEntityIndexArray = baseEntityIndexArray;
+        collect.results = bounds;
+        jobHandle = collect.ScheduleParallelByRef(__group, jobHandle);
         
         Apply apply;
         apply.world = world.writer;
-        apply.bounds = __group.ToComponentDataListAsync<GameNPCBounds>(state.WorldUpdateAllocator, out var jobHandle);
+        apply.bounds = bounds;
 
         ref var worldJobManager = ref world.lookupJobManager;
 
-        jobHandle = apply.ScheduleByRef(JobHandle.CombineDependencies(worldJobManager.readWriteJobHandle, jobHandle,
-            state.Dependency));
+        jobHandle = apply.ScheduleByRef(JobHandle.CombineDependencies(worldJobManager.readWriteJobHandle, jobHandle));
 
         worldJobManager.readWriteJobHandle = jobHandle;
 

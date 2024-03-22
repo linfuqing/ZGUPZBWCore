@@ -111,7 +111,7 @@ public struct GameEntityAction : ICleanupBufferElementData
                 continue;
 
             status = states[entity];
-            if ((status.value & GameActionStatus.Status.Perform) == 0 || status.time < time)
+            if ((status.value & GameActionStatus.Status.Perform) != 0 && status.time < time)
                 continue;
 
             status.time = time;
