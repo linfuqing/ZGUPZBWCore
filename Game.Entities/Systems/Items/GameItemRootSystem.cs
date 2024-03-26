@@ -109,21 +109,29 @@ public partial struct GameItemRootStatusSystem : ISystem, IEntityCommandProducer
     {
         public GameItemManager.ReadOnlyInfos infos;
 
+        [ReadOnly]
+        public NativeArray<GameNodeStatus> states;
+
         public NativeArray<GameItemRoot> roots;
 
         public NativeQueue<GameItemHandle>.ParallelWriter handles;
 
-        public void Execute(int index)
+        public bool Execute(int index)
         {
+            if (((GameEntityStatus)states[index].value & GameEntityStatus.Mask) != GameEntityStatus.Dead)
+                return false;
+            
             var handle = roots[index].handle;
             if (!infos.TryGetValue(handle, out var item) || !item.parentHandle.Equals(GameItemHandle.Empty))
-                return;
+                return false;
 
             GameItemRoot root;
             root.handle = GameItemHandle.Empty;
             roots[index] = root;
 
             handles.Enqueue(handle);
+
+            return true;
         }
     }
 
@@ -135,8 +143,8 @@ public partial struct GameItemRootStatusSystem : ISystem, IEntityCommandProducer
         //[ReadOnly]
         //public EntityTypeHandle entityType;
 
-        //[ReadOnly]
-        //public ComponentTypeHandle<GameNodeStatus> statusType;
+        [ReadOnly]
+        public ComponentTypeHandle<GameNodeStatus> statusType;
 
         public ComponentTypeHandle<GameItemRoot> rootType;
 
@@ -150,6 +158,7 @@ public partial struct GameItemRootStatusSystem : ISystem, IEntityCommandProducer
             
             CollectRoots collectRoots;
             collectRoots.infos = infos;
+            collectRoots.states = chunk.GetNativeArray(ref statusType);
             collectRoots.roots = chunk.GetNativeArray(ref rootType);
             collectRoots.handles = handles;
 
@@ -159,7 +168,7 @@ public partial struct GameItemRootStatusSystem : ISystem, IEntityCommandProducer
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
             {
-                collectRoots.Execute(i);
+                if(collectRoots.Execute(i))
 
                 /*if (entityArray.IsCreated)
                 {
@@ -253,7 +262,7 @@ public partial struct GameItemRootStatusSystem : ISystem, IEntityCommandProducer
     private EntityQuery __siblingGroup;
 
     //private EntityTypeHandle __entityType;
-    //private ComponentTypeHandle<GameNodeStatus> __statusType;
+    private ComponentTypeHandle<GameNodeStatus> __statusType;
     private ComponentTypeHandle<GameItemRoot> __rootType;
     private BufferTypeHandle<GameItemSibling> __siblingType;
 
@@ -280,7 +289,7 @@ public partial struct GameItemRootStatusSystem : ISystem, IEntityCommandProducer
 
         //__entityType = state.GetEntityTypeHandle();
         
-        //__statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
+        __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
         
         __rootType = state.GetComponentTypeHandle<GameItemRoot>();
 
@@ -322,7 +331,7 @@ public partial struct GameItemRootStatusSystem : ISystem, IEntityCommandProducer
             CollectRootsEx collect;
             collect.infos = __itemManager.readOnlyInfos;
             //collect.entityType = entityType;
-            //collect.statusType = statusType;
+            collect.statusType = __statusType.UpdateAsRef(ref state);
             collect.rootType = __rootType.UpdateAsRef(ref state);
             collect.handles = handles;
             //collect.entityManager = entityManager;

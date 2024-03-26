@@ -6,6 +6,7 @@ using Unity.Mathematics;
 using UnityEngine;
 using ZG;
 
+[Flags]
 public enum GameEntityStatus
 {
     KnockedOut = GameNodeStatus.DELAY | GameNodeStatus.STOP,
