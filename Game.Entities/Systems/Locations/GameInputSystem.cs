@@ -838,6 +838,9 @@ public partial struct GameInputSystem : ISystem
             in DynamicBuffer<GameEntityActorActionData> actorActions,
             in DynamicBuffer<GameInputActionInstance> actionInstances)
         {
+            if (selectionDisabled.HasComponent(entity))
+                return false;
+            
             if (states.HasComponent(entity))
             {
                 var status = states[entity].value & (int)GameEntityStatus.Mask;
@@ -895,7 +898,7 @@ public partial struct GameInputSystem : ISystem
             {
                 result.entity = Entity.Null;
 
-                ref var actionSetDefinition = ref this.actionSetDefinition.Value;
+                //ref var actionSetDefinition = ref this.actionSetDefinition.Value;
 
                 foreach (var target in targets)
                 {
