@@ -84,7 +84,7 @@ public class GameDreamerComponent : EntityProxyComponent, IEntityComponent
     public event Action onSleep;
     public event Action onAwake;
     public event Action onSleeping;
-    public event Action onAwaking;
+    public event Action<bool> onAwaking;
 
     [UnityEngine.SerializeField]
     internal Dreams[] _dreams = null;
@@ -470,7 +470,7 @@ public class GameDreamerComponent : EntityProxyComponent, IEntityComponent
             status = GameDreamerStatus.Unknown;
 
             if (onAwaking != null)
-                onAwaking();
+                onAwaking(true);
         }
 
         index = -1;
@@ -519,7 +519,7 @@ public class GameDreamerComponent : EntityProxyComponent, IEntityComponent
                         break;
                     default:
                         if (onAwaking != null)
-                            onAwaking();
+                            onAwaking(false);
                         break;
                 }
 
