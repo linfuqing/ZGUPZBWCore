@@ -59,9 +59,31 @@ using Random = Unity.Mathematics.Random;
 [Serializable]
 public struct GameActionPickableData
 {
-    public float healthMax;
-    public float torpidityMax;
-    public float animalMax;
+    [Serializable]
+    public struct Range
+    {
+        public float min;
+        public float max;
+        public float chance;
+
+        public float Compute(float value, float entityMax)
+        {
+            if (chance > math.FLT_MIN_NORMAL)
+            {
+                float result = max > min ? math.smoothstep(max, min, value) : 0.0f;
+                if (entityMax > math.FLT_MIN_NORMAL)
+                    result *= math.clamp(max / entityMax, 0.0f, 1.0f);
+
+                return result * chance;
+            }
+
+            return 0.0f;
+        }
+    }
+    
+    public Range health;
+    public Range torpidity;
+    public Range animal;
 
     public float Compute( 
         float entityHealthMax, 
@@ -71,9 +93,9 @@ public struct GameActionPickableData
         float animalMax, 
         float animalValue)
     {
-        float chance = entityHealthMax > math.FLT_MIN_NORMAL ? math.clamp((healthMax - entityHealthValue) / entityHealthMax, 0.0f, 1.0f) : 0.0f;
-        chance += entityTorpidityMax > math.FLT_MIN_NORMAL ? math.clamp((torpidityMax - entityTorpidityValue) / entityTorpidityMax, 0.0f, 1.0f) : 0.0f;
-        chance += animalMax > math.FLT_MIN_NORMAL ? math.clamp((this.animalMax - animalMax + animalValue) / animalMax, 0.0f, 1.0f) : 0.0f;
+        float chance = health.Compute(entityHealthValue, entityHealthMax);
+        chance += torpidity.Compute(entityTorpidityValue, entityTorpidityMax);
+        chance += animal.Compute(animalValue, animalMax);
 
         return chance;
     }
@@ -978,37 +1000,35 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                 transform, 
                 //math.RigidTransform(Math.FromToRotation(math.up(), damager.normal), damager.position), 
                 ref destinationHandle);
-            
-            if ((action.spawnFlag & GameActionSpawnFlag.DamageToPicked) == GameActionSpawnFlag.DamageToPicked &&
-                destinationHandle.Equals(GameItemHandle.Empty))
-            {
-                if (itemHandleEntities.TryGetValue(GameItemStructChangeFactory.Convert(sourceHandle),
-                        out Entity entity))
-                {
-                    GameItemSpawnStatus status;
-                    status.nodeStatus = nodeStates.HasComponent(damager.target) ? nodeStates[damager.target].value : 0;
-                    status.entityHealth = healthes.HasComponent(damager.target)
-                        ? healthes[damager.target].value
-                        : 0.0f;
-                    status.entityTorpidity = torpidities.HasComponent(damager.target)
-                        ? torpidities[damager.target].value
-                        : 0.0f;
-                    status.animalValue = animalInfos.HasComponent(damager.target)
-                        ? animalInfos[damager.target].value
-                        : 0.0f;
-                    status.chance = action.pickable.Compute(
-                        healthMaxes.HasComponent(damager.target) ? healthMaxes[damager.target].max : 0,
-                        status.entityHealth,
-                        torpidityMaxes.HasComponent(damager.target) ? torpidityMaxes[damager.target].max : 0, 
-                        status.entityTorpidity, 
-                        animals.HasComponent(damager.target) ? animals[damager.target].max : 0, 
-                        status.animalValue);
-                    status.handle = itemRoots.HasComponent(instance.entity)
-                        ? itemRoots[instance.entity].handle
-                        : GameItemHandle.Empty;
 
-                    entityManager.AddComponentData(entity, status);
-                }
+            if ((action.spawnFlag & GameActionSpawnFlag.DamageToPicked) == GameActionSpawnFlag.DamageToPicked &&
+                destinationHandle.Equals(GameItemHandle.Empty) &&
+                itemHandleEntities.TryGetValue(GameItemStructChangeFactory.Convert(sourceHandle),
+                    out Entity entity))
+            {
+                GameItemSpawnStatus status;
+                status.nodeStatus = nodeStates.HasComponent(damager.target) ? nodeStates[damager.target].value : 0;
+                status.entityHealth = healthes.HasComponent(damager.target)
+                    ? healthes[damager.target].value
+                    : 0.0f;
+                status.entityTorpidity = torpidities.HasComponent(damager.target)
+                    ? torpidities[damager.target].value
+                    : 0.0f;
+                status.animalValue = animalInfos.HasComponent(damager.target)
+                    ? animalInfos[damager.target].value
+                    : 0.0f;
+                status.chance = action.pickable.Compute(
+                    healthMaxes.HasComponent(damager.target) ? healthMaxes[damager.target].max : 0,
+                    status.entityHealth,
+                    torpidityMaxes.HasComponent(damager.target) ? torpidityMaxes[damager.target].max : 0,
+                    status.entityTorpidity,
+                    animals.HasComponent(damager.target) ? animals[damager.target].max : 0,
+                    status.animalValue);
+                status.handle = itemRoots.HasComponent(instance.entity)
+                    ? itemRoots[instance.entity].handle
+                    : GameItemHandle.Empty;
+
+                entityManager.AddComponentData(entity, status);
 
                 entitiesToPick.Add(damager.target);
             }
