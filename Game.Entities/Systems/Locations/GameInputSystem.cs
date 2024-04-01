@@ -9,6 +9,7 @@ using Unity.Collections;
 using Unity.Physics;
 using Unity.Transforms;
 using ZG;
+using PhysicsRaycastColliderToIgnore = ZG.Entities.Physics.PhysicsRaycastColliderToIgnore;
 
 public enum GameInputButton
 {
@@ -801,6 +802,9 @@ public partial struct GameInputSystem : ISystem
         public ComponentLookup<PhysicsCollider> colliders;
 
         [ReadOnly]
+        public ComponentLookup<PhysicsRaycastColliderToIgnore> physicsRaycastCollidersToIgnore;
+
+        [ReadOnly]
         public ComponentLookup<GameInputSelectionDisabled> selectionDisabled;
 
         [ReadOnly]
@@ -838,6 +842,9 @@ public partial struct GameInputSystem : ISystem
             in DynamicBuffer<GameEntityActorActionData> actorActions,
             in DynamicBuffer<GameInputActionInstance> actionInstances)
         {
+            if (physicsRaycastCollidersToIgnore.HasComponent(entity) && physicsRaycastCollidersToIgnore.IsComponentEnabled(entity))
+                return false;
+            
             if (selectionDisabled.HasComponent(entity))
                 return false;
             
@@ -936,6 +943,9 @@ public partial struct GameInputSystem : ISystem
         public ComponentLookup<PhysicsCollider> colliders;
 
         [ReadOnly]
+        public ComponentLookup<PhysicsRaycastColliderToIgnore> physicsRaycastCollidersToIgnore;
+
+        [ReadOnly]
         public ComponentLookup<GameInputSelectionDisabled> selectionDisabled;
 
         [ReadOnly]
@@ -1014,6 +1024,7 @@ public partial struct GameInputSystem : ISystem
                 select.actionSetDefinition = actionSetDefinition;
                 select.targets = targets;
                 select.colliders = colliders;
+                select.physicsRaycastCollidersToIgnore = physicsRaycastCollidersToIgnore;
                 select.selectionDisabled = selectionDisabled;
                 select.selectables = selectables;
                 select.entities = entities;
@@ -1212,6 +1223,8 @@ public partial struct GameInputSystem : ISystem
 
     private ComponentLookup<NetworkIdentityType> __identityTypes;
 
+    private ComponentLookup<PhysicsRaycastColliderToIgnore> __physicsRaycastCollidersToIgnore;
+
     private ComponentLookup<GameInputSelectionDisabled> __selectionDisabled;
 
     private ComponentLookup<GameInputSelectable> __selectables;
@@ -1262,6 +1275,7 @@ public partial struct GameInputSystem : ISystem
         __entityType = state.GetEntityTypeHandle();
         __colliders = state.GetComponentLookup<PhysicsCollider>(true);
         __identityTypes = state.GetComponentLookup<NetworkIdentityType>(true);
+        __physicsRaycastCollidersToIgnore = state.GetComponentLookup<PhysicsRaycastColliderToIgnore>(true);
         __selectionDisabled = state.GetComponentLookup<GameInputSelectionDisabled>(true);
         __selectables = state.GetComponentLookup<GameInputSelectable>(true);
         __entities = state.GetComponentLookup<GameInputEntity>(true);
@@ -1361,6 +1375,7 @@ public partial struct GameInputSystem : ISystem
         select.actionSetDefinition = actionSetDefinition;
         select.targets = targetsReader;
         select.colliders = colliders;
+        select.physicsRaycastCollidersToIgnore = __physicsRaycastCollidersToIgnore.UpdateAsRef(ref state);
         select.selectionDisabled = __selectionDisabled.UpdateAsRef(ref state);
         select.selectables = __selectables.UpdateAsRef(ref state);
         select.entities = __entities.UpdateAsRef(ref state);

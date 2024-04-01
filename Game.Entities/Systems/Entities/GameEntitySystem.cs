@@ -1241,8 +1241,8 @@ public partial struct GameEntityActorSystem : ISystem
             //UnityEngine.Debug.Log($"Do: {frameIndex} : {entityIndices[index].value} : {entityArray[index].Index} : {(double)actorTime.value} : {(double)command.time} : {(double)this.actorActionInfos[index][command.index].coolDownTime} : {translations[index].Value}");
             if ((actorTime.actionMask & action.instance.actorMask) != 0 || actorTime.value < command.time)
             {
-                //double x = (double)actorTime.value, y = (double)command.time;
-                //UnityEngine.Debug.Log($"Do: {entityArray[index].Index} : {command.index} : {x} : {y}");
+                double x = (double)actorTime.value, y = (double)command.time;
+                UnityEngine.Debug.Log($"Do: {entityArray[index].Index} : {command.index} : {x} : {y}");
 
                 var actorActionInfos = this.actorActionInfos[index];
                 if (actorActionInfos.Length <= command.index)

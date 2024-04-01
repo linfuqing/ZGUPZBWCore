@@ -475,7 +475,7 @@ public partial struct GameActionNormalExecutorSystem : ISystem, IEntityCommandPr
                 }
             }
 
-            if (index < targets.Length)
+            if (index < targets.Length && chunk.IsComponentEnabled(ref targetType, index))
             {
                 var target = targets[index];
                 if (isDrowning)
