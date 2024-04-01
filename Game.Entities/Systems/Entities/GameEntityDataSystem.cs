@@ -964,73 +964,93 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                 }
             }
 
-            var action = actions[instance.actionIndex];
-            
-            var sourceHandle = GameItemHandle.Empty;
-            if ((action.spawnFlag & GameActionSpawnFlag.DamageToPicked) == GameActionSpawnFlag.DamageToPicked &&
-                (!owners.HasComponent(damager.target) || owners[damager.target].entity == Entity.Null) &&
-                itemRoots.HasComponent(damager.target) && 
-                itemRoots.HasComponent(instance.entity))
-            {
-                var handle = itemRoots[damager.target].handle;
-                if (buffCalculator.itemManager.TryGetValue(handle, out var item) &&
-                    buffCalculator.itemManager.Find(
-                        itemRoots[instance.entity].handle,
-                        item.type,
-                        item.count,
-                        out _,
-                        out _))
-                    sourceHandle = handle;
-            }
-
-            var destinationHandle = sourceHandle;
-            
-            var forward = math.forward( damager.transform.rot);
+            var forward = math.forward(damager.transform.rot);
             forward = ZG.Mathematics.Math.ProjectOnPlane(forward, math.up());
             var transform = math.RigidTransform(
-                ZG.Mathematics.Math.FromToRotation(math.float3(0.0f, 0.0f, 1.0f), forward), 
+                ZG.Mathematics.Math.FromToRotation(math.float3(0.0f, 0.0f, 1.0f), forward),
                 damager.transform.pos);
-            
-            spawner.Spawn(
-                action.spawnStartIndex,
-                action.spawnCount,
-                GameActionSpawnType.Damage,
-                //instance.time + elapsedTime,
-                instance.entity,
-                transform, 
-                //math.RigidTransform(Math.FromToRotation(math.up(), damager.normal), damager.position), 
-                ref destinationHandle);
 
-            if ((action.spawnFlag & GameActionSpawnFlag.DamageToPicked) == GameActionSpawnFlag.DamageToPicked &&
-                destinationHandle.Equals(GameItemHandle.Empty) &&
-                itemHandleEntities.TryGetValue(GameItemStructChangeFactory.Convert(sourceHandle),
-                    out Entity entity))
+            var action = actions[instance.actionIndex];
+            if ((action.spawnFlag & GameActionSpawnFlag.DamageToPicked) == GameActionSpawnFlag.DamageToPicked)
             {
-                GameItemSpawnStatus status;
-                status.nodeStatus = nodeStates.HasComponent(damager.target) ? nodeStates[damager.target].value : 0;
-                status.entityHealth = healthes.HasComponent(damager.target)
-                    ? healthes[damager.target].value
-                    : 0.0f;
-                status.entityTorpidity = torpidities.HasComponent(damager.target)
-                    ? torpidities[damager.target].value
-                    : 0.0f;
-                status.animalValue = animalInfos.HasComponent(damager.target)
-                    ? animalInfos[damager.target].value
-                    : 0.0f;
-                status.chance = action.pickable.Compute(
-                    healthMaxes.HasComponent(damager.target) ? healthMaxes[damager.target].max : 0,
-                    status.entityHealth,
-                    torpidityMaxes.HasComponent(damager.target) ? torpidityMaxes[damager.target].max : 0,
-                    status.entityTorpidity,
-                    animals.HasComponent(damager.target) ? animals[damager.target].max : 0,
-                    status.animalValue);
-                status.handle = itemRoots.HasComponent(instance.entity)
-                    ? itemRoots[instance.entity].handle
-                    : GameItemHandle.Empty;
+                var sourceHandle = GameItemHandle.Empty;
+                if ((!owners.HasComponent(damager.target) || owners[damager.target].entity == Entity.Null) &&
+                    itemRoots.HasComponent(damager.target) &&
+                    itemRoots.HasComponent(instance.entity))
+                {
+                    var handle = itemRoots[damager.target].handle;
+                    if (buffCalculator.itemManager.TryGetValue(handle, out var item) &&
+                        buffCalculator.itemManager.Find(
+                            itemRoots[instance.entity].handle,
+                            item.type,
+                            item.count,
+                            out _,
+                            out _))
+                        sourceHandle = handle;
+                }
 
-                entityManager.AddComponentData(entity, status);
+                if (!sourceHandle.Equals(GameItemHandle.Empty))
+                {
+                    var destinationHandle = sourceHandle;
 
-                entitiesToPick.Add(damager.target);
+                    spawner.Spawn(
+                        action.spawnStartIndex,
+                        action.spawnCount,
+                        GameActionSpawnType.Damage,
+                        //instance.time + elapsedTime,
+                        instance.entity,
+                        transform,
+                        //math.RigidTransform(Math.FromToRotation(math.up(), damager.normal), damager.position), 
+                        ref destinationHandle);
+
+                    if ((action.spawnFlag & GameActionSpawnFlag.DamageToPicked) == GameActionSpawnFlag.DamageToPicked &&
+                        destinationHandle.Equals(GameItemHandle.Empty) &&
+                        itemHandleEntities.TryGetValue(GameItemStructChangeFactory.Convert(sourceHandle),
+                            out Entity entity))
+                    {
+                        GameItemSpawnStatus status;
+                        status.nodeStatus = nodeStates.HasComponent(damager.target)
+                            ? nodeStates[damager.target].value
+                            : 0;
+                        status.entityHealth = healthes.HasComponent(damager.target)
+                            ? healthes[damager.target].value
+                            : 0.0f;
+                        status.entityTorpidity = torpidities.HasComponent(damager.target)
+                            ? torpidities[damager.target].value
+                            : 0.0f;
+                        status.animalValue = animalInfos.HasComponent(damager.target)
+                            ? animalInfos[damager.target].value
+                            : 0.0f;
+                        status.chance = action.pickable.Compute(
+                            healthMaxes.HasComponent(damager.target) ? healthMaxes[damager.target].max : 0,
+                            status.entityHealth,
+                            torpidityMaxes.HasComponent(damager.target) ? torpidityMaxes[damager.target].max : 0,
+                            status.entityTorpidity,
+                            animals.HasComponent(damager.target) ? animals[damager.target].max : 0,
+                            status.animalValue);
+                        status.handle = itemRoots.HasComponent(instance.entity)
+                            ? itemRoots[instance.entity].handle
+                            : GameItemHandle.Empty;
+
+                        entityManager.AddComponentData(entity, status);
+
+                        entitiesToPick.Add(damager.target);
+                    }
+                }
+            }
+            else
+            {
+                var handle = GameItemHandle.Empty;
+                
+                spawner.Spawn(
+                    action.spawnStartIndex,
+                    action.spawnCount,
+                    GameActionSpawnType.Damage,
+                    //instance.time + elapsedTime,
+                    instance.entity,
+                    transform,
+                    //math.RigidTransform(Math.FromToRotation(math.up(), damager.normal), damager.position), 
+                    ref handle);
             }
         }
 
