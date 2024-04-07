@@ -5,23 +5,15 @@ using Unity.Entities;
 using Unity.Jobs;
 using ZG;
 
-public struct GameRnageSpawnerNode : IBufferElementData
+public struct GameRangeSpawnerNode : IBufferElementData
 {
     public int sliceIndex;
 }
 
 public struct GameRangeSpawnerStatus : IComponentData
 {
-    public enum Value
-    {
-        Start, 
-        End
-    }
-
-    public Value value;
-
     public int count;
-    //public Entity entity;
+    public Entity entity;
 }
 
 [BurstCompile, CreateAfter(typeof(GameRandomSpawnerSystem))]
@@ -49,7 +41,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
 
         public BufferAccessor<GameRandomSpawnerNode> randomNodes;
 
-        public BufferAccessor<GameRnageSpawnerNode> nodes;
+        public BufferAccessor<GameRangeSpawnerNode> nodes;
         
         public NativeArray<GameRangeSpawnerStatus> states;
 
@@ -58,36 +50,48 @@ public partial struct GameRangeSpawnerSystem : ISystem
         public void Execute(int index)
         {
             var physicsTriggerEvents = this.physicsTriggerEvents[index];
-            Entity entity;
-            bool isContains;
-            isContains = false;
-            foreach (var physicsTriggerEvent in physicsTriggerEvents)
+            var state = states[index];
+            if (state.entity != Entity.Null)
             {
-                entity = physicsShapeParents.HasComponent(physicsTriggerEvent.entity)
-                    ? physicsShapeParents[physicsTriggerEvent.entity].entity
-                    : physicsTriggerEvent.entity;
-                if (nodeStates.HasComponent(entity) && ((GameEntityStatus)nodeStates[entity].value & GameEntityStatus.Mask) != GameEntityStatus.Dead)
+                if (!nodeStates.HasComponent(state.entity) ||
+                    ((GameEntityStatus)nodeStates[state.entity].value & GameEntityStatus.Mask) == GameEntityStatus.Dead)
+                    state.entity = Entity.Null;
+                else
                 {
-                    isContains = true;
+                    bool isContains = false;
+                    Entity entity;
+                    foreach (var physicsTriggerEvent in physicsTriggerEvents)
+                    {
+                        entity = physicsShapeParents.HasComponent(physicsTriggerEvent.entity)
+                            ? physicsShapeParents[physicsTriggerEvent.entity].entity
+                            : physicsTriggerEvent.entity;
+                        if (entity == state.entity)
+                        {
+                            isContains = true;
 
-                    break;
+                            break;
+                        }
+                    }
+                    
+                    if(!isContains)
+                        state.entity = Entity.Null;
+                }
+
+                if (state.entity == Entity.Null)
+                {
+                    states[index] = state;
+                    
+                    nodes[index].Clear();
+                    
+                    entities.Enqueue(entityArray[index]);
+
+                    return;
                 }
             }
 
-            var state = states[index];
-            if (isContains)
+            bool isFree = state.entity == Entity.Null;
+            if (!isFree && followers[index].Length < 1 && spawner.IsEmpty(entityArray[index]))
             {
-                if (state.value == GameRangeSpawnerStatus.Value.End)
-                {
-                    state.value = GameRangeSpawnerStatus.Value.Start;
-                    state.count = 0;
-                }
-                else
-                {
-                    if (followers[index].Length > 0 || !spawner.IsEmpty(entityArray[index]))
-                        return;
-                }
-                
                 var nodes = this.nodes[index];
                 if (state.count < nodes.Length)
                 {
@@ -96,16 +100,36 @@ public partial struct GameRangeSpawnerSystem : ISystem
                     randomNodes[index].Add(randomNode);
                 }
                 else
-                    state.value = GameRangeSpawnerStatus.Value.End;
-                    
-                states[index] = state;
+                    isFree = true;
             }
-            else if (state.value != GameRangeSpawnerStatus.Value.End)
+            
+            if (isFree)
             {
-                state.value = GameRangeSpawnerStatus.Value.End;
-                states[index] = state;
-                
-                entities.Enqueue(entityArray[index]);
+                Entity target = Entity.Null, entity;
+                foreach (var physicsTriggerEvent in physicsTriggerEvents)
+                {
+                    entity = physicsShapeParents.HasComponent(physicsTriggerEvent.entity)
+                        ? physicsShapeParents[physicsTriggerEvent.entity].entity
+                        : physicsTriggerEvent.entity;
+                    if (entity == state.entity)
+                    {
+                        isFree = false;
+
+                        break;
+                    }
+                    
+                    if(target == null && 
+                       nodeStates.HasComponent(entity) &&
+                       ((GameEntityStatus)nodeStates[entity].value & GameEntityStatus.Mask) != GameEntityStatus.Dead)
+                        target = entity;
+                }
+
+                if (isFree)
+                {
+                    state.count = 0;
+                    state.entity = target;
+                    states[index] = state;
+                }
             }
         }
     }
@@ -132,7 +156,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
 
         public BufferTypeHandle<GameRandomSpawnerNode> randomNodeType;
 
-        public BufferTypeHandle<GameRnageSpawnerNode> nodeType;
+        public BufferTypeHandle<GameRangeSpawnerNode> nodeType;
         
         public ComponentTypeHandle<GameRangeSpawnerStatus> statusType;
 
@@ -210,7 +234,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
 
     private BufferTypeHandle<GameRandomSpawnerNode> __randomNodeType;
 
-    private BufferTypeHandle<GameRnageSpawnerNode> __nodeType;
+    private BufferTypeHandle<GameRangeSpawnerNode> __nodeType;
         
     private ComponentTypeHandle<GameRangeSpawnerStatus> __statusType;
 
@@ -227,7 +251,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
             __group = builder
                 .WithAll<PhysicsTriggerEvent, GameFollower, GameEntityCamp>()
                 .WithAllRW<GameRandomSpawnerNode>()
-                .WithAllRW<GameRnageSpawnerNode>()
+                .WithAllRW<GameRangeSpawnerNode>()
                 .WithAllRW<GameRangeSpawnerStatus>()
                 .Build(ref state);
                 
@@ -241,7 +265,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
 
         __randomNodeType = state.GetBufferTypeHandle<GameRandomSpawnerNode>();
 
-        __nodeType = state.GetBufferTypeHandle<GameRnageSpawnerNode>();
+        __nodeType = state.GetBufferTypeHandle<GameRangeSpawnerNode>();
 
         __statusType = state.GetComponentTypeHandle<GameRangeSpawnerStatus>();
 

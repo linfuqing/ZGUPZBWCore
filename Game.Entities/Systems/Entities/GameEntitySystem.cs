@@ -555,6 +555,8 @@ public partial struct GameEntityEventSystem : ISystem
                 actorTime.actionMask = 0;
                 actorTime.value = command.time + command.performTime;
                 actorTimes[index] = actorTime;
+                
+                //UnityEngine.Debug.LogError($"Trigger {entity.Index} : {actorTime.value} : {frameIndex}");
             }
 
             if (index < actorInfos.Length)
@@ -1242,7 +1244,7 @@ public partial struct GameEntityActorSystem : ISystem
             if ((actorTime.actionMask & action.instance.actorMask) != 0 || actorTime.value < command.time)
             {
                 double x = (double)actorTime.value, y = (double)command.time;
-                UnityEngine.Debug.Log($"Do: {entityArray[index].Index} : {command.index} : {x} : {y}");
+                //UnityEngine.Debug.Log($"Do: {entityArray[index].Index} : {command.index} : {x} : {y}");
 
                 var actorActionInfos = this.actorActionInfos[index];
                 if (actorActionInfos.Length <= command.index)
@@ -1846,6 +1848,8 @@ public partial struct GameEntityActorSystem : ISystem
                         actorTime.value = command.time + action.info.performTime;
                         actorTimes[index] = actorTime;
 
+                        //UnityEngine.Debug.LogError($"Actor {entity.Index} : {actorTime.value} : {frameIndex}");
+
                         var actorInfo = actorInfos[index];
                         //distance += offset;
                         int version = ++actorInfo.version;
@@ -1874,8 +1878,6 @@ public partial struct GameEntityActorSystem : ISystem
                         //UnityEngine.Debug.Log($"{position} : {distance}");
                         //if (action.collider.IsCreated)
                         {
-                            //UnityEngine.Debug.LogError($"Actor {entity.Index} : {command.version}");
-
                             GameEntityCommandActionCreate result;
 
                             ComponentType componentType;
@@ -2882,6 +2884,8 @@ public partial struct GameEntityBreakSystem : ISystem
                     actorTime.value = command.time;
                     actorTime.value += command.delayTime;
                     actorTimes[index] = actorTime;
+                    
+                    //UnityEngine.Debug.LogError($"Break {entityArray[index].Index} : {actorTime.value} : {frameIndex}");
                 }
 
                 if (index < this.delay.Length)
