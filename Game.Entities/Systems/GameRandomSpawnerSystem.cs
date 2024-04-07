@@ -81,6 +81,115 @@ public struct GameSpawnInitializer : IEntityDataInitializer
     }
 }
 
+public struct GameRandomSpawner
+{
+    public struct Reader
+    {
+        [ReadOnly]
+        private SharedList<GameSpawnData>.Reader __commands;
+
+        [ReadOnly]
+        private NativeParallelMultiHashMap<Entity, TimeEventHandle<GameSpawnData>> __entityHandles;
+
+        public Reader(in GameRandomSpawner spawner)
+        {
+            __commands = spawner.__commands.reader;
+            __entityHandles = spawner.__entityHandles;
+        }
+
+        public bool IsEmpty(in Entity entity)
+        {
+            if (__entityHandles.ContainsKey(entity))
+                return false;
+            
+            int numCommands = __commands.length;
+            for (int i = 0; i < numCommands; ++i)
+            {
+                if (__commands[i].entity == entity)
+                    return false;
+            }
+
+            return true;
+        }
+    }
+    public struct Writer
+    {
+        private NativeList<GameSpawnData> __commands;
+
+        private NativeParallelMultiHashMap<Entity, TimeEventHandle<GameSpawnData>> __entityHandles;
+
+        private TimeManager<GameSpawnData>.Writer __timeManager;
+
+        internal Writer(ref GameRandomSpawner spawner)
+        {
+            __commands = spawner.__commands.writer;
+            __entityHandles = spawner.__entityHandles;
+            __timeManager = spawner.__timeManager.writer;
+        }
+
+        public bool IsEmpty(in Entity entity)
+        {
+            if (__entityHandles.ContainsKey(entity))
+                return false;
+            
+            int numCommands = __commands.Length;
+            for (int i = 0; i < numCommands; ++i)
+            {
+                if (__commands.ElementAt(i).entity == entity)
+                    return false;
+            }
+
+            return true;
+        }
+
+        public void Cancel(in Entity entity)
+        {
+            int numCommands = __commands.Length;
+            for (int i = 0; i < numCommands; ++i)
+            {
+                if (__commands.ElementAt(i).entity == entity)
+                {
+                    __commands.RemoveAt(i--);
+
+                    --numCommands;
+                }
+            }
+
+            if (__entityHandles.TryGetFirstValue(entity, out var handle, out var iterator))
+            {
+                do
+                {
+                    __timeManager.Cancel(handle);
+                } while (__entityHandles.TryGetNextValue(out handle, ref iterator));
+                
+                __entityHandles.Remove(entity);
+            }
+        }
+    }
+    
+    private SharedList<GameSpawnData> __commands;
+
+    private NativeParallelMultiHashMap<Entity, TimeEventHandle<GameSpawnData>> __entityHandles;
+
+    private TimeManager<GameSpawnData> __timeManager;
+
+    public ref LookupJobManager lookupJobManager => ref __commands.lookupJobManager;
+
+    public Reader reader => new Reader(this);
+
+    public Writer writer => new Writer(ref this);
+
+    internal GameRandomSpawner(
+        SharedList<GameSpawnData> commands, 
+        ref NativeParallelMultiHashMap<Entity, TimeEventHandle<GameSpawnData>> entityHandles, 
+        ref TimeManager<GameSpawnData> timeManager)
+    {
+        __commands = commands;
+        __entityHandles = entityHandles;
+        __timeManager = timeManager;
+    }
+}
+
 [BurstCompile,
     CreateAfter(typeof(GameItemSystem)),
     CreateAfter(typeof(GameItemObjectInitSystem)),
@@ -203,11 +312,13 @@ public partial struct GameRandomSpawnerSystem : ISystem
 
             public TimeManager<GameSpawnData>.Writer results;
 
-            public EntityComponentAssigner.Writer itemAssigner;
+            public NativeParallelMultiHashMap<Entity, TimeEventHandle<GameSpawnData>> entityHandles;
 
             public SharedHashMap<GameItemHandle, EntityArchetype>.Writer itemCreateEntityCommander;
 
             public SharedHashMap<Hash128, Entity>.Writer guidEntities;
+
+            public EntityComponentAssigner.Writer itemAssigner;
 
             public RandomResult Set(int startIndex, int count)
             {
@@ -217,6 +328,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
                 //spawnData.time = time;
                 result.entity = entity;
                 GameRandomSpawnerAsset asset;
+                TimeEventHandle<GameSpawnData> handle;
                 for (int i = 0; i < count; ++i)
                 {
                     asset = assets[startIndex + i];
@@ -241,7 +353,9 @@ public partial struct GameRandomSpawnerSystem : ISystem
                     if(asset.space == GameRandomSpawnerAsset.Space.Local)
                         result.transform = math.mul(transform, result.transform);
 
-                    results.Invoke(random.NextFloat(asset.minTime, asset.maxTime) + time, result);
+                    handle = results.Invoke(random.NextFloat(asset.minTime, asset.maxTime) + time, result);
+                    
+                    entityHandles.Add(entity, handle);
                 }
 
                 return RandomResult.Pass;
@@ -336,11 +450,13 @@ public partial struct GameRandomSpawnerSystem : ISystem
 
         public TimeManager<GameSpawnData>.Writer results;
 
-        public EntityComponentAssigner.Writer itemAssigner;
+        public NativeParallelMultiHashMap<Entity, TimeEventHandle<GameSpawnData>> entityHandles;
 
         public SharedHashMap<GameItemHandle, EntityArchetype>.Writer itemCreateEntityCommander;
 
         public SharedHashMap<Hash128, Entity>.Writer guidEntities;
+
+        public EntityComponentAssigner.Writer itemAssigner;
 
         public void Execute(int index)
         {
@@ -365,9 +481,10 @@ public partial struct GameRandomSpawnerSystem : ISystem
             assetHandler.itemManager = itemManager;
             assetHandler.assets = assets[index];
             assetHandler.results = results;
-            assetHandler.itemAssigner = itemAssigner;
+            assetHandler.entityHandles = entityHandles;
             assetHandler.itemCreateEntityCommander = itemCreateEntityCommander;
             assetHandler.guidEntities = guidEntities;
+            assetHandler.itemAssigner = itemAssigner;
 
             var groups = this.groups[index].Reinterpret<RandomGroup>().AsNativeArray();
             var slices = this.slices[index];
@@ -429,11 +546,13 @@ public partial struct GameRandomSpawnerSystem : ISystem
 
         public TimeManager<GameSpawnData>.Writer results;
 
-        public EntityComponentAssigner.Writer itemAssigner;
+        public NativeParallelMultiHashMap<Entity, TimeEventHandle<GameSpawnData>> entityHandles;
 
         public SharedHashMap<GameItemHandle, EntityArchetype>.Writer itemCreateEntityCommander;
 
         public SharedHashMap<Hash128, Entity>.Writer guidEntities;
+
+        public EntityComponentAssigner.Writer itemAssigner;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -456,9 +575,10 @@ public partial struct GameRandomSpawnerSystem : ISystem
             spawn.assets = chunk.GetBufferAccessor(ref assetType);
             spawn.nodes = chunk.GetBufferAccessor(ref nodeType);
             spawn.results = results;
-            spawn.itemAssigner = itemAssigner;
+            spawn.entityHandles = entityHandles;
             spawn.itemCreateEntityCommander = itemCreateEntityCommander;
             spawn.guidEntities = guidEntities;
+            spawn.itemAssigner = itemAssigner;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -466,6 +586,39 @@ public partial struct GameRandomSpawnerSystem : ISystem
                 spawn.Execute(i);
 
                 chunk.SetComponentEnabled(ref nodeType, i, false);
+            }
+        }
+    }
+
+    [BurstCompile]
+    private struct UpdateEntities : IJob
+    {
+        public int resultStartIndex;
+        
+        [ReadOnly]
+        public NativeArray<GameSpawnData> results;
+
+        public NativeParallelMultiHashMap<Entity, TimeEventHandle<GameSpawnData>> entityHandles;
+
+        public void Execute()
+        {
+            TimeEventHandle<GameSpawnData> handle;
+            NativeParallelMultiHashMapIterator<Entity> iterator;
+            int numResults = results.Length;
+            for (int i = resultStartIndex; i < numResults; ++i)
+            {
+                if(entityHandles.TryGetFirstValue(results[i].entity, out handle, out iterator))
+                {
+                    do
+                    {
+                        if (!handle.isVail)
+                        {
+                            entityHandles.Remove(iterator);
+
+                            break;
+                        }
+                    } while (entityHandles.TryGetNextValue(out handle, ref iterator));
+                }
             }
         }
     }
@@ -590,20 +743,19 @@ public partial struct GameRandomSpawnerSystem : ISystem
 
     private SharedHashMap<Hash128, Entity> __guidEntities;
 
+    private NativeParallelMultiHashMap<Entity, TimeEventHandle<GameSpawnData>> __entityHandles;
+
+    private TimeManager<GameSpawnData> __timeManager;
+    
     public SharedList<GameSpawnData> commands
     {
         get;
 
         private set;
     }
+
+    public GameRandomSpawner spawner => new GameRandomSpawner(commands, ref __entityHandles, ref __timeManager);
     
-    public SharedTimeManager<GameSpawnData> timeManager
-    {
-        readonly get;
-
-        private set;
-    }
-
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
@@ -658,13 +810,15 @@ public partial struct GameRandomSpawnerSystem : ISystem
             componentTypeList.Dispose();
         }
 
-        timeManager = new SharedTimeManager<GameSpawnData>(Allocator.Persistent);
-
         __itemManager = itemSystem.manager;
 
         __initializer = world.GetExistingSystemUnmanaged<GameItemObjectInitSystem>().initializer;
 
         __guidEntities = world.GetExistingSystemUnmanaged<EntityDataSystem>().guidEntities;
+
+        __entityHandles = new NativeParallelMultiHashMap<Entity, TimeEventHandle<GameSpawnData>>(1, Allocator.Persistent);
+
+        __timeManager = new TimeManager<GameSpawnData>(Allocator.Persistent);
 
         commands = new SharedList<GameSpawnData>(Allocator.Persistent);
 
@@ -676,9 +830,11 @@ public partial struct GameRandomSpawnerSystem : ISystem
     [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
-        timeManager.Dispose();
+        __timeManager.Dispose();
 
         commands.Dispose();
+        
+        __entityHandles.Dispose();
     }
 
     [BurstCompile]
@@ -728,18 +884,19 @@ public partial struct GameRandomSpawnerSystem : ISystem
         spawn.groupType = __groupType.UpdateAsRef(ref state);// groupType;
         spawn.nodeType = __nodeType.UpdateAsRef(ref state);// nodeType;
         spawn.commands = __commands.UpdateAsRef(ref state);
-        spawn.itemAssigner = itemAssigner.writer;
+        spawn.results = __timeManager.writer;;
+        spawn.entityHandles = __entityHandles;
         spawn.guidEntities = __guidEntities.writer;
         spawn.itemCreateEntityCommander = createEntityCommander.writer;
-        spawn.results = timeManager.value.writer;
+        spawn.itemAssigner = itemAssigner.writer;
 
-        ref var createEntityCommanderJobManager = ref createEntityCommander.lookupJobManager;
-        ref var guidEntitiesJobManager = ref __guidEntities.lookupJobManager;
         ref var itemManagerJobManager = ref __itemManager.lookupJobManager;
+        ref var guidEntitiesJobManager = ref __guidEntities.lookupJobManager;
+        ref var createEntityCommanderJobManager = ref createEntityCommander.lookupJobManager;
         var jobHandle = JobHandle.CombineDependencies(
-            guidEntitiesJobManager.readWriteJobHandle,
-            createEntityCommanderJobManager.readWriteJobHandle,
-            itemManagerJobManager.readWriteJobHandle);
+            itemManagerJobManager.readWriteJobHandle, 
+            guidEntitiesJobManager.readWriteJobHandle, 
+            createEntityCommanderJobManager.readWriteJobHandle);
 
         jobHandle = JobHandle.CombineDependencies(jobHandle, itemAssigner.jobHandle, state.Dependency);
         jobHandle = spawn.ScheduleByRef(__group, jobHandle);
@@ -751,10 +908,19 @@ public partial struct GameRandomSpawnerSystem : ISystem
         itemAssigner.jobHandle = jobHandle;
 
         var commands = this.commands;
-        NativeList<GameSpawnData> commandsWriter = commands.writer;
         ref var commandsJobManager = ref commands.lookupJobManager;
+        commandsJobManager.CompleteReadOnlyDependency();
+        NativeList<GameSpawnData> commandsWriter = commands.writer;
+        int commandLength = commandsWriter.Length;
 
-        jobHandle = timeManager.Update(time, ref commandsWriter, JobHandle.CombineDependencies(jobHandle, commandsJobManager.readWriteJobHandle));
+        jobHandle = __timeManager.Schedule(time, ref commandsWriter, JobHandle.CombineDependencies(jobHandle, commandsJobManager.readWriteJobHandle));
+
+        UpdateEntities updateEntities;
+        updateEntities.resultStartIndex = commandLength;
+        updateEntities.entityHandles = __entityHandles;
+        updateEntities.results = commandsWriter;
+
+        jobHandle = updateEntities.ScheduleByRef(jobHandle);
 
         commandsJobManager.readWriteJobHandle = jobHandle;
 

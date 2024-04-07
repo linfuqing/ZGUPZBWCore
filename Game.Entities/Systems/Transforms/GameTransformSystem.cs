@@ -262,6 +262,7 @@ public partial class GameTransformSystem : SystemBase
                     localToWorld = localToWorlds[i];
                     transform.value = localToWorld.Value.Equals(float4x4.zero) ? transforms[index].value : math.RigidTransform(localToWorld.Value);
                     transform = calculator.Execute(i, transform);
+
                     transforms[index] = transform;
 
                     localToWorld.Value = math.float4x4(transform.value);

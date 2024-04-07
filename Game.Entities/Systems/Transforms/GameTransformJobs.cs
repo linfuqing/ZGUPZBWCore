@@ -73,7 +73,7 @@ public struct GameTransformCalculator<TTransform, TVelocity> : IGameTransformCal
         var keyframes = this.keyframes[index];
         int numKeyframes = keyframes.Length;
         if (numKeyframes < 1)
-            return default;
+            return transform;
 
         int keyframeIndex = keyframes.BinarySearch(time, new Comparer(), new ReadOnlyListWrapper()), maxFrameIndex = numKeyframes - 1;
         GameTransformKeyframe<TTransform> source = keyframes[math.clamp(keyframeIndex, 0, maxFrameIndex)], 

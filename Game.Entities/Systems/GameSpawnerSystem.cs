@@ -247,7 +247,7 @@ public partial struct GameSpawnerTimeSystem : ISystem
         {
             foreach (var result in entitiesToCannel)
             {
-                if (results.Cannel(deadlines[result].handle))
+                if (results.Cancel(deadlines[result].handle))
                     deadlines[result] = default;
             }
 

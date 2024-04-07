@@ -312,7 +312,7 @@ public class GameMapDatabase : ScriptableObject
                 area.toLayers.offset = effect.toHeight;
 
                 numLayers = effect.toHeights == null ? 0 : effect.toHeights.Length;
-                layerIndices = builder.Allocate(ref area.fromLayers.indices, numLayers);
+                layerIndices = builder.Allocate(ref area.toLayers.indices, numLayers);
                 for (j = 0; j < numLayers; ++j)
                 {
                     layerIndices[j] = layerIndex;
