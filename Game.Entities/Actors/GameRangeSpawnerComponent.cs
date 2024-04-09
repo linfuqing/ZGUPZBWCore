@@ -1,7 +1,10 @@
 using System;
 using ZG;
 
+//[EntityComponent(typeof(PhysicsTriggerEvent))]
+[EntityComponent(typeof(GameFollower))]
 [EntityComponent(typeof(GameRangeSpawnerNode))]
+[EntityComponent(typeof(GameRangeSpawnerEntity))]
 [EntityComponent(typeof(GameRangeSpawnerStatus))]
 public class GameRangeSpawnerComponent : EntityProxyComponent, IEntityComponent
 {

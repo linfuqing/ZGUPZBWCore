@@ -19,7 +19,6 @@ public struct GameDamageActorLevel : IBufferElementData
     public float hit;
 }
 
-[Serializable]
 public struct GameDamageActorHit : IComponentData
 {
     public float value;

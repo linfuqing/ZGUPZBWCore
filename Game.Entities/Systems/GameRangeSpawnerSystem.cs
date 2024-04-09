@@ -10,10 +10,14 @@ public struct GameRangeSpawnerNode : IBufferElementData
     public int sliceIndex;
 }
 
+public struct GameRangeSpawnerEntity : IBufferElementData
+{
+    public Entity value;
+}
+
 public struct GameRangeSpawnerStatus : IComponentData
 {
     public int count;
-    public Entity entity;
 }
 
 [BurstCompile, CreateAfter(typeof(GameRandomSpawnerSystem))]
@@ -25,6 +29,8 @@ public partial struct GameRangeSpawnerSystem : ISystem
         public GameRandomSpawner.Reader spawner;
 
         [ReadOnly]
+        public BufferLookup<PhysicsTriggerEvent> physicsTriggerEvents;
+        [ReadOnly]
         public ComponentLookup<PhysicsShapeParent> physicsShapeParents;
         [ReadOnly]
         public ComponentLookup<GameNodeStatus> nodeStates;
@@ -35,102 +41,145 @@ public partial struct GameRangeSpawnerSystem : ISystem
         [ReadOnly] 
         public NativeArray<Entity> entityArray;
         [ReadOnly]
-        public BufferAccessor<PhysicsTriggerEvent> physicsTriggerEvents;
+        public BufferAccessor<PhysicsShapeChildEntity> physicsShapeChildEntities;
         [ReadOnly]
         public BufferAccessor<GameFollower> followers;
+        [ReadOnly]
+        public BufferAccessor<GameRangeSpawnerNode> nodes;
 
         public BufferAccessor<GameRandomSpawnerNode> randomNodes;
 
-        public BufferAccessor<GameRangeSpawnerNode> nodes;
-        
+        public BufferAccessor<GameRangeSpawnerEntity> rangeEntities;
+
         public NativeArray<GameRangeSpawnerStatus> states;
 
-        public NativeQueue<Entity>.ParallelWriter entities;
+        public NativeQueue<Entity>.ParallelWriter results;
 
-        public void Execute(int index)
+        public bool Execute(int index)
         {
-            var physicsTriggerEvents = this.physicsTriggerEvents[index];
-            var state = states[index];
-            if (state.entity != Entity.Null)
+            var physicsShapeChildEntities = this.physicsShapeChildEntities[index];
+            DynamicBuffer<PhysicsTriggerEvent> physicsTriggerEvents;
+            Entity entity;
+            bool isContains = false;
+            foreach (var physicsShapeChildEntity in physicsShapeChildEntities)
             {
-                if (!nodeStates.HasComponent(state.entity) ||
-                    ((GameEntityStatus)nodeStates[state.entity].value & GameEntityStatus.Mask) == GameEntityStatus.Dead)
-                    state.entity = Entity.Null;
-                else
-                {
-                    bool isContains = false;
-                    Entity entity;
-                    foreach (var physicsTriggerEvent in physicsTriggerEvents)
-                    {
-                        entity = physicsShapeParents.HasComponent(physicsTriggerEvent.entity)
-                            ? physicsShapeParents[physicsTriggerEvent.entity].entity
-                            : physicsTriggerEvent.entity;
-                        if (entity == state.entity)
-                        {
-                            isContains = true;
+                if(!this.physicsTriggerEvents.HasBuffer(physicsShapeChildEntity.value))
+                    continue;
 
-                            break;
-                        }
-                    }
-                    
-                    if(!isContains)
-                        state.entity = Entity.Null;
-                }
-
-                if (state.entity == Entity.Null)
-                {
-                    states[index] = state;
-                    
-                    nodes[index].Clear();
-                    
-                    entities.Enqueue(entityArray[index]);
-
-                    return;
-                }
-            }
-
-            bool isFree = state.entity == Entity.Null;
-            if (!isFree && followers[index].Length < 1 && spawner.IsEmpty(entityArray[index]))
-            {
-                var nodes = this.nodes[index];
-                if (state.count < nodes.Length)
-                {
-                    GameRandomSpawnerNode randomNode;
-                    randomNode.sliceIndex = nodes[state.count++].sliceIndex;
-                    randomNodes[index].Add(randomNode);
-                }
-                else
-                    isFree = true;
-            }
-            
-            if (isFree)
-            {
-                Entity target = Entity.Null, entity;
+                physicsTriggerEvents = this.physicsTriggerEvents[physicsShapeChildEntity.value];
                 foreach (var physicsTriggerEvent in physicsTriggerEvents)
                 {
                     entity = physicsShapeParents.HasComponent(physicsTriggerEvent.entity)
                         ? physicsShapeParents[physicsTriggerEvent.entity].entity
                         : physicsTriggerEvent.entity;
-                    if (entity == state.entity)
+                    if (nodeStates.HasComponent(entity) &&
+                        ((GameEntityStatus)nodeStates[entity].value & GameEntityStatus.Mask) !=
+                        GameEntityStatus.Dead)
                     {
-                        isFree = false;
+                        isContains = true;
 
                         break;
                     }
-                    
-                    if(target == null && 
-                       nodeStates.HasComponent(entity) &&
-                       ((GameEntityStatus)nodeStates[entity].value & GameEntityStatus.Mask) != GameEntityStatus.Dead)
-                        target = entity;
                 }
-
-                if (isFree)
+                        
+                if(isContains)
+                    break;
+            }
+            
+            bool result = false;
+            if (isContains)
+            {
+                if ((followers.Length <= index || followers[index].Length < 1) &&
+                    spawner.IsEmpty(entityArray[index]))
                 {
-                    state.count = 0;
-                    state.entity = target;
-                    states[index] = state;
+                    var nodes = this.nodes[index];
+                    int numNodes = nodes.Length;
+                    if (numNodes > 0)
+                    {
+                        var entities = rangeEntities[index].Reinterpret<Entity>();
+                        int numEntities = entities.Length;
+                        for (int i = 0; i < numEntities; ++i)
+                        {
+                            entity = entities[i];
+                            if (!nodeStates.HasComponent(entity) ||
+                                ((GameEntityStatus)nodeStates[entity].value & GameEntityStatus.Mask) ==
+                                GameEntityStatus.Dead)
+                            {
+                                entities.RemoveAtSwapBack(i--);
+
+                                --numEntities;
+                            }
+                        }
+                        
+                        var state = states[index];
+                        if (state.count >= numNodes)
+                        {
+                            foreach (var physicsShapeChildEntity in physicsShapeChildEntities)
+                            {
+                                if(!this.physicsTriggerEvents.HasBuffer(physicsShapeChildEntity.value))
+                                    continue;
+
+                                physicsTriggerEvents = this.physicsTriggerEvents[physicsShapeChildEntity.value];
+                                foreach (var physicsTriggerEvent in physicsTriggerEvents)
+                                {
+                                    entity = physicsShapeParents.HasComponent(physicsTriggerEvent.entity)
+                                        ? physicsShapeParents[physicsTriggerEvent.entity].entity
+                                        : physicsTriggerEvent.entity;
+                                    if (entities.AsNativeArray().Contains(entity))
+                                        return false;
+                                }
+                            }
+                            
+                            state.count = 0;
+                        }
+
+                        foreach (var physicsShapeChildEntity in physicsShapeChildEntities)
+                        {
+                            if(!this.physicsTriggerEvents.HasBuffer(physicsShapeChildEntity.value))
+                                continue;
+
+                            physicsTriggerEvents = this.physicsTriggerEvents[physicsShapeChildEntity.value];
+                            foreach (var physicsTriggerEvent in physicsTriggerEvents)
+                            {
+                                entity = physicsShapeParents.HasComponent(physicsTriggerEvent.entity)
+                                    ? physicsShapeParents[physicsTriggerEvent.entity].entity
+                                    : physicsTriggerEvent.entity;
+                                if (nodeStates.HasComponent(entity) &&
+                                    ((GameEntityStatus)nodeStates[entity].value & GameEntityStatus.Mask) !=
+                                    GameEntityStatus.Dead && 
+                                    !entities.AsNativeArray().Contains(entity))
+                                    entities.Add(entity);
+                            }
+                        }
+
+                        if (randomNodes.Length > index)
+                        {
+                            GameRandomSpawnerNode randomNode;
+                            randomNode.sliceIndex = nodes[state.count++].sliceIndex;
+                            randomNodes[index].Add(randomNode);
+
+                            result = true;
+                        }
+                        else
+                            ++state.count;
+
+                        states[index] = state;
+                    }
                 }
             }
+            else
+            {
+                if(index < randomNodes.Length)
+                    randomNodes[index].Clear();
+                
+                rangeEntities[index].Clear();
+                
+                states[index] = default;
+                
+                results.Enqueue(entityArray[index]);
+            }
+
+            return result;
         }
     }
 
@@ -139,6 +188,8 @@ public partial struct GameRangeSpawnerSystem : ISystem
     {
         [ReadOnly]
         public GameRandomSpawner.Reader spawner;
+        [ReadOnly]
+        public BufferLookup<PhysicsTriggerEvent> physicsTriggerEvents;
         [ReadOnly]
         public ComponentLookup<PhysicsShapeParent> physicsShapeParents;
         [ReadOnly]
@@ -150,38 +201,45 @@ public partial struct GameRangeSpawnerSystem : ISystem
         [ReadOnly] 
         public EntityTypeHandle entityType;
         [ReadOnly]
-        public BufferTypeHandle<PhysicsTriggerEvent> physicsTriggerEventType;
+        public BufferTypeHandle<PhysicsShapeChildEntity> physicsShapeChildEntityType;
         [ReadOnly]
         public BufferTypeHandle<GameFollower> followerType;
+        [ReadOnly]
+        public BufferTypeHandle<GameRangeSpawnerNode> nodeType;
 
         public BufferTypeHandle<GameRandomSpawnerNode> randomNodeType;
 
-        public BufferTypeHandle<GameRangeSpawnerNode> nodeType;
-        
+        public BufferTypeHandle<GameRangeSpawnerEntity> rangeEntityType;
+
         public ComponentTypeHandle<GameRangeSpawnerStatus> statusType;
 
-        public NativeQueue<Entity>.ParallelWriter entities;
+        public NativeQueue<Entity>.ParallelWriter results;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask,
             in v128 chunkEnabledMask)
         {
             Spawn spawn;
             spawn.spawner = spawner;
+            spawn.physicsTriggerEvents = physicsTriggerEvents;
             spawn.physicsShapeParents = physicsShapeParents;
             spawn.nodeStates = nodeStates;
             spawn.campMap = camps;
             spawn.camps = chunk.GetNativeArray(ref campType);
             spawn.entityArray = chunk.GetNativeArray(entityType);
-            spawn.physicsTriggerEvents = chunk.GetBufferAccessor(ref physicsTriggerEventType);
+            spawn.physicsShapeChildEntities = chunk.GetBufferAccessor(ref physicsShapeChildEntityType);
             spawn.followers = chunk.GetBufferAccessor(ref followerType);
-            spawn.randomNodes = chunk.GetBufferAccessor(ref randomNodeType);
             spawn.nodes = chunk.GetBufferAccessor(ref nodeType);
+            spawn.randomNodes = chunk.GetBufferAccessor(ref randomNodeType);
+            spawn.rangeEntities = chunk.GetBufferAccessor(ref rangeEntityType);
             spawn.states = chunk.GetNativeArray(ref statusType);
-            spawn.entities = entities;
+            spawn.results = results;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
-                spawn.Execute(i);
+            {
+                if(spawn.Execute(i))
+                    chunk.SetComponentEnabled(ref randomNodeType, i, true);
+            }
         }
     }
 
@@ -224,18 +282,21 @@ public partial struct GameRangeSpawnerSystem : ISystem
     private EntityQuery __group;
 
     private BufferLookup<GameFollower> __followers;
+    private BufferLookup<PhysicsTriggerEvent> __physicsTriggerEvents;
     private ComponentLookup<PhysicsShapeParent> __physicsShapeParents;
     private ComponentLookup<GameEntityCamp> __camps;
     private ComponentTypeHandle<GameEntityCamp> __campType;
 
     private EntityTypeHandle __entityType;
-    private BufferTypeHandle<PhysicsTriggerEvent> __physicsTriggerEventType;
+    private BufferTypeHandle<PhysicsShapeChildEntity> __physicsShapeChildEntityType;
     private BufferTypeHandle<GameFollower> __followerType;
+
+    private BufferTypeHandle<GameRangeSpawnerNode> __nodeType;
 
     private BufferTypeHandle<GameRandomSpawnerNode> __randomNodeType;
 
-    private BufferTypeHandle<GameRangeSpawnerNode> __nodeType;
-        
+    private BufferTypeHandle<GameRangeSpawnerEntity> __rangeEntityType;
+
     private ComponentTypeHandle<GameRangeSpawnerStatus> __statusType;
 
     private ComponentLookup<GameNodeStatus> __nodeStates;
@@ -249,24 +310,27 @@ public partial struct GameRangeSpawnerSystem : ISystem
     {
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __group = builder
-                .WithAll<PhysicsTriggerEvent, GameFollower, GameEntityCamp>()
-                .WithAllRW<GameRandomSpawnerNode>()
-                .WithAllRW<GameRangeSpawnerNode>()
+                .WithAll<PhysicsShapeChildEntity, GameRangeSpawnerNode>()
+                //.WithAllRW<GameRandomSpawnerNode>()
+                .WithAllRW<GameRangeSpawnerEntity>()
                 .WithAllRW<GameRangeSpawnerStatus>()
                 .Build(ref state);
                 
         __followers = state.GetBufferLookup<GameFollower>(true);
+        __physicsTriggerEvents = state.GetBufferLookup<PhysicsTriggerEvent>(true);
         __physicsShapeParents = state.GetComponentLookup<PhysicsShapeParent>(true);
         __camps = state.GetComponentLookup<GameEntityCamp>(true);
         __campType = state.GetComponentTypeHandle<GameEntityCamp>(true);
         __entityType = state.GetEntityTypeHandle();
-        __physicsTriggerEventType = state.GetBufferTypeHandle<PhysicsTriggerEvent>(true);
+        __physicsShapeChildEntityType = state.GetBufferTypeHandle<PhysicsShapeChildEntity>(true);
         __followerType = state.GetBufferTypeHandle<GameFollower>(true);
+
+        __nodeType = state.GetBufferTypeHandle<GameRangeSpawnerNode>(true);
 
         __randomNodeType = state.GetBufferTypeHandle<GameRandomSpawnerNode>();
 
-        __nodeType = state.GetBufferTypeHandle<GameRangeSpawnerNode>();
-
+        __rangeEntityType = state.GetBufferTypeHandle<GameRangeSpawnerEntity>();
+        
         __statusType = state.GetComponentTypeHandle<GameRangeSpawnerStatus>();
 
         __nodeStates = state.GetComponentLookup<GameNodeStatus>();
@@ -288,17 +352,19 @@ public partial struct GameRangeSpawnerSystem : ISystem
         
         SpawnEx spawn;
         spawn.spawner = __spawner.reader;
+        spawn.physicsTriggerEvents = __physicsTriggerEvents.UpdateAsRef(ref state);
         spawn.physicsShapeParents = __physicsShapeParents.UpdateAsRef(ref state);
         spawn.nodeStates = nodeStates;
         spawn.camps = __camps.UpdateAsRef(ref state);
         spawn.campType = __campType.UpdateAsRef(ref state);
         spawn.entityType = __entityType.UpdateAsRef(ref state);
-        spawn.physicsTriggerEventType = __physicsTriggerEventType.UpdateAsRef(ref state);
+        spawn.physicsShapeChildEntityType = __physicsShapeChildEntityType.UpdateAsRef(ref state);
         spawn.followerType = __followerType.UpdateAsRef(ref state);
-        spawn.randomNodeType = __randomNodeType.UpdateAsRef(ref state);
         spawn.nodeType = __nodeType.UpdateAsRef(ref state);
+        spawn.randomNodeType = __randomNodeType.UpdateAsRef(ref state);
+        spawn.rangeEntityType = __rangeEntityType.UpdateAsRef(ref state);
         spawn.statusType = __statusType.UpdateAsRef(ref state);
-        spawn.entities = __entities.AsParallelWriter();
+        spawn.results = __entities.AsParallelWriter();
 
         ref var spawnerJobManager = ref __spawner.lookupJobManager;
 

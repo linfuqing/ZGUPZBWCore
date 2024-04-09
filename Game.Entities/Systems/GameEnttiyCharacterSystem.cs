@@ -24,7 +24,7 @@ public partial struct GameEntityCharacterSystem : ISystem
         [ReadOnly]
         public BufferAccessor<GameNodeCharacterDistanceHit> distanceHits;
 
-        public ComponentLookup<GameEntityHealthDamage> healthDamages;
+        public BufferLookup<GameEntityHealthDamage> healthDamages;
 
         public unsafe void Execute(int index)
         {
@@ -44,7 +44,7 @@ public partial struct GameEntityCharacterSystem : ISystem
             {
                 distanceHit = distanceHits[i];
                 rigidbody = rigidbodies[distanceHit.value.RigidBodyIndex];
-                if (!healthDamages.HasComponent(rigidbody.Entity))
+                if (!healthDamages.HasBuffer(rigidbody.Entity))
                     continue;
 
                 ref var collider = ref rigidbody.Collider.Value;
@@ -59,12 +59,11 @@ public partial struct GameEntityCharacterSystem : ISystem
 
                 if (hit != 0.0f)
                 {
-                    healthDamage = healthDamages[rigidbody.Entity];
-                    healthDamage.value += hit * deltaTime;
+                    healthDamage.value = hit * deltaTime;
                     healthDamage.time = time;
                     healthDamage.entity = entity;
 
-                    healthDamages[rigidbody.Entity] = healthDamage;
+                    healthDamages[rigidbody.Entity].Add(healthDamage);
                 }
             }
         }
@@ -86,7 +85,7 @@ public partial struct GameEntityCharacterSystem : ISystem
         [ReadOnly]
         public BufferTypeHandle<GameNodeCharacterDistanceHit> distanceHitType;
 
-        public ComponentLookup<GameEntityHealthDamage> healthDamages;
+        public BufferLookup<GameEntityHealthDamage> healthDamages;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -134,7 +133,7 @@ public partial struct GameEntityCharacterSystem : ISystem
         calculateHits.entityType = state.GetEntityTypeHandle();
         calculateHits.instanceType = state.GetBufferTypeHandle<GameEntityCharacterHit>(true);
         calculateHits.distanceHitType = state.GetBufferTypeHandle<GameNodeCharacterDistanceHit>(true);
-        calculateHits.healthDamages = state.GetComponentLookup<GameEntityHealthDamage>();
+        calculateHits.healthDamages = state.GetBufferLookup<GameEntityHealthDamage>();
 
         ref var lookupJobManager = ref __physicsWorld.lookupJobManager;
 

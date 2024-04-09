@@ -6,7 +6,7 @@ using Unity.Collections;
 using Unity.Mathematics;
 using ZG;
 
-[BurstCompile, UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(GameRandomSpawnerSystem)), UpdateAfter(typeof(GameEntityHealthSystem))]
+[BurstCompile, UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(GameRandomSpawnerSystem)), UpdateBefore(typeof(GameEntityHealthSystem))]
 public partial struct GameDamageActorSystem : ISystem
 {
     private struct Act
@@ -15,8 +15,11 @@ public partial struct GameDamageActorSystem : ISystem
         public BufferAccessor<GameDamageActorLevel> levels;
 
         [ReadOnly]
-        public NativeArray<GameEntityHealthDamage> damages;
+        public BufferAccessor<GameEntityHealthDamage> damages;
         
+        [ReadOnly]
+        public NativeArray<GameEntityHealthDamageCount> damageCounts;
+
         public NativeArray<GameDamageActorHit> hits;
 
         public BufferAccessor<GameRandomActorNode> actors;
@@ -26,9 +29,15 @@ public partial struct GameDamageActorSystem : ISystem
         public GameStatusActorFlag Execute(int index)
         {
             GameStatusActorFlag flag = 0;
-            var damage = damages[index];
-            if(math.abs(damage.value) > math.FLT_MIN_NORMAL)
+            var damageCount = damageCounts[index];
+            var damages = this.damages[index];
+            int numDamages = damages.Length;
+            if(numDamages > damageCount.value)
             {
+                float damageValue = 0.0f;
+                for (int i = damageCount.value; i < numDamages; ++i)
+                    damageValue += damages[i].value;
+                
                 var hit = hits[index];
 
                 var spawners = index < this.spawners.Length ? this.spawners[index] : default;
@@ -43,7 +52,7 @@ public partial struct GameDamageActorSystem : ISystem
                 {
                     level = levels[i];
                     value = (level.flag & GameDamageActorFlag.Loop) == GameDamageActorFlag.Loop ? hit.value % level.hit : hit.value;
-                    if (value >= level.hit || value + damage.value < level.hit)
+                    if (value >= level.hit || value + damageValue < level.hit)
                         continue;
 
                     if ((level.flag & GameDamageActorFlag.Action) == GameDamageActorFlag.Action)
@@ -68,7 +77,7 @@ public partial struct GameDamageActorSystem : ISystem
                     }
                 }
 
-                hit.value += damage.value;
+                hit.value += damageValue;
                 hits[index] = hit;
             }
 
@@ -83,7 +92,10 @@ public partial struct GameDamageActorSystem : ISystem
         public BufferTypeHandle<GameDamageActorLevel> levelType;
 
         [ReadOnly]
-        public ComponentTypeHandle<GameEntityHealthDamage> damageType;
+        public BufferTypeHandle<GameEntityHealthDamage> damageType;
+
+        [ReadOnly]
+        public ComponentTypeHandle<GameEntityHealthDamageCount> damageCountType;
 
         public ComponentTypeHandle<GameDamageActorHit> hitType;
 
@@ -95,7 +107,8 @@ public partial struct GameDamageActorSystem : ISystem
         {
             Act act;
             act.levels = chunk.GetBufferAccessor(ref levelType);
-            act.damages = chunk.GetNativeArray(ref damageType);
+            act.damages = chunk.GetBufferAccessor(ref damageType);
+            act.damageCounts = chunk.GetNativeArray(ref damageCountType);
             act.hits = chunk.GetNativeArray(ref hitType);
             act.actors = chunk.GetBufferAccessor(ref actorType);
             act.spawners = chunk.GetBufferAccessor(ref spawnerType);
@@ -119,7 +132,9 @@ public partial struct GameDamageActorSystem : ISystem
 
     private BufferTypeHandle<GameDamageActorLevel> __levelType;
 
-    private ComponentTypeHandle<GameEntityHealthDamage> __damageType;
+    private BufferTypeHandle<GameEntityHealthDamage> __damageType;
+
+    private ComponentTypeHandle<GameEntityHealthDamageCount> __damageCountType;
 
     private ComponentTypeHandle<GameDamageActorHit> __hitType;
 
@@ -139,7 +154,8 @@ public partial struct GameDamageActorSystem : ISystem
         __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameEntityHealthDamage>());
 
         __levelType = state.GetBufferTypeHandle<GameDamageActorLevel>(true);
-        __damageType = state.GetComponentTypeHandle<GameEntityHealthDamage>(true);
+        __damageType = state.GetBufferTypeHandle<GameEntityHealthDamage>(true);
+        __damageCountType = state.GetComponentTypeHandle<GameEntityHealthDamageCount>(true);
         __hitType = state.GetComponentTypeHandle<GameDamageActorHit>();
         __actorType = state.GetBufferTypeHandle<GameRandomActorNode>();
         __spawnerType = state.GetBufferTypeHandle<GameRandomSpawnerNode>();
@@ -157,6 +173,7 @@ public partial struct GameDamageActorSystem : ISystem
         ActEx act;
         act.levelType = __levelType.UpdateAsRef(ref state);
         act.damageType = __damageType.UpdateAsRef(ref state);
+        act.damageCountType = __damageCountType.UpdateAsRef(ref state);
         act.hitType = __hitType.UpdateAsRef(ref state);
         act.actorType = __actorType.UpdateAsRef(ref state);
         act.spawnerType = __spawnerType.UpdateAsRef(ref state);

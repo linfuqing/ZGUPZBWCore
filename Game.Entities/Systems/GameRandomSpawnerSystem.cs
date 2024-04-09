@@ -918,7 +918,7 @@ public partial struct GameRandomSpawnerSystem : ISystem
         UpdateEntities updateEntities;
         updateEntities.resultStartIndex = commandLength;
         updateEntities.entityHandles = __entityHandles;
-        updateEntities.results = commandsWriter;
+        updateEntities.results = commandsWriter.AsDeferredJobArray();
 
         jobHandle = updateEntities.ScheduleByRef(jobHandle);
 

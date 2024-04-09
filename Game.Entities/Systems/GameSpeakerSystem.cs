@@ -93,10 +93,13 @@ public partial struct GameSpeakerSystem : ISystem
         public NativeArray<Entity> entityArray;
 
         [ReadOnly]
-        public NativeArray<GameEntityHealthDamage> healthDamages;
+        public NativeArray<GameSpeakerData> instances;
 
         [ReadOnly]
-        public NativeArray<GameSpeakerData> instances;
+        public NativeArray<GameEntityHealthDamageCount> healthDamageCounts;
+
+        [ReadOnly]
+        public BufferAccessor<GameEntityHealthDamage> healthDamages;
 
         [ReadOnly]
         public ComponentLookup<GameEntityCamp> camps;
@@ -110,8 +113,13 @@ public partial struct GameSpeakerSystem : ISystem
             if (instance.layerMask == 0)
                 return;
 
-            var healthDamage = healthDamages[index];
-            if (healthDamage.value < Unity.Mathematics.math.FLT_MIN_NORMAL || !camps.HasComponent(healthDamage.entity))
+            var healthDamages = this.healthDamages[index];
+            int numHealthDamages = healthDamages.Length;
+            if (numHealthDamages <= healthDamageCounts[index].value)
+                return;
+
+            var healthDamage = healthDamages[numHealthDamages - 1];
+            if (!camps.HasComponent(healthDamage.entity))
                 return;
 
             int rigidbodyIndex = collisionWorld.GetRigidBodyIndex(entityArray[index]);
@@ -164,10 +172,13 @@ public partial struct GameSpeakerSystem : ISystem
         public EntityTypeHandle entityType;
 
         [ReadOnly]
-        public ComponentTypeHandle<GameEntityHealthDamage> healthDamageType;
+        public ComponentTypeHandle<GameSpeakerData> instanceType;
 
         [ReadOnly]
-        public ComponentTypeHandle<GameSpeakerData> instanceType;
+        public ComponentTypeHandle<GameEntityHealthDamageCount> healthDamageCountType;
+
+        [ReadOnly]
+        public BufferTypeHandle<GameEntityHealthDamage> healthDamageType;
 
         [ReadOnly]
         public ComponentLookup<GameEntityCamp> camps;
@@ -180,8 +191,9 @@ public partial struct GameSpeakerSystem : ISystem
             Speak speak;
             speak.collisionWorld = collisionWorld;
             speak.entityArray = chunk.GetNativeArray(entityType);
-            speak.healthDamages = chunk.GetNativeArray(ref healthDamageType);
             speak.instances = chunk.GetNativeArray(ref instanceType);
+            speak.healthDamageCounts = chunk.GetNativeArray(ref healthDamageCountType);
+            speak.healthDamages = chunk.GetBufferAccessor(ref healthDamageType);
             speak.camps = camps;
             speak.speakerInfos = speakerInfos;
 
@@ -215,7 +227,8 @@ public partial struct GameSpeakerSystem : ISystem
         SpeakEx speak;
         speak.collisionWorld = __physicsWorld.collisionWorld;
         speak.entityType = state.GetEntityTypeHandle();
-        speak.healthDamageType = state.GetComponentTypeHandle<GameEntityHealthDamage>(true);
+        speak.healthDamageCountType = state.GetComponentTypeHandle<GameEntityHealthDamageCount>(true);
+        speak.healthDamageType = state.GetBufferTypeHandle<GameEntityHealthDamage>(true);
         speak.instanceType = state.GetComponentTypeHandle<GameSpeakerData>(true);
         speak.camps = state.GetComponentLookup<GameEntityCamp>(true);
         speak.speakerInfos = state.GetComponentLookup<GameSpeakerInfo>();

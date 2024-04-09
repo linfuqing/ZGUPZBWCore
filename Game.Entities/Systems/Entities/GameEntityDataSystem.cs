@@ -841,12 +841,11 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         [ReadOnly]
         public ComponentLookup<GameEntityHealth> healthes;
 
-        [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameEntityHealthDamage> healthDamages;
+        public NativeQueue<BufferElementData<GameEntityHealthDamage>>.ParallelWriter healthDamages;
 
-        public NativeFactory<BufferElementData<GameEntityHealthBuff>>.ParallelWriter healthBuffs;
+        public NativeQueue<BufferElementData<GameEntityHealthBuff>>.ParallelWriter healthBuffs;
 
-        public NativeFactory<BufferElementData<GameEntityTorpidityBuff>>.ParallelWriter torpidityBuffs;
+        public NativeQueue<BufferElementData<GameEntityTorpidityBuff>>.ParallelWriter torpidityBuffs;
 
         public NativeList<Entity> entitiesToPick;
 
@@ -926,14 +925,15 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
                 double now = instance.time + damager.elapsedTime;
 
-                if (math.abs(hit) > math.FLT_MIN_NORMAL && healthDamages.HasComponent(damager.target))
+                if (math.abs(hit) > math.FLT_MIN_NORMAL)
                 {
-                    GameEntityHealthDamage healthDamage = healthDamages[damager.target];
-                    healthDamage.value += hit;
-                    healthDamage.time = now;
-                    healthDamage.entity = instance.entity;
+                    BufferElementData<GameEntityHealthDamage> healthDamage;
+                    healthDamage.entity = damager.target;
+                    healthDamage.value.value = hit;
+                    healthDamage.value.time = now;
+                    healthDamage.value.entity = instance.entity;
 
-                    healthDamages[damager.target] = healthDamage;
+                    healthDamages.Enqueue(healthDamage);
                 }
             }
 
@@ -947,7 +947,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                     healthBuff.entity = damager.target;
                     healthBuff.value.value = buff.value.healthPerTime;
                     healthBuff.value.duration = buff.value.healthTime;
-                    healthBuffs.Create().value = healthBuff;
+                    healthBuffs.Enqueue(healthBuff);
                 }
 
                 if (math.abs(torpor) > math.FLT_MIN_NORMAL &&
@@ -960,7 +960,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                     torpidityBuff.entity = damager.target;
                     torpidityBuff.value.value = -torpor / buff.value.torpidityTime;
                     torpidityBuff.value.duration = buff.value.torpidityTime;
-                    torpidityBuffs.Create().value = torpidityBuff;
+                    torpidityBuffs.Enqueue(torpidityBuff);
                 }
             }
 
@@ -1068,36 +1068,39 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
     [BurstCompile]
     private struct Convert : IJob
     {
-        public NativeFactory<BufferElementData<GameEntityHealthBuff>> healthInputs;
-        public NativeFactory<BufferElementData<GameEntityTorpidityBuff>> torpidityInputs;
+        public NativeQueue<BufferElementData<GameEntityHealthDamage>> damageInputs;
+        public NativeQueue<BufferElementData<GameEntityHealthBuff>> healthInputs;
+        public NativeQueue<BufferElementData<GameEntityTorpidityBuff>> torpidityInputs;
+        public BufferLookup<GameEntityHealthDamage> damageOutputs;
         public BufferLookup<GameEntityHealthBuff> healthOutputs;
         public BufferLookup<GameEntityTorpidityBuff> torpidityOutputs;
 
         public void Execute()
         {
-            DynamicBuffer<GameEntityHealthBuff> healthBuffs;
-            foreach(var healthBuff in healthInputs)
+            while(damageInputs.TryDequeue(out var damage))
+            {
+                if (!damageOutputs.HasBuffer(damage.entity))
+                    continue;
+
+                damageOutputs[damage.entity].Add(damage.value);
+            }
+
+            while(healthInputs.TryDequeue(out var healthBuff))
             {
                 if (!healthOutputs.HasBuffer(healthBuff.entity))
                     continue;
 
-                healthBuffs = healthOutputs[healthBuff.entity];
-                healthBuffs.Add(healthBuff.value);
+                healthOutputs[healthBuff.entity].Add(healthBuff.value);
             }
 
-            healthInputs.Clear();
-
             DynamicBuffer<GameEntityTorpidityBuff> torpidityBuffs;
-            foreach(var torpidityBuff in torpidityInputs)
+            while(torpidityInputs.TryDequeue(out var torpidityBuff))
             {
                 if (!torpidityOutputs.HasBuffer(torpidityBuff.entity))
                     continue;
 
-                torpidityBuffs = torpidityOutputs[torpidityBuff.entity];
-                torpidityBuffs.Add(torpidityBuff.value);
+                torpidityOutputs[torpidityBuff.entity].Add(torpidityBuff.value);
             }
-
-            torpidityInputs.Clear();
         }
     }
 
@@ -1139,11 +1142,11 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
     private ComponentLookup<GameActionBuff> __buffs;
 
-    private ComponentLookup<GameEntityHealthDamage> __healthDamages;
-    
     private ComponentLookup<GameOwner> __owners;
 
     private ComponentLookup<GameNodeStatus> __nodeStates;
+
+    private BufferLookup<GameEntityHealthDamage> __damageOuputs;
 
     private BufferLookup<GameEntityHealthBuff> __healthOutputs;
     private BufferLookup<GameEntityTorpidityBuff> __torpidityOutputs;
@@ -1167,8 +1170,9 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
     private NativeList<GameEntityDefence> __itemDefences;
     private NativeHashMap<int, int> __itemTypeIndices;
 
-    private NativeFactory<BufferElementData<GameEntityHealthBuff>> __healthBuffs;
-    private NativeFactory<BufferElementData<GameEntityTorpidityBuff>> __torpidityBuffs;
+    private NativeQueue<BufferElementData<GameEntityHealthDamage>> __damages;
+    private NativeQueue<BufferElementData<GameEntityHealthBuff>> __healthBuffs;
+    private NativeQueue<BufferElementData<GameEntityTorpidityBuff>> __torpidityBuffs;
 
     public static readonly int InnerloopBatchCount = 4;
 
@@ -1338,8 +1342,8 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         __defences = state.GetBufferLookup<GameEntityDefence>(true);
         __attacks = state.GetBufferLookup<GameActionAttack>();
         __buffs = state.GetComponentLookup<GameActionBuff>();
-        __healthDamages = state.GetComponentLookup<GameEntityHealthDamage>();
-
+        
+        __damageOuputs = state.GetBufferLookup<GameEntityHealthDamage>();
         __healthOutputs = state.GetBufferLookup<GameEntityHealthBuff>();
         __torpidityOutputs = state.GetBufferLookup<GameEntityTorpidityBuff>();
 
@@ -1366,8 +1370,9 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         __itemDefences = new NativeList<GameEntityDefence>(Allocator.Persistent);
         __itemTypeIndices = new NativeHashMap<int, int>(1, Allocator.Persistent);
 
-        __healthBuffs = new NativeFactory<BufferElementData<GameEntityHealthBuff>>(Allocator.Persistent, true);
-        __torpidityBuffs = new NativeFactory<BufferElementData<GameEntityTorpidityBuff>>(Allocator.Persistent, true);
+        __damages = new NativeQueue<BufferElementData<GameEntityHealthDamage>>(Allocator.Persistent);
+        __healthBuffs = new NativeQueue<BufferElementData<GameEntityHealthBuff>>(Allocator.Persistent);
+        __torpidityBuffs = new NativeQueue<BufferElementData<GameEntityTorpidityBuff>>(Allocator.Persistent);
     }
 
     public void OnDestroy(ref SystemState state)
@@ -1390,6 +1395,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
         __itemTypeIndices.Dispose();
 
+        __damages.Dispose();
         __healthBuffs.Dispose();
         __torpidityBuffs.Dispose();
     }
@@ -1506,9 +1512,9 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         applyDamagers.torpidities = __torpidites.UpdateAsRef(ref state);
         applyDamagers.healthMaxes = __healthMaxes.UpdateAsRef(ref state);
         applyDamagers.healthes = __healthes.UpdateAsRef(ref state);
-        applyDamagers.healthDamages = __healthDamages.UpdateAsRef(ref state);
-        applyDamagers.healthBuffs = __healthBuffs.parallelWriter;
-        applyDamagers.torpidityBuffs = __torpidityBuffs.parallelWriter;
+        applyDamagers.healthDamages = __damages.AsParallelWriter();
+        applyDamagers.healthBuffs = __healthBuffs.AsParallelWriter();
+        applyDamagers.torpidityBuffs = __torpidityBuffs.AsParallelWriter();
         applyDamagers.entitiesToPick = __entitiesToPick.writer;
         applyDamagers.entityManager = entityManager.writer;
 
@@ -1536,8 +1542,10 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         spawnCommandsJobManager.readWriteJobHandle = jobHandle;
 
         Convert convert;
+        convert.damageInputs = __damages;
         convert.healthInputs = __healthBuffs;
         convert.torpidityInputs = __torpidityBuffs;
+        convert.damageOutputs = __damageOuputs.UpdateAsRef(ref state);
         convert.healthOutputs = __healthOutputs.UpdateAsRef(ref state);
         convert.torpidityOutputs = __torpidityOutputs.UpdateAsRef(ref state);
 

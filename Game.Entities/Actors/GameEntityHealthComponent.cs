@@ -11,7 +11,12 @@ public struct GameEntityHealth : IComponentData
     public float value;
 }
 
-public struct GameEntityHealthDamage : IComponentData
+public struct GameEntityHealthDamageCount : IComponentData
+{
+    public int value;
+}
+
+public struct GameEntityHealthDamage : IBufferElementData
 {
     public float value;
     public double time;
@@ -33,6 +38,7 @@ public struct GameEntityHealthData : IComponentData
 
 //[EntityComponent]
 [EntityComponent(typeof(GameEntityHealth))]
+[EntityComponent(typeof(GameEntityHealthDamageCount))]
 [EntityComponent(typeof(GameEntityHealthDamage))]
 [EntityComponent(typeof(GameEntityHealthBuff))]
 public class GameEntityHealthComponent : ComponentDataProxy<GameEntityHealthData>

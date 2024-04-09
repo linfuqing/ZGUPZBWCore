@@ -36,8 +36,8 @@ public partial struct GameEntityHealthActorSystem : ISystem
         
         public NativeArray<GameEntityHealthActorInfo> infos;
 
-        [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameEntityHealthDamage> healthDamages;
+        //[NativeDisableParallelForRestriction]
+        public BufferAccessor<GameEntityHealthDamage> healthDamages;
         
         public void Execute(int index)
         {
@@ -56,13 +56,11 @@ public partial struct GameEntityHealthActorSystem : ISystem
                             hit = math.smoothstep(instance.minSpeedToHit, instance.maxSpeedToHit, hit);
                             if (hit > math.FLT_MIN_NORMAL)
                             {
-                                var entity = entityArray[index];
-                                var healthDamage = healthDamages[entity];
-                                healthDamage.value += math.pow(hit, instance.speedToHitPower) * instance.speedToHitScale * healthes[index].max;
+                                GameEntityHealthDamage healthDamage;
+                                healthDamage.value = math.pow(hit, instance.speedToHitPower) * instance.speedToHitScale * healthes[index].max;
                                 healthDamage.time = time;
-                                healthDamage.entity = entity;
-
-                                healthDamages[entity] = healthDamage;
+                                healthDamage.entity = entityArray[index];
+                                healthDamages[index].Add(healthDamage);
                             }
                             break;
                         case GameNodeActorStatus.Status.Fall:
@@ -106,8 +104,7 @@ public partial struct GameEntityHealthActorSystem : ISystem
 
         public ComponentTypeHandle<GameEntityHealthActorInfo> infoType;
         
-        [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameEntityHealthDamage> healthDamages;
+        public BufferTypeHandle<GameEntityHealthDamage> healthDamageType;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -121,7 +118,7 @@ public partial struct GameEntityHealthActorSystem : ISystem
             updateHealthes.healthes = chunk.GetNativeArray(ref healthType);
             updateHealthes.instances = chunk.GetNativeArray(ref instanceType);
             updateHealthes.infos = chunk.GetNativeArray(ref infoType);
-            updateHealthes.healthDamages = healthDamages;
+            updateHealthes.healthDamages = chunk.GetBufferAccessor(ref healthDamageType);
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -164,7 +161,7 @@ public partial struct GameEntityHealthActorSystem : ISystem
         updateHealth.healthType = state.GetComponentTypeHandle<GameEntityHealthData>(true);
         updateHealth.instanceType = state.GetComponentTypeHandle<GameEntityHealthActorData>(true);
         updateHealth.infoType = state.GetComponentTypeHandle<GameEntityHealthActorInfo>();
-        updateHealth.healthDamages = state.GetComponentLookup<GameEntityHealthDamage>();
+        updateHealth.healthDamageType = state.GetBufferTypeHandle<GameEntityHealthDamage>();
 
         state.Dependency = updateHealth.ScheduleParallel(__group, state.Dependency);
     }
@@ -186,9 +183,11 @@ public partial struct GameEntityHealthSystem : ISystem
         [ReadOnly]
         public NativeArray<GameEntityHealth> inputs;
         [ReadOnly]
-        public NativeArray<GameEntityHealthDamage> damages;
+        public BufferAccessor<GameEntityHealthDamage> damages;
 
         public BufferAccessor<GameEntityHealthBuff> buffs;
+
+        public NativeArray<GameEntityHealthDamageCount> damageCounts;
 
         [NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameNodeStatus> statusOutputs;
@@ -246,8 +245,13 @@ public partial struct GameEntityHealthSystem : ISystem
             float value = result.value;
             int source = (int)math.round(value);
 
-            var damage = damages[index];
-            value -= damage.value;
+            var damages = this.damages[index];
+            var damageCount = damageCounts[index];
+            int numDamages = damages.Length;
+            while(numDamages > damageCount.value)
+                value -= damages[damageCount.value++].value;
+
+            damageCounts[index] = damageCount;
 
             value = math.clamp(value + buffValue, 0.0f, instance.max);
 
@@ -294,7 +298,7 @@ public partial struct GameEntityHealthSystem : ISystem
         public float deltaTime;
 
         [ReadOnly]
-        public EntityTypeHandle entityArrayType;
+        public EntityTypeHandle entityType;
         [ReadOnly]
         public ComponentTypeHandle<GameNodeStatus> statusType;
         [ReadOnly]
@@ -302,9 +306,11 @@ public partial struct GameEntityHealthSystem : ISystem
         [ReadOnly]
         public ComponentTypeHandle<GameEntityHealth> resultType;
         [ReadOnly]
-        public ComponentTypeHandle<GameEntityHealthDamage> damageType;
+        public BufferTypeHandle<GameEntityHealthDamage> damageType;
 
         public BufferTypeHandle<GameEntityHealthBuff> buffType;
+
+        public ComponentTypeHandle<GameEntityHealthDamageCount> damageCountType;
 
         [NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameNodeStatus> states;
@@ -316,12 +322,13 @@ public partial struct GameEntityHealthSystem : ISystem
         {
             UpdateHealthes updateHealthes;
             updateHealthes.deltaTime = deltaTime;
-            updateHealthes.entityArray = chunk.GetNativeArray(entityArrayType);
+            updateHealthes.entityArray = chunk.GetNativeArray(entityType);
             updateHealthes.statusInputs = chunk.GetNativeArray(ref statusType);
             updateHealthes.instances = chunk.GetNativeArray(ref instanceType);
             updateHealthes.inputs = chunk.GetNativeArray(ref resultType);
-            updateHealthes.damages = chunk.GetNativeArray(ref damageType);
+            updateHealthes.damages = chunk.GetBufferAccessor(ref damageType);
             updateHealthes.buffs = chunk.GetBufferAccessor(ref buffType);
+            updateHealthes.damageCounts = chunk.GetNativeArray(ref damageCountType);
             updateHealthes.statusOutputs = states;
             updateHealthes.outputs = results;
 
@@ -333,14 +340,34 @@ public partial struct GameEntityHealthSystem : ISystem
         
     private EntityQuery __group;
 
+    private EntityTypeHandle __entityType;
+    private ComponentTypeHandle<GameNodeStatus> __statusType;
+    private ComponentTypeHandle<GameEntityHealthData> __instanceType;
+    private ComponentTypeHandle<GameEntityHealth> __resultType;
+    private BufferTypeHandle<GameEntityHealthDamage> __damageType;
+    private BufferTypeHandle<GameEntityHealthBuff> __buffType;
+    private ComponentTypeHandle<GameEntityHealthDamageCount> __damageCountType;
+    private ComponentLookup<GameNodeStatus> __states;
+    private ComponentLookup<GameEntityHealth> __results;
+
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameEntityHealthData>(),
-            ComponentType.ReadOnly<GameNodeStatus>(),
-            ComponentType.ReadOnly<GameEntityHealth>(),
-            ComponentType.ReadOnly<GameEntityHealthDamage>(), 
-            ComponentType.Exclude<Disabled>());
+        using(var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                .WithAll<GameNodeStatus, GameEntityHealthData, GameEntityHealth, GameEntityHealthDamage>()
+                .WithAllRW<GameEntityHealthDamageCount>()
+                .Build(ref state);
+
+        __entityType = state.GetEntityTypeHandle();
+        __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
+        __instanceType = state.GetComponentTypeHandle<GameEntityHealthData>(true);
+        __resultType = state.GetComponentTypeHandle<GameEntityHealth>(true);
+        __damageType = state.GetBufferTypeHandle<GameEntityHealthDamage>(true);
+        __buffType = state.GetBufferTypeHandle<GameEntityHealthBuff>();
+        __damageCountType = state.GetComponentTypeHandle<GameEntityHealthDamageCount>();
+        __states = state.GetComponentLookup<GameNodeStatus>();
+        __results = state.GetComponentLookup<GameEntityHealth>();
     }
 
     public void OnDestroy(ref SystemState state)
@@ -353,20 +380,100 @@ public partial struct GameEntityHealthSystem : ISystem
     {
         UpdateHealthesEx updateHealth;
         updateHealth.deltaTime = state.WorldUnmanaged.Time.DeltaTime;
-        updateHealth.entityArrayType = state.GetEntityTypeHandle();
-        updateHealth.statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
-        updateHealth.instanceType = state.GetComponentTypeHandle<GameEntityHealthData>(true);
-        updateHealth.resultType = state.GetComponentTypeHandle<GameEntityHealth>(true);
-        updateHealth.damageType = state.GetComponentTypeHandle<GameEntityHealthDamage>(true);
-        updateHealth.buffType = state.GetBufferTypeHandle<GameEntityHealthBuff>();
-        updateHealth.states = state.GetComponentLookup<GameNodeStatus>();
-        updateHealth.results = state.GetComponentLookup<GameEntityHealth>();
+        updateHealth.entityType = __entityType.UpdateAsRef(ref state);
+        updateHealth.statusType = __statusType.UpdateAsRef(ref state);
+        updateHealth.instanceType = __instanceType.UpdateAsRef(ref state);
+        updateHealth.resultType = __resultType.UpdateAsRef(ref state);
+        updateHealth.damageType = __damageType.UpdateAsRef(ref state);
+        updateHealth.buffType = __buffType.UpdateAsRef(ref state);
+        updateHealth.damageCountType = __damageCountType.UpdateAsRef(ref state);
+        updateHealth.states = __states.UpdateAsRef(ref state);
+        updateHealth.results = __results.UpdateAsRef(ref state);
 
-        state.Dependency = updateHealth.ScheduleParallel(__group, state.Dependency);
+        state.Dependency = updateHealth.ScheduleParallelByRef(__group, state.Dependency);
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(GameSyncSystemGroup))]
+[BurstCompile, UpdateInGroup(typeof(GameStatusSystemGroup))]
+public partial struct GameEntityHealthStatusSystem : ISystem
+{
+    private struct UpdateStates
+    {
+        [ReadOnly]
+        public NativeArray<GameNodeStatus> states;
+
+        public NativeArray<GameEntityHealthDamageCount> damageCounts;
+        public BufferAccessor<GameEntityHealthDamage> damages;
+        
+        public void Execute(int index)
+        {
+            if ((states[index].value & GameNodeStatus.OVER) != GameNodeStatus.OVER)
+                return;
+
+            damages[index].Clear();
+            damageCounts[index] = default;
+        }
+    }
+
+    [BurstCompile]
+    private struct UpdateStatesEx : IJobChunk
+    {
+        [ReadOnly]
+        public ComponentTypeHandle<GameNodeStatus> statusType;
+
+        public ComponentTypeHandle<GameEntityHealthDamageCount> damageCountType;
+        public BufferTypeHandle<GameEntityHealthDamage> damageType;
+
+        public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+        {
+            UpdateStates updateStates;
+            updateStates.states = chunk.GetNativeArray(ref statusType);
+            updateStates.damageCounts = chunk.GetNativeArray(ref damageCountType);
+            updateStates.damages = chunk.GetBufferAccessor(ref damageType);
+
+            var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+            while (iterator.NextEntityIndex(out int i))
+                updateStates.Execute(i);
+        }
+    }
+
+    
+    private EntityQuery __group;
+    private ComponentTypeHandle<GameNodeStatus> __statusType;
+    private ComponentTypeHandle<GameEntityHealthDamageCount> __damageCountType;
+    private BufferTypeHandle<GameEntityHealthDamage> __damageType;
+    
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                .WithAllRW<GameEntityHealthDamage, GameEntityHealthDamageCount>()
+                .BuildStatusSystemGroup(ref state);
+
+        __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
+        __damageCountType = state.GetComponentTypeHandle<GameEntityHealthDamageCount>();
+        __damageType = state.GetBufferTypeHandle<GameEntityHealthDamage>();
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        UpdateStatesEx updateStates;
+        updateStates.statusType = __statusType.UpdateAsRef(ref state);
+        updateStates.damageCountType = __damageCountType.UpdateAsRef(ref state);
+        updateStates.damageType = __damageType.UpdateAsRef(ref state);
+        state.Dependency = updateStates.ScheduleParallelByRef(__group, state.Dependency);
+    }
+}
+
+/*[BurstCompile, UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(GameSyncSystemGroup))]
 public partial struct GameEntityHealthClearSystem : ISystem
 {
     private struct Clear
@@ -440,4 +547,4 @@ public partial struct GameEntityHealthClearSystem : ISystem
 
         state.Dependency = clear.ScheduleParallel(__group, state.Dependency);
     }
-}
+}*/
