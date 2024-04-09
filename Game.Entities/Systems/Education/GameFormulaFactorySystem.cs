@@ -140,7 +140,8 @@ public struct GameFormulaFactoryMode : IComponentData
         Auto,
         Once,
         Repeat,
-        Force
+        Force, 
+        Remote
     }
 
     public enum OwnerType
@@ -630,6 +631,20 @@ public partial struct GameFormulaFactorySystem : ISystem
                                 Command(index, status.formulaIndex, status.count, factory);
 
                                 result |= RunningStatus.Command;
+                                break;
+                            case GameFormulaFactoryMode.Mode.Remote:
+                                if (!Complete(
+                                        true, 
+                                        status.formulaIndex, 
+                                        status.level, 
+                                        status.count - status.usedCount, 
+                                        entity, 
+                                        entity, 
+                                        owner, 
+                                        handle, 
+                                        ref formula))
+                                    return 0;
+
                                 break;
                             default:
                                 return 0;// throw new InvalidOperationException();
