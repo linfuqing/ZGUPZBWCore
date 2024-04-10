@@ -509,7 +509,7 @@ public partial struct GameFormulaFactorySystem : ISystem
 
                     if (status.value == GameFormulaFactoryStatus.Status.Running)
                     {
-                        Entity entity = factory, owner;
+                        Entity owner;
                         var mode = modes[index];
                         switch (mode.ownerType)
                         {
@@ -531,6 +531,7 @@ public partial struct GameFormulaFactorySystem : ISystem
                                 var factoryEntities = this.factoryEntities[index];
                                 if (factoryEntities.Length > 0)
                                 {
+                                    Entity entity = factory;
                                     if (mode.value == GameFormulaFactoryMode.Mode.Normal)
                                     {
                                         foreach (var factoryEntity in factoryEntities)
@@ -633,13 +634,16 @@ public partial struct GameFormulaFactorySystem : ISystem
                                 result |= RunningStatus.Command;
                                 break;
                             case GameFormulaFactoryMode.Mode.Remote:
+                                if (itemRootMap.HasComponent(status.entity))
+                                     handle = itemRootMap[status.entity].handle;
+                                
                                 if (!Complete(
                                         true, 
                                         status.formulaIndex, 
                                         status.level, 
                                         status.count - status.usedCount, 
-                                        entity, 
-                                        entity, 
+                                        status.entity, 
+                                        status.entity, 
                                         owner, 
                                         handle, 
                                         ref formula))
