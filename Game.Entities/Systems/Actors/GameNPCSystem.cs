@@ -197,6 +197,22 @@ public struct GameNPCWorld
 
     public float3 GetPosition(int index) => __npcs[index].position;
 
+    public bool GetPositionAndRotation(int index, out float3 position, out quaternion rotation)
+    {
+        if (!__npcs.TryGetValue(index, out var npc))
+        {
+            position = float3.zero;
+            rotation = quaternion.identity;
+
+            return false;
+        }
+
+        position = npc.position;
+        rotation = npc.rotation;
+
+        return true;
+    }
+
     public void Set(
         int index, 
         int stageIndex, 
@@ -299,7 +315,7 @@ public struct GameNPCWorld
         int min = Math.GetLowerstBit(layerMask), max = Math.GetHighestBit(layerMask);
         for (int i = min - 1; i < max; ++i)
         {
-            wrapper = new Wrapper(i, __npcs, bounds, npcIndices);
+            wrapper = new Wrapper(i, __npcs, bounds, npcIndices.AsArray());
             __world.Apply(i, ref wrapper);
             wrapper.Dispose();
         }
@@ -514,6 +530,15 @@ public struct GameNPCWorldShared : ILandscapeWorld<int>
         __CheckRead();
 
         return __data->instance.GetPosition(index);
+    }
+
+    public unsafe bool GetPositionAndRotation(int index, out float3 position, out quaternion rotation)
+    {
+        lookupJobManager.CompleteReadOnlyDependency();
+
+        __CheckRead();
+
+        return __data->instance.GetPositionAndRotation(index, out position, out rotation);
     }
 
     public unsafe void Set(
