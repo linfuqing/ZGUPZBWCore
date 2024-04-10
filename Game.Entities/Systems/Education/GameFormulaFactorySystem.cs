@@ -643,7 +643,7 @@ public partial struct GameFormulaFactorySystem : ISystem
                                         status.level, 
                                         status.count - status.usedCount, 
                                         status.entity, 
-                                        status.entity, 
+                                        factory, 
                                         owner, 
                                         handle, 
                                         ref formula))
