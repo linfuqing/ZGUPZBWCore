@@ -84,7 +84,7 @@ public struct GameFormulaFactoryDefinition
                 var parentItemTypes = this.parentItemTypes.AsArray();
                 var entityHandle = GameItemHandle.Empty;
                 int itemCount;
-                bool isContains = true;
+                //bool isContains = true;
                 for (int i = 0; i < numChildren; ++i)
                 {
                     ref var child = ref children[i];
@@ -908,7 +908,7 @@ public partial struct GameFormulaFactorySystem : ISystem
             var handle = itemRoots[index].handle;
             GameFormula temp;
             CompletedResult completedResult;
-            RunningResult runningResult;
+            //RunningResult runningResult;
             GameFormulaFactoryInstance instance;
             var mode = modes[index];
             var status = states[index];
@@ -1334,7 +1334,7 @@ public partial struct GameFormulaFactorySystem : ISystem
                     {
                         siblings[result.factory].Reinterpret<GameItemHandle>().AddRange(itemSiblingHandles.AsArray());
                         
-                        siblings.SetComponentEnabled(result.factory, true);
+                        siblings.SetBufferEnabled(result.factory, true);
                     }
                     else
                     {
@@ -1495,7 +1495,7 @@ public partial struct GameFormulaFactorySystem : ISystem
 
                                 siblings.Clear();
                                 
-                                this.siblings.SetComponentEnabled(input.factory, false);
+                                this.siblings.SetBufferEnabled(input.factory, false);
                             }
 
                             numSiblings = result.itemSiblingTypes.Length;

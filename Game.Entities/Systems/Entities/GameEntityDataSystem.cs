@@ -1093,7 +1093,6 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                 healthOutputs[healthBuff.entity].Add(healthBuff.value);
             }
 
-            DynamicBuffer<GameEntityTorpidityBuff> torpidityBuffs;
             while(torpidityInputs.TryDequeue(out var torpidityBuff))
             {
                 if (!torpidityOutputs.HasBuffer(torpidityBuff.entity))

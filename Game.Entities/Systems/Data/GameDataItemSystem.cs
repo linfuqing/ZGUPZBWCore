@@ -1875,7 +1875,7 @@ public partial struct GameDataItemSiblingDeserializationSystem : ISystem
                         siblings = this.siblings[key.entity];
 
                         siblings[key.index] = sibling;
-                        this.siblings.SetComponentEnabled(key.entity, true);
+                        this.siblings.SetBufferEnabled(key.entity, true);
                     }
                 }
             }

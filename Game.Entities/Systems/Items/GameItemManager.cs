@@ -102,6 +102,13 @@ public struct GameItemChild
 
 public struct GameItemTypeDefinition
 {
+    [Flags]
+    public enum Flag
+    {
+        HideInHierarchy = 0x01
+    }
+
+    public Flag flag;
     public int count;
     public int capacity;
 }
@@ -109,6 +116,7 @@ public struct GameItemTypeDefinition
 [Serializable]
 public struct GameItemDataDefinition
 {
+    public GameItemTypeDefinition.Flag flag;
     public int count;
     public int capacity;
 
@@ -497,6 +505,7 @@ public struct GameItemManager
         {
             source = datas[i];
 
+            destination.flag = source.flag;
             destination.count = math.max(source.count, 1);
             destination.capacity = source.capacity;
 
@@ -587,6 +596,7 @@ public struct GameItemManager
         {
             source = datas[i];
 
+            destination.flag = source.flag;
             destination.count = math.max(source.count, 1);
             destination.capacity = source.capacity;
 
@@ -1890,18 +1900,18 @@ public struct GameItemManager
         int parentType, 
         int childType,
         in NativeParallelMultiHashMap<int, int> positiveFilters, 
-        in NativeParallelMultiHashMap<int, int> negativefilters)
+        in NativeParallelMultiHashMap<int, int> negativeFilters)
     {
         int filter;
         NativeParallelMultiHashMapIterator<int> filterIterator;
-        if (negativefilters.TryGetFirstValue(parentType, out filter, out filterIterator))
+        if (negativeFilters.TryGetFirstValue(parentType, out filter, out filterIterator))
         {
             do
             {
                 if (childType == filter)
                     return false;
 
-            } while (negativefilters.TryGetNextValue(out filter, ref filterIterator));
+            } while (negativeFilters.TryGetNextValue(out filter, ref filterIterator));
         }
 
         bool isFind;
@@ -1936,7 +1946,7 @@ public struct GameItemManager
         in NativePool<Info>.ReadOnlySlice items,
         in NativeParallelMultiHashMap<int, Child> children, 
         in NativeParallelMultiHashMap<int, int> positiveFilters,
-        in NativeParallelMultiHashMap<int, int> negativefilters, 
+        in NativeParallelMultiHashMap<int, int> negativeFilters, 
         out int parentChildIndex,
         out Handle parentHandle)
     {
@@ -1945,11 +1955,11 @@ public struct GameItemManager
 
         var result = FindResult.None;
 
-        if (!isRoot)
+        /*if (!isRoot)
         {
             var resultTemp = __Find(
                 flag,
-                1,
+                //1,
                 type,
                 count,
                 handle,
@@ -1957,7 +1967,7 @@ public struct GameItemManager
                 items,
                 children,
                 positiveFilters,
-                negativefilters,
+                negativeFilters,
                 out parentChildIndex,
                 out parentHandle);
 
@@ -1965,7 +1975,7 @@ public struct GameItemManager
                 return FindResult.Normal;
 
             result = resultTemp;
-        }
+        }*/
 
         if ((flag & GameItemFindFlag.Siblings) == GameItemFindFlag.Siblings &&
             items.TryGetValue(handle, out var item))
@@ -1980,7 +1990,7 @@ public struct GameItemManager
                 items,
                 children,
                 positiveFilters,
-                negativefilters,
+                negativeFilters,
                 out int parentChildIndexTemp,
                 out Handle parentHandleTemp);
 
@@ -2005,11 +2015,11 @@ public struct GameItemManager
             }
         }
 
-        if (isRoot)
+        //if (isRoot)
         {
             var resultTemp = __Find(
                 flag,
-                0,
+                //0,
                 type,
                 count,
                 handle,
@@ -2017,7 +2027,7 @@ public struct GameItemManager
                 items,
                 children,
                 positiveFilters,
-                negativefilters,
+                negativeFilters,
                 out int parentChildIndexTemp,
                 out Handle parentHandleTemp);
 
@@ -2047,7 +2057,7 @@ public struct GameItemManager
 
     private static FindResult __Find(
         GameItemFindFlag flag,
-        int depth,
+        //int depth,
         int type,
         int count,
         in Handle handle, 
@@ -2055,7 +2065,7 @@ public struct GameItemManager
         in NativePool<Info>.ReadOnlySlice items,
         in NativeParallelMultiHashMap<int, Child> children,
         in NativeParallelMultiHashMap<int, int> positiveFilters,
-        in NativeParallelMultiHashMap<int, int> negativefilters,
+        in NativeParallelMultiHashMap<int, int> negativeFilters,
         out int parentChildIndex,
         out Handle parentHandle)
     {
@@ -2065,13 +2075,16 @@ public struct GameItemManager
         if (!items.TryGetValue(handle, out var item))
             return FindResult.None;
 
+        var typeDefinition = types[item.type];
+
         if ((flag & GameItemFindFlag.Children) == GameItemFindFlag.Children && children.TryGetFirstValue(handle.index, out var child, out var iterator))
         {
             FindResult result;
             Info temp;
+            var typeCount = types[type].count;
             do
             {
-                if (items.TryGetValue(child.handle, out temp) && temp.type == type && temp.count + count <= types[type].count)
+                if (items.TryGetValue(child.handle, out temp) && temp.type == type && temp.count + count <= typeCount)
                 {
                     parentHandle = handle;
                     parentChildIndex = child.index;
@@ -2079,11 +2092,11 @@ public struct GameItemManager
                     return FindResult.Normal;
                 }
 
-                if (depth > 0)
+                if ((typeDefinition.flag & GameItemTypeDefinition.Flag.HideInHierarchy) != GameItemTypeDefinition.Flag.HideInHierarchy)
                 {
                     result = __Find(
                         flag | GameItemFindFlag.Self,
-                        depth - 1,
+                        //depth - 1,
                         type,
                         count,
                         child.handle,
@@ -2091,7 +2104,7 @@ public struct GameItemManager
                         items,
                         children,
                         positiveFilters,
-                        negativefilters,
+                        negativeFilters,
                         out parentChildIndex,
                         out parentHandle);
 
@@ -2106,9 +2119,9 @@ public struct GameItemManager
             item.type, 
             type,
             positiveFilters,
-            negativefilters))
+            negativeFilters))
         {
-            int capacity = types[item.type].capacity;
+            int capacity = typeDefinition.capacity;
             for (int i = 0; i < capacity; ++i)
             {
                 if (!__Find(handle.index, i, children, out _, out _))
