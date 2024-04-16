@@ -206,24 +206,19 @@ public struct GameAnimationElapsedTime : IComponentData
     }
 }
 
-#if !GAME_RESOURCE_EDIT
+/*#if !GAME_RESOURCE_EDIT
 public class GameBootStrap : ICustomBootstrap
 {
     public bool Initialize(string defaultWorldName)
     {
         var world = new World(defaultWorldName);
-        /*if(!UnityEngine.Application.isPlaying)
-            world.Initialize();*/
+        
         World.DefaultGameObjectInjectionWorld = world;
-        /*var systems = DefaultWorldInitialization.GetAllSystems(WorldSystemFilterFlags.Default);
-
-        DefaultWorldInitialization.AddSystemsToRootLevelSystemGroups(world, systems);
-        ScriptBehaviourUpdateOrder.UpdatePlayerLoop(world);*/
         
         return true;
     }
 }
-#endif
+#endif*/
 
 public struct GameSyncTime
 {

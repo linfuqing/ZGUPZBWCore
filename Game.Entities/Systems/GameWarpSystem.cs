@@ -132,9 +132,10 @@ public partial struct GameWarperSystem : ISystem
         raycastInput.Filter.CollidesWith = ~ignoreMask;
         for (int i = 0; i < maxTimes; ++i)
         {
+            point = random.NextFloat2Direction();
             point = math.float2(
-                    position.x + random.NextFloat(-radius, radius),
-                    position.z + random.NextFloat(-radius, radius));
+                    position.x + point.x * random.NextFloat(-radius, radius),
+                    position.z + point.y * random.NextFloat(-radius, radius));
 
             raycastInput.Start = math.float3(point.x, position.y + height, point.y);
             raycastInput.End = math.float3(point.x, position.y - height, point.y);
