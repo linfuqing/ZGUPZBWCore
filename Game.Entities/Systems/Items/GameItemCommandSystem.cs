@@ -609,7 +609,7 @@ public struct GameItemResultManager
 
         public NativeList<EntityData<Result>> results;
 
-        public NativeParallelHashMap<int, Version> versions;
+        public SharedHashMap<int, Version>.Writer versions;
 
         public NativeParallelMultiHashMap<int, ItemChild> children;
 
@@ -1682,7 +1682,7 @@ public struct GameItemResultManager
         public SharedHashMap<Entity, Entity>.Reader itemEntities;
 
         [ReadOnly]
-        public NativeParallelHashMap<int, Version> versions;
+        public SharedHashMap<int, Version>.Reader versions;
 
         public NativeList<Entity>.ParallelWriter entities;
 
@@ -1716,7 +1716,7 @@ public struct GameItemResultManager
         public SharedHashMap<Entity, Entity>.Reader itemEntities;
 
         [ReadOnly]
-        public NativeParallelHashMap<int, Version> versions;
+        public SharedHashMap<int, Version>.Reader versions;
 
         [ReadOnly]
         public EntityTypeHandle entityType;
@@ -1775,7 +1775,7 @@ public struct GameItemResultManager
 
         public NativeList<EntityData<Result>> results;
 
-        public NativeParallelHashMap<int, Version> versions;
+        public SharedHashMap<int, Version>.Writer versions;
 
         public NativeParallelMultiHashMap<int, ItemChild> children;
 
@@ -1858,7 +1858,7 @@ public struct GameItemResultManager
 
             results.Capacity = math.max(results.Capacity, results.Length + count);
 
-            versions.Capacity = math.max(versions.Capacity, versions.Count() + count);
+            versions.capacity = math.max(versions.capacity, versions.Count() + count);
             children.Capacity = math.max(children.Capacity, children.Count() + count);
 
             counter.count = 0;
@@ -1896,7 +1896,7 @@ public struct GameItemResultManager
 
         public SharedList<EntityData<Result>>.ParallelWriter results;
 
-        public NativeParallelHashMap<int, Version>.ParallelWriter versions;
+        public SharedHashMap<int, Version>.ParallelWriter versions;
 
         public NativeParallelMultiHashMap<int, ItemChild>.ParallelWriter children;
 
@@ -2032,8 +2032,14 @@ public struct GameItemResultManager
     private NativeArray<int> __commandCount;
     private NativeList<ItemMask> __itemMasks;
     private NativeList<Entity> __entities;
-    private NativeParallelHashMap<int, Version> __versions;
     private NativeParallelMultiHashMap<int, ItemChild> __children;
+
+    public SharedHashMap<int, Version> versions
+    {
+        get;
+
+        private set;
+    }
 
     public SharedList<EntityData<Result>> results
     {
@@ -2127,9 +2133,9 @@ public struct GameItemResultManager
         __commandCount = new NativeArray<int>(1, Allocator.Persistent, NativeArrayOptions.ClearMemory);
         __itemMasks = new NativeList<ItemMask>(Allocator.Persistent);
         __entities = new NativeList<Entity>(Allocator.Persistent);
-        __versions = new NativeParallelHashMap<int, Version>(1, Allocator.Persistent);
         __children = new NativeParallelMultiHashMap<int, ItemChild>(1, Allocator.Persistent);
 
+        versions = new SharedHashMap<int, Version>(Allocator.Persistent);
         results = new SharedList<EntityData<Result>>(Allocator.Persistent);
     }
 
@@ -2139,17 +2145,17 @@ public struct GameItemResultManager
         __commandCount.Dispose();
         __itemMasks.Dispose();
         __entities.Dispose();
-        __versions.Dispose();
         __children.Dispose();
 
+        versions.Dispose();
         results.Dispose();
     }
 
     public bool TryGetVersion(int handle, out int version)
     {
-        results.lookupJobManager.CompleteReadOnlyDependency();
+        versions.lookupJobManager.CompleteReadOnlyDependency();
 
-        if (__versions.TryGetValue(handle, out var temp))
+        if (versions.reader.TryGetValue(handle, out var temp))
         {
             version = temp.value;
 
@@ -2180,9 +2186,9 @@ public struct GameItemResultManager
         __itemRootEntities.lookupJobManager.CompleteReadOnlyDependency();
 
         return __itemRootEntities.reader.TryGetValue(key, out entity);*/
-        results.lookupJobManager.CompleteReadOnlyDependency();
+        versions.lookupJobManager.CompleteReadOnlyDependency();
 
-        if (__versions.TryGetValue(handle, out var temp))
+        if (versions.reader.TryGetValue(handle, out var temp))
         {
             entity = temp.entity;
 
@@ -2321,16 +2327,17 @@ public struct GameItemResultManager
         int parentHandle, 
         int parentChildIndex)
     {
-        results.lookupJobManager.CompleteReadOnlyDependency();
+        this.versions.lookupJobManager.CompleteReadOnlyDependency();
 
         GameItemCommandManager.Command command;
 
-        if (!__versions.TryGetValue(handle, out var version))
+        var versions = this.versions.reader;
+        if (!versions.TryGetValue(handle, out var version))
             return false;
 
         command.handle.version = version.value;
 
-        if (!__versions.TryGetValue(parentHandle, out version))
+        if (!versions.TryGetValue(parentHandle, out version))
             return false;
 
         command.parentHandle.version = version.value;
@@ -2352,11 +2359,12 @@ public struct GameItemResultManager
         int parentHandle, 
         int parentChildIndex)
     {
-        results.lookupJobManager.CompleteReadOnlyDependency();
+        this.versions.lookupJobManager.CompleteReadOnlyDependency();
 
         GameItemCommandManager.Command command;
 
-        if (!__versions.TryGetValue(handle, out var version))
+        var versions = this.versions.reader;
+        if (!versions.TryGetValue(handle, out var version))
             return false;
 
         command.handle.version = version.value;
@@ -2365,7 +2373,7 @@ public struct GameItemResultManager
             command.parentHandle = GameItemHandle.Empty;
         else
         {
-            if (!__versions.TryGetValue(parentHandle, out version))
+            if (!versions.TryGetValue(parentHandle, out version))
                 return false;
 
             command.parentHandle.version = version.value;
@@ -2388,7 +2396,7 @@ public struct GameItemResultManager
         Action<int, GameItem> handler,
         ref EntityManager entityManager)
     {
-        results.lookupJobManager.CompleteReadOnlyDependency();
+        versions.lookupJobManager.CompleteReadOnlyDependency();
 
         __durabilityResults.lookupJobManager.CompleteReadOnlyDependency();
         __timeResults.lookupJobManager.CompleteReadOnlyDependency();
@@ -2419,6 +2427,8 @@ public struct GameItemResultManager
         var itemEntitiesReader = itemEntities.reader;
 
         var results = this.results;
+        var versions = this.versions;
+        var versionsWriter = versions.writer;
 
         var durabilities = __durabilities.UpdateAsRef(ref state);
         var times = __times.UpdateAsRef(ref state);
@@ -2437,7 +2447,7 @@ public struct GameItemResultManager
         change.serializables = __serializables.UpdateAsRef(ref state);
         change.itemMasks = __itemMasks;
         change.results = results.writer;
-        change.versions = __versions;
+        change.versions = versionsWriter;
         change.children = __children;
 
         ref var itemManageJobManager = ref __itemManager.lookupJobManager;
@@ -2447,11 +2457,15 @@ public struct GameItemResultManager
         ref var timeResultsJobManager = ref __timeResults.lookupJobManager;
         ref var durabilityResultsJobManager = ref __durabilityResults.lookupJobManager;
 
+        ref var versionsJobManager = ref versions.lookupJobManager;
+
         ref var resultsJobManager = ref results.lookupJobManager;
 
         var jobHandle = JobHandle.CombineDependencies(itemManageJobManager.readOnlyJobHandle, itemEntitiesJobManager.readOnlyJobHandle, itemRootEntitiesJobManager.readOnlyJobHandle);
         jobHandle = JobHandle.CombineDependencies(jobHandle, timeResultsJobManager.readOnlyJobHandle, durabilityResultsJobManager.readOnlyJobHandle);
-        jobHandle = change.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, resultsJobManager.readWriteJobHandle, inputDeps));
+        jobHandle = JobHandle.CombineDependencies(jobHandle, versionsJobManager.readWriteJobHandle,
+            resultsJobManager.readWriteJobHandle);
+        jobHandle = change.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, inputDeps));
 
         itemRootEntitiesJobManager.AddReadOnlyDependency(jobHandle);
         timeResultsJobManager.AddReadOnlyDependency(jobHandle);
@@ -2470,7 +2484,7 @@ public struct GameItemResultManager
         ResetEx reset;
         reset.hierarchy = hierarchy;
         reset.itemEntities = itemEntitiesReader;
-        reset.versions = __versions;
+        reset.versions = versions.reader;
         reset.entityType = __entityType.UpdateAsRef(ref state);
         reset.rootType = __rootType.UpdateAsRef(ref state);
         reset.entities = __entities.AsParallelWriter();
@@ -2491,7 +2505,7 @@ public struct GameItemResultManager
         resize.counter = __counter;
         resize.itemMasks = __itemMasks;
         resize.results = results.writer;
-        resize.versions = __versions;
+        resize.versions = versionsWriter;
         resize.children = __children;
         jobHandle = resize.ScheduleByRef(jobHandle);
 
@@ -2506,7 +2520,7 @@ public struct GameItemResultManager
         apply.entities = itemEntitiesReader;
         apply.results = results.parallelWriter;
         apply.itemMasks = __itemMasks.AsParallelWriter();
-        apply.versions = __versions.AsParallelWriter();
+        apply.versions = versions.parallelWriter;
         apply.children = __children.AsParallelWriter();
         jobHandle = apply.ScheduleByRef(__entities, 1, jobHandle);
 
@@ -2527,7 +2541,7 @@ public struct GameItemResultManager
         in SharedHashMap<Entity, Entity>.Reader itemEntities,
         Action<int, GameItem> handler)
     {
-        if (!__versions.TryGetValue(handle, out var version))
+        if (!versions.reader.TryGetValue(handle, out var version))
             return false;
 
         __Convert(
