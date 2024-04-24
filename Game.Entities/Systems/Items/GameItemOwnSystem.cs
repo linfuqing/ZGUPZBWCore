@@ -19,7 +19,7 @@ public struct GameItemFollower : IBufferElementData
 
 [BurstCompile, 
  CreateAfter(typeof(GameItemSystem)), 
- UpdateInGroup(typeof(InitializationSystemGroup), OrderLast = true)]
+ UpdateInGroup(typeof(EntityObjectSystemGroup), OrderLast = true)]
 public partial struct GameItemOwnSystem : ISystem
 {
     public enum CommandType

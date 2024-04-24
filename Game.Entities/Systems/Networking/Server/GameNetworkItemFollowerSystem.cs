@@ -450,6 +450,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
                 .WithOptions(EntityQueryOptions.IncludeDisabledEntities | EntityQueryOptions.IgnoreComponentEnabledState)
                 .Build(ref state);
         
+        __groupToCollect.AddChangedVersionFilter(ComponentType.ReadOnly<GameItemFollower>());
         __groupToCollect.AddChangedVersionFilter(ComponentType.ReadOnly<GameFollower>());
         
         __managerGroup = NetworkServerManager.GetEntityQuery(ref state);
