@@ -12,9 +12,11 @@ public struct GameServerItemFollowerData : IComponentData, IEnableableComponent
 {
     public int addChannel;
     public int removeChannel;
+    public int deleteChannel;
     public int setChannel;
     public uint addHandle;
     public uint removeHandle;
+    public uint deleteHandle;
     public uint setHandle;
 }
 
@@ -57,7 +59,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
         public void Execute(int index)
         {
             GameItemOwnSystem.Command command;
-            command.isAddOrRemove = true;
+            command.type = GameItemOwnSystem.CommandType.Add;
             command.source = entityArray[index];
 
             bool isContains;
@@ -301,6 +303,9 @@ public partial struct GameItemServerFollowerSystem : ISystem
         public ComponentLookup<GameItemObjectData> itemObjects;
 
         [ReadOnly] 
+        public ComponentLookup<GameItemName> itemNames;
+
+        [ReadOnly] 
         public ComponentLookup<GameServerItemFollowerData> instances;
 
         public NativeQueue<GameItemOwnSystem.Command> commands;
@@ -319,6 +324,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
             DataStreamWriter stream;
             NetworkIdentity identity;
             GameItemObjectData itemObject;
+            GameItemName itemName;
             GameServerItemFollowerData instance;
             GameItemResultManager.Version version;
             while(commands.TryDequeue(out var command))
@@ -327,33 +333,48 @@ public partial struct GameItemServerFollowerSystem : ISystem
                     !identities.TryGetComponent(command.source, out identity))
                     continue;
 
-                if (command.isAddOrRemove)
+                switch (command.type)
                 {
-                    if(!itemObjects.TryGetComponent(command.destination, out itemObject))
-                        continue;
+                    case GameItemOwnSystem.CommandType.Add:
+                        if(!itemObjects.TryGetComponent(command.destination, out itemObject))
+                            continue;
 
-                    if(!versions.TryGetValue(command.handle.index, out version) || version.value != command.handle.version)
-                        continue;
+                        if(!versions.TryGetValue(command.handle.index, out version) || version.value != command.handle.version)
+                            continue;
                     
-                    if (!rpcCommander.BeginCommand(identity.id, channels[instance.addChannel].pipeline,
-                            driver, out stream))
+                        if (!rpcCommander.BeginCommand(identity.id, channels[instance.addChannel].pipeline,
+                                driver, out stream))
+                            continue;
+
+                        stream.WritePackedUInt(instance.addHandle, model);
+                        stream.WritePackedUInt((uint)command.handle.index, model);
+                        stream.WritePackedUInt((uint)version.type, model);
+                        stream.WritePackedUInt((uint)itemObject.type, model);
+                        break;
+                    case GameItemOwnSystem.CommandType.Remove:
+                        if (!rpcCommander.BeginCommand(identity.id, channels[instance.removeChannel].pipeline,
+                                driver, out stream))
+                            continue;
+
+                        stream.WritePackedUInt(instance.removeHandle, model);
+                        stream.WritePackedUInt((uint)command.handle.index, model);
+                        break;
+                    case GameItemOwnSystem.CommandType.Delete:
+                        if(!itemNames.TryGetComponent(command.destination, out itemName))
+                            continue;
+
+                        if (!rpcCommander.BeginCommand(identity.id, channels[instance.deleteChannel].pipeline,
+                                driver, out stream))
+                            continue;
+                        
+                        stream.WritePackedUInt(instance.deleteHandle, model);
+                        stream.WriteFixedString32(itemName.value);
+
+                        break;
+                    default:
                         continue;
-
-                    stream.WritePackedUInt(instance.addHandle, model);
-                    stream.WritePackedUInt((uint)command.handle.index, model);
-                    stream.WritePackedUInt((uint)version.type, model);
-                    stream.WritePackedUInt((uint)itemObject.type, model);
                 }
-                else
-                {
-                    if (!rpcCommander.BeginCommand(identity.id, channels[instance.removeChannel].pipeline,
-                            driver, out stream))
-                        continue;
-
-                    stream.WritePackedUInt(instance.removeHandle, model);
-                    stream.WritePackedUInt((uint)command.handle.index, model);
-                }
-
+                
                 value = rpcCommander.EndCommandRPC(
                     (int)NetworkRPCType.SendSelfOnly,
                     stream,
@@ -397,6 +418,8 @@ public partial struct GameItemServerFollowerSystem : ISystem
 
     private ComponentLookup<GameItemObjectData> __itemObjects;
 
+    private ComponentLookup<GameItemName> __itemNames;
+
     private ComponentLookup<NetworkIdentity> __identities;
     private EntityTypeHandle __entityType;
     private BufferTypeHandle<GameFollower> __followerType;
@@ -437,6 +460,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
 
         __instances = state.GetComponentLookup<GameServerItemFollowerData>(true);
         __itemObjects = state.GetComponentLookup<GameItemObjectData>(true);
+        __itemNames = state.GetComponentLookup<GameItemName>(true);
         __identities= state.GetComponentLookup<NetworkIdentity>(true);
         __entityType = state.GetEntityTypeHandle();
         __followerType = state.GetBufferTypeHandle<GameFollower>(true);
@@ -507,6 +531,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
                 apply.origins = origins;
                 apply.identities = identities;
                 apply.itemObjects = __itemObjects.UpdateAsRef(ref state);
+                apply.itemNames = __itemNames.UpdateAsRef(ref state);
                 apply.instances = __instances.UpdateAsRef(ref state);
                 apply.commands = __commands;
                 apply.results = __results;
