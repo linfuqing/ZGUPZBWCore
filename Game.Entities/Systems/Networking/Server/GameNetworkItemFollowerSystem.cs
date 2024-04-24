@@ -227,9 +227,9 @@ public partial struct GameItemServerFollowerSystem : ISystem
 
                 results.Enqueue(result);
 
-                itemFollowers.RemoveAtSwapBack(i--);
+                targetItemFollowers.RemoveAtSwapBack(i--);
 
-                --numItemFollowers;
+                --numTargetItemFollowers;
             }
         }
     }
