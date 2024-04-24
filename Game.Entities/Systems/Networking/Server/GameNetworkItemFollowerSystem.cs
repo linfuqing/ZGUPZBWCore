@@ -143,6 +143,8 @@ public partial struct GameItemServerFollowerSystem : ISystem
         [ReadOnly] 
         public ComponentLookup<NetworkIdentity> identities;
         [ReadOnly] 
+        public ComponentLookup<GameItemRoot> itemRoots;
+        [ReadOnly] 
         public NativeArray<Entity> entityArray;
         [ReadOnly] 
         public BufferAccessor<GameFollower> followers;
@@ -162,7 +164,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
             var itemFollowers = this.itemFollowers[index];
             var targetItemFollowers = this.targetItemFollowers[index];
             NetworkIdentity identity;
-            GameItemHandle handle;
+            GameItemRoot root;
             GameItemFollower itemFollower;
             GameServerItemFollower targetItemFollower;
             int numTargetItemFollowers = targetItemFollowers.Length, 
@@ -175,17 +177,15 @@ public partial struct GameItemServerFollowerSystem : ISystem
 
                 if(!identities.TryGetComponent(targetItemFollower.entity, out identity))
                     continue;
+                
+                if(!itemRoots.TryGetComponent(targetItemFollower.entity, out root))
+                    continue;
 
-                handle = GameItemHandle.Empty;
                 for (j = 0; j < numItemFollowers; ++j)
                 {
                     itemFollower = itemFollowers[j];
-                    if (itemFollower.entity == targetItemFollower.entity)
-                    {
-                        handle = itemFollower.handle;
-                        
+                    if (itemFollower.handle.Equals(root.handle))
                         break;
-                    }
                 }
                 
                 if(j == numItemFollowers)
@@ -197,14 +197,14 @@ public partial struct GameItemServerFollowerSystem : ISystem
                         break;
                 }
 
-                if (j < numItemFollowers)
+                if (j < numTargetItemFollowers)
                     continue;
 
-                result.handle = handle;
+                result.handle = root.handle;
                 result.id = identity.id;
                 results.Enqueue(result);
 
-                targetItemFollower.handle = handle;
+                targetItemFollower.handle = root.handle;
                 targetItemFollower.id = identity.id;
 
                 targetItemFollowers.Add(targetItemFollower);
@@ -243,6 +243,8 @@ public partial struct GameItemServerFollowerSystem : ISystem
         [ReadOnly] 
         public ComponentLookup<NetworkIdentity> identities;
         [ReadOnly] 
+        public ComponentLookup<GameItemRoot> itemRoots;
+        [ReadOnly] 
         public EntityTypeHandle entityType;
         [ReadOnly] 
         public BufferTypeHandle<GameFollower> followerType;
@@ -260,16 +262,9 @@ public partial struct GameItemServerFollowerSystem : ISystem
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask,
             in v128 chunkEnabledMask)
         {
-            /*Append append;
-            append.origins = origins;
-            append.entityArray = chunk.GetNativeArray(entityType);
-            append.itemFollowers = chunk.GetBufferAccessor(ref itemFollowerType);
-            append.targetItemFollowers = chunk.GetBufferAccessor(ref targetItemFollowerType);
-            append.commands = commands;
-            append.results = results;*/
-            
             Collect collect;
             collect.identities = identities;
+            collect.itemRoots = itemRoots;
             collect.entityArray = chunk.GetNativeArray(entityType);
             collect.followers = chunk.GetBufferAccessor(ref followerType);
             collect.itemFollowers = chunk.GetBufferAccessor(ref itemFollowerType);
@@ -420,6 +415,8 @@ public partial struct GameItemServerFollowerSystem : ISystem
 
     private ComponentLookup<GameItemName> __itemNames;
 
+    private ComponentLookup<GameItemRoot> __itemRoots;
+
     private ComponentLookup<NetworkIdentity> __identities;
     private EntityTypeHandle __entityType;
     private BufferTypeHandle<GameFollower> __followerType;
@@ -461,6 +458,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
         __instances = state.GetComponentLookup<GameServerItemFollowerData>(true);
         __itemObjects = state.GetComponentLookup<GameItemObjectData>(true);
         __itemNames = state.GetComponentLookup<GameItemName>(true);
+        __itemRoots = state.GetComponentLookup<GameItemRoot>(true);
         __identities= state.GetComponentLookup<NetworkIdentity>(true);
         __entityType = state.GetEntityTypeHandle();
         __followerType = state.GetBufferTypeHandle<GameFollower>(true);
@@ -509,6 +507,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
         CollectEx collect;
         collect.identities = identities;
         collect.entityType = entityType;
+        collect.itemRoots = __itemRoots.UpdateAsRef(ref state);
         collect.followerType = __followerType.UpdateAsRef(ref state);
         collect.itemFollowerType = itemFollowerType;
         collect.targetItemFollowerType = targetItemFollowerType;
