@@ -21,38 +21,119 @@ public struct GameServerItemFollowerData : IComponentData, IEnableableComponent
 public struct GameServerItemFollower : IBufferElementData
 {
     public Entity entity;
-    public int handle;
+    public GameItemHandle handle;
+    public uint id;
 }
 
 [AutoCreateIn("Server"), 
  BurstCompile, 
  CreateAfter(typeof(GameItemOwnSystem)), 
+ CreateAfter(typeof(GameItemResultSystem)), 
  UpdateBefore(typeof(NetworkRPCSystem))]
 public partial struct GameItemServerFollowerSystem : ISystem
 {
-    public struct Result
+    private struct Result
     {
         public Entity entity;
-        public int handle;
+        public GameItemHandle handle;
         public uint id;
     }
 
     private struct Append
     {
-        
-        [ReadOnly] 
-        public ComponentLookup<NetworkIdentity> identities;
+        [ReadOnly]
+        public SharedList<GameItemOwnSystem.Command>.Reader origins;
         [ReadOnly] 
         public NativeArray<Entity> entityArray;
-        [ReadOnly] 
-        public BufferAccessor<GameFollower> followers;
         [ReadOnly] 
         public BufferAccessor<GameItemFollower> itemFollowers;
         [ReadOnly] 
         public BufferAccessor<GameServerItemFollower> targetItemFollowers;
 
-        public NativeQueue<GameItemOwnSystem.Command>.ParallelWriter results;
+        public NativeQueue<GameItemOwnSystem.Command>.ParallelWriter commands;
 
+        public NativeQueue<Result>.ParallelWriter results;
+
+        public void Execute(int index)
+        {
+            GameItemOwnSystem.Command command;
+            command.isAddOrRemove = true;
+            command.source = entityArray[index];
+
+            bool isContains;
+            var itemFollowers = this.itemFollowers[index];
+            foreach (var itemFollower in itemFollowers)
+            {
+                isContains = false;
+                foreach (var origin in origins.AsArray())
+                {
+                    if (origin.destination == itemFollower.entity && origin.source == command.source)
+                    {
+                        isContains = true;
+                        break;
+                    }
+                }
+                
+                if(isContains)
+                    continue;
+
+                command.destination = itemFollower.entity;
+                command.handle = itemFollower.handle;
+                
+                commands.Enqueue(command);
+            }
+
+            Result result;
+            result.entity = command.source;
+            
+            var targetItemFollowers = this.targetItemFollowers[index];
+            foreach (var targetItemFollower in targetItemFollowers)
+            {
+                result.handle = targetItemFollower.handle;
+                result.id = targetItemFollower.id;
+                
+                results.Enqueue(result);
+            }
+        }
+    }
+
+    [BurstCompile]
+    private struct AppendEx : IJobChunk
+    {
+        [ReadOnly]
+        public SharedList<GameItemOwnSystem.Command>.Reader origins;
+        [ReadOnly] 
+        public EntityTypeHandle entityType;
+        [ReadOnly] 
+        public BufferTypeHandle<GameItemFollower> itemFollowerType;
+        [ReadOnly]
+        public BufferTypeHandle<GameServerItemFollower> targetItemFollowerType;
+
+        public ComponentTypeHandle<GameServerItemFollowerData> instanceType;
+
+        public NativeQueue<GameItemOwnSystem.Command>.ParallelWriter commands;
+
+        public NativeQueue<Result>.ParallelWriter results;
+
+        public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask,
+            in v128 chunkEnabledMask)
+        {
+            Append append;
+            append.origins = origins;
+            append.entityArray = chunk.GetNativeArray(entityType);
+            append.itemFollowers = chunk.GetBufferAccessor(ref itemFollowerType);
+            append.targetItemFollowers = chunk.GetBufferAccessor(ref targetItemFollowerType);
+            append.commands = commands;
+            append.results = results;
+            
+            var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+            while (iterator.NextEntityIndex(out int i))
+            {
+                append.Execute(i);
+                
+                chunk.SetComponentEnabled(ref instanceType, i, false);
+            }
+        }
     }
     
     private struct Collect
@@ -117,11 +198,12 @@ public partial struct GameItemServerFollowerSystem : ISystem
                 if (j < numItemFollowers)
                     continue;
 
-                result.handle = handle.index;
+                result.handle = handle;
                 result.id = identity.id;
                 results.Enqueue(result);
 
-                targetItemFollower.handle = handle.index;
+                targetItemFollower.handle = handle;
+                targetItemFollower.id = identity.id;
 
                 targetItemFollowers.Add(targetItemFollower);
             }
@@ -153,6 +235,9 @@ public partial struct GameItemServerFollowerSystem : ISystem
     [BurstCompile]
     private struct CollectEx : IJobChunk
     {
+        //[ReadOnly]
+        //public SharedList<GameItemOwnSystem.Command>.Reader origins;
+
         [ReadOnly] 
         public ComponentLookup<NetworkIdentity> identities;
         [ReadOnly] 
@@ -164,11 +249,23 @@ public partial struct GameItemServerFollowerSystem : ISystem
 
         public BufferTypeHandle<GameServerItemFollower> targetItemFollowerType;
 
+        //public ComponentTypeHandle<GameServerItemFollowerData> instanceType;
+        
+        //public NativeQueue<GameItemOwnSystem.Command>.ParallelWriter commands;
+
         public NativeQueue<Result>.ParallelWriter results;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask,
             in v128 chunkEnabledMask)
         {
+            /*Append append;
+            append.origins = origins;
+            append.entityArray = chunk.GetNativeArray(entityType);
+            append.itemFollowers = chunk.GetBufferAccessor(ref itemFollowerType);
+            append.targetItemFollowers = chunk.GetBufferAccessor(ref targetItemFollowerType);
+            append.commands = commands;
+            append.results = results;*/
+            
             Collect collect;
             collect.identities = identities;
             collect.entityArray = chunk.GetNativeArray(entityType);
@@ -192,16 +289,18 @@ public partial struct GameItemServerFollowerSystem : ISystem
         public NativeArray<NetworkServerEntityChannel> channels;
 
         [ReadOnly]
-        public SharedList<GameItemOwnSystem.Command>.Reader commands;
+        public SharedList<GameItemOwnSystem.Command>.Reader origins;
+
+        [ReadOnly] 
+        public SharedHashMap<int, GameItemResultManager.Version>.Reader versions;
 
         [ReadOnly] 
         public ComponentLookup<NetworkIdentity> identities;
 
         [ReadOnly] 
-        public ComponentLookup<GameItemObjectData> itemObjects;
-
-        [ReadOnly] 
         public ComponentLookup<GameServerItemFollowerData> instances;
+
+        public NativeQueue<GameItemOwnSystem.Command> commands;
 
         public NativeQueue<Result> results;
 
@@ -210,12 +309,15 @@ public partial struct GameItemServerFollowerSystem : ISystem
 
         public void Execute()
         {
+            foreach (var command in origins.AsArray())
+                commands.Enqueue(command);
+            
             int value;
             DataStreamWriter stream;
             NetworkIdentity identity;
-            GameItemObjectData itemObject;
             GameServerItemFollowerData instance;
-            foreach (var command in commands.AsArray())
+            GameItemResultManager.Version version;
+            while(commands.TryDequeue(out var command))
             {
                 if (!instances.TryGetComponent(command.source, out instance) ||
                     !identities.TryGetComponent(command.source, out identity))
@@ -223,7 +325,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
 
                 if (command.isAddOrRemove)
                 {
-                    if(!itemObjects.TryGetComponent(command.destination, out itemObject))
+                    if(!versions.TryGetValue(command.handle.index, out version) || version.value != command.handle.version)
                         continue;
                     
                     if (!rpcCommander.BeginCommand(identity.id, channels[instance.addChannel].pipeline,
@@ -232,7 +334,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
 
                     stream.WritePackedUInt(instance.addHandle, model);
                     stream.WritePackedUInt((uint)command.handle.index, model);
-                    stream.WritePackedUInt((uint)itemObject.type, model);
+                    stream.WritePackedUInt((uint)version.type, model);
                 }
                 else
                 {
@@ -264,7 +366,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
                     continue;
                 
                 stream.WritePackedUInt(instance.setHandle, model);
-                stream.WritePackedUInt((uint)result.handle, model);
+                stream.WritePackedUInt((uint)result.handle.index, model);
                 stream.WritePackedUInt(result.id, model);
                 
                 value = rpcCommander.EndCommandRPC(
@@ -278,14 +380,13 @@ public partial struct GameItemServerFollowerSystem : ISystem
         }
     }
 
-    private EntityQuery __group;
+    private EntityQuery __groupToAppend;
+    private EntityQuery __groupToCollect;
     private EntityQuery __managerGroup;
     private EntityQuery __controllerGroup;
 
     private ComponentLookup<GameServerItemFollowerData> __instances;
 
-    private ComponentLookup<GameItemObjectData> __itemObjects;
-    
     private ComponentLookup<NetworkIdentity> __identities;
     private EntityTypeHandle __entityType;
     private BufferTypeHandle<GameFollower> __followerType;
@@ -294,33 +395,49 @@ public partial struct GameItemServerFollowerSystem : ISystem
 
     private BufferTypeHandle<GameServerItemFollower> __targetItemFollowerType;
 
-    private SharedList<GameItemOwnSystem.Command> __commands;
+    private ComponentTypeHandle<GameServerItemFollowerData> __instanceType;
+    
+    private SharedHashMap<int, GameItemResultManager.Version> __versions;
+    private SharedList<GameItemOwnSystem.Command> __origins;
+
+    private NativeQueue<GameItemOwnSystem.Command> __commands;
     private NativeQueue<Result> __results;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
-            __group = builder
-                .WithAll<GameServerItemFollowerData, GameItemFollower, GameFollower, NetworkIdentity>()
-                .WithAllRW<GameServerItemFollower>()
+            __groupToAppend = builder
+                .WithAll<GameServerItemFollower, GameItemFollower, NetworkIdentity>()
+                .WithAllRW<GameServerItemFollowerData>()
                 .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                 .Build(ref state);
+
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __groupToCollect = builder
+                .WithAll<GameServerItemFollowerData, GameItemFollower, GameFollower, NetworkIdentity>()
+                .WithAllRW<GameServerItemFollower>()
+                .WithOptions(EntityQueryOptions.IncludeDisabledEntities | EntityQueryOptions.IgnoreComponentEnabledState)
+                .Build(ref state);
         
-        __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameFollower>());
+        __groupToCollect.AddChangedVersionFilter(ComponentType.ReadOnly<GameFollower>());
         
         __managerGroup = NetworkServerManager.GetEntityQuery(ref state);
         __controllerGroup = NetworkRPCController.GetEntityQuery(ref state);
 
         __instances = state.GetComponentLookup<GameServerItemFollowerData>(true);
-        __itemObjects = state.GetComponentLookup<GameItemObjectData>(true);
         __identities= state.GetComponentLookup<NetworkIdentity>(true);
         __entityType = state.GetEntityTypeHandle();
         __followerType = state.GetBufferTypeHandle<GameFollower>(true);
         __itemFollowerType = state.GetBufferTypeHandle<GameItemFollower>(true);
         __targetItemFollowerType = state.GetBufferTypeHandle<GameServerItemFollower>();
+        __instanceType = state.GetComponentTypeHandle<GameServerItemFollowerData>();
 
-        __commands = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemOwnSystem>().commands;
+        var world = state.WorldUnmanaged;
+        __origins = world.GetExistingSystemUnmanaged<GameItemOwnSystem>().commands;
+        __versions = world.GetExistingSystemUnmanaged<GameItemResultSystem>().manager.versions;
+        
+        __commands = new NativeQueue<GameItemOwnSystem.Command>(Allocator.Persistent);
 
         __results = new NativeQueue<Result>(Allocator.Persistent);
     }
@@ -334,47 +451,76 @@ public partial struct GameItemServerFollowerSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
+        var origins = __origins.reader;
+        var entityType = __entityType.UpdateAsRef(ref state);
+        var itemFollowerType = __itemFollowerType.UpdateAsRef(ref state);
+        var targetItemFollowerType = __targetItemFollowerType.UpdateAsRef(ref state);
+        
+        AppendEx append;
+        append.origins = origins;
+        append.entityType = entityType;
+        append.itemFollowerType = itemFollowerType;
+        append.targetItemFollowerType = targetItemFollowerType;
+        append.instanceType = __instanceType.UpdateAsRef(ref state);
+        append.commands = __commands.AsParallelWriter();
+        append.results = __results.AsParallelWriter();
+
+        ref var originsJobManager = ref __origins.lookupJobManager;
+        var jobHandle = append.ScheduleParallelByRef(__groupToAppend, 
+            JobHandle.CombineDependencies(originsJobManager.readOnlyJobHandle, state.Dependency));
+
         var identities = __identities.UpdateAsRef(ref state);
         
         CollectEx collect;
         collect.identities = identities;
-        collect.entityType = __entityType.UpdateAsRef(ref state);
+        collect.entityType = entityType;
         collect.followerType = __followerType.UpdateAsRef(ref state);
-        collect.itemFollowerType = __itemFollowerType.UpdateAsRef(ref state);
-        collect.targetItemFollowerType = __targetItemFollowerType.UpdateAsRef(ref state);
+        collect.itemFollowerType = itemFollowerType;
+        collect.targetItemFollowerType = targetItemFollowerType;
         collect.results = __results.AsParallelWriter();
 
-        var jobHandle = collect.ScheduleParallelByRef(__group, state.Dependency);
+        jobHandle = collect.ScheduleParallelByRef(__groupToCollect, jobHandle);
+
+        if (SystemAPI.HasSingleton<NetworkServerEntityChannel>())
+        {
+            var channels = SystemAPI.GetSingletonBuffer<NetworkServerEntityChannel>(true).AsNativeArray();
+            if (channels.Length > 0)
+            {
+                var manager = __managerGroup.GetSingleton<NetworkServerManager>();
+                var controller = __controllerGroup.GetSingleton<NetworkRPCController>();
+
+                Apply apply;
+                apply.model = StreamCompressionModel.Default;
+                apply.channels = channels;
+                apply.versions = __versions.reader;
+                apply.origins = origins;
+                apply.identities = identities;
+                apply.instances = __instances.UpdateAsRef(ref state);
+                apply.commands = __commands;
+                apply.results = __results;
+                apply.driver = manager.server.driver;
+                apply.rpcCommander = controller.commander;
+
+                ref var versionsJobManager = ref __versions.lookupJobManager;
+                ref var managerJobManager = ref manager.lookupJobManager;
+                ref var controllerJobManager = ref controller.lookupJobManager;
+
+                jobHandle = JobHandle.CombineDependencies(jobHandle,
+                    versionsJobManager.readOnlyJobHandle);
+                jobHandle = JobHandle.CombineDependencies(jobHandle,
+                    managerJobManager.readWriteJobHandle,
+                    controllerJobManager.readWriteJobHandle);
+                jobHandle = apply.ScheduleByRef(jobHandle);
+
+                managerJobManager.readWriteJobHandle = jobHandle;
+                controllerJobManager.readWriteJobHandle = jobHandle;
+
+                versionsJobManager.AddReadOnlyDependency(jobHandle);
+            }
+        }
+
+        originsJobManager.AddReadOnlyDependency(jobHandle);
         
-        var manager = __managerGroup.GetSingleton<NetworkServerManager>();
-        var controller = __controllerGroup.GetSingleton<NetworkRPCController>();
-
-        Apply apply;
-        apply.model = StreamCompressionModel.Default;
-        apply.channels = SystemAPI.GetSingletonBuffer<NetworkServerEntityChannel>(true).AsNativeArray();
-        apply.commands = __commands.reader;
-        apply.identities = identities;
-        apply.itemObjects = __itemObjects.UpdateAsRef(ref state);
-        apply.instances = __instances.UpdateAsRef(ref state);
-        apply.results = __results;
-        apply.driver = manager.server.driver;
-        apply.rpcCommander = controller.commander;
-
-        ref var commandsJobManager = ref __commands.lookupJobManager;
-        ref var managerJobManager = ref manager.lookupJobManager;
-        ref var controllerJobManager = ref controller.lookupJobManager;
-
-        jobHandle = JobHandle.CombineDependencies(jobHandle, 
-            commandsJobManager.readOnlyJobHandle);
-        jobHandle = JobHandle.CombineDependencies(jobHandle, 
-            managerJobManager.readWriteJobHandle,
-            controllerJobManager.readWriteJobHandle);
-        jobHandle = apply.ScheduleByRef(jobHandle);
-
-        commandsJobManager.AddReadOnlyDependency(jobHandle);
-        managerJobManager.readWriteJobHandle = jobHandle;
-        controllerJobManager.readWriteJobHandle = jobHandle;
-
         state.Dependency = jobHandle;
     }
 }

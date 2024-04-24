@@ -1028,9 +1028,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                             status.entityTorpidity,
                             animals.HasComponent(damager.target) ? animals[damager.target].max : 0,
                             status.animalValue);
-                        status.handle = itemRoots.HasComponent(instance.entity)
-                            ? itemRoots[instance.entity].handle
-                            : GameItemHandle.Empty;
+                        status.entity = instance.entity;
 
                         entityManager.AddComponentData(entity, status);
 

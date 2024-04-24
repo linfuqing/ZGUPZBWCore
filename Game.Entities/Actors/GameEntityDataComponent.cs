@@ -25,7 +25,7 @@ public struct GameItemSpawnStatus : IComponentData
     public float entityTorpidity;
     public float animalValue;
     public float chance;
-    public GameItemHandle handle;
+    public Entity entity;
 }
 
 [Serializable]

@@ -78,12 +78,12 @@ public partial struct GameItemOwnSystem : ISystem
                 }
             }
 
-            bool isContains = handle.Equals(handle);
-            if (isContains != (index < instances.Length))
+            bool isEmpty = handle.Equals(GameItemHandle.Empty);
+            if (isEmpty == (index < instances.Length))
             {
                 Command command;
-                command.isAddOrRemove = isContains;
-                command.handle = isContains ? handle : instances[index].handle;
+                command.isAddOrRemove = isEmpty;
+                command.handle = isEmpty ? instances[index].handle : handle;
                 command.source = owner;
                 command.destination = entity;
                 
