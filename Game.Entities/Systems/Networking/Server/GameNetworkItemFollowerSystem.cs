@@ -298,6 +298,9 @@ public partial struct GameItemServerFollowerSystem : ISystem
         public ComponentLookup<NetworkIdentity> identities;
 
         [ReadOnly] 
+        public ComponentLookup<GameItemObjectData> itemObjects;
+
+        [ReadOnly] 
         public ComponentLookup<GameServerItemFollowerData> instances;
 
         public NativeQueue<GameItemOwnSystem.Command> commands;
@@ -315,6 +318,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
             int value;
             DataStreamWriter stream;
             NetworkIdentity identity;
+            GameItemObjectData itemObject;
             GameServerItemFollowerData instance;
             GameItemResultManager.Version version;
             while(commands.TryDequeue(out var command))
@@ -325,6 +329,9 @@ public partial struct GameItemServerFollowerSystem : ISystem
 
                 if (command.isAddOrRemove)
                 {
+                    if(!itemObjects.TryGetComponent(command.destination, out itemObject))
+                        continue;
+
                     if(!versions.TryGetValue(command.handle.index, out version) || version.value != command.handle.version)
                         continue;
                     
@@ -335,6 +342,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
                     stream.WritePackedUInt(instance.addHandle, model);
                     stream.WritePackedUInt((uint)command.handle.index, model);
                     stream.WritePackedUInt((uint)version.type, model);
+                    stream.WritePackedUInt((uint)itemObject.type, model);
                 }
                 else
                 {
@@ -387,6 +395,8 @@ public partial struct GameItemServerFollowerSystem : ISystem
 
     private ComponentLookup<GameServerItemFollowerData> __instances;
 
+    private ComponentLookup<GameItemObjectData> __itemObjects;
+
     private ComponentLookup<NetworkIdentity> __identities;
     private EntityTypeHandle __entityType;
     private BufferTypeHandle<GameFollower> __followerType;
@@ -426,6 +436,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
         __controllerGroup = NetworkRPCController.GetEntityQuery(ref state);
 
         __instances = state.GetComponentLookup<GameServerItemFollowerData>(true);
+        __itemObjects = state.GetComponentLookup<GameItemObjectData>(true);
         __identities= state.GetComponentLookup<NetworkIdentity>(true);
         __entityType = state.GetEntityTypeHandle();
         __followerType = state.GetBufferTypeHandle<GameFollower>(true);
@@ -495,6 +506,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
                 apply.versions = __versions.reader;
                 apply.origins = origins;
                 apply.identities = identities;
+                apply.itemObjects = __itemObjects.UpdateAsRef(ref state);
                 apply.instances = __instances.UpdateAsRef(ref state);
                 apply.commands = __commands;
                 apply.results = __results;
