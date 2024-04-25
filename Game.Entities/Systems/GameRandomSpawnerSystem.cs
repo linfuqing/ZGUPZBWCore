@@ -61,13 +61,15 @@ public struct GameSpawnInitializer : IEntityDataInitializer
         physicsVelocity.Linear = __velocity;
         gameObjectEntity.SetComponentData(physicsVelocity);
 
+        gameObjectEntity.AddComponent<GameNonSerialized>();
+
+        gameObjectEntity.AddComponent<GameSpawnedInstanceDeadline>();
+
         GameSpawnedInstanceData instance;
         instance.assetIndex = __assetIndex;
         //instance.time = __time;
 
         gameObjectEntity.AddComponentData(instance);
-
-        gameObjectEntity.AddComponent<GameSpawnedInstanceDeadline>();
 
         gameObjectEntity.SetComponentEnabled<GameSpawnedInstanceData>(true);
 

@@ -416,7 +416,7 @@ public partial struct GameDataCampSystem : ISystem
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __group = builder
                 .WithAll<GameEntityCamp>()
-                .WithNone<EntityDataSerializable>()
+                .WithNone<GameNonSerialized, EntityDataSerializable>()
                 .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                 .Build(ref state);
 
