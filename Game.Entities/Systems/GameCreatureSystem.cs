@@ -81,11 +81,6 @@ public struct GameCreatureItemsDefinition
     }
 }
 
-/*public struct GameCreatureItemsSharedData : IComponentData
-{
-    public BlobAssetReference<GameCreatureItemsDefinition> definition;
-}*/
-
 public struct GameCreatureItemsData : IComponentData
 {
     public BlobAssetReference<GameCreatureItemsDefinition> definition;
@@ -138,84 +133,6 @@ public partial struct GameCreatureBuffSystem : ISystem
         state.Dependency = JobHandle.CombineDependencies(state.Dependency, jobHandle);
     }
 }
-
-/*[BurstCompile, UpdateInGroup(typeof(EndFrameEntityCommandSystemGroup))]
-public partial struct GameCreatureStructChangeSystem : ISystem
-{
-    [BurstCompile]
-    private struct Init : IJobParallelFor
-    {
-        public BlobAssetReference<GameCreatureItemsDefinition> definition;
-
-        [ReadOnly, DeallocateOnJobCompletion]
-        public NativeArray<Entity> entityArray;
-
-        [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameCreatureItemsData> instances;
-
-        public void Execute(int index)
-        {
-            GameCreatureItemsData instance;
-            instance.definition = definition;
-            instances[entityArray[index]] = instance;
-        }
-    }
-
-    public static readonly int InnerloopBatchCount = 1;
-
-    private EntityQuery __definitionGroup;
-    private EntityQuery __instanceGroup;
-
-    public void OnCreate(ref SystemState state)
-    {
-        BurstUtility.InitializeJobParallelFor<Init>();
-
-        __definitionGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameCreatureItemsSharedData>());
-
-        __instanceGroup = state.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameCreatureData>()
-                },
-                None = new ComponentType[]
-                {
-                    typeof(GameCreatureItemsData)
-                },
-
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
-    }
-
-    public void OnDestroy(ref SystemState state)
-    {
-    }
-
-    [BurstCompile]
-    public void OnUpdate(ref SystemState state)
-    {
-        NativeArray<Entity> instanceEntities;
-        if (__instanceGroup.IsEmptyIgnoreFilter)
-            instanceEntities = default;
-        else
-        {
-            instanceEntities = __instanceGroup.ToEntityArrayBurstCompatible(state.GetEntityTypeHandle(), Allocator.TempJob);
-
-            state.EntityManager.AddComponent<GameCreatureItemsData>(__instanceGroup);
-        }
-
-        if (instanceEntities.IsCreated)
-        {
-            Init init;
-            init.definition = __definitionGroup.GetSingleton<GameCreatureItemsSharedData>().definition;
-            init.entityArray = instanceEntities;
-            init.instances = state.GetComponentLookup<GameCreatureItemsData>();
-
-            state.Dependency = init.ScheduleByRef(instanceEntities.Length, InnerloopBatchCount, state.Dependency);
-        }
-    }
-}*/
 
 [BurstCompile, CreateAfter(typeof(GameItemSystem)), UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(GameEntityTorpiditySystem))]
 public partial struct GameCreatureSystem : ISystem

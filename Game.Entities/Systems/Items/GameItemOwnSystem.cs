@@ -64,7 +64,7 @@ public partial struct GameItemOwnSystem : ISystem
         public NativeArray<GameItemOwner> owners;
 
         [ReadOnly] 
-        public NativeArray<GameItemFollowerMax> followerMaxes;
+        public ComponentLookup<GameItemFollowerMax> followerMaxes;
 
         [ReadOnly] 
         public BufferLookup<GameItemFollower> followers;
@@ -101,7 +101,7 @@ public partial struct GameItemOwnSystem : ISystem
                 Command command;
                 if (isEmpty)
                 {
-                    if (index < followerMaxes.Length && followerMaxes[index].count <= numFollowers)
+                    if (followerMaxes.HasComponent(owner) && followerMaxes[owner].count <= numFollowers)
                         command.type = CommandType.Delete;
                     else
                         command.type = CommandType.Add;
@@ -131,7 +131,7 @@ public partial struct GameItemOwnSystem : ISystem
         public ComponentTypeHandle<GameItemOwner> ownerType;
 
         [ReadOnly] 
-        public ComponentTypeHandle<GameItemFollowerMax> followerMaxType;
+        public ComponentLookup<GameItemFollowerMax> followerMaxes;
 
         [ReadOnly] 
         public BufferLookup<GameItemFollower> followers;
@@ -144,7 +144,7 @@ public partial struct GameItemOwnSystem : ISystem
             didChange.entityArray = chunk.GetNativeArray(entityType);
             didChange.instances = chunk.GetNativeArray(ref instanceType);
             didChange.owners = chunk.GetNativeArray(ref ownerType);
-            didChange.followerMaxes = chunk.GetNativeArray(ref followerMaxType);
+            didChange.followerMaxes = followerMaxes;
             didChange.followers = followers;
             didChange.commands = commands;
 
@@ -207,7 +207,7 @@ public partial struct GameItemOwnSystem : ISystem
 
     private ComponentTypeHandle<GameItemOwner> __ownerType;
     
-    private ComponentTypeHandle<GameItemFollowerMax> __followerMaxType;
+    private ComponentLookup<GameItemFollowerMax> __followerMaxes;
     
     private BufferLookup<GameItemFollower> __followers;
 
@@ -236,7 +236,7 @@ public partial struct GameItemOwnSystem : ISystem
         __ownerType = state.GetComponentTypeHandle<GameItemOwner>(true);
         __followers = state.GetBufferLookup<GameItemFollower>();
 
-        __followerMaxType = state.GetComponentTypeHandle<GameItemFollowerMax>(true);
+        __followerMaxes = state.GetComponentLookup<GameItemFollowerMax>(true);
 
         __itemManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameItemSystem>().manager;
         commands = new SharedList<Command>(Allocator.Persistent);
@@ -267,7 +267,7 @@ public partial struct GameItemOwnSystem : ISystem
         didChange.entityType = __entityType.UpdateAsRef(ref state);
         didChange.instanceType = __instanceType.UpdateAsRef(ref state);
         didChange.ownerType = __ownerType.UpdateAsRef(ref state);
-        didChange.followerMaxType = __followerMaxType.UpdateAsRef(ref state);
+        didChange.followerMaxes = __followerMaxes.UpdateAsRef(ref state);
         didChange.followers = __followers;
         didChange.commands = commands.parallelWriter;
         jobHandle = didChange.ScheduleParallelByRef(__group, jobHandle);

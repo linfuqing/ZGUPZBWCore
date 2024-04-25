@@ -531,23 +531,43 @@ public partial struct GameFormulaFactorySystem : ISystem
                                 var factoryEntities = this.factoryEntities[index];
                                 if (factoryEntities.Length > 0)
                                 {
+                                    bool isCompleted = false;
                                     Entity entity = factory;
                                     if (mode.value == GameFormulaFactoryMode.Mode.Normal)
                                     {
+                                        Entity targetEntity;
+                                        GameItemHandle targetHandle;
                                         foreach (var factoryEntity in factoryEntities)
                                         {
                                             if (factoryEntity.value == status.entity)
                                             {
-                                                entity = status.entity;
+                                                targetEntity = status.entity;
 
-                                                handle = itemRootMap[status.entity].handle;
+                                                targetHandle = itemRootMap[status.entity].handle;
+
+                                                isCompleted = Complete(
+                                                    false,
+                                                    status.formulaIndex,
+                                                    status.level,
+                                                    status.count - status.usedCount,
+                                                    targetEntity,
+                                                    factory,
+                                                    owner,
+                                                    targetHandle,
+                                                    ref formula);
+                                                if (isCompleted)
+                                                {
+                                                    entity = targetEntity;
+                                                    handle = targetHandle;
+                                                }
 
                                                 break;
                                             }
                                         }
                                     }
 
-                                    if (!Complete(
+                                    if (!isCompleted && 
+                                        Complete(
                                             false, 
                                             status.formulaIndex, 
                                             status.level, 

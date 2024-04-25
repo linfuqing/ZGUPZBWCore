@@ -1744,6 +1744,7 @@ public partial struct GameEntityActionSystem : ISystem
             if (actorHits.HasComponent(instance.entity))
             {
                 actorHit = actorHits[instance.entity];
+                actorHit.sourceHit += hitResult;
 
                 var status = states[index].value;
                 if ((status & GameActionStatus.Status.Damaged) == GameActionStatus.Status.Damage)

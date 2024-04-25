@@ -355,14 +355,17 @@ public partial struct GameItemServerFollowerSystem : ISystem
                         stream.WritePackedUInt((uint)command.handle.index, model);
                         break;
                     case GameItemOwnSystem.CommandType.Delete:
-                        if(!itemNames.TryGetComponent(command.destination, out itemName))
+                        if(!itemObjects.TryGetComponent(command.destination, out itemObject))
                             continue;
 
                         if (!rpcCommander.BeginCommand(identity.id, channels[instance.deleteChannel].pipeline,
                                 driver, out stream))
                             continue;
+
+                        itemNames.TryGetComponent(command.destination, out itemName);
                         
                         stream.WritePackedUInt(instance.deleteHandle, model);
+                        stream.WritePackedUInt((uint)itemObject.type);
                         stream.WriteFixedString32(itemName.value);
 
                         break;
