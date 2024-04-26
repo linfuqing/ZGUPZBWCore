@@ -29,7 +29,8 @@ public struct GameDreamerEvent : IBufferElementData
     public GameDreamerStatus status;
     public int version;
     public int index;
-    public GameDeadline time;
+    public GameTime time;
+    public GameDeadline dreamTime;
 }
 
 public struct GameDreamerVersion : IComponentData
@@ -112,7 +113,13 @@ public class GameDreamerComponent : EntityProxyComponent, IEntityComponent
         private set;
     }
 
-    public GameDeadline time
+    public GameTime time
+    {
+        get;
+        private set;
+    }
+    
+    public GameDeadline dreamerTime
     {
         get;
         private set;
@@ -219,9 +226,9 @@ public class GameDreamerComponent : EntityProxyComponent, IEntityComponent
         this.index = index;
         this.level = level;
 
-        __offset = dreamerInfo.nextIndex;
+        //__offset = dreamerInfo.nextIndex;
 
-        this.time = dreamer.time;
+        //this.dreamerTime = dreamer.time;
     }
 
     public void SleepRightNow(EntityCommander commander, in GameDeadline time, int index, int level = 0)
@@ -365,9 +372,9 @@ public class GameDreamerComponent : EntityProxyComponent, IEntityComponent
         this.index = index;
         this.level = level;
 
-        __offset = dreamerInfo.nextIndex;
+        //__offset = dreamerInfo.nextIndex;
 
-        this.time = dreamer.time;
+        //this.dreamerTime = dreamer.time;
     }
 
     public void AwakeRightNow(EntityCommander commander, in GameDeadline time, int index, int level)
@@ -490,6 +497,7 @@ public class GameDreamerComponent : EntityProxyComponent, IEntityComponent
         __offset = result.index;
 
         time = result.time;
+        dreamerTime = result.dreamTime;
 
         Dreams dreams;
         int length = _dreams == null ? 0 : _dreams.Length, count;

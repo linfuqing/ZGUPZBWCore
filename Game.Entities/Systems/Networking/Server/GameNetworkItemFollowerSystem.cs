@@ -30,7 +30,7 @@ public struct GameServerItemFollower : IBufferElementData
 [AutoCreateIn("Server"), 
  BurstCompile, 
  CreateAfter(typeof(GameItemOwnSystem)), 
- CreateAfter(typeof(GameItemResultSystem)), 
+ //CreateAfter(typeof(GameItemResultSystem)), 
  UpdateBefore(typeof(NetworkRPCSystem))]
 public partial struct GameItemServerFollowerSystem : ISystem
 {
@@ -289,10 +289,10 @@ public partial struct GameItemServerFollowerSystem : ISystem
         public SharedList<GameItemOwnSystem.Command>.Reader origins;
 
         [ReadOnly] 
-        public SharedHashMap<int, GameItemResultManager.Version>.Reader versions;
+        public ComponentLookup<NetworkIdentity> identities;
 
         [ReadOnly] 
-        public ComponentLookup<NetworkIdentity> identities;
+        public ComponentLookup<GameItemType> itemTypes;
 
         [ReadOnly] 
         public ComponentLookup<GameItemObjectData> itemObjects;
@@ -318,10 +318,10 @@ public partial struct GameItemServerFollowerSystem : ISystem
             int value;
             DataStreamWriter stream;
             NetworkIdentity identity;
+            GameItemType itemType;
             GameItemObjectData itemObject;
             GameItemName itemName;
             GameServerItemFollowerData instance;
-            GameItemResultManager.Version version;
             while(commands.TryDequeue(out var command))
             {
                 if (!instances.TryGetComponent(command.source, out instance) ||
@@ -334,7 +334,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
                         if(!itemObjects.TryGetComponent(command.destination, out itemObject))
                             continue;
 
-                        if(!versions.TryGetValue(command.handle.index, out version) || version.value != command.handle.version)
+                        if(!itemTypes.TryGetComponent(command.destination, out itemType))
                             continue;
                     
                         if (!rpcCommander.BeginCommand(identity.id, channels[instance.addChannel].pipeline,
@@ -343,7 +343,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
 
                         stream.WritePackedUInt(instance.addHandle, model);
                         stream.WritePackedUInt((uint)command.handle.index, model);
-                        stream.WritePackedUInt((uint)version.type, model);
+                        stream.WritePackedUInt((uint)itemType.value, model);
                         stream.WritePackedUInt((uint)itemObject.type, model);
                         break;
                     case GameItemOwnSystem.CommandType.Remove:
@@ -414,6 +414,8 @@ public partial struct GameItemServerFollowerSystem : ISystem
 
     private ComponentLookup<GameServerItemFollowerData> __instances;
 
+    private ComponentLookup<GameItemType> __itemTypes;
+
     private ComponentLookup<GameItemObjectData> __itemObjects;
 
     private ComponentLookup<GameItemName> __itemNames;
@@ -460,6 +462,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
         __controllerGroup = NetworkRPCController.GetEntityQuery(ref state);
 
         __instances = state.GetComponentLookup<GameServerItemFollowerData>(true);
+        __itemTypes = state.GetComponentLookup<GameItemType>(true);
         __itemObjects = state.GetComponentLookup<GameItemObjectData>(true);
         __itemNames = state.GetComponentLookup<GameItemName>(true);
         __itemRoots = state.GetComponentLookup<GameItemRoot>(true);
@@ -530,9 +533,9 @@ public partial struct GameItemServerFollowerSystem : ISystem
                 Apply apply;
                 apply.model = StreamCompressionModel.Default;
                 apply.channels = channels;
-                apply.versions = __versions.reader;
                 apply.origins = origins;
                 apply.identities = identities;
+                apply.itemTypes = __itemTypes.UpdateAsRef(ref state);
                 apply.itemObjects = __itemObjects.UpdateAsRef(ref state);
                 apply.itemNames = __itemNames.UpdateAsRef(ref state);
                 apply.instances = __instances.UpdateAsRef(ref state);
@@ -541,12 +544,9 @@ public partial struct GameItemServerFollowerSystem : ISystem
                 apply.driver = manager.server.driver;
                 apply.rpcCommander = controller.commander;
 
-                ref var versionsJobManager = ref __versions.lookupJobManager;
                 ref var managerJobManager = ref manager.lookupJobManager;
                 ref var controllerJobManager = ref controller.lookupJobManager;
 
-                jobHandle = JobHandle.CombineDependencies(jobHandle,
-                    versionsJobManager.readOnlyJobHandle);
                 jobHandle = JobHandle.CombineDependencies(jobHandle,
                     managerJobManager.readWriteJobHandle,
                     controllerJobManager.readWriteJobHandle);
@@ -554,8 +554,6 @@ public partial struct GameItemServerFollowerSystem : ISystem
 
                 managerJobManager.readWriteJobHandle = jobHandle;
                 controllerJobManager.readWriteJobHandle = jobHandle;
-
-                versionsJobManager.AddReadOnlyDependency(jobHandle);
             }
         }
 
