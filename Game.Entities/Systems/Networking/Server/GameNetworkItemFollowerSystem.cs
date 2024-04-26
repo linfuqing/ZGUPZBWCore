@@ -432,7 +432,6 @@ public partial struct GameItemServerFollowerSystem : ISystem
 
     private ComponentTypeHandle<GameServerItemFollowerData> __instanceType;
     
-    private SharedHashMap<int, GameItemResultManager.Version> __versions;
     private SharedList<GameItemOwnSystem.Command> __origins;
 
     private NativeQueue<GameItemOwnSystem.Command> __commands;
@@ -475,8 +474,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
 
         var world = state.WorldUnmanaged;
         __origins = world.GetExistingSystemUnmanaged<GameItemOwnSystem>().commands;
-        __versions = world.GetExistingSystemUnmanaged<GameItemResultSystem>().manager.versions;
-        
+
         __commands = new NativeQueue<GameItemOwnSystem.Command>(Allocator.Persistent);
 
         __results = new NativeQueue<Result>(Allocator.Persistent);
