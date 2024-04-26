@@ -226,112 +226,6 @@ public struct GameFormulaFactoryCommand : IBufferElementData, IEnableableCompone
     public int count;
 }
 
-/*[BurstCompile, UpdateInGroup(typeof(EndFrameEntityCommandSystemGroup))]
-public partial struct GameFormulaFactoryStructChangeSystem : ISystem
-{
-    [BurstCompile]
-    private struct Init : IJobParallelFor
-    {
-        public BlobAssetReference<GameFormulaFactoryDefinition> definition;
-
-        [ReadOnly, DeallocateOnJobCompletion]
-        public NativeArray<Entity> entityArray;
-
-        [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameFormulaFactoryData> instances;
-
-        public void Execute(int index)
-        {
-            GameFormulaFactoryData instance;
-            instance.definition = definition;
-            instances[entityArray[index]] = instance;
-        }
-    }
-
-    public static readonly int InnerloopBatchCount = 1;
-
-    private EntityQuery __definitionGroup;
-    private EntityQuery __instanceGroup;
-
-    private EntityCommandPool<Entity>.Context __removeTimePool;
-    private EntityAddComponentPool<GameFormulaFactoryTime> __addTimePool;
-
-    public EntityCommandPool<Entity> removeTimeComponentPool => __removeTimePool.pool;
-
-    public EntityCommandPool<EntityData<GameFormulaFactoryTime>> addTimeComponentPool => __addTimePool.value;
-
-    [BurstCompile]
-    public void OnCreate(ref SystemState state)
-    {
-        BurstUtility.InitializeJobParallelFor<Init>();
-
-        using(var builder = new EntityQueryBuilder(Allocator.Temp))
-            __definitionGroup = builder
-                .WithAll<GameFormulaFactorySharedData>()
-                .Build(ref state);
-
-
-        using (var builder = new EntityQueryBuilder(Allocator.Temp))
-            __instanceGroup = builder
-                .WithAll<GameFormulaFactoryStatus>()
-                .WithNone<GameFormulaFactoryData>()
-                .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
-                .Build(ref state);
-
-        __removeTimePool = new EntityCommandPool<Entity>.Context(Allocator.Persistent);
-
-        __addTimePool = new EntityAddComponentPool<GameFormulaFactoryTime>(Allocator.Persistent);
-    }
-
-    //[BurstCompile]
-    public void OnDestroy(ref SystemState state)
-    {
-        __removeTimePool.Dispose();
-
-        __addTimePool.Dispose();
-    }
-
-    [BurstCompile]
-    public void OnUpdate(ref SystemState state)
-    {
-        if (__definitionGroup.IsEmpty)
-            return;
-
-        NativeArray<Entity> instanceEntities;
-        if (__instanceGroup.IsEmptyIgnoreFilter)
-            instanceEntities = default;
-        else
-        {
-            instanceEntities = __instanceGroup.ToEntityArray(Allocator.TempJob);
-
-            state.EntityManager.AddComponent<GameFormulaFactoryData>(__instanceGroup);
-        }
-
-        if (!__removeTimePool.isEmpty)
-        {
-            using (var container = new EntityCommandEntityContainer(Allocator.Temp))
-            {
-                __removeTimePool.MoveTo(container);
-
-                container.RemoveComponent<GameFormulaFactoryTime>(ref state);
-            }
-        }
-
-        if(!__addTimePool.isEmpty)
-            __addTimePool.Playback(InnerloopBatchCount, ref state);
-
-        if (instanceEntities.IsCreated)
-        {
-            Init init;
-            init.definition = __definitionGroup.GetSingleton<GameFormulaFactorySharedData>().definition;
-            init.entityArray = instanceEntities;
-            init.instances = state.GetComponentLookup<GameFormulaFactoryData>();
-
-            state.Dependency = init.Schedule(instanceEntities.Length, InnerloopBatchCount, state.Dependency);
-        }
-    }
-}*/
-
 [BurstCompile, CreateAfter(typeof(GameItemSystem))/*, CreateAfter(typeof(GameFormulaFactoryStructChangeSystem))*/]
 public partial struct GameFormulaFactorySystem : ISystem
 {
@@ -381,24 +275,6 @@ public partial struct GameFormulaFactorySystem : ISystem
         public Entity factory;
         public Entity owner;
     }
-
-    /*[BurstCompile]
-    private struct Resize : IJob
-    {
-        [ReadOnly, DeallocateOnJobCompletion]
-        public NativeArray<int> count;
-
-        public NativeList<CompletedResult> completedResults;
-
-        public NativeList<RunningResult> runningResults;
-
-        public void Execute()
-        {
-            int count = this.count[0];
-            completedResults.Capacity = math.max(completedResults.Capacity, completedResults.Length + count);
-            runningResults.Capacity = math.max(runningResults.Capacity, runningResults.Length + count);
-        }
-    }*/
 
     private struct Run
     {
@@ -531,48 +407,35 @@ public partial struct GameFormulaFactorySystem : ISystem
                                 var factoryEntities = this.factoryEntities[index];
                                 if (factoryEntities.Length > 0)
                                 {
-                                    bool isCompleted = false;
-                                    Entity entity = factory;
                                     if (mode.value == GameFormulaFactoryMode.Mode.Normal)
                                     {
-                                        Entity targetEntity;
-                                        GameItemHandle targetHandle;
                                         foreach (var factoryEntity in factoryEntities)
                                         {
                                             if (factoryEntity.value == status.entity)
                                             {
-                                                targetEntity = status.entity;
-
-                                                targetHandle = itemRootMap[status.entity].handle;
-
-                                                isCompleted = Complete(
-                                                    false,
-                                                    status.formulaIndex,
-                                                    status.level,
-                                                    status.count - status.usedCount,
-                                                    targetEntity,
-                                                    factory,
-                                                    owner,
-                                                    targetHandle,
-                                                    ref formula);
-                                                if (isCompleted)
-                                                {
-                                                    entity = targetEntity;
-                                                    handle = targetHandle;
-                                                }
+                                                if (Complete(
+                                                        false,
+                                                        status.formulaIndex,
+                                                        status.level,
+                                                        status.count - status.usedCount,
+                                                        status.entity,
+                                                        factory,
+                                                        owner,
+                                                        itemRootMap[status.entity].handle,
+                                                        ref formula))
+                                                    return 0;
 
                                                 break;
                                             }
                                         }
                                     }
 
-                                    if (!isCompleted && 
-                                        Complete(
+                                    if (Complete(
                                             false, 
                                             status.formulaIndex, 
                                             status.level, 
                                             status.count - status.usedCount, 
-                                            entity, 
+                                            factory, 
                                             factory, 
                                             owner, 
                                             handle, 
