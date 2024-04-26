@@ -407,34 +407,35 @@ public partial struct GameFormulaFactorySystem : ISystem
                                 var factoryEntities = this.factoryEntities[index];
                                 if (factoryEntities.Length > 0)
                                 {
+                                    bool isCompleted = false;
+                                    int statusCount = status.count - status.usedCount;
                                     if (mode.value == GameFormulaFactoryMode.Mode.Normal)
                                     {
                                         foreach (var factoryEntity in factoryEntities)
                                         {
                                             if (factoryEntity.value == status.entity)
                                             {
-                                                if (Complete(
-                                                        false,
-                                                        status.formulaIndex,
-                                                        status.level,
-                                                        status.count - status.usedCount,
-                                                        status.entity,
-                                                        factory,
-                                                        owner,
-                                                        itemRootMap[status.entity].handle,
-                                                        ref formula))
-                                                    return 0;
+                                                isCompleted = Complete(
+                                                    false,
+                                                    status.formulaIndex,
+                                                    status.level,
+                                                    statusCount,
+                                                    status.entity,
+                                                    factory,
+                                                    owner,
+                                                    itemRootMap[status.entity].handle,
+                                                    ref formula);
 
                                                 break;
                                             }
                                         }
                                     }
 
-                                    if (Complete(
+                                    if (!isCompleted && !Complete(
                                             false, 
                                             status.formulaIndex, 
                                             status.level, 
-                                            status.count - status.usedCount, 
+                                            statusCount, 
                                             factory, 
                                             factory, 
                                             owner, 
