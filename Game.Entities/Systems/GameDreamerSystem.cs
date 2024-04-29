@@ -59,20 +59,7 @@ public partial struct GameDreamerSystem : ISystem
             var dreamer = dreamers[index];
             GameDreamerEvent result;
 
-/*#if GAME_DEBUG_COMPARSION
-            //UnityEngine.Debug.Log($"Dream: {entityIndices[index].value} : {entityArray[index].Index} : {status.value} : {(int)dreamer.status} : {(double)dreamer.time} : {dreamer.currentIndex} : {(double)delay[index].time} : {frameIndex}");
-
-            stream.Begin(entityIndices[index].value);
-            stream.Assert(statusName, status.value);
-            if(dreamer.status != GameDreamerStatus.Awake)
-            {
-                stream.Assert(dreamerName, dreamer.status);
-                stream.Assert(dreamerTimeName, (double)dreamer.time);
-                stream.Assert(delayTimeName, (float)(GameDeadline.Max(delay[index].time, time) - dreamer.time));
-            }
-
-            stream.End();
-#endif*/
+            //UnityEngine.Debug.Log($"TDream: {entityIndices[index].value} : {entityArray[index].Index} : {status.value} : {(int)dreamer.status} : {(double)dreamer.time} : {(double)delay[index].time} : {frameIndex}");
 
             while (true)
             {
@@ -99,7 +86,8 @@ public partial struct GameDreamerSystem : ISystem
                                     return;
 
                                 dreamer.time = GameDeadline.Max(delay.time + delay.endTime, dreamer.time);
-
+                                
+                                //UnityEngine.Debug.Log($"Dream: {entityIndices[index].value} : {entityArray[index].Index} : {statusOutputs[entity].value} : {(int)dreamer.status} : {(double)dreamer.time} : {frameIndex}");
                                 isAwake = true;
                                 break;
                             /*case GameDreamerStatus.Sleep:
@@ -117,12 +105,13 @@ public partial struct GameDreamerSystem : ISystem
                             case GameDreamerStatus.Awake:
                                 if (dreamer.time > time)
                                 {
+                                    
                                     //UnityEngine.Debug.LogError($"{entity} Awaking {time} : {dreamer.time}");
 
                                     return;
                                 }
                                 
-                                //UnityEngine.Debug.Log($"Normal: {entityIndices[index].value} : {entityArray[index].Index} : {statusOutputs[entity].value} : {(int)dreamer.status} : {(double)dreamer.time} : {frameIndex}");
+                                //UnityEngine.Debug.Log($"Dream: {entityIndices[index].value} : {entityArray[index].Index} : {statusOutputs[entity].value} : {(int)dreamer.status} : {(double)dreamer.time} : {frameIndex}");
                                 
                                 status.value = 0;
                                 statusOutputs[entity] = status;
@@ -153,7 +142,7 @@ public partial struct GameDreamerSystem : ISystem
                                 var time = GameDeadline.Max(dreamer.time, (GameDeadline)this.time - dream.awakeTime);
 
                                 half awakeTime = (half)dream.awakeTime;
-                                dreamer.time = time + (awakeTime- half.MinValueAsHalf);
+                                dreamer.time = time + awakeTime;
                                 dreamers[index] = dreamer;
 
                                 GameNodeDelay delay;
@@ -194,12 +183,13 @@ public partial struct GameDreamerSystem : ISystem
                                 isSleep = !delay.Check(dreamer.time) || !delay.Check(time);
                                 break;
                             case GameDreamerStatus.Dream:
+                                //UnityEngine.Debug.Log($"Dream: {entityIndices[index].value} : {entityArray[index].Index} : {statusOutputs[entity].value} : {(int)dreamer.status} : {(double)dreamer.time} : {frameIndex}");
                                 isSleep = !this.delay[index].Check(time);
                                 if(isSleep)
                                     dreamer.time = time;
                                 break;
                             default:
-                                isSleep = true;
+                                isSleep = (status.value & (GameNodeStatus.STOP | GameNodeStatus.OVER)) == 0;
                                 break;
                         }
                         
@@ -221,7 +211,7 @@ public partial struct GameDreamerSystem : ISystem
                                 stream.End();
 #endif
 
-                                //UnityEngine.Debug.Log($"Dream: {entityIndices[index].value} : {entityArray[index].Index} : {statusOutputs[entity].value} : {(int)dreamer.status} : {(double)dreamer.time} : {dreamer.currentIndex} : {(double)this.delay[index].time} : {frameIndex}");
+                                //UnityEngine.Debug.Log($"Dream: {entityIndices[index].value} : {entityArray[index].Index} : {statusOutputs[entity].value} : {(int)dreamer.status} : {(double)dreamer.time} : {(double)this.delay[index].time} : {frameIndex}");
 
                                 GameDream dream = dreams[dreamerInfo.nextIndex];
 
@@ -261,7 +251,9 @@ public partial struct GameDreamerSystem : ISystem
                                 return;
                             }
                         }
-
+                        
+                        //UnityEngine.Debug.Log($"Dream: {entityIndices[index].value} : {entityArray[index].Index} : {statusOutputs[entity].value} : {(int)dreamer.status} : {(double)dreamer.time} : {frameIndex}");
+                        
                         dreamer.status = GameDreamerStatus.Unknown;
                         dreamer.time = time;
 
@@ -296,7 +288,7 @@ public partial struct GameDreamerSystem : ISystem
                                 if (dreamer.time <= time)
                                 {
 #if GAME_DEBUG_COMPARSION
-                                    //UnityEngine.Debug.Log($"Dream: {entityIndices[index].value} : {entityArray[index].Index} : {status.value} : {(int)dreamer.status} : {(double)dreamer.time} : {dreamer.currentIndex} : {(double)delay[index].time} : {frameIndex}");
+                                    //UnityEngine.Debug.Log($"Dream: {entityIndices[index].value} : {entityArray[index].Index} : {status.value} : {(int)dreamer.status} : {(double)dreamer.time} : {(double)delay[index].time} : {frameIndex}");
 
                                     stream.Begin(entityIndices[index].value);
                                     stream.Assert(statusName, status.value);
@@ -332,6 +324,7 @@ public partial struct GameDreamerSystem : ISystem
 
                                 continue;*/
                             default:
+                                //UnityEngine.Debug.Log($"Dream: {entityIndices[index].value} : {entityArray[index].Index} : {statusOutputs[entity].value} : {(int)dreamer.status} : {(double)dreamer.time} : {frameIndex}");
                                 dreamer.status = GameDreamerStatus.Unknown;
                                 dreamer.time = time;
                                 break;
@@ -375,7 +368,7 @@ public partial struct GameDreamerSystem : ISystem
                                 }
                                 else
                                 {
-                                    //UnityEngine.Debug.Log($"Turn Dream: {entityIndices[index].value} : {entityArray[index].Index} : {status.value} : {(int)dreamer.status} : {(double)dreamer.time} : {(double)delay[index].time} : {frameIndex}");
+                                    //UnityEngine.Debug.Log($"Dream: {entityIndices[index].value} : {entityArray[index].Index} : {status.value} : {(int)dreamer.status} : {(double)dreamer.time} : {delay[index]} : {frameIndex}");
                                     status.value = (int)GameDreamerStatus.Dream;
                                 }
 
@@ -391,13 +384,14 @@ public partial struct GameDreamerSystem : ISystem
                                         status.value = 0;
                                         statusOutputs[entity] = status;
                                         
-                                        //UnityEngine.Debug.Log($"Normal: {entityIndices[index].value} : {entityArray[index].Index} : {statusOutputs[entity].value} : {(int)dreamer.status} : {(double)dreamer.time} : {frameIndex}");
+                                        //UnityEngine.Debug.Log($"Dream: {entityIndices[index].value} : {entityArray[index].Index} : {statusOutputs[entity].value} : {(int)dreamer.status} : {(double)dreamer.time} : {frameIndex}");
                                     }
                                 }
                                 break;
                                 //多次调用醒来
                             case GameDreamerStatus.Awake:
                                 {
+                                    //UnityEngine.Debug.Log($"Dream: {entityIndices[index].value} : {entityArray[index].Index} : {statusOutputs[entity].value} : {(int)dreamer.status} : {(double)dreamer.time} : {frameIndex}");
                                     var delay = this.delay[index];
                                     dreamer.time = GameDeadline.Max(dreamer.time, delay.time + delay.endTime);
                                 }
@@ -424,7 +418,7 @@ public partial struct GameDreamerSystem : ISystem
                     stream.End();
 #endif
 
-                    GameDreamerVersion version = versions[entity];
+                    var version = versions[entity];
                     ++version.value;
                     versions[entity] = version;
 
