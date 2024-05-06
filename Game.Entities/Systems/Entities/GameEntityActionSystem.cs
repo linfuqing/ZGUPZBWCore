@@ -252,6 +252,7 @@ public partial struct GameEntityActionSystem : ISystem
         where TQueryResultWrapper : struct, IQueryResultWrapper<TQueryResult>
         //where THandler : IGameEntityActionHandler
     {
+        
         private bool __isClosestHitOnly;
         //private int __index;
         private int __camp;
@@ -280,6 +281,8 @@ public partial struct GameEntityActionSystem : ISystem
         private NativeFactory<GameEntityActionHiter>.ParallelWriter __hiters;
         private NativeFactory<GameEntityActionDamager>.ParallelWriter __damagers;
         private TQueryResultWrapper __wrapper;
+
+        //public string log;
 
         public bool EarlyOutOnFirstHit => false;
 
@@ -320,6 +323,7 @@ public partial struct GameEntityActionSystem : ISystem
             ref NativeFactory<GameEntityActionDamager>.ParallelWriter damagers, 
             ref TQueryResultWrapper wrapper)
         {
+            //log = "";
             //hitValue = 0.0f;
 
             __isClosestHitOnly = isClosestHitOnly;
@@ -360,9 +364,26 @@ public partial struct GameEntityActionSystem : ISystem
 
         public bool AddHit(TQueryResult hit)
         {
+            //log += hit.ToString();
             var transform = __start.LerpTo(__end, hit.Fraction);
 
             float3 position = __wrapper.GetPosition(hit);
+            float fraction = closestHit.Fraction + math.FLT_MIN_NORMAL;
+            if (fraction == MaxFraction && NumHits > 0)
+            {
+                float3 distance = position - transform.value.pos, 
+                    originDistance = __wrapper.GetPosition(closestHit) - transform.value.pos;
+                float lengthSQ = math.lengthsq(distance), originLengthSQ = math.lengthsq(originDistance);
+                if (lengthSQ > originLengthSQ)
+                    return false;
+
+                if (lengthSQ == originLengthSQ)
+                {
+                    float3 surfaceNormal = __wrapper.GetSurfaceNormal(hit), originSurfaceNormal = __wrapper.GetPosition(closestHit);
+                    if (math.dot(distance, surfaceNormal) < math.dot(originDistance, originSurfaceNormal))
+                        return false;
+                }
+            }
 
             if (!__IsHit(in position, in transform.value))
                 return false;
@@ -380,8 +401,9 @@ public partial struct GameEntityActionSystem : ISystem
                 destination.entity = rigidbody.Entity;
                 if (!source.Predicate(__hitType, destination))
                 {
-                    if (__isClosestHitOnly)
-                        MaxFraction = closestHit.Fraction;
+                    //加此判断会不同步
+                    /*if (__isClosestHitOnly)
+                        MaxFraction = fraction;*/
 
                     return false;
                 }
@@ -396,7 +418,7 @@ public partial struct GameEntityActionSystem : ISystem
 
             if (__isClosestHitOnly)
             {
-                MaxFraction = hit.Fraction;
+                MaxFraction = fraction;
 
                 NumHits = 1;
 
@@ -652,6 +674,13 @@ public partial struct GameEntityActionSystem : ISystem
 
         public GameEntityActionManager.ParallelWriter actionManager;
 
+#if GAME_DEBUG_COMPARSION
+        public uint frameIndex;
+
+        [ReadOnly]
+        public ComponentLookup<GameEntityIndex> entityIndices;
+#endif
+        
         public unsafe void Execute(int index)
         {
             var status = states[index];
@@ -1172,7 +1201,7 @@ public partial struct GameEntityActionSystem : ISystem
                             else
                             {
                                 transform = result;
-
+                                //UnityEngine.Debug.Log($"4 {entityArray[index]} : {entityIndices[instance.entity].value} : {frameIndex} : {instance.index} : {transform} : {physicsVelocity}");
                                 isTranslationDirty = true;
 
                                 hasMove = isDamaged;
@@ -1198,6 +1227,7 @@ public partial struct GameEntityActionSystem : ISystem
                         {
                             transform.rot = quaternion.LookRotationSafe(velocity, math.up());
 
+                            //UnityEngine.Debug.Log($"3 {entityArray[index]} : {entityIndices[instance.entity].value} : {frameIndex} : {instance.index} : {transform} : {physicsVelocity}");
                             //UnityEngine.Debug.LogError(((UnityEngine.Quaternion)transform.rot).eulerAngles.ToString() + velocity);
 
                             isRotationDirty = true;
@@ -1245,7 +1275,7 @@ public partial struct GameEntityActionSystem : ISystem
                 if (isMove)
                 {
                     physicsVelocity.Integrate(DefaultPhysicsMask, deltaTime, ref transform.pos, ref transform.rot);
-
+                    //UnityEngine.Debug.Log($"2 {entityArray[index]} : {entityIndices[instance.entity].value} : {frameIndex} : {instance.index} : {transform} : {physicsVelocity} : {physicsVelocities[index]}");
                     isTranslationDirty = true;
 
                     isRotationDirty = true;
@@ -1298,8 +1328,6 @@ public partial struct GameEntityActionSystem : ISystem
                         colliderCastInput.Orientation = start.value.rot;
                         colliderCastInput.Collider = collider;
 
-                        //UnityEngine.Debug.LogError($"dd {index} : {entity.Index} : {instance.actionIndex} : {time}");
-
                         ColliderCastHitWrapper wrapper;
                         var castCollector = new CastCollector<ColliderCastHit, ColliderCastHitWrapper>(
                             (instanceEx.value.flag & GameActionFlag.DestroyOnHit) == GameActionFlag.DestroyOnHit,
@@ -1333,6 +1361,15 @@ public partial struct GameEntityActionSystem : ISystem
                             ref wrapper);
                         collisionWorld.CastCollider(colliderCastInput, ref castCollector);
                         isDestroy = castCollector.Apply(out result);
+
+                        /*foreach (var body in collisionWorld.DynamicBodies)
+                        {
+                            castCollector.log += $"{body}";
+                                if(body.Collider.IsCreated)
+                                    castCollector.log += $"{body.Collider.Value.Type} : {body.Collider.Value.Filter} : {body.Collider.Value.MassProperties.MassDistribution.Transform}";
+                        }
+                        
+                        UnityEngine.Debug.Log($"1 {entityArray[index]} : {entityIndices[instance.entity].value} : {frameIndex} : {instance.index} : {origin} : {transform} : {physicsVelocity} : {castCollector.log}");*/
                     }
                     else
                     {
@@ -1379,6 +1416,15 @@ public partial struct GameEntityActionSystem : ISystem
                             ref wrapper);
                         collisionWorld.CalculateDistance(colliderDistanceInput, ref castCollector);
                         isDestroy = castCollector.Apply(out result);
+                        
+                        /*foreach (var body in collisionWorld.DynamicBodies)
+                        {
+                            castCollector.log += $"{body}";
+                            if(body.Collider.IsCreated)
+                                castCollector.log += $"{body.Collider.Value.Type} : {body.Collider.Value.Filter} : {body.Collider.Value.MassProperties.MassDistribution.Transform}";
+                        }
+                        
+                        UnityEngine.Debug.Log($"1 {entityArray[index]} : {entityIndices[instance.entity].value} : {frameIndex} : {instance.index} : {origin} : {transform} : {physicsVelocity} : {castCollector.log}");*/
                     }
 
                     if (isDestroy)
@@ -1395,6 +1441,8 @@ public partial struct GameEntityActionSystem : ISystem
 
                 if ((value & GameActionStatus.Status.Destroy) == GameActionStatus.Status.Destroy)
                 {
+                    //UnityEngine.Debug.Log($"Destroy {entityArray[index]} : {entityIndices[instance.entity].value} : {frameIndex} : {instance.index} : {transform}");
+
                     physicsVelocities[index] = default;
 
                     /*if (index < physicsGravityFactors.Length)
@@ -1405,6 +1453,8 @@ public partial struct GameEntityActionSystem : ISystem
 
                 if (isTranslationDirty)
                 {
+                    //UnityEngine.Debug.Log($"Update {entityArray[index]} : {entityIndices[instance.entity].value} : {frameIndex} : {instance.index} : {translations[index].Value} : {transform.pos}");
+
                     Translation translation;
                     translation.Value = transform.pos;
                     translations[index] = translation;
@@ -1452,6 +1502,8 @@ public partial struct GameEntityActionSystem : ISystem
             {
                 //int temp = (int)value;
                 //UnityEngine.Debug.LogError($"Change {entity.Index} : {entity.Version} : {temp}");
+
+                //UnityEngine.Debug.Log($"Change {entityArray[index]} : {value} : {entityIndices[instance.entity].value} : {frameIndex} : {instance.index} : {translations[index].Value} : {transform.pos}");
 
                 status.value = value;
                 status.time = instance.time + elapsedTime;
@@ -1610,6 +1662,13 @@ public partial struct GameEntityActionSystem : ISystem
 
         public GameEntityActionManager.ParallelWriter actionManager;
 
+#if GAME_DEBUG_COMPARSION
+        public uint frameIndex;
+
+        [ReadOnly]
+        public ComponentLookup<GameEntityIndex> entityIndices;
+#endif
+
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             Perform/*<THandler, TFactory>*/ executor;
@@ -1646,6 +1705,12 @@ public partial struct GameEntityActionSystem : ISystem
             //perform.entityManager = entityManager;
             //executor.handler = factory.Create(chunk);
 
+#if GAME_DEBUG_COMPARSION
+            executor.frameIndex = frameIndex;
+
+            executor.entityIndices = entityIndices;
+#endif
+
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
                 executor.Execute(i);
@@ -1654,9 +1719,13 @@ public partial struct GameEntityActionSystem : ISystem
 
     private struct ComputeHits
     {
-        [ReadOnly]
-        public NativeArray<Entity> entityArray;
+#if GAME_DEBUG_COMPARSION
+        public uint frameIndex;
 
+        [ReadOnly]
+        public ComponentLookup<GameEntityIndex> entityIndices;
+#endif
+        
         [ReadOnly]
         public NativeArray<GameActionData> instances;
 
@@ -1668,9 +1737,6 @@ public partial struct GameEntityActionSystem : ISystem
 
         [ReadOnly]
         public BufferAccessor<GameActionEntity> entities;
-
-        [ReadOnly]
-        public ComponentLookup<Translation> translations;
 
         public ComponentLookup<GameEntityRage> rages;
 
@@ -1693,7 +1759,7 @@ public partial struct GameEntityActionSystem : ISystem
             GameDeadline time;
             var entities = this.entities[index];
             int length = entities.Length;
-            //string log = "";
+            //string log = instance.entity.ToString();
             for (int i = 0; i < length; ++i)
             {
                 entity = entities[i];
@@ -1729,7 +1795,7 @@ public partial struct GameEntityActionSystem : ISystem
                         hit.normal += entity.normal;
                         hits[entity.target] = hit;
 
-                        //log += "-hit: " + hit.value + ", time: " + hit.time + ", elapsedTime: " + (instance.time + entity.elaspedTime);
+                        //log += "-hit: " + hit.value + ", time: " + hit.time + ", elapsedTime: " + (instance.time + entity.elaspedTime) + $": {instance.index} : {entityIndices[instance.entity].value} : {entityIndices[entity.target].value} : {frameIndex}";
                     }
                 }
             }
@@ -1760,8 +1826,12 @@ public partial struct GameEntityActionSystem : ISystem
     [BurstCompile]
     private struct ComputeHitsEx : IJobChunk
     {
+#if GAME_DEBUG_COMPARSION
+        public uint frameIndex;
+
         [ReadOnly]
-        public EntityTypeHandle entityArrayType;
+        public ComponentLookup<GameEntityIndex> entityIndices;
+#endif
 
         [ReadOnly]
         public ComponentTypeHandle<GameActionData> instanceType;
@@ -1775,9 +1845,6 @@ public partial struct GameEntityActionSystem : ISystem
         [ReadOnly]
         public BufferTypeHandle<GameActionEntity> entityType;
 
-        [ReadOnly]
-        public ComponentLookup<Translation> translations;
-
         public ComponentLookup<GameEntityRage> rages;
 
         public ComponentLookup<GameEntityHit> hits;
@@ -1789,12 +1856,15 @@ public partial struct GameEntityActionSystem : ISystem
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             ComputeHits executor;
-            executor.entityArray = chunk.GetNativeArray(entityArrayType);
+            
+#if GAME_DEBUG_COMPARSION
+            executor.frameIndex = frameIndex;
+            executor.entityIndices = entityIndices;
+#endif
             executor.instances = chunk.GetNativeArray(ref instanceType);
             executor.instancesEx = chunk.GetNativeArray(ref instanceExType);
             executor.states = chunk.GetNativeArray(ref statusType);
             executor.entities = chunk.GetBufferAccessor(ref entityType);
-            executor.translations = translations;
             executor.rages = rages;
             executor.hits = hits;
             executor.actorHits = actorHits;
@@ -1919,7 +1989,7 @@ public partial struct GameEntityActionSystem : ISystem
     //perform.physicsGravityFactorType = GetComponentTypeHandle<PhysicsGravityFactor>();
     private BufferTypeHandle<GameActionEntity> __actionEntityType;
     private ComponentLookup<GameActionStatus> __results;
-    private ComponentLookup<Translation> __translations;
+    //private ComponentLookup<Translation> __translations;
 
     private ComponentLookup<GameNodeCharacterFlag> __characterflags;
 
@@ -1988,7 +2058,7 @@ public partial struct GameEntityActionSystem : ISystem
         __actionEntityType = state.GetBufferTypeHandle<GameActionEntity>();
         __results = state.GetComponentLookup<GameActionStatus>();
 
-        __translations = state.GetComponentLookup<Translation>();
+        //__translations = state.GetComponentLookup<Translation>();
 
         __characterflags = state.GetComponentLookup<GameNodeCharacterFlag>();
 
@@ -2084,6 +2154,11 @@ public partial struct GameEntityActionSystem : ISystem
         perform.breakCommands = __commands.parallelWriter;
         perform.actionManager = actionManager.parallelWriter;
 
+#if GAME_DEBUG_COMPARSION
+        perform.frameIndex = __time.RollbackTime.frameIndex;
+        perform.entityIndices = state.GetComponentLookup<GameEntityIndex>(true);
+#endif
+
         ref var physicsWorldJobManager = ref __physicsWorld.lookupJobManager;
 
         jobHandle = JobHandle.CombineDependencies(jobHandle, physicsWorldJobManager.readOnlyJobHandle, actionManager.Resize(group, inputDeps));
@@ -2096,15 +2171,19 @@ public partial struct GameEntityActionSystem : ISystem
 
         locationJobManager.readWriteJobHandle = jobHandle;
 
-        var translations = __translations.UpdateAsRef(ref state);
+        //var translations = __translations.UpdateAsRef(ref state);
 
         ComputeHitsEx computeHits;
-        computeHits.entityArrayType = entityType;
+        
+#if GAME_DEBUG_COMPARSION
+        computeHits.frameIndex = __time.RollbackTime.frameIndex;
+        computeHits.entityIndices = state.GetComponentLookup<GameEntityIndex>(true);
+#endif
+        
         computeHits.instanceType = instanceType;
         computeHits.instanceExType = instanceExType;
         computeHits.statusType = statusType;
         computeHits.entityType = actionEntityType;
-        computeHits.translations = translations;
         computeHits.rages = __rages.UpdateAsRef(ref state);
         computeHits.hits = __hits.UpdateAsRef(ref state);
         computeHits.actorHits = __actorHits.UpdateAsRef(ref state);

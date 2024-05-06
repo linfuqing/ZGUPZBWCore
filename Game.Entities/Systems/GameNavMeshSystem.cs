@@ -564,7 +564,7 @@ public partial struct GameNavMeshSystem : ISystem
                             states[index] = status;
                         }
 
-                        return result;
+                        return false;
                     }
 
                     status.pathResult = pathResult;
@@ -639,6 +639,8 @@ public partial struct GameNavMeshSystem : ISystem
                     status.wayPointIndex = numWayPoints - 1;
                     if (numWayPoints < 1)
                     {
+                        ClearMotions(index, entity, ref positions, ref directions, ref versions);
+                        
                         states[index] = status;
 
                         return true;
@@ -663,6 +665,8 @@ public partial struct GameNavMeshSystem : ISystem
                     {
                         if (status.wayPointIndex == numWayPoints)
                         {
+                            ClearMotions(index, entity, ref positions, ref directions, ref versions);
+
                             states[index] = status;
 
                             return true;
@@ -811,6 +815,42 @@ public partial struct GameNavMeshSystem : ISystem
         versions.SetComponentEnabled(entity, true);
     }
 
+    public static void ClearMotions(
+        int index,
+        Entity entity,
+        ref DynamicBuffer<GameNodePosition> positions,
+        ref NativeArray<GameNodeDirection> directions,
+        ref ComponentLookup<GameNodeVersion> versions)
+    {
+        var version = versions[entity];
+        version.type = 0;
+        ++version.value;
+
+        if (index < directions.Length && !directions[index].value.Equals(float3.zero))
+        {
+            GameNodeDirection direction;
+            direction.mode = GameNodeDirection.Mode.None;
+            direction.version = version.value;
+            direction.value = float3.zero;
+            directions[index] = direction;
+
+            version.type |= GameNodeVersion.Type.Direction;
+        }
+
+        if (positions.Length > 0)
+        {
+            positions.Clear();
+
+            version.type |= GameNodeVersion.Type.Position;
+        }
+
+        if (version.type != 0)
+        {
+            versions[entity] = version;
+            versions.SetComponentEnabled(entity, true);
+        }
+    }
+    
     private EntityQuery __group;
     private EntityTypeHandle __entityType;
     private BufferTypeHandle<GameNavMeshAgentExtends> __extendType;

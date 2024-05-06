@@ -61,6 +61,8 @@ public partial struct GameNodeStatusSystem : ISystem
         public ComparisonStream<uint> stream;
         [ReadOnly]
         public NativeArray<GameEntityIndex> entityIndices;
+        [ReadOnly]
+        public NativeArray<Entity> entityArray;
 #endif
 
         public int Execute(int index)
@@ -70,7 +72,7 @@ public partial struct GameNodeStatusSystem : ISystem
                 return value;
 
 #if GAME_DEBUG_COMPARSION
-            //UnityEngine.Debug.Log($"Status: {oldValue} To {value} : {entityIndices[index].value} : {frameIndex}");
+            //UnityEngine.Debug.Log($"Status: {oldValue} To {value} : {entityIndices[index].value} : {frameIndex} : {entityArray[index]}");
 
             stream.Begin(entityIndices[index].value);
             stream.Assert(oldStatusName, oldValue);
@@ -154,6 +156,9 @@ public partial struct GameNodeStatusSystem : ISystem
         public ComparisonStream<uint> stream;
         [ReadOnly]
         public ComponentTypeHandle<GameEntityIndex> entityIndexType;
+
+        [ReadOnly] 
+        public EntityTypeHandle entityType;
 #endif
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -173,6 +178,7 @@ public partial struct GameNodeStatusSystem : ISystem
             updateStates.newStatusName = newStatusName;
             updateStates.stream = stream;
             updateStates.entityIndices = chunk.GetNativeArray(ref entityIndexType);
+            updateStates.entityArray = chunk.GetNativeArray(entityType);
 #endif
             bool isDisabled;
             //int count = chunk.Count;
@@ -187,6 +193,10 @@ public partial struct GameNodeStatusSystem : ISystem
     }
 
     private EntityQuery __group;
+
+#if GAME_DEBUG_COMPARSION
+    private GameRollbackFrame __frame;
+#endif
 
     private ComponentTypeHandle<GameNodeStatus> __statusType;
     private ComponentTypeHandle<GameNodeOldStatus> __oldStatusType;
@@ -214,6 +224,10 @@ public partial struct GameNodeStatusSystem : ISystem
         __group.AddChangedVersionFilter(ComponentType.ReadOnly<GameNodeStatus>());
         __group.AddChangedVersionFilter(ComponentType.ReadWrite<GameNodeOldStatus>());
 
+#if GAME_DEBUG_COMPARSION
+        __frame = new GameRollbackFrame(ref state);
+#endif
+        
         __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
         __oldStatusType = state.GetComponentTypeHandle<GameNodeOldStatus>();
         __delayType = state.GetComponentTypeHandle<GameNodeDelay>();
@@ -246,7 +260,7 @@ public partial struct GameNodeStatusSystem : ISystem
         updateStates.velocityComponentType = __velocityComponentType.UpdateAsRef(ref state);
 
 #if GAME_DEBUG_COMPARSION
-        uint frameIndex = SystemAPI.GetSingleton<GameSyncManager>().SyncTime.frameIndex;
+        uint frameIndex =  __frame.index;
         var streamScheduler = GameComparsionSystem.instance.Create(false, frameIndex, typeof(GameNodeStatusSystem).Name, state.World.Name);
 
         updateStates.frameIndex = frameIndex;
@@ -254,6 +268,7 @@ public partial struct GameNodeStatusSystem : ISystem
         updateStates.newStatusName = "newStatus";
         updateStates.stream = streamScheduler.Begin(__group.CalculateEntityCount());
         updateStates.entityIndexType = state.GetComponentTypeHandle<GameEntityIndex>(true);
+        updateStates.entityType = state.GetEntityTypeHandle();
 #endif
         state.Dependency = updateStates.ScheduleParallelByRef(__group, state.Dependency);
 

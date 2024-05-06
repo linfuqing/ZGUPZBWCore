@@ -113,6 +113,8 @@ public struct GameEntityAction : ICleanupBufferElementData
             status = states[entity];
             if ((status.value & GameActionStatus.Status.Perform) != 0 && status.time < time)
                 continue;
+            
+            //Debug.Log($"Break {entity} : {time}");
 
             status.time = time;
             status.value |= GameActionStatus.Status.Destroy;
@@ -307,25 +309,9 @@ public struct GameEntityCommandVersion : IComponentData
     public int value;
 }
 
-public struct GameEntityCallbackHandle : IComponentData
+public struct GameEntityCallbackHandle : IBufferElementData
 {
-    public int version;
     public CallbackHandle value;
-
-    public static void Command(
-        int index, 
-        ref NativeArray<GameEntityCallbackHandle> callbackHandles, 
-        ref SharedList<CallbackHandle>.ParallelWriter results)
-    {
-        var callbackHandle = callbackHandles[index];
-        if (!callbackHandle.value.Equals(CallbackHandle.Null))
-        {
-            results.AddNoResize(callbackHandle.value);
-
-            callbackHandle.value = CallbackHandle.Null;
-            callbackHandles[index] = callbackHandle;
-        }
-    }
 }
 
 public struct GameEntityEventCommand : IComponentData, IEnableableComponent
@@ -582,30 +568,12 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         return this.GetComponentData<GameNodeDelay>().Check(time);
     }
 
-    public int RegisterCallback(Action action)
+    public void RegisterCallback(Action action)
     {
-        var callbackHandle = this.GetComponentData<GameEntityCallbackHandle>();
-        callbackHandle.value.Unregister();
-        callbackHandle.version = commandVersion;
+        GameEntityCallbackHandle callbackHandle;
         callbackHandle.value = action.Register();
 
-        this.SetComponentData(callbackHandle);
-
-        return callbackHandle.version;
-    }
-
-    public int RegisterOrCombineCallback(Action action)
-    {
-        var callbackHandle = this.GetComponentData<GameEntityCallbackHandle>();
-        if (action.Combine(callbackHandle.value))
-            return callbackHandle.version;
-
-        callbackHandle.version = commandVersion;
-        callbackHandle.value = action.Register();
-
-        this.SetComponentData(callbackHandle);
-
-        return callbackHandle.version;
+        this.AppendBuffer(callbackHandle);
     }
 
     public int Do(
@@ -665,22 +633,10 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         return command.version;
     }
 
-    public int Do(EntityCommander commander, in GameDeadline time, float performTime, float coolDownTime, int version)
+    public int Do(EntityCommander commander, in GameDeadline time, float performTime, float coolDownTime)
     {
         GameEntityEventCommand command;
-        //TODO:
-        /*if (this.TryGetComponentData(out command) && !command.handle.Equals(timeEventHandle) &&
-            command.handle.isVail)
-        {
-            Debug.LogError("Force Command!");
-
-            if (__timeEventSystem == null)
-                __timeEventSystem = world.GetExistingSystem<TimeEventSystem>();
-
-            __timeEventSystem.Cannel(command.handle);
-        }*/
-
-        command.version = version == 0 ? this.commandVersion : version;
+        command.version = this.commandVersion;
         command.performTime = performTime;
         command.coolDownTime = coolDownTime;
         command.time = time;
@@ -698,21 +654,10 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         return command.version;
     }
 
-    public int Do(in GameDeadline time, float performTime, float coolDownTime, int version)
+    public int Do(in GameDeadline time, float performTime, float coolDownTime)
     {
         GameEntityEventCommand command;
-        /*if (this.TryGetComponentData(out command) && !command.handle.Equals(timeEventHandle) &&
-            command.handle.isVail)
-        {
-            Debug.LogError("Force Command!");
-
-            if (!__timeManager.isCreated)
-                __timeManager = world.GetExistingSystemUnmanaged<TimeEventSystem>().manager;
-
-            __timeManager.Cannel(command.handle);
-        }*/
-
-        command.version = version == 0 ? commandVersion : version;
+        command.version = commandVersion;
         command.performTime = performTime;
         command.coolDownTime = coolDownTime;
         command.time = time;

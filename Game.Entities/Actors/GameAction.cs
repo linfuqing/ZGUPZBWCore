@@ -21,7 +21,7 @@ public enum GameActionTargetType
 [Flags]
 public enum GameActionFlag
 {
-    [Tooltip("仅当击中时产生伤害")]
+    [Tooltip("击中时销毁")]
     DestroyOnHit = 0x0001,
 
     [Tooltip("不消耗耐久")]

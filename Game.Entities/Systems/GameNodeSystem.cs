@@ -37,8 +37,8 @@ public partial struct GameNodeInitSystem : ISystem
 {
     private struct UpdateParents
     {
-        [ReadOnly]
-        public NativeArray<Entity> entityArray;
+        //[ReadOnly]
+        //public NativeArray<Entity> entityArray;
 
         [ReadOnly]
         public NativeArray<GameNodeParent> parents;
@@ -107,8 +107,8 @@ public partial struct GameNodeInitSystem : ISystem
     [BurstCompile]
     private struct UpdateParentsEx : IJobChunk
     {
-        [ReadOnly]
-        public EntityTypeHandle entityType;
+        //[ReadOnly]
+        //public EntityTypeHandle entityType;
 
         [ReadOnly]
         public ComponentTypeHandle<GameNodeParent> parentType;
@@ -128,7 +128,7 @@ public partial struct GameNodeInitSystem : ISystem
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             UpdateParents updateParents;
-            updateParents.entityArray = chunk.GetNativeArray(entityType);
+            //updateParents.entityArray = chunk.GetNativeArray(entityType);
             updateParents.parents = chunk.GetNativeArray(ref parentType);
             updateParents.versions = chunk.GetNativeArray(ref versionType);
             updateParents.directions = chunk.GetNativeArray(ref directionType);
@@ -148,7 +148,7 @@ public partial struct GameNodeInitSystem : ISystem
 
     private EntityQuery __group;
 
-    private EntityTypeHandle __entityType;
+    //private EntityTypeHandle __entityType;
 
     private ComponentTypeHandle<GameNodeParent> __parentType;
 
@@ -172,7 +172,7 @@ public partial struct GameNodeInitSystem : ISystem
                 .WithAnyRW<GameNodeDirection, GameNodePosition>()
                 .Build(ref state);
 
-        __entityType = state.GetEntityTypeHandle();
+        //__entityType = state.GetEntityTypeHandle();
         __parentType = state.GetComponentTypeHandle<GameNodeParent>(true);
         __versionType = state.GetComponentTypeHandle<GameNodeVersion>();
         __directionType = state.GetComponentTypeHandle<GameNodeDirection>();
@@ -191,7 +191,7 @@ public partial struct GameNodeInitSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         UpdateParentsEx updateParents;
-        updateParents.entityType = __entityType.UpdateAsRef(ref state);
+        //updateParents.entityType = __entityType.UpdateAsRef(ref state);
         updateParents.parentType = __parentType.UpdateAsRef(ref state);
         updateParents.versionType = __versionType.UpdateAsRef(ref state);
         updateParents.directionType = __directionType.UpdateAsRef(ref state);
@@ -304,7 +304,7 @@ public partial struct GameNodeSystem : ISystem
 #endif
         public void Execute(int index)
         {
-            GameNodeStatus status = states.Length > index ? states[index] : default;
+            var status = states.Length > index ? states[index] : default;
             double now = this.time;
             float deltaTime = this.deltaTime, elapsedTime;
             int i, length;
@@ -313,7 +313,7 @@ public partial struct GameNodeSystem : ISystem
                 deltaTime = 0.0f;
             else
             {
-                GameNodeDelay delay = this.delay.Length > index ? this.delay[index] : default;
+                var delay = this.delay.Length > index ? this.delay[index] : default;
                 //UnityEngine.Debug.Log($"{entityArray[index]} : {delay.time} : {frameIndex}");
                 //double time = delay.time;
                 deltaTime = delay.Clamp(now, deltaTime);
@@ -327,7 +327,7 @@ public partial struct GameNodeSystem : ISystem
             //instance.angularSpeed = math.abs(instance.angularSpeed * speedScale);
 
 #if GAME_DEBUG_COMPARSION
-            //UnityEngine.Debug.Log($"Node {entityIndices[index].value} : {frameIndex} : {entityArray[index].Index} : {status.value} : {speedScales[index].value.value} : {this.translations[index].Value}");
+            //UnityEngine.Debug.Log($"Node {entityIndices[index].value} : {frameIndex} : {entityArray[index].Index} : {status.value} : {this.delay[index]} : {speedScales[index].value.value} : {this.translations[index].Value}");
 
             stream.Begin(entityIndices[index].value);
             stream.Assert(statusName, status.value);
@@ -366,14 +366,16 @@ public partial struct GameNodeSystem : ISystem
                 if (lengthSq > math.FLT_MIN_NORMAL)
                 {
                     /*UnityEngine.Debug.Log(
-                        isUpdate.ToString() +
-                        frameIndex.ToString() + ":" + 
-                        speedScale.value + ":" + 
-                        velocityDirect.value + 
+                        isUpdate.ToString() + 
+                        $"{entityIndices[index].value} : {frameIndex}" + 
+                        //speedScale.value + ":" + 
+                        //velocityDirect.value + 
                         entityArray[index].ToString() +
                         translations[index].Value +
-                        info.distance + ":" +
-                        velocity.value + deltaTime);*/
+                        direction.value + 
+                        //info.distance + ":" +
+                        //velocity.value + 
+                        deltaTime);*/
 
                     isMove = true;
 

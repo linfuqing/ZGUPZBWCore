@@ -55,22 +55,14 @@ public partial struct GameNodeActorSystem : ISystem
         [NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameNodeStatus> states;
 
-/*#if GAME_DEBUG_COMPARSION
+#if GAME_DEBUG_COMPARSION
         //public NativeQueue<LogInfo>.ParallelWriter logInfos;
 
         public uint frameIndex;
 
-        public FixedString32Bytes delayName;
-        public FixedString32Bytes statusName;
-        public FixedString32Bytes characterStatusName;
-        public FixedString32Bytes characterAreaName;
-        public FixedString32Bytes oldActorStatusName;
-        public FixedString32Bytes newActorStatusName;
-
-        public ComparisonStream<int> stream;
         [ReadOnly]
         public NativeArray<GameEntityIndex> entityIndices;
-#endif*/
+#endif
         public unsafe void Execute(int index)
         {
             GameNodeStatus nodeStatus = nodeStates[index];
@@ -109,6 +101,8 @@ public partial struct GameNodeActorSystem : ISystem
                         GameNodeVelocity velocity;
                         velocity.value = math.dot(characterVelocity, math.forward(quaternion.RotateY(characterAangles[index].value)));
                         velocities[index] = velocity;
+                        
+                        //UnityEngine.Debug.Log($"Velocity {velocity.value} : {entityIndices[index].value} : {frameIndex}");
                     }
                     break;
                 case GameNodeCharacterStatus.Area.Air:
@@ -596,6 +590,12 @@ public partial struct GameNodeActorSystem : ISystem
         [NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameNodeStatus> states;
 
+#if GAME_DEBUG_COMPARSION
+        public uint frameIndex;
+        
+        [ReadOnly]
+        public ComponentTypeHandle<GameEntityIndex> entityIndexType;
+#endif
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             UpdateStates updateStates;
@@ -620,6 +620,10 @@ public partial struct GameNodeActorSystem : ISystem
             
             updateStates.states = states;
 
+#if GAME_DEBUG_COMPARSION
+            updateStates.frameIndex = frameIndex;
+            updateStates.entityIndices = chunk.GetNativeArray(ref entityIndexType);
+#endif
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
                 updateStates.Execute(i);
@@ -636,6 +640,10 @@ public partial struct GameNodeActorSystem : ISystem
     private EntityQuery __group;
     //private EntityQuery __syncDataGroup;
     private GameRollbackTime __time;
+
+#if GAME_DEBUG_COMPARSION
+    private GameRollbackFrame __frame;
+#endif
 
     public void OnCreate(ref SystemState state)
     {
@@ -654,6 +662,11 @@ public partial struct GameNodeActorSystem : ISystem
 
         //__syncDataGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameSyncData>());
         __time = new GameRollbackTime(ref state);
+        
+#if GAME_DEBUG_COMPARSION
+        __frame = new GameRollbackFrame(ref state);
+#endif
+
     }
 
     public void OnDestroy(ref SystemState state)
@@ -661,7 +674,9 @@ public partial struct GameNodeActorSystem : ISystem
 
     }
 
+#if !GAME_DEBUG_COMPARSION
     [BurstCompile]
+#endif
     public void OnUpdate(ref SystemState state)
     {
         //var syncData = __syncDataGroup.GetSingleton<GameSyncData>();
@@ -680,6 +695,15 @@ public partial struct GameNodeActorSystem : ISystem
         updateStates.delayType = state.GetComponentTypeHandle<GameNodeDelay>();
         updateStates.actorStatusType = state.GetComponentTypeHandle<GameNodeActorStatus>();
         updateStates.states = state.GetComponentLookup<GameNodeStatus>();
+
+#if GAME_DEBUG_COMPARSION
+        uint frameIndex = __frame.index;
+
+        updateStates.frameIndex = frameIndex;
+        //var streamScheduler = GameComparsionSystem.instance.Create(false, frameIndex, typeof(GameEntityActorSystem).Name, state.World.Name);
+        //act.stream = streamScheduler.Begin(__group.CalculateEntityCount());
+        updateStates.entityIndexType = state.GetComponentTypeHandle<GameEntityIndex>(true);
+#endif
 
         state.Dependency = updateStates.ScheduleParallel(__group, state.Dependency);
     }

@@ -34,7 +34,7 @@ public struct GameRollbackCollider : IComponentData
 
 public struct GameRollbackObjectIncludeDisabled : IComponentData
 {
-    public unsafe static EntityQuery GetEntityQuery(in NativeArray<ComponentType> componentTypes, ref SystemState state)
+    public static EntityQuery GetEntityQuery(in NativeArray<ComponentType> componentTypes, ref SystemState state)
     {
         var builder = new EntityQueryBuilder(Allocator.Temp);
         {
@@ -64,6 +64,7 @@ public struct GameRollbackObjectIncludeDisabled : IComponentData
             all.Add(ComponentType.ReadOnly<GameRollbackObjectIncludeDisabled>());
 
             builder = builder
+                .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState)
                 .AddAdditionalQuery()
                 .WithAll(ref all);
 
@@ -77,7 +78,7 @@ public struct GameRollbackObjectIncludeDisabled : IComponentData
             }
 
             var result = builder
-                .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState | EntityQueryOptions.IncludeDisabledEntities)
                 .Build(ref state);
 
             builder.Dispose();

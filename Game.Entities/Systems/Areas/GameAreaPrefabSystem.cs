@@ -152,7 +152,6 @@ public struct GameAreaPrefabSystemCore
     private EntityQuery __destroiedActorGroup;
 
     private EntityTypeHandle __entityType;
-    
     private ComponentTypeHandle<GameAreaNode> __nodeType;
     private ComponentTypeHandle<GameAreaInstance> __instanceType;
 

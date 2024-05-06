@@ -125,7 +125,8 @@ internal struct GameQuestManagerData
             __conditions.AsArray().Slice(info.conditionStartIndex, info.conditionCount),
             commands.AsNativeArray(),
             info.label, 
-            ref conditionBits);
+            ref conditionBits,
+            false);
     }
 
     public readonly bool Update(
@@ -168,7 +169,8 @@ internal struct GameQuestManagerData
                 conditions,
                 commands.AsArray(),
                 info.label, 
-                ref conditionBits);
+                ref conditionBits,
+                true);
 
             commands.Dispose();
         }
@@ -476,6 +478,9 @@ public partial struct GameQuestSystem : ISystem
 {
     private struct Command
     {
+        [ReadOnly] 
+        public GameItemManager.Hierarchy itemManager;
+        
         [ReadOnly]
         public GameQuestManager manager;
 
@@ -501,15 +506,26 @@ public partial struct GameQuestSystem : ISystem
 
             money = 0;
 
-            var commands = this.commands[index];
-
             bool needToCommandAgain = false;
-            foreach (var command in commands)
+            var itemHandle = itemRoots[index].handle;
+            var commands = this.commands[index];
+            if (commands.Length > 0)
             {
-                if (__Submit(index, command, ref formulaCommands, ref quests, out int moneyTemp))
-                    money += moneyTemp;
-                else
-                    needToCommandAgain = true;
+                int numQuests = quests.Length;
+                for (int i = 0; i < numQuests; ++i)
+                {
+                    ref var quest = ref quests.ElementAt(i);
+
+                    manager.Update(itemManager, itemHandle, quest.index, ref quest.conditionBits);
+                }
+                
+                foreach (var command in commands)
+                {
+                    if (__Submit(itemHandle, command, ref formulaCommands, ref quests, out int moneyTemp))
+                        money += moneyTemp;
+                    else
+                        needToCommandAgain = true;
+                }
             }
 
             bool isAnyQuestUpdate = false;
@@ -541,7 +557,7 @@ public partial struct GameQuestSystem : ISystem
             {
                 foreach (var command in commands)
                 {
-                    __Submit(index, command, ref formulaCommands, ref quests, out int moneyTemp);
+                    __Submit(itemHandle, command, ref formulaCommands, ref quests, out int moneyTemp);
 
                     money += moneyTemp;
                 }
@@ -553,7 +569,8 @@ public partial struct GameQuestSystem : ISystem
         }
 
         private bool __Submit(
-            int index, 
+            //int index, 
+            in GameItemHandle itemHandle, 
             in GameQuestCommand command, 
             ref DynamicBuffer<GameFormulaCommand> formulaCommands, 
             ref DynamicBuffer<GameQuest> quests, 
@@ -567,7 +584,7 @@ public partial struct GameQuestSystem : ISystem
                 case GameQuestStatus.Complete:
                     if (manager.Complete(
                         command.index,
-                        itemRoots[index].handle,
+                        itemHandle,
                         ref quests,
                         ref formulaCommands,
                         ref items,
@@ -584,6 +601,8 @@ public partial struct GameQuestSystem : ISystem
     [BurstCompile]
     private struct CommandEx : IJobChunk
     {
+        [ReadOnly] 
+        public GameItemManager.Hierarchy itemManager;
         [ReadOnly]
         public GameQuestManager manager;
         [ReadOnly]
@@ -603,6 +622,7 @@ public partial struct GameQuestSystem : ISystem
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             Command command;
+            command.itemManager = itemManager;
             command.manager = manager;
             command.itemRoots = chunk.GetNativeArray(ref itemRootType);
             command.quests = chunk.GetBufferAccessor(ref questType);
@@ -721,6 +741,7 @@ public partial struct GameQuestSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         CommandEx command;
+        command.itemManager = __itemManager.hierarchy;
         command.manager = manager;
         command.itemRootType = __itemRootType.UpdateAsRef(ref state);
         command.monyType = __monyType.UpdateAsRef(ref state);
@@ -730,17 +751,17 @@ public partial struct GameQuestSystem : ISystem
         command.formulaCommandType = __formulaCommandType.UpdateAsRef(ref state);
         command.items = __items.AsParallelWriter();
 
-        var jobHandle = command.ScheduleParallelByRef(__group,  state.Dependency);
+        ref var itemManagerJobManager = ref __itemManager.lookupJobManager;
+
+        var jobHandle = command.ScheduleParallelByRef(__group,  JobHandle.CombineDependencies(itemManagerJobManager.readWriteJobHandle, state.Dependency));
 
         ApplyItems applyItems;
         applyItems.itemManager = __itemManager.value;
         applyItems.items = __items;
 
-        ref var lookupJobManager = ref __itemManager.lookupJobManager;
+        jobHandle = applyItems.ScheduleByRef(jobHandle);
 
-        jobHandle = applyItems.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, lookupJobManager.readWriteJobHandle));
-
-        lookupJobManager.readWriteJobHandle = jobHandle;
+        itemManagerJobManager.readWriteJobHandle = jobHandle;
 
         state.Dependency = jobHandle;
     }
@@ -797,7 +818,8 @@ public static class GameQuestUtility
         int bitCount,
         int bitOffset,
         int maxCount,
-        ref int conditionBits)
+        ref int conditionBits,
+        bool isOverride)
     {
         bool result = false;
         int length = conditions.Length, originCount, count, bitMask;
@@ -818,7 +840,11 @@ public static class GameQuestUtility
                 {
                     bitMask = (1 << bitCount) - 1;
                     originCount = (conditionBits >> bitOffset) & bitMask;
-                    count = math.clamp(originCount + count, 0, maxCount);
+                    
+                    if (!isOverride)
+                        count += originCount;
+                    
+                    count = math.clamp(count, 0, maxCount);
                     if (count != originCount)
                     {
                         conditionBits &= ~(bitMask << bitOffset);
@@ -837,7 +863,8 @@ public static class GameQuestUtility
         in NativeSlice<GameQuestConditionData> conditions, 
         in NativeArray<GameQuestCommandCondition> commands,
         in FixedString label, 
-        ref int conditionBits)
+        ref int conditionBits, 
+        bool isOverride)
     {
         bool result = false;
         int numConditions = conditions.Length, bitOffset = 0, bitCount;
@@ -856,7 +883,8 @@ public static class GameQuestUtility
                 bitCount,
                 bitOffset,
                 condition.count,
-                ref conditionBits) || result;
+                ref conditionBits, 
+                isOverride) || result;
 
             bitOffset += bitCount;
 

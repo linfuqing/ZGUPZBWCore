@@ -233,26 +233,46 @@ public partial struct GameNodeShapeSystem : ISystem
 
     private EntityQuery __group;
 
+    private BufferTypeHandle<GameNodeShpae> __shapeType;
+
+    private EntityTypeHandle __entityType;
+
+    private ComponentTypeHandle<GameNodeShpaeDefault> __defaultShapeType;
+
+    private ComponentTypeHandle<GameNodeStatus> __statusType;
+
+    private ComponentTypeHandle<PhysicsCollider> __physicsColliderType;
+
+    private ComponentTypeHandle<PhysicsMass> __physicsMassType;
+
+    private ComponentTypeHandle<PhysicsGravityFactor> __physicsGravityFactorType;
+
+    private ComponentLookup<PhysicsCollider> __physicsColliders;
+
 #if GAME_DEBUG_COMPARSION
     private GameRollbackFrame __frame;
 #endif
 
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameNodeShpae>(),
-            ComponentType.ReadOnly<GameNodeShpaeDefault>(),
-            ComponentType.ReadOnly<GameNodeStatus>(),
-            ComponentType.ReadOnly<PhysicsCollider>(),
-            ComponentType.ReadWrite<PhysicsMass>(),
-            ComponentType.ReadWrite<PhysicsGravityFactor>(), 
-            ComponentType.Exclude<Disabled>());
-
-        __group.SetChangedVersionFilter(new ComponentType[]
-            {
-                typeof(GameNodeStatus),
-                typeof(PhysicsCollider)
-            });
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                .WithAll<GameNodeShpae, GameNodeShpaeDefault, GameNodeStatus>()
+                .WithAllRW<PhysicsCollider, PhysicsMass>()
+                .WithAllRW<PhysicsGravityFactor>()
+                //.WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                .Build(ref state);
+        __group.AddChangedVersionFilter(ComponentType.ReadOnly<GameNodeStatus>());
+        __group.AddChangedVersionFilter(ComponentType.ReadOnly<PhysicsCollider>());
+        
+        __entityType = state.GetEntityTypeHandle();
+        __shapeType = state.GetBufferTypeHandle<GameNodeShpae>(true);
+        __defaultShapeType = state.GetComponentTypeHandle<GameNodeShpaeDefault>(true);
+        __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
+        __physicsColliderType = state.GetComponentTypeHandle<PhysicsCollider>(true);
+        __physicsMassType = state.GetComponentTypeHandle<PhysicsMass>();
+        __physicsGravityFactorType = state.GetComponentTypeHandle<PhysicsGravityFactor>();
+        __physicsColliders = state.GetComponentLookup<PhysicsCollider>();
 
 #if GAME_DEBUG_COMPARSION
         __frame = new GameRollbackFrame(ref state);
@@ -268,20 +288,20 @@ public partial struct GameNodeShapeSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         ChangeEx change;
-        change.entityType = state.GetEntityTypeHandle();
-        change.shapeType = state.GetBufferTypeHandle<GameNodeShpae>(true);
-        change.defaultShapeType = state.GetComponentTypeHandle<GameNodeShpaeDefault>(true);
-        change.statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
-        change.physicsColliderType = state.GetComponentTypeHandle<PhysicsCollider>(true);
-        change.physicsMassType = state.GetComponentTypeHandle<PhysicsMass>();
-        change.physicsGravityFactorType = state.GetComponentTypeHandle<PhysicsGravityFactor>();
-        change.physicsColliderMap = state.GetComponentLookup<PhysicsCollider>();
+        change.entityType = __entityType.UpdateAsRef(ref state);
+        change.shapeType = __shapeType.UpdateAsRef(ref state);
+        change.defaultShapeType = __defaultShapeType.UpdateAsRef(ref state);
+        change.statusType = __statusType.UpdateAsRef(ref state);
+        change.physicsColliderType = __physicsColliderType.UpdateAsRef(ref state);
+        change.physicsMassType = __physicsMassType.UpdateAsRef(ref state);
+        change.physicsGravityFactorType = __physicsGravityFactorType.UpdateAsRef(ref state);
+        change.physicsColliderMap = __physicsColliders.UpdateAsRef(ref state);
 
 #if GAME_DEBUG_COMPARSION
         change.frameIndex = __frame.index;
         change.entityIndexType = state.GetComponentTypeHandle<GameEntityIndex>(true);
 #endif
 
-        state.Dependency = change.ScheduleParallel(__group, state.Dependency);
+        state.Dependency = change.ScheduleParallelByRef(__group, state.Dependency);
     }
 }
