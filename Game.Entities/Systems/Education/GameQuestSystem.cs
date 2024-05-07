@@ -473,7 +473,9 @@ public struct GameQuestManager
     }
 }*/
 
-[BurstCompile, CreateAfter(typeof(GameItemSystem)), UpdateInGroup(typeof(GameItemSystemGroup), OrderFirst = true), UpdateBefore(typeof(GameFormulaSystem))/*, UpdateBefore(typeof(GameItemSystem))*/]
+[BurstCompile, CreateAfter(typeof(GameItemSystem)), 
+ UpdateInGroup(typeof(GameItemSystemGroup), OrderFirst = true), 
+ UpdateBefore(typeof(GameFormulaSystem))]
 public partial struct GameQuestSystem : ISystem
 {
     private struct Command
@@ -515,8 +517,8 @@ public partial struct GameQuestSystem : ISystem
                 for (int i = 0; i < numQuests; ++i)
                 {
                     ref var quest = ref quests.ElementAt(i);
-
-                    manager.Update(itemManager, itemHandle, quest.index, ref quest.conditionBits);
+                    if(quest.status == GameQuestStatus.Normal)
+                        manager.Update(itemManager, itemHandle, quest.index, ref quest.conditionBits);
                 }
                 
                 foreach (var command in commands)

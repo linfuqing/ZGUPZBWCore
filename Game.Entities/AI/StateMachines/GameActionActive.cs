@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using Unity.Jobs;
 using Unity.Burst;
 using Unity.Entities;
@@ -12,13 +11,15 @@ using ZG;
 using Random = Unity.Mathematics.Random;
 using Collider = Unity.Physics.Collider;
 
-[assembly: RegisterGenericJobType(typeof(StateMachineSchedulerJob<
-    StateMachineScheduler, 
-    StateMachineFactory<StateMachineScheduler>, 
-    GameActionActiveSchedulerSystem.SchedulerEntry, 
-    GameActionActiveSchedulerSystem.FactoryEntry>))]
-[assembly: RegisterGenericJobType(typeof(StateMachineEscaperJob<GameActionActiveExecutorSystem.Escaper, GameActionActiveExecutorSystem.EscaperFactory>))]
-[assembly: RegisterGenericJobType(typeof(StateMachineExecutorJob<GameActionActiveExecutorSystem.Executor, GameActionActiveExecutorSystem.ExecutorFactory>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineExitJob<
+    GameActionActiveSystem.Exit, 
+    GameActionActiveSystem.FactoryExit>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineEntryJob<
+    GameActionActiveSystem.Entry, 
+    GameActionActiveSystem.FactoryEntry>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineRunJob<
+    GameActionActiveSystem.Run, 
+    GameActionActiveSystem.FactoryRun>))]
 
 [Flags]
 public enum GameActionActiveFlag
@@ -229,10 +230,10 @@ public struct GameActionActiveInfo : IComponentData
     public Entity entity;
 }
 
-[BurstCompile, UpdateInGroup(typeof(StateMachineGroup), OrderLast = true), UpdateAfter(typeof(GameActionNormalSchedulerSystem))]
-public partial struct GameActionActiveSchedulerSystem : ISystem
+[BurstCompile, UpdateInGroup(typeof(StateMachineGroup)), UpdateAfter(typeof(GameActionNormalSystem))]
+public partial struct GameActionActiveSystem : ISystem
 {
-    public struct SchedulerEntry : IStateMachineScheduler
+    public struct Entry : IStateMachineCondition
     {
         public double time;
 
@@ -325,7 +326,7 @@ public partial struct GameActionActiveSchedulerSystem : ISystem
         }
     }
 
-    public struct FactoryEntry : IStateMachineFactory<SchedulerEntry>
+    public struct FactoryEntry : IStateMachineFactory<Entry>
     {
         public double time;
 
@@ -347,89 +348,24 @@ public partial struct GameActionActiveSchedulerSystem : ISystem
         
         public ComponentTypeHandle<GameActionActiveInfo> infoType;
 
-        public bool Create(int unfilteredChunkIndex, in ArchetypeChunk chunk, out SchedulerEntry schedulerEntry)
+        public bool Create(int unfilteredChunkIndex, in ArchetypeChunk chunk, out Entry entry)
         {
-            schedulerEntry.time = time;
-            schedulerEntry.disabled = disabled;
-            schedulerEntry.translationMap = translations;
-            schedulerEntry.translations = chunk.GetNativeArray(ref translationType);
-            schedulerEntry.watcherInfos = chunk.GetNativeArray(ref watcherInfoType);
-            schedulerEntry.speakerInfos = chunk.GetNativeArray(ref speakerInfoType);
-            schedulerEntry.instances = chunk.GetNativeArray(ref instanceType);
-            schedulerEntry.infos = chunk.GetNativeArray(ref infoType);
+            entry.time = time;
+            entry.disabled = disabled;
+            entry.translationMap = translations;
+            entry.translations = chunk.GetNativeArray(ref translationType);
+            entry.watcherInfos = chunk.GetNativeArray(ref watcherInfoType);
+            entry.speakerInfos = chunk.GetNativeArray(ref speakerInfoType);
+            entry.instances = chunk.GetNativeArray(ref instanceType);
+            entry.infos = chunk.GetNativeArray(ref infoType);
 
             return true;
         }
     }
 
-    private GameSyncTime __time;
-
-    private ComponentLookup<Disabled> __disabled;
-
-    private ComponentLookup<Translation> __translations;
-
-    private ComponentTypeHandle<Translation> __translationType;
-
-    private ComponentTypeHandle<GameWatcherInfo> __watcherInfoType;
-    private ComponentTypeHandle<GameSpeakerInfo> __speakerInfoType;
-    private ComponentTypeHandle<GameActionActiveData> __instanceType;
-
-    private ComponentTypeHandle<GameActionActiveInfo> __infoType;
-
-    private StateMachineSchedulerSystemCore __core;
-
-    [BurstCompile]
-    public void OnCreate(ref SystemState state)
+    public struct Exit : IStateMachineCondition
     {
-        __time = new GameSyncTime(ref state);
-
-        __disabled = state.GetComponentLookup<Disabled>(true);
-        __translations = state.GetComponentLookup<Translation>(true);
-        __translationType = state.GetComponentTypeHandle<Translation>(true);
-        __watcherInfoType = state.GetComponentTypeHandle<GameWatcherInfo>(true);
-        __speakerInfoType = state.GetComponentTypeHandle<GameSpeakerInfo>(true);
-        __instanceType = state.GetComponentTypeHandle<GameActionActiveData>(true);
-        __infoType = state.GetComponentTypeHandle<GameActionActiveInfo>();
-
-        using (var builder = new EntityQueryBuilder(Allocator.Temp))
-            __core = new StateMachineSchedulerSystemCore(
-                ref state, 
-                builder
-                .WithAll<Translation, GameActionActiveData>()
-                .WithAllRW<GameActionActiveInfo>()
-                .WithAny<GameSpeakerInfo, GameWatcherInfo>());
-    }
-
-    [BurstCompile]
-    public void OnDestroy(ref SystemState state)
-    {
-
-    }
-
-    [BurstCompile]
-    public void OnUpdate(ref SystemState state)
-    {
-        FactoryEntry factoryEntry;
-        factoryEntry.time = __time.nextTime;
-        factoryEntry.disabled = __disabled.UpdateAsRef(ref state);
-        factoryEntry.translations = __translations.UpdateAsRef(ref state);
-        factoryEntry.translationType = __translationType.UpdateAsRef(ref state);
-        factoryEntry.watcherInfoType = __watcherInfoType.UpdateAsRef(ref state);
-        factoryEntry.speakerInfoType = __speakerInfoType.UpdateAsRef(ref state);
-        factoryEntry.instanceType = __instanceType.UpdateAsRef(ref state);
-        factoryEntry.infoType = __infoType.UpdateAsRef(ref state);
-
-        StateMachineFactory<StateMachineScheduler> factoryExit;
-        __core.Update<StateMachineScheduler, SchedulerEntry, StateMachineFactory<StateMachineScheduler>, FactoryEntry>(ref state, ref factoryEntry, ref factoryExit);
-    }
-}
-
-[BurstCompile, CreateAfter(typeof(GameActionActiveSchedulerSystem)), UpdateInGroup(typeof(StateMachineGroup))]
-public partial struct GameActionActiveExecutorSystem : ISystem
-{
-    public struct Escaper : IStateMachineEscaper
-    {
-        public bool isHasPositions;
+        public bool hasPositions;
 
         public ArchetypeChunk chunk;
 
@@ -447,7 +383,7 @@ public partial struct GameActionActiveExecutorSystem : ISystem
             in SystemHandle currentSystemHandle,
             int index)
         {
-            if (isHasPositions && nextSystemHandle != SystemHandle.Null && index < infos.Length)
+            if (hasPositions && nextSystemHandle != SystemHandle.Null && index < infos.Length)
             {
                 GameNavMeshAgentTarget target;
                 target.sourceAreaMask = -1;
@@ -514,7 +450,7 @@ public partial struct GameActionActiveExecutorSystem : ISystem
         }
     }
 
-    public struct EscaperFactory : IStateMachineFactory<Escaper>
+    public struct FactoryExit : IStateMachineFactory<Exit>
     {
         [ReadOnly]
         public BufferTypeHandle<GameNodePosition> positionType;
@@ -527,20 +463,19 @@ public partial struct GameActionActiveExecutorSystem : ISystem
         public bool Create(
             int unfilteredChunkIndex, 
             in ArchetypeChunk chunk, 
-            out Escaper escaper)
+            out Exit exit)
         {
-            //escaper.time = time;
-            escaper.isHasPositions = chunk.Has(ref positionType);
-            escaper.chunk = chunk;
-            escaper.targetType = targetType;
-            //escaper.entityArray = chunk.GetNativeArray(entityType);
-            escaper.infos = chunk.GetNativeArray(ref infoType);
-            escaper.targets = chunk.GetNativeArray(ref targetType);
+            exit.hasPositions = chunk.Has(ref positionType);
+            exit.chunk = chunk;
+            exit.targetType = targetType;
+            exit.infos = chunk.GetNativeArray(ref infoType);
+            exit.targets = chunk.GetNativeArray(ref targetType);
+            
             return true;
         }
     }
 
-    public struct Executor : IStateMachineExecutor
+    public struct Run : IStateMachineExecutor
     {
         public float collisionTolerance;
         public GameTime time;
@@ -883,19 +818,19 @@ public partial struct GameActionActiveExecutorSystem : ISystem
                 else
                     collider = null;
 
-                bool isRunAway, isHasPosition = index < positions.Length;//, isDelay = delay[index].Check(time);
+                bool isRunAway, hasPosition = index < positions.Length;//, isDelay = delay[index].Check(time);
                 uint categoryBits = physicsColliders[info.entity].Value.Value.Filter.BelongsTo;
                 int maxHealth = index < healthes.Length && index < healthData.Length ? healthData[index].max : 0, 
                     maxTorpidity = index < torpidities.Length && index < torpidityData.Length ? torpidityData[index].max : 0;
                 float health = maxHealth < 1 ? 1.0f : healthes[index].value / maxHealth, 
                     torpidity = maxTorpidity < 1 ? 1.0f : torpidities[index].value / maxTorpidity;
                 if ((instance.layerMask == 0 || (instance.layerMask & categoryBits) == 0) &&
-                    (!isHasPosition || 
+                    (!hasPosition || 
                     health > instance.health &&
                     torpidity > instance.torpidity))
                 {
                     if (!isWatch && (instance.flag & GameActionActiveFlag.Sly) == GameActionActiveFlag.Sly)
-                        isRunAway = isHasPosition;
+                        isRunAway = hasPosition;
                     else if ((!isWatch || !protectedTimes.HasComponent(info.entity) || protectedTimes[info.entity].value < time))
                     {
                         if (actorTimes[index].value >= time || commands.IsComponentEnabled(entity))
@@ -958,7 +893,7 @@ public partial struct GameActionActiveExecutorSystem : ISystem
 
                                         commands.SetComponentEnabled(entity, true);
 
-                                        isHasPosition = false;
+                                        hasPosition = false;
                                     }
                                     else
                                         info.groupMask = 0;
@@ -1028,7 +963,7 @@ public partial struct GameActionActiveExecutorSystem : ISystem
 
                                             commands.SetComponentEnabled(entity, true);
 
-                                            isHasPosition = false;
+                                            hasPosition = false;
 
                                             break;
                                         }
@@ -1036,7 +971,7 @@ public partial struct GameActionActiveExecutorSystem : ISystem
                                 }
                             }
 
-                            if (isHasPosition)
+                            if (hasPosition)
                             {
                                 if (/*info.status == GameActionActiveInfo.Status.Forward || */distance > instance.maxAlertDistance/* || dot < 0.0f*/)
                                 {
@@ -1122,16 +1057,17 @@ public partial struct GameActionActiveExecutorSystem : ISystem
                         }
                     }
                     else
-                        isRunAway = isHasPosition && (instance.flag & GameActionActiveFlag.Timid) == GameActionActiveFlag.Timid;
+                        isRunAway = hasPosition && (instance.flag & GameActionActiveFlag.Timid) == GameActionActiveFlag.Timid;
                 }
                 else
-                    isRunAway = isHasPosition;
+                    isRunAway = hasPosition;
 
                 if (isRunAway && index < directions.Length && !delay[index].Check(time)/*!isDelay*/)
                 {
                     float3 value = -forward;
                     var direction = directions[index];
-                    if (math.dot(math.normalizesafe(direction.value), value) < instance.dot)
+                    if (direction.mode != GameNodeDirection.Mode.Forward || 
+                        math.dot(math.normalizesafe(direction.value), value) < instance.dot)
                     {
                         var version = versions[entity];
                         version.type = GameNodeVersion.Type.Direction;
@@ -1144,7 +1080,7 @@ public partial struct GameActionActiveExecutorSystem : ISystem
                         direction.value = value;
                         directions[index] = direction;
 
-                        if (isHasPosition)
+                        if (hasPosition)
                             positions[index].Clear();
 
                         if (index < targets.Length)
@@ -1179,7 +1115,7 @@ public partial struct GameActionActiveExecutorSystem : ISystem
         }
     }
 
-    public struct ExecutorFactory : IStateMachineFactory<Executor>
+    public struct FactoryRun : IStateMachineFactory<Run>
     {
         public float collisionTolerance;
 
@@ -1277,48 +1213,48 @@ public partial struct GameActionActiveExecutorSystem : ISystem
         public bool Create(
             int unfilteredChunkIndex, 
             in ArchetypeChunk chunk, 
-            out Executor executor)
+            out Run run)
         {
-            executor.collisionTolerance = collisionTolerance;
-            executor.time = time;
-            executor.random = new Random(RandomUtility.Hash(time) ^ (uint)unfilteredChunkIndex);
-            executor.chunk = chunk;
-            executor.targetType = targetType;
-            executor.actions = actions;
-            executor.actionColliders = actionColliders;
-            executor.disabled = disabled;
-            executor.translations = translations;
-            executor.rotations = rotations;
-            executor.physicsMassMap = physicsMasses;
-            executor.physicsColliders = physicsColliders;
-            executor.protectedTimes = protectedTimes;
-            executor.entityArray = chunk.GetNativeArray(entityType);
-            executor.states = chunk.GetNativeArray(ref statusType);
-            executor.delay = chunk.GetNativeArray(ref delayType);
-            executor.angles = chunk.GetNativeArray(ref angleType);
-            executor.actorStates = chunk.GetNativeArray(ref actorStatusType);
-            executor.desiredVelocities = chunk.GetNativeArray(ref desiredVelocityType);
-            executor.healthData = chunk.GetNativeArray(ref healthDataType);
-            executor.healthes = chunk.GetNativeArray(ref healthType);
-            executor.torpidityData = chunk.GetNativeArray(ref torpidityDataType);
-            executor.torpidities = chunk.GetNativeArray(ref torpidityType);
-            executor.commandVersions = chunk.GetNativeArray(ref commandVersionType);
-            executor.actorTimes = chunk.GetNativeArray(ref actorTimeType);
-            executor.actors = chunk.GetNativeArray(ref actorType);
-            executor.instances = chunk.GetNativeArray(ref instanceType);
-            executor.speakerInfos = chunk.GetNativeArray(ref speakerInfoType);
-            executor.watcherInfos = chunk.GetNativeArray(ref watcherInfoType);
-            executor.actorActions = chunk.GetBufferAccessor(ref actorActionType);
-            executor.actorActionInfos = chunk.GetBufferAccessor(ref actorActionInfoType);
-            executor.conditionActions = chunk.GetBufferAccessor(ref conditionActionType);
-            executor.conditions = chunk.GetBufferAccessor(ref conditionType);
-            executor.groups = chunk.GetBufferAccessor(ref groupType);
-            executor.positions = chunk.GetBufferAccessor(ref positionType);
-            executor.directions = chunk.GetNativeArray(ref directionType);
-            executor.targets = chunk.GetNativeArray(ref targetType);
-            executor.infos = chunk.GetNativeArray(ref infoType);
-            executor.commands = commands;
-            executor.versions = versions;
+            run.collisionTolerance = collisionTolerance;
+            run.time = time;
+            run.random = new Random(RandomUtility.Hash(time) ^ (uint)unfilteredChunkIndex);
+            run.chunk = chunk;
+            run.targetType = targetType;
+            run.actions = actions;
+            run.actionColliders = actionColliders;
+            run.disabled = disabled;
+            run.translations = translations;
+            run.rotations = rotations;
+            run.physicsMassMap = physicsMasses;
+            run.physicsColliders = physicsColliders;
+            run.protectedTimes = protectedTimes;
+            run.entityArray = chunk.GetNativeArray(entityType);
+            run.states = chunk.GetNativeArray(ref statusType);
+            run.delay = chunk.GetNativeArray(ref delayType);
+            run.angles = chunk.GetNativeArray(ref angleType);
+            run.actorStates = chunk.GetNativeArray(ref actorStatusType);
+            run.desiredVelocities = chunk.GetNativeArray(ref desiredVelocityType);
+            run.healthData = chunk.GetNativeArray(ref healthDataType);
+            run.healthes = chunk.GetNativeArray(ref healthType);
+            run.torpidityData = chunk.GetNativeArray(ref torpidityDataType);
+            run.torpidities = chunk.GetNativeArray(ref torpidityType);
+            run.commandVersions = chunk.GetNativeArray(ref commandVersionType);
+            run.actorTimes = chunk.GetNativeArray(ref actorTimeType);
+            run.actors = chunk.GetNativeArray(ref actorType);
+            run.instances = chunk.GetNativeArray(ref instanceType);
+            run.speakerInfos = chunk.GetNativeArray(ref speakerInfoType);
+            run.watcherInfos = chunk.GetNativeArray(ref watcherInfoType);
+            run.actorActions = chunk.GetBufferAccessor(ref actorActionType);
+            run.actorActionInfos = chunk.GetBufferAccessor(ref actorActionInfoType);
+            run.conditionActions = chunk.GetBufferAccessor(ref conditionActionType);
+            run.conditions = chunk.GetBufferAccessor(ref conditionType);
+            run.groups = chunk.GetBufferAccessor(ref groupType);
+            run.positions = chunk.GetBufferAccessor(ref positionType);
+            run.directions = chunk.GetNativeArray(ref directionType);
+            run.targets = chunk.GetNativeArray(ref targetType);
+            run.infos = chunk.GetNativeArray(ref infoType);
+            run.commands = commands;
+            run.versions = versions;
             //executor.addComponentCommander = addComponentCommander;
             //executor.removeComponentCommander = removeComponentCommander;
 
@@ -1343,6 +1279,8 @@ public partial struct GameActionActiveExecutorSystem : ISystem
     private ComponentLookup<GameActionActiveProtectedTime> __protectedTimes;
 
     private EntityTypeHandle __entityType;
+
+    private ComponentTypeHandle<Translation> __translationType;
 
     private ComponentTypeHandle<GameNodeStatus> __statusType;
     private ComponentTypeHandle<GameNodeDelay> __delayType;
@@ -1384,7 +1322,7 @@ public partial struct GameActionActiveExecutorSystem : ISystem
 
     private SingletonAssetContainer<BlobAssetReference<Collider>> __actionColliders;
 
-    private StateMachineExecutorSystemCore __core;
+    private StateMachineSystemCore __core;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
@@ -1398,6 +1336,7 @@ public partial struct GameActionActiveExecutorSystem : ISystem
         __physicsColliders = state.GetComponentLookup<PhysicsCollider>(true);
         __protectedTimes = state.GetComponentLookup<GameActionActiveProtectedTime>(true);
         __entityType = state.GetEntityTypeHandle();
+        __translationType = state.GetComponentTypeHandle<Translation>(true);
         __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
         __delayType = state.GetComponentTypeHandle<GameNodeDelay>(true);
         __angleType = state.GetComponentTypeHandle<GameNodeAngle>(true);
@@ -1429,13 +1368,12 @@ public partial struct GameActionActiveExecutorSystem : ISystem
         __actionColliders = SingletonAssetContainer<BlobAssetReference<Collider>>.instance;
 
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
-            __core = new StateMachineExecutorSystemCore(
-                ref state,
+            __core = new StateMachineSystemCore(
+                ref state, 
                 builder
-                .WithAll<GameNodeStatus, GameNodeDelay, GameEntityCommandVersion, GameEntityActorData, GameActionActiveData, GameEntityActorActionData, GameEntityActorActionInfo>()
-                .WithAllRW<GameActionActiveInfo>()
-                .WithAny<GameSpeakerInfo, GameWatcherInfo>(), 
-                state.WorldUnmanaged.GetExistingUnmanagedSystem<GameActionActiveSchedulerSystem>());
+                    .WithAll<GameNodeStatus, GameNodeDelay, GameEntityCommandVersion, GameEntityActorData, GameActionActiveData, GameEntityActorActionData, GameEntityActorActionInfo>()
+                    .WithAllRW<GameActionActiveInfo>()
+                    .WithAny<GameSpeakerInfo, GameWatcherInfo>());
     }
 
     [BurstCompile]
@@ -1449,60 +1387,78 @@ public partial struct GameActionActiveExecutorSystem : ISystem
     {
         if (!SystemAPI.HasSingleton<GameActionSetData>())
             return;
-
-        var positionType = __positionType.UpdateAsRef(ref state);
-        var infoType = __infoType.UpdateAsRef(ref state);
-        var targetType = __targetType.UpdateAsRef(ref state);
-
-        ExecutorFactory executorFactory;
-        executorFactory.collisionTolerance = CollisionTolerance;
-        executorFactory.time = __time.nextTime;
-        executorFactory.actions = SystemAPI.GetSingleton<GameActionSetData>().definition;
-        executorFactory.actionColliders = __actionColliders.reader;
-        executorFactory.disabled = __disabled.UpdateAsRef(ref state);
-        executorFactory.translations = __translations.UpdateAsRef(ref state);
-        executorFactory.rotations = __rotations.UpdateAsRef(ref state);
-        executorFactory.physicsMasses = __physicsMasses.UpdateAsRef(ref state);
-        executorFactory.physicsColliders = __physicsColliders.UpdateAsRef(ref state);
-        executorFactory.protectedTimes = __protectedTimes.UpdateAsRef(ref state);
-        executorFactory.entityType = __entityType.UpdateAsRef(ref state);
-        executorFactory.statusType = __statusType.UpdateAsRef(ref state);
-        executorFactory.delayType = __delayType.UpdateAsRef(ref state);
-        executorFactory.angleType = __angleType.UpdateAsRef(ref state);
-        executorFactory.actorStatusType = __actorStatusType.UpdateAsRef(ref state);
-        executorFactory.desiredVelocityType = __desiredVelocityType.UpdateAsRef(ref state);
-        executorFactory.angleType = __angleType.UpdateAsRef(ref state);
-        executorFactory.healthDataType = __healthDataType.UpdateAsRef(ref state);
-        executorFactory.healthType = __healthType.UpdateAsRef(ref state);
-        executorFactory.torpidityDataType = __torpidityDataType.UpdateAsRef(ref state);
-        executorFactory.torpidityType = __torpidityType.UpdateAsRef(ref state);
-        executorFactory.commandVersionType = __commandVersionType.UpdateAsRef(ref state);
-        executorFactory.actorTimeType = __actorTimeType.UpdateAsRef(ref state);
-        executorFactory.actorType = __actorType.UpdateAsRef(ref state);
-        executorFactory.instanceType = __instanceType.UpdateAsRef(ref state);
-        executorFactory.speakerInfoType = __speakerInfoType.UpdateAsRef(ref state);
-        executorFactory.watcherInfoType = __watcherInfoType.UpdateAsRef(ref state);
-        executorFactory.actorActionType = __actorActionType.UpdateAsRef(ref state);
-        executorFactory.actorActionInfoType = __actorActionInfoType.UpdateAsRef(ref state);
-        executorFactory.conditionActionType = __conditionActionType.UpdateAsRef(ref state);
-        executorFactory.conditionType = __conditionType.UpdateAsRef(ref state);
-        executorFactory.groupType = __groupType.UpdateAsRef(ref state);
-        executorFactory.positionType = positionType;
-        executorFactory.directionType = __directionType.UpdateAsRef(ref state);
-        executorFactory.targetType = targetType;
-        executorFactory.infoType = infoType;
-        executorFactory.commands = __commands.UpdateAsRef(ref state);
-        executorFactory.versions = __versions.UpdateAsRef(ref state);
-
-        EscaperFactory escaperFactory;
-        escaperFactory.positionType = positionType;
-        escaperFactory.infoType = infoType;
-        escaperFactory.targetType = targetType;
-
-        __core.Update<Escaper, Executor, EscaperFactory, ExecutorFactory>(ref state, ref executorFactory, ref escaperFactory);
         
-        var jobHandle = state.Dependency;
+        var nextTime = __time.nextTime;
+        var disabled = __disabled.UpdateAsRef(ref state);
+        var translations = __translations.UpdateAsRef(ref state);
+        var positionType = __positionType.UpdateAsRef(ref state);
+        var targetType = __targetType.UpdateAsRef(ref state);
+        var watcherInfoType = __watcherInfoType.UpdateAsRef(ref state);
+        var speakerInfoType = __speakerInfoType.UpdateAsRef(ref state);
+        var instanceType = __instanceType.UpdateAsRef(ref state);
+        var infoType = __infoType.UpdateAsRef(ref state);
 
-        __actionColliders.AddDependency(state.GetSystemID(), jobHandle);
+        FactoryRun factoryRun;
+        factoryRun.collisionTolerance = CollisionTolerance;
+        factoryRun.time = nextTime;
+        factoryRun.actions = SystemAPI.GetSingleton<GameActionSetData>().definition;
+        factoryRun.actionColliders = __actionColliders.reader;
+        factoryRun.disabled = disabled;
+        factoryRun.translations = __translations.UpdateAsRef(ref state);
+        factoryRun.rotations = __rotations.UpdateAsRef(ref state);
+        factoryRun.physicsMasses = __physicsMasses.UpdateAsRef(ref state);
+        factoryRun.physicsColliders = __physicsColliders.UpdateAsRef(ref state);
+        factoryRun.protectedTimes = __protectedTimes.UpdateAsRef(ref state);
+        factoryRun.entityType = __entityType.UpdateAsRef(ref state);
+        factoryRun.statusType = __statusType.UpdateAsRef(ref state);
+        factoryRun.delayType = __delayType.UpdateAsRef(ref state);
+        factoryRun.angleType = __angleType.UpdateAsRef(ref state);
+        factoryRun.actorStatusType = __actorStatusType.UpdateAsRef(ref state);
+        factoryRun.desiredVelocityType = __desiredVelocityType.UpdateAsRef(ref state);
+        factoryRun.angleType = __angleType.UpdateAsRef(ref state);
+        factoryRun.healthDataType = __healthDataType.UpdateAsRef(ref state);
+        factoryRun.healthType = __healthType.UpdateAsRef(ref state);
+        factoryRun.torpidityDataType = __torpidityDataType.UpdateAsRef(ref state);
+        factoryRun.torpidityType = __torpidityType.UpdateAsRef(ref state);
+        factoryRun.commandVersionType = __commandVersionType.UpdateAsRef(ref state);
+        factoryRun.actorTimeType = __actorTimeType.UpdateAsRef(ref state);
+        factoryRun.actorType = __actorType.UpdateAsRef(ref state);
+        factoryRun.instanceType = instanceType;
+        factoryRun.speakerInfoType = speakerInfoType;
+        factoryRun.watcherInfoType = watcherInfoType;
+        factoryRun.actorActionType = __actorActionType.UpdateAsRef(ref state);
+        factoryRun.actorActionInfoType = __actorActionInfoType.UpdateAsRef(ref state);
+        factoryRun.conditionActionType = __conditionActionType.UpdateAsRef(ref state);
+        factoryRun.conditionType = __conditionType.UpdateAsRef(ref state);
+        factoryRun.groupType = __groupType.UpdateAsRef(ref state);
+        factoryRun.positionType = positionType;
+        factoryRun.directionType = __directionType.UpdateAsRef(ref state);
+        factoryRun.targetType = targetType;
+        factoryRun.infoType = infoType;
+        factoryRun.commands = __commands.UpdateAsRef(ref state);
+        factoryRun.versions = __versions.UpdateAsRef(ref state);
+
+        FactoryExit factoryExit;
+        factoryExit.positionType = positionType;
+        factoryExit.infoType = infoType;
+        factoryExit.targetType = targetType;
+
+        FactoryEntry factoryEntry;
+        factoryEntry.time = nextTime;
+        factoryEntry.disabled = disabled;
+        factoryEntry.translations = translations;
+        factoryEntry.translationType = __translationType.UpdateAsRef(ref state);
+        factoryEntry.watcherInfoType = watcherInfoType;
+        factoryEntry.speakerInfoType = speakerInfoType;
+        factoryEntry.instanceType = instanceType;
+        factoryEntry.infoType = infoType;
+
+        __core.Update<Exit, Entry, Run, FactoryExit, FactoryEntry, FactoryRun>(
+            ref state, 
+            ref factoryRun, 
+            ref factoryEntry, 
+            ref factoryExit);
+        
+        __actionColliders.AddDependency(state.GetSystemID(), state.Dependency);
     }
 }

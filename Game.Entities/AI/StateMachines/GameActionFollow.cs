@@ -7,13 +7,12 @@ using UnityEngine;
 using ZG;
 using Unity.Burst;
 
-[assembly: RegisterGenericJobType(typeof(StateMachineSchedulerJob<
-    StateMachineScheduler, 
-    StateMachineFactory<StateMachineScheduler>, 
-    GameActionFollowSchedulerSystem.SchedulerEntry, 
-    GameActionFollowSchedulerSystem.FactoryEntry>))]
-[assembly: RegisterGenericJobType(typeof(StateMachineEscaperJob<StateMachineEscaper, StateMachineFactory<StateMachineEscaper>>))]
-[assembly: RegisterGenericJobType(typeof(StateMachineExecutorJob<GameActionFollowExecutorSystem.Executor, GameActionFollowExecutorSystem.ExecutorFactory>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineEntryJob<
+    GameActionFollowSystem.Entry, 
+    GameActionFollowSystem.FactoryEntry>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineRunJob<
+    GameActionFollowSystem.Run, 
+    GameActionFollowSystem.FactoryRun>))]
 
 public class GameActionFollow : StateMachineNode
 {
@@ -48,10 +47,10 @@ public struct GameActionFollowData : IComponentData
     public float distanceSq;
 }
 
-[BurstCompile, UpdateInGroup(typeof(StateMachineGroup), OrderLast = true), UpdateAfter(typeof(GameActionActiveSchedulerSystem))]
-public partial struct GameActionFollowSchedulerSystem : ISystem
+[BurstCompile, UpdateInGroup(typeof(StateMachineGroup)), UpdateAfter(typeof(GameActionActiveSystem))]
+public partial struct GameActionFollowSystem : ISystem
 {
-    public struct SchedulerEntry : IStateMachineScheduler
+    public struct Entry : IStateMachineCondition
     {
         [ReadOnly]
         public ComponentLookup<Translation> translationMap;
@@ -90,7 +89,7 @@ public partial struct GameActionFollowSchedulerSystem : ISystem
         }
     }
 
-    public struct FactoryEntry : IStateMachineFactory<SchedulerEntry>
+    public struct FactoryEntry : IStateMachineFactory<Entry>
     {
         [ReadOnly]
         public ComponentLookup<Translation> translations;
@@ -107,68 +106,20 @@ public partial struct GameActionFollowSchedulerSystem : ISystem
         public bool Create(
             int unfilteredChunkIndex, 
             in ArchetypeChunk chunk, 
-            out SchedulerEntry schedulerEntry)
+            out Entry entry)
         {
-            schedulerEntry.translationMap = translations;
-            schedulerEntry.translations = chunk.GetNativeArray(ref translationType);
-            schedulerEntry.instances = chunk.GetNativeArray(ref instanceType);
-            schedulerEntry.actorMasters = chunk.GetNativeArray(ref actorMasterType);
+            entry.translationMap = translations;
+            entry.translations = chunk.GetNativeArray(ref translationType);
+            entry.instances = chunk.GetNativeArray(ref instanceType);
+            entry.actorMasters = chunk.GetNativeArray(ref actorMasterType);
 
             return true;
         }
     }
 
-    private ComponentLookup<Translation> __translations;
-
-    private ComponentTypeHandle<Translation> __translationType;
-
-    private ComponentTypeHandle<GameActionFollowData> __instanceType;
-
-    private ComponentTypeHandle<GameActorMaster> __actorMasterType;
-
-    private StateMachineSchedulerSystemCore __core;
-
-    [BurstCompile]
-    public void OnCreate(ref SystemState state)
+    public struct Run : IStateMachineExecutor
     {
-        __translations = state.GetComponentLookup<Translation>(true);
-        __translationType = state.GetComponentTypeHandle<Translation>(true);
-        __instanceType = state.GetComponentTypeHandle<GameActionFollowData>(true);
-        __actorMasterType = state.GetComponentTypeHandle<GameActorMaster>(true);
-
-        using (var builder = new EntityQueryBuilder(Allocator.Temp))
-            __core = new StateMachineSchedulerSystemCore(
-                ref state,
-                builder
-                .WithAll<Translation, GameActionFollowData, GameActorMaster>());
-    }
-
-    [BurstCompile]
-    public void OnDestroy(ref SystemState state)
-    {
-
-    }
-
-    [BurstCompile]
-    public void OnUpdate(ref SystemState state)
-    {
-        FactoryEntry factoryEntry;
-        factoryEntry.translations = __translations.UpdateAsRef(ref state);
-        factoryEntry.translationType = __translationType.UpdateAsRef(ref state);
-        factoryEntry.instanceType = __instanceType.UpdateAsRef(ref state);
-        factoryEntry.actorMasterType = __actorMasterType.UpdateAsRef(ref state);
-
-        StateMachineFactory<StateMachineScheduler> factoryExit;
-        __core.Update<StateMachineScheduler, SchedulerEntry, StateMachineFactory<StateMachineScheduler>, FactoryEntry>(ref state, ref factoryEntry, ref factoryExit);
-    }
-}
-
-[BurstCompile, CreateAfter(typeof(GameActionFollowSchedulerSystem)), UpdateInGroup(typeof(StateMachineGroup))]
-public partial struct GameActionFollowExecutorSystem : ISystem
-{
-    public struct Executor : IStateMachineExecutor
-    {
-        public bool isHasPositions;
+        public bool hasPositions;
 
         public double time;
 
@@ -206,7 +157,7 @@ public partial struct GameActionFollowExecutorSystem : ISystem
             if (math.distancesq(translations[index].Value, temp) < instance.distanceSq)
                 return 0;
 
-            if (isHasPositions)
+            if (hasPositions)
             {
                 GameNavMeshAgentTarget target;
                 target.sourceAreaMask = -1;
@@ -268,7 +219,7 @@ public partial struct GameActionFollowExecutorSystem : ISystem
         }
     }
 
-    public struct ExecutorFactory : IStateMachineFactory<Executor>
+    public struct FactoryRun : IStateMachineFactory<Run>
     {
         public double time;
 
@@ -288,18 +239,18 @@ public partial struct GameActionFollowExecutorSystem : ISystem
         public bool Create(
             int unfilteredChunkIndex, 
             in ArchetypeChunk chunk, 
-            out Executor executor)
+            out Run run)
         {
-            executor.isHasPositions = chunk.Has(ref positionType);
-            executor.time = time;
-            executor.chunk = chunk;
-            executor.targetType = targetType;
-            executor.translationMap = translations;
+            run.hasPositions = chunk.Has(ref positionType);
+            run.time = time;
+            run.chunk = chunk;
+            run.targetType = targetType;
+            run.translationMap = translations;
             //executor.entityArray = chunk.GetNativeArray(entityType);
-            executor.translations = chunk.GetNativeArray(ref translationType);
-            executor.instances = chunk.GetNativeArray(ref instanceType);
-            executor.actorMasters = chunk.GetNativeArray(ref actorMasterType);
-            executor.targets = chunk.GetNativeArray(ref targetType);
+            run.translations = chunk.GetNativeArray(ref translationType);
+            run.instances = chunk.GetNativeArray(ref instanceType);
+            run.actorMasters = chunk.GetNativeArray(ref actorMasterType);
+            run.targets = chunk.GetNativeArray(ref targetType);
             //executor.entityManager = entityManager;
 
             return true;
@@ -316,7 +267,7 @@ public partial struct GameActionFollowExecutorSystem : ISystem
 
     private ComponentTypeHandle<GameNavMeshAgentTarget> __targetType;
 
-    private StateMachineExecutorSystemCore __core;
+    private StateMachineSystemCore __core;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
@@ -331,11 +282,10 @@ public partial struct GameActionFollowExecutorSystem : ISystem
         __targetType = state.GetComponentTypeHandle<GameNavMeshAgentTarget>();
 
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
-            __core = new StateMachineExecutorSystemCore(
+            __core = new StateMachineSystemCore(
                 ref state,
                 builder
-                .WithAll<GameActionFollowData, GameActorMaster>(),
-                state.WorldUnmanaged.GetExistingUnmanagedSystem<GameActionFollowSchedulerSystem>());
+                .WithAll<Translation, GameActionFollowData, GameActorMaster>());
     }
 
     [BurstCompile]
@@ -347,16 +297,32 @@ public partial struct GameActionFollowExecutorSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        ExecutorFactory executorFactory;
-        executorFactory.time = __time.nextTime;
-        executorFactory.translations = __translations.UpdateAsRef(ref state);
-        executorFactory.positionType = __positionType.UpdateAsRef(ref state);
-        executorFactory.translationType = __translationType.UpdateAsRef(ref state);
-        executorFactory.instanceType = __instanceType.UpdateAsRef(ref state);
-        executorFactory.actorMasterType = __actorMasterType.UpdateAsRef(ref state);
-        executorFactory.targetType = __targetType.UpdateAsRef(ref state);
+        StateMachineFactory<StateMachineCondition> factoryExit;
+        
+        var translations = __translations.UpdateAsRef(ref state);
+        var translationType = __translationType.UpdateAsRef(ref state);
+        var instanceType = __instanceType.UpdateAsRef(ref state);
+        var actorMasterType = __actorMasterType.UpdateAsRef(ref state);
+        
+        FactoryEntry factoryEntry;
+        factoryEntry.translations = translations;
+        factoryEntry.translationType = translationType;
+        factoryEntry.instanceType = instanceType;
+        factoryEntry.actorMasterType = actorMasterType;
 
-        StateMachineFactory<StateMachineEscaper> escaperFactory;
-        __core.Update<StateMachineEscaper, Executor, StateMachineFactory<StateMachineEscaper>, ExecutorFactory>(ref state, ref executorFactory, ref escaperFactory);
+        FactoryRun factoryRun;
+        factoryRun.time = __time.nextTime;
+        factoryRun.translations = translations;
+        factoryRun.positionType = __positionType.UpdateAsRef(ref state);
+        factoryRun.translationType = translationType;
+        factoryRun.instanceType = instanceType;
+        factoryRun.actorMasterType = actorMasterType;
+        factoryRun.targetType = __targetType.UpdateAsRef(ref state);
+
+        __core.Update<StateMachineCondition, Entry, Run, StateMachineFactory<StateMachineCondition>, FactoryEntry, FactoryRun>(
+            ref state, 
+            ref factoryRun, 
+            ref factoryEntry, 
+            ref factoryExit);
     }
 }

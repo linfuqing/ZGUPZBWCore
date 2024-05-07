@@ -10,13 +10,15 @@ using ZG;
 using Random = Unity.Mathematics.Random;
 using Unity.Burst;
 
-[assembly: RegisterGenericJobType(typeof(StateMachineSchedulerJob<
-    GameActionFixedSchedulerSystem.SchedulerExit, 
-    GameActionFixedSchedulerSystem.FactoryExit, 
-    GameActionFixedSchedulerSystem.SchedulerEntry, 
-    GameActionFixedSchedulerSystem.FactoryEntry>))]
-[assembly: RegisterGenericJobType(typeof(StateMachineEscaperJob<StateMachineEscaper, StateMachineFactory<StateMachineEscaper>>))]
-[assembly: RegisterGenericJobType(typeof(StateMachineExecutorJob<GameActionFixedExecutorSystem.Executor, GameActionFixedExecutorSystem.ExecutorFactory>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineExitJob<
+    GameActionFixedSystem.Exit, 
+    GameActionFixedSystem.FactoryExit>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineEntryJob<
+    GameActionFixedSystem.Entry, 
+    GameActionFixedSystem.FactoryEntry>))]
+[assembly: RegisterGenericJobType(typeof(StateMachineRunJob<
+    GameActionFixedSystem.Run, 
+    GameActionFixedSystem.FactoryRun>))]
 
 [Serializable]
 public struct GameActionFixedNextFrame : IBufferElementData
@@ -122,10 +124,10 @@ public class GameActionFixed : StateMachineNode
 }
 
 
-[BurstCompile, UpdateInGroup(typeof(StateMachineGroup), OrderLast = true), UpdateAfter(typeof(GameActionActiveSchedulerSystem))]
-public partial struct GameActionFixedSchedulerSystem : ISystem
+[BurstCompile, UpdateInGroup(typeof(StateMachineGroup)), UpdateAfter(typeof(GameActionActiveSystem))]
+public partial struct GameActionFixedSystem : ISystem
 {
-    public struct SchedulerExit : IStateMachineScheduler
+    public struct Exit : IStateMachineCondition
     {
         [ReadOnly]
         public NativeArray<GameActionFixedInfo> infos;
@@ -159,23 +161,23 @@ public partial struct GameActionFixedSchedulerSystem : ISystem
         }
     }
     
-    public struct FactoryExit : IStateMachineFactory<SchedulerExit>
+    public struct FactoryExit : IStateMachineFactory<Exit>
     {
         [ReadOnly]
         public ComponentTypeHandle<GameActionFixedInfo> infoType;
 
         public BufferTypeHandle<GameNodeSpeedScaleComponent> speedScaleComponentType;
 
-        public bool Create(int unfilteredChunkIndex, in ArchetypeChunk chunk, out SchedulerExit schedulerExit)
+        public bool Create(int unfilteredChunkIndex, in ArchetypeChunk chunk, out Exit exit)
         {
-            schedulerExit.infos = chunk.GetNativeArray(ref infoType);
-            schedulerExit.speedScaleComponents = chunk.GetBufferAccessor(ref speedScaleComponentType);
+            exit.infos = chunk.GetNativeArray(ref infoType);
+            exit.speedScaleComponents = chunk.GetBufferAccessor(ref speedScaleComponentType);
 
             return true;
         }
     }
 
-    public struct SchedulerEntry : IStateMachineScheduler
+    public struct Entry : IStateMachineCondition
     {
         [ReadOnly]
         public NativeArray<GameActionFixedData> instances;
@@ -198,7 +200,7 @@ public partial struct GameActionFixedSchedulerSystem : ISystem
         }
     }
 
-    public struct FactoryEntry : IStateMachineFactory<SchedulerEntry>
+    public struct FactoryEntry : IStateMachineFactory<Entry>
     {
         [ReadOnly]
         public ComponentTypeHandle<GameActionFixedData> instanceType;
@@ -206,59 +208,15 @@ public partial struct GameActionFixedSchedulerSystem : ISystem
         public bool Create(
             int unfilteredChunkIndex, 
             in ArchetypeChunk chunk, 
-            out SchedulerEntry schedulerEntry)
+            out Entry entry)
         {
-            schedulerEntry.instances = chunk.GetNativeArray(ref instanceType);
+            entry.instances = chunk.GetNativeArray(ref instanceType);
 
             return chunk.Has(ref instanceType);
         }
     }
 
-    private StateMachineSchedulerSystemCore __core;
-
-    private ComponentTypeHandle<GameActionFixedData> __instanceType;
-    
-    private ComponentTypeHandle<GameActionFixedInfo> __infoType;
-
-    private BufferTypeHandle<GameNodeSpeedScaleComponent> __speedScaleComponentType;
-
-    [BurstCompile]
-    public void OnCreate(ref SystemState state)
-    {
-        using (var builder = new EntityQueryBuilder(Allocator.Temp))
-            __core = new StateMachineSchedulerSystemCore(
-                ref state,
-                builder
-                .WithAll<GameActionFixedInfo>());
-        
-        __instanceType = state.GetComponentTypeHandle<GameActionFixedData>(true);
-
-        __speedScaleComponentType = state.GetBufferTypeHandle<GameNodeSpeedScaleComponent>();
-    }
-
-    [BurstCompile]
-    public void OnDestroy(ref SystemState state)
-    {
-
-    }
-
-    [BurstCompile]
-    public void OnUpdate(ref SystemState state)
-    {
-        FactoryEntry factoryEntry;
-        factoryEntry.instanceType = __instanceType.UpdateAsRef(ref state);
-
-        FactoryExit factoryExit;
-        factoryExit.infoType = __infoType.UpdateAsRef(ref state);
-        factoryExit.speedScaleComponentType = __speedScaleComponentType.UpdateAsRef(ref state);
-        __core.Update<SchedulerExit, SchedulerEntry, FactoryExit, FactoryEntry>(ref state, ref factoryEntry, ref factoryExit);
-    }
-}
-
-[BurstCompile, CreateAfter(typeof(GameActionFixedSchedulerSystem)), UpdateInGroup(typeof(StateMachineGroup))]
-public partial struct GameActionFixedExecutorSystem : ISystem
-{
-    public struct Executor : IStateMachineExecutor
+    public struct Run : IStateMachineExecutor
     {
         public double time;
 
@@ -467,7 +425,7 @@ public partial struct GameActionFixedExecutorSystem : ISystem
         }
     }
 
-    public struct ExecutorFactory : IStateMachineFactory<Executor>
+    public struct FactoryRun : IStateMachineFactory<Run>
     {
         public double time;
 
@@ -515,30 +473,30 @@ public partial struct GameActionFixedExecutorSystem : ISystem
         public bool Create(
             int unfilteredChunkIndex, 
             in ArchetypeChunk chunk, 
-            out Executor executor)
+            out Run run)
         {
-            executor.time = time;
-            executor.random = new Random(RandomUtility.Hash(time) ^ (uint)unfilteredChunkIndex);
-            executor.chunk = chunk;
+            run.time = time;
+            run.random = new Random(RandomUtility.Hash(time) ^ (uint)unfilteredChunkIndex);
+            run.chunk = chunk;
             //executor.entityArray = chunk.GetNativeArray(entityType);
-            executor.frames = chunk.GetBufferAccessor(ref frameType);
-            executor.nextFrames = chunk.GetBufferAccessor(ref nextFrameType);
-            executor.stages = chunk.GetBufferAccessor(ref stageType);
-            executor.stageIndices = chunk.GetNativeArray(ref stageIndexType);
-            executor.translations = chunk.GetNativeArray(ref translationType);
-            executor.instances = chunk.GetNativeArray(ref instanceType);
-            executor.infos = chunk.GetNativeArray(ref infoType);
-            executor.characterAngles = chunk.GetNativeArray(ref characterAngleType);
-            executor.angles = chunk.GetNativeArray(ref angleType);
-            executor.surfaces = chunk.GetNativeArray(ref surfaceType);
-            executor.rotations = chunk.GetNativeArray(ref rotationType);
-            executor.targets = chunk.GetNativeArray(ref targetType);
-            executor.speedScaleComponents = chunk.GetBufferAccessor(ref speedScaleComponentType);
-            executor.positions = chunk.GetBufferAccessor(ref positionType);
-            executor.transforms = chunk.GetBufferAccessor(ref transformType);
-            executor.animatorParameterCommands = chunk.GetBufferAccessor(ref animatorParameterCommandType);
-            executor.animatorParameterCommandType = animatorParameterCommandType;
-            executor.targetType = targetType;
+            run.frames = chunk.GetBufferAccessor(ref frameType);
+            run.nextFrames = chunk.GetBufferAccessor(ref nextFrameType);
+            run.stages = chunk.GetBufferAccessor(ref stageType);
+            run.stageIndices = chunk.GetNativeArray(ref stageIndexType);
+            run.translations = chunk.GetNativeArray(ref translationType);
+            run.instances = chunk.GetNativeArray(ref instanceType);
+            run.infos = chunk.GetNativeArray(ref infoType);
+            run.characterAngles = chunk.GetNativeArray(ref characterAngleType);
+            run.angles = chunk.GetNativeArray(ref angleType);
+            run.surfaces = chunk.GetNativeArray(ref surfaceType);
+            run.rotations = chunk.GetNativeArray(ref rotationType);
+            run.targets = chunk.GetNativeArray(ref targetType);
+            run.speedScaleComponents = chunk.GetBufferAccessor(ref speedScaleComponentType);
+            run.positions = chunk.GetBufferAccessor(ref positionType);
+            run.transforms = chunk.GetBufferAccessor(ref transformType);
+            run.animatorParameterCommands = chunk.GetBufferAccessor(ref animatorParameterCommandType);
+            run.animatorParameterCommandType = animatorParameterCommandType;
+            run.targetType = targetType;
             //executor.entityManager = entityManager;
 
             return true;
@@ -577,8 +535,8 @@ public partial struct GameActionFixedExecutorSystem : ISystem
 
     private BufferTypeHandle<MeshInstanceAnimatorParameterCommand> __animatorParameterCommandType;
 
-    private StateMachineExecutorSystemCore __core;
-
+    private StateMachineSystemCore __core;
+    
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
@@ -602,11 +560,10 @@ public partial struct GameActionFixedExecutorSystem : ISystem
         __animatorParameterCommandType = state.GetBufferTypeHandle<MeshInstanceAnimatorParameterCommand>();
 
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
-            __core = new StateMachineExecutorSystemCore(
+            __core = new StateMachineSystemCore(
                 ref state,
                 builder
-                .WithAllRW<GameActionFixedInfo>(),
-                state.WorldUnmanaged.GetExistingUnmanagedSystem<GameActionFixedSchedulerSystem>());
+                    .WithAllRW<GameActionFixedInfo>());
     }
 
     [BurstCompile]
@@ -618,26 +575,39 @@ public partial struct GameActionFixedExecutorSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        ExecutorFactory executorFactory;
-        executorFactory.time = __time.nextTime;
-        executorFactory.frameType = __frameType.UpdateAsRef(ref state);
-        executorFactory.nextFrameType = __nextFrameType.UpdateAsRef(ref state);
-        executorFactory.stageType = __stageType.UpdateAsRef(ref state);
-        executorFactory.stageIndexType = __stageIndexType.UpdateAsRef(ref state);
-        executorFactory.translationType = __translationType.UpdateAsRef(ref state);
-        executorFactory.instanceType = __instanceType.UpdateAsRef(ref state);
-        executorFactory.infoType = __infoType.UpdateAsRef(ref state);
-        executorFactory.characterAngleType = __characterAngleType.UpdateAsRef(ref state);
-        executorFactory.angleType = __angleType.UpdateAsRef(ref state);
-        executorFactory.surfaceType = __surfaceType.UpdateAsRef(ref state);
-        executorFactory.rotationType = __rotationType.UpdateAsRef(ref state);
-        executorFactory.targetType = __targetType.UpdateAsRef(ref state);
-        executorFactory.speedScaleComponentType = __speedScaleComponentType.UpdateAsRef(ref state);
-        executorFactory.positionType = __positionType.UpdateAsRef(ref state);
-        executorFactory.transformType = __transformType.UpdateAsRef(ref state);
-        executorFactory.animatorParameterCommandType = __animatorParameterCommandType.UpdateAsRef(ref state);
+        var instanceType = __instanceType.UpdateAsRef(ref state);
+        var infoType = __infoType.UpdateAsRef(ref state);
+        
+        FactoryEntry factoryEntry;
+        factoryEntry.instanceType = instanceType;
 
-        StateMachineFactory<StateMachineEscaper> escaperFactory;
-        __core.Update<StateMachineEscaper, Executor, StateMachineFactory<StateMachineEscaper>, ExecutorFactory>(ref state, ref executorFactory, ref escaperFactory);
+        FactoryExit factoryExit;
+        factoryExit.infoType = infoType;
+        factoryExit.speedScaleComponentType = __speedScaleComponentType.UpdateAsRef(ref state);
+        
+        FactoryRun factoryRun;
+        factoryRun.time = __time.nextTime;
+        factoryRun.frameType = __frameType.UpdateAsRef(ref state);
+        factoryRun.nextFrameType = __nextFrameType.UpdateAsRef(ref state);
+        factoryRun.stageType = __stageType.UpdateAsRef(ref state);
+        factoryRun.stageIndexType = __stageIndexType.UpdateAsRef(ref state);
+        factoryRun.translationType = __translationType.UpdateAsRef(ref state);
+        factoryRun.instanceType = instanceType;
+        factoryRun.infoType = infoType;
+        factoryRun.characterAngleType = __characterAngleType.UpdateAsRef(ref state);
+        factoryRun.angleType = __angleType.UpdateAsRef(ref state);
+        factoryRun.surfaceType = __surfaceType.UpdateAsRef(ref state);
+        factoryRun.rotationType = __rotationType.UpdateAsRef(ref state);
+        factoryRun.targetType = __targetType.UpdateAsRef(ref state);
+        factoryRun.speedScaleComponentType = __speedScaleComponentType.UpdateAsRef(ref state);
+        factoryRun.positionType = __positionType.UpdateAsRef(ref state);
+        factoryRun.transformType = __transformType.UpdateAsRef(ref state);
+        factoryRun.animatorParameterCommandType = __animatorParameterCommandType.UpdateAsRef(ref state);
+        
+        __core.Update<Exit, Entry, Run, FactoryExit, FactoryEntry, FactoryRun>(
+            ref state, 
+            ref factoryRun, 
+            ref factoryEntry, 
+            ref factoryExit);
     }
 }

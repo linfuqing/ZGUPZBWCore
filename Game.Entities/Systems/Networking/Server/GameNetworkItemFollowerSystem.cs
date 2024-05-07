@@ -365,7 +365,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
                         itemNames.TryGetComponent(command.destination, out itemName);
                         
                         stream.WritePackedUInt(instance.deleteHandle, model);
-                        stream.WritePackedUInt((uint)itemObject.type);
+                        stream.WritePackedUInt((uint)itemObject.type, model);
                         stream.WriteFixedString32(itemName.value);
 
                         break;
