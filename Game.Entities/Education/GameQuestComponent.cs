@@ -19,7 +19,8 @@ public enum GameQuestRewardType
 {
     Quest,
     Formula,
-    Item
+    Item, 
+    Money
 }
 
 public enum GameQuestStatus
@@ -48,12 +49,16 @@ public struct GameQuestRewardData
 [Serializable]
 public struct GameQuestData
 {
-    public int money;
-
     public string label;
 
     public GameQuestConditionData[] conditions;
 
+    public GameQuestRewardData[] rewards;
+}
+
+[Serializable]
+public struct GameQuestOption
+{
     public GameQuestRewardData[] rewards;
 }
 

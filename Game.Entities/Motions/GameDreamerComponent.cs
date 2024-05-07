@@ -533,8 +533,8 @@ public class GameDreamerComponent : EntityProxyComponent, IEntityComponent
 
                 break;
             }
-            else
-                result.index -= count;
+            
+            result.index -= count;
         }
     }
 }

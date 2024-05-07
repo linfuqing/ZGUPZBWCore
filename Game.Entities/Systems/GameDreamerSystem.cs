@@ -170,7 +170,6 @@ public partial struct GameDreamerSystem : ISystem
                             return;
                         }
 
-                        //这样dreamer.time就可以通过Delay了，会不同步
                         //dreamer.time = time;
 
                         break;
@@ -213,7 +212,7 @@ public partial struct GameDreamerSystem : ISystem
 
                                 //UnityEngine.Debug.Log($"Dream: {entityIndices[index].value} : {entityArray[index].Index} : {statusOutputs[entity].value} : {(int)dreamer.status} : {(double)dreamer.time} : {(double)this.delay[index].time} : {frameIndex}");
 
-                                GameDream dream = dreams[dreamerInfo.nextIndex];
+                                var dream = dreams[dreamerInfo.nextIndex];
 
                                 var time = GameDeadline.Max(dreamer.time, (GameDeadline)this.time - dream.sleepTime);
 
@@ -417,7 +416,6 @@ public partial struct GameDreamerSystem : ISystem
 
                     stream.End();
 #endif
-
                     var version = versions[entity];
                     ++version.value;
                     versions[entity] = version;

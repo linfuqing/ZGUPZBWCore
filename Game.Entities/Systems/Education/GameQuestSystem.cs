@@ -20,8 +20,6 @@ internal struct GameQuestManagerData
 {
     private struct Info
     {
-        public int money;
-
         public int conditionStartIndex;
         public int conditionCount;
 
@@ -31,7 +29,14 @@ internal struct GameQuestManagerData
         public FixedString label;
     }
 
+    private struct Option
+    {
+        public int rewardStartIndex;
+        public int rewardCount;
+    }
+
     private UnsafeList<Info> __infos;
+    private UnsafeList<Option> __options;
     private UnsafeList<GameQuestConditionData> __conditions;
     private UnsafeList<GameQuestRewardData> __rewards;
 
@@ -40,11 +45,12 @@ internal struct GameQuestManagerData
     public GameQuestManagerData(in AllocatorManager.AllocatorHandle allocator)
     {
         __infos = new UnsafeList<Info>(0, allocator, NativeArrayOptions.UninitializedMemory);
+        __options = new UnsafeList<Option>(0, allocator, NativeArrayOptions.UninitializedMemory);
         __conditions = new UnsafeList<GameQuestConditionData>(0, allocator, NativeArrayOptions.UninitializedMemory);
         __rewards = new UnsafeList<GameQuestRewardData>(0, allocator, NativeArrayOptions.UninitializedMemory);
     }
 
-    public void Reset(GameQuestData[] datas)
+    public void Reset(GameQuestData[] datas, GameQuestOption[] options)
     {
         int numInfos = datas.Length, numConditions = 0, numRewards = 0, i;
         __infos.Resize(numInfos, NativeArrayOptions.UninitializedMemory);
@@ -53,7 +59,8 @@ internal struct GameQuestManagerData
             ref var data = ref datas[i];
             ref var info = ref __infos.ElementAt(i);
 
-            info.money = data.money;
+            //info.money = data.money;
+            info.label = data.label;
             info.conditionStartIndex = numConditions;
             info.conditionCount = data.conditions == null ? 0 : data.conditions.Length;
             info.rewardStartIndex = numRewards;
@@ -63,6 +70,19 @@ internal struct GameQuestManagerData
             numRewards += info.rewardCount;
         }
 
+        int numOptions = options.Length;
+        __options.Resize(numOptions, NativeArrayOptions.UninitializedMemory);
+        for (i = 0; i < numOptions; ++i)
+        {
+            ref var source = ref options[i];
+            ref var destination = ref __options.ElementAt(i);
+
+            destination.rewardStartIndex = numRewards;
+            destination.rewardCount = source.rewards == null ? 0 : source.rewards.Length;
+
+            numRewards += destination.rewardCount;
+        }
+        
         int length;
 
         __conditions.Resize(numConditions, NativeArrayOptions.UninitializedMemory);
@@ -91,6 +111,19 @@ internal struct GameQuestManagerData
                 numRewards += length;
             }
         }
+
+        for (i = 0; i < numOptions; ++i)
+        {
+            ref var option = ref options[i];
+            
+            length = option.rewards == null ? 0 : option.rewards.Length;
+            if (length > 0)
+            {
+                NativeArray<GameQuestRewardData>.Copy(option.rewards, 0, rewards, numRewards, length);
+
+                numRewards += length;
+            }
+        }
     }
 
     public void Dispose()
@@ -115,7 +148,7 @@ internal struct GameQuestManagerData
     }
 
     public readonly bool Update(
-        in DynamicBuffer<GameQuestCommandCondition> commands,
+        in NativeArray<GameQuestCommandCondition> commands,
         int index,
         ref int conditionBits)
     {
@@ -123,7 +156,7 @@ internal struct GameQuestManagerData
 
         return GameQuestUtility.Update(
             __conditions.AsArray().Slice(info.conditionStartIndex, info.conditionCount),
-            commands.AsNativeArray(),
+            commands,
             info.label, 
             ref conditionBits,
             false);
@@ -225,12 +258,78 @@ internal struct GameQuestManagerData
         quest.status = GameQuestStatus.Complete;
         quests[index] = quest;
 
-        int i, j;
         var info = __infos[quest.index];
-        GameQuestRewardData reward;
-        for (i = 0; i < info.rewardCount; ++i)
+        __Reward(
+            info.rewardStartIndex, 
+            info.rewardCount, 
+            itemHandle, 
+            ref quests, 
+            ref formulaCommands, 
+            ref items,
+            out money);
+        
+        return true;
+    }
+
+    public readonly bool Select(
+        in GameItemHandle itemHandle,
+        in NativeArray<GameQuestCommandCondition> commands, 
+        ref DynamicBuffer<GameQuest> quests,
+        ref DynamicBuffer<GameFormulaCommand> formulaCommands,
+        ref NativeQueue<GameQuestItem>.ParallelWriter items,
+        out int money)
+    {
+        bool result = false;
+        int numQuests = quests.Length;
+        for(int i = 0; i < numQuests; ++i)
         {
-            reward = __rewards[info.rewardStartIndex + i];
+            ref var quest = ref quests.ElementAt(i);
+            if(quest.status != GameQuestStatus.Normal)
+                continue;
+
+            result = Update(commands, quest.index, ref quest.conditionBits) || result;
+        }
+
+        money = 0;
+        
+        int temp;
+        foreach (var command in commands)
+        {
+            if(command.type != GameQuestConditionType.Select)
+                continue;
+
+            ref var option = ref __options.ElementAt(command.index);
+            __Reward(
+                option.rewardStartIndex,
+                option.rewardCount, 
+                itemHandle,
+                ref quests, 
+                ref formulaCommands,
+                ref items, 
+                out temp);
+
+            money += temp;
+        }
+
+        return result;
+    }
+
+    private void __Reward(
+        int rewardStartIndex, 
+        int rewardCount, 
+        in GameItemHandle itemHandle, 
+        ref DynamicBuffer<GameQuest> quests,
+        ref DynamicBuffer<GameFormulaCommand> formulaCommands,
+        ref NativeQueue<GameQuestItem>.ParallelWriter items,
+        out int money)
+    {
+        money = 0;
+
+        int i, j;
+        GameQuestRewardData reward;
+        for (i = 0; i < rewardCount; ++i)
+        {
+            reward = __rewards[rewardStartIndex + i];
             switch (reward.type)
             {
                 case GameQuestRewardType.Quest:
@@ -260,12 +359,11 @@ internal struct GameQuestManagerData
 
                     items.Enqueue(item);
                     break;
+                case GameQuestRewardType.Money:
+                    money += reward.count;
+                    break;
             }
         }
-
-        money = info.money;
-
-        return true;
     }
 }
 
@@ -308,13 +406,13 @@ public struct GameQuestManager
         _data = null;
     }
 
-    public unsafe void Reset(GameQuestData[] datas)
+    public unsafe void Reset(GameQuestData[] datas, GameQuestOption[] options)
     {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
         AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
 #endif
 
-        _data->Reset(datas);
+        _data->Reset(datas, options);
     }
 
     public readonly unsafe bool IsClear(in GameQuest quest)
@@ -338,7 +436,7 @@ public struct GameQuestManager
     }
 
     public readonly unsafe bool Update(
-        in DynamicBuffer<GameQuestCommandCondition> conditions,
+        in NativeArray<GameQuestCommandCondition> conditions,
         int index,
         ref int conditionBits)
     {
@@ -380,6 +478,25 @@ public struct GameQuestManager
         return _data->Complete(
             questIndex, 
             itemHandle, 
+            ref quests, 
+            ref formulaCommands, 
+            ref items, 
+            out money);
+    }
+
+    public readonly unsafe bool Select(
+        in GameItemHandle itemHandle,
+        in NativeArray<GameQuestCommandCondition> commands,
+        ref DynamicBuffer<GameQuest> quests,
+        ref DynamicBuffer<GameFormulaCommand> formulaCommands,
+        ref NativeQueue<GameQuestItem>.ParallelWriter items,
+        out int money)
+    {
+        __CheckRead();
+        
+        return _data->Select(
+            itemHandle, 
+            commands, 
             ref quests, 
             ref formulaCommands, 
             ref items, 
@@ -520,10 +637,11 @@ public partial struct GameQuestSystem : ISystem
                     if(quest.status == GameQuestStatus.Normal)
                         manager.Update(itemManager, itemHandle, quest.index, ref quest.conditionBits);
                 }
-                
+
+                int moneyTemp;
                 foreach (var command in commands)
                 {
-                    if (__Submit(itemHandle, command, ref formulaCommands, ref quests, out int moneyTemp))
+                    if (__Submit(itemHandle, command, ref formulaCommands, ref quests, out moneyTemp))
                         money += moneyTemp;
                     else
                         needToCommandAgain = true;
@@ -535,7 +653,7 @@ public partial struct GameQuestSystem : ISystem
             var commandConditions = this.commandConditions[index];
             if (!commandConditions.IsEmpty)
             {
-                GameQuest quest;
+                /*GameQuest quest;
                 int numQuests = quests.Length, i;
 
                 for (i = 0; i < numQuests; ++i)
@@ -550,7 +668,17 @@ public partial struct GameQuestSystem : ISystem
 
                         isAnyQuestUpdate = true;
                     }
-                }
+                }*/
+
+                isAnyQuestUpdate = manager.Select(
+                    itemHandle,
+                    commandConditions.AsNativeArray(),
+                    ref quests,
+                    ref formulaCommands,
+                    ref items,
+                    out int moneyTemp);
+
+                money += moneyTemp;
 
                 commandConditions.Clear();
             }
@@ -670,12 +798,17 @@ public partial struct GameQuestSystem : ISystem
             GameItemHandle parentHandle;
             while (items.TryDequeue(out var item))
             {
-                if (!itemManager.Find(item.handle, item.type, item.count, out parentChildIndex, out parentHandle) &&
-                    itemManager.Find(item.handle, item.type, 1, out parentChildIndex, out parentHandle))
-                    continue;
+                if (item.count < 0)
+                    itemManager.Remove(item.handle, item.type, -item.count);
+                else
+                {
+                    if (!itemManager.Find(item.handle, item.type, item.count, out parentChildIndex, out parentHandle) &&
+                        itemManager.Find(item.handle, item.type, 1, out parentChildIndex, out parentHandle))
+                        continue;
 
-                count = item.count;
-                itemManager.Add(parentHandle, parentChildIndex, item.type, ref count);
+                    count = item.count;
+                    itemManager.Add(parentHandle, parentChildIndex, item.type, ref count);
+                }
             }
         }
     }
