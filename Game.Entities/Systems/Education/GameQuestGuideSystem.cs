@@ -5,7 +5,6 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
-using UnityEngine;
 using ZG;
 
 [Flags]
@@ -589,7 +588,7 @@ public struct GameQuestGuideManager
         return Register(value, null, variantType, isPublished);
     }
 
-    public bool Unregsiter(int index)
+    public bool Unregister(int index)
     {
         if (__callbacks.TryGetValue(index, out var callback))
             callback.handle.Unregister();

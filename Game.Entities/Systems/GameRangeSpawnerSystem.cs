@@ -27,11 +27,12 @@ public partial struct GameRangeSpawnerSystem : ISystem
     {
         [ReadOnly]
         public GameRandomSpawner.Reader spawner;
-
         [ReadOnly]
         public BufferLookup<PhysicsTriggerEvent> physicsTriggerEvents;
         [ReadOnly]
         public ComponentLookup<PhysicsShapeParent> physicsShapeParents;
+        [ReadOnly] 
+        public ComponentLookup<GameAreaNode> areaNodes;
         [ReadOnly]
         public ComponentLookup<GameNodeStatus> nodeStates;
         [ReadOnly]
@@ -72,9 +73,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
                     entity = physicsShapeParents.HasComponent(physicsTriggerEvent.entity)
                         ? physicsShapeParents[physicsTriggerEvent.entity].entity
                         : physicsTriggerEvent.entity;
-                    if (nodeStates.HasComponent(entity) &&
-                        ((GameEntityStatus)nodeStates[entity].value & GameEntityStatus.Mask) !=
-                        GameEntityStatus.Dead)
+                    if (__IsVail(entity))
                     {
                         isContains = true;
 
@@ -101,9 +100,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
                         for (int i = 0; i < numEntities; ++i)
                         {
                             entity = entities[i];
-                            if (!nodeStates.HasComponent(entity) ||
-                                ((GameEntityStatus)nodeStates[entity].value & GameEntityStatus.Mask) ==
-                                GameEntityStatus.Dead)
+                            if (!__IsVail(entity))
                             {
                                 entities.RemoveAtSwapBack(i--);
 
@@ -144,9 +141,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
                                 entity = physicsShapeParents.HasComponent(physicsTriggerEvent.entity)
                                     ? physicsShapeParents[physicsTriggerEvent.entity].entity
                                     : physicsTriggerEvent.entity;
-                                if (nodeStates.HasComponent(entity) &&
-                                    ((GameEntityStatus)nodeStates[entity].value & GameEntityStatus.Mask) !=
-                                    GameEntityStatus.Dead && 
+                                if (__IsVail(entity) && 
                                     !entities.AsNativeArray().Contains(entity))
                                     entities.Add(entity);
                             }
@@ -181,6 +176,15 @@ public partial struct GameRangeSpawnerSystem : ISystem
 
             return result;
         }
+
+        private bool __IsVail(in Entity entity)
+        {
+            return nodeStates.HasComponent(entity) &&
+                   ((GameEntityStatus)nodeStates[entity].value & GameEntityStatus.Mask) !=
+                   GameEntityStatus.Dead && 
+                   areaNodes.HasComponent(entity) && 
+                   areaNodes[entity].areaIndex != -1;
+        }
     }
 
     [BurstCompile]
@@ -192,6 +196,8 @@ public partial struct GameRangeSpawnerSystem : ISystem
         public BufferLookup<PhysicsTriggerEvent> physicsTriggerEvents;
         [ReadOnly]
         public ComponentLookup<PhysicsShapeParent> physicsShapeParents;
+        [ReadOnly] 
+        public ComponentLookup<GameAreaNode> areaNodes;
         [ReadOnly]
         public ComponentLookup<GameNodeStatus> nodeStates;
         [ReadOnly]
@@ -222,6 +228,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
             spawn.spawner = spawner;
             spawn.physicsTriggerEvents = physicsTriggerEvents;
             spawn.physicsShapeParents = physicsShapeParents;
+            spawn.areaNodes = areaNodes;
             spawn.nodeStates = nodeStates;
             spawn.campMap = camps;
             spawn.camps = chunk.GetNativeArray(ref campType);
@@ -284,6 +291,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
     private BufferLookup<GameFollower> __followers;
     private BufferLookup<PhysicsTriggerEvent> __physicsTriggerEvents;
     private ComponentLookup<PhysicsShapeParent> __physicsShapeParents;
+    private ComponentLookup<GameAreaNode> __areaNodes;
     private ComponentLookup<GameEntityCamp> __camps;
     private ComponentTypeHandle<GameEntityCamp> __campType;
 
@@ -319,6 +327,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
         __followers = state.GetBufferLookup<GameFollower>(true);
         __physicsTriggerEvents = state.GetBufferLookup<PhysicsTriggerEvent>(true);
         __physicsShapeParents = state.GetComponentLookup<PhysicsShapeParent>(true);
+        __areaNodes = state.GetComponentLookup<GameAreaNode>(true);
         __camps = state.GetComponentLookup<GameEntityCamp>(true);
         __campType = state.GetComponentTypeHandle<GameEntityCamp>(true);
         __entityType = state.GetEntityTypeHandle();
@@ -354,6 +363,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
         spawn.spawner = __spawner.reader;
         spawn.physicsTriggerEvents = __physicsTriggerEvents.UpdateAsRef(ref state);
         spawn.physicsShapeParents = __physicsShapeParents.UpdateAsRef(ref state);
+        spawn.areaNodes = __areaNodes.UpdateAsRef(ref state);
         spawn.nodeStates = nodeStates;
         spawn.camps = __camps.UpdateAsRef(ref state);
         spawn.campType = __campType.UpdateAsRef(ref state);
