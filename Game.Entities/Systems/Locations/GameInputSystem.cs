@@ -1115,38 +1115,49 @@ public partial struct GameInputSystem : ISystem
                 if (!identityTypes.HasComponent(target.entity) || !manager.IsPublished(GameQuestGuideVariantType.Entity, identityTypes[target.entity].value))
                     continue;
 
-                result.entity = target.entity;
-
-                if (pickables.HasComponent(target.entity))
-                    break;
-
-                if (factories.HasComponent(target.entity) && factories[target.entity].status == GameFactoryStatus.Complete)
-                    break;
-
-                if (campMap.HasComponent(target.entity) && campMap[target.entity].value == camp)
-                    break;
-
-                if (colliders.HasComponent(target.entity))
+                if (!pickables.HasComponent(target.entity))
                 {
-                    isContains = false;
-                    belongsTo = colliders[target.entity].Value.Value.Filter.BelongsTo;
-                    foreach (var actionInstance in actionInstances)
+                    isContains = campMap.HasComponent(target.entity) && campMap[target.entity].value != camp;
+                    if (factories.HasComponent(target.entity))
                     {
-                        if (actionInstance.activeCount > 0)
+                        if (factories[target.entity].status != GameFactoryStatus.Complete &&
+                            isContains)
+                            continue;
+                    }
+                    else
+                    {
+                        if (isContains)
                         {
-                            ref var action = ref actionSetDefinition.values[actorActions[actionInstance.actorActionIndex].actionIndex];
-                            if ((action.instance.damageMask & belongsTo) != 0)
+                            isContains = false;
+                            if (colliders.HasComponent(target.entity))
                             {
-                                isContains = true;
+                                belongsTo = colliders[target.entity].Value.Value.Filter.BelongsTo;
+                                foreach (var actionInstance in actionInstances)
+                                {
+                                    if (actionInstance.activeCount > 0)
+                                    {
+                                        ref var action =
+                                            ref actionSetDefinition.values[
+                                                actorActions[actionInstance.actorActionIndex].actionIndex];
+                                        if ((action.instance.damageMask & belongsTo) != 0)
+                                        {
+                                            isContains = true;
 
-                                break;
+                                            break;
+                                        }
+                                    }
+                                }
                             }
                         }
+                        
+                        if(!isContains)
+                            continue;
                     }
-
-                    if (isContains)
-                        break;
                 }
+                
+                result.entity = target.entity;
+
+                break;
             }
 
             results[index] = result;
