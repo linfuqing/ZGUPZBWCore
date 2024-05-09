@@ -8,6 +8,7 @@ using ZG;
 public struct GameRangeSpawnerNode : IBufferElementData
 {
     public int sliceIndex;
+    public float coolDownTime;
 }
 
 public struct GameRangeSpawnerEntity : IBufferElementData
@@ -18,6 +19,7 @@ public struct GameRangeSpawnerEntity : IBufferElementData
 public struct GameRangeSpawnerStatus : IComponentData
 {
     public int count;
+    public double coolDownTime;
 }
 
 [BurstCompile, CreateAfter(typeof(GameRandomSpawnerSystem))]
@@ -25,6 +27,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
 {
     private struct Spawn
     {
+        public double time;
         [ReadOnly]
         public GameRandomSpawner.Reader spawner;
         [ReadOnly]
@@ -58,6 +61,10 @@ public partial struct GameRangeSpawnerSystem : ISystem
 
         public bool Execute(int index)
         {
+            var state = states[index];
+            if (state.coolDownTime > time)
+                return false;
+            
             var physicsShapeChildEntities = this.physicsShapeChildEntities[index];
             DynamicBuffer<PhysicsTriggerEvent> physicsTriggerEvents;
             Entity entity;
@@ -108,7 +115,6 @@ public partial struct GameRangeSpawnerSystem : ISystem
                             }
                         }
                         
-                        var state = states[index];
                         if (state.count >= numNodes)
                         {
                             foreach (var physicsShapeChildEntity in physicsShapeChildEntities)
@@ -149,8 +155,11 @@ public partial struct GameRangeSpawnerSystem : ISystem
 
                         if (randomNodes.Length > index)
                         {
+                            var node = nodes[state.count++];
+                            state.coolDownTime = time + node.coolDownTime;
+                            
                             GameRandomSpawnerNode randomNode;
-                            randomNode.sliceIndex = nodes[state.count++].sliceIndex;
+                            randomNode.sliceIndex = node.sliceIndex;
                             randomNodes[index].Add(randomNode);
 
                             result = true;
@@ -190,6 +199,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
     [BurstCompile]
     private struct SpawnEx : IJobChunk
     {
+        public double time;
         [ReadOnly]
         public GameRandomSpawner.Reader spawner;
         [ReadOnly]
@@ -225,6 +235,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
             in v128 chunkEnabledMask)
         {
             Spawn spawn;
+            spawn.time = time;
             spawn.spawner = spawner;
             spawn.physicsTriggerEvents = physicsTriggerEvents;
             spawn.physicsShapeParents = physicsShapeParents;
@@ -360,6 +371,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
         var nodeStates = __nodeStates.UpdateAsRef(ref state);
         
         SpawnEx spawn;
+        spawn.time = state.WorldUnmanaged.Time.ElapsedTime;
         spawn.spawner = __spawner.reader;
         spawn.physicsTriggerEvents = __physicsTriggerEvents.UpdateAsRef(ref state);
         spawn.physicsShapeParents = __physicsShapeParents.UpdateAsRef(ref state);

@@ -16,6 +16,7 @@ public class GameRangeSpawnerComponent : EntityProxyComponent, IEntityComponent
 #endif
         
         public int sliceIndex;
+        public float coolDownTime;
     }
 
     public Node[] nodes;
@@ -25,8 +26,14 @@ public class GameRangeSpawnerComponent : EntityProxyComponent, IEntityComponent
         int numNodes = this.nodes == null ? 0 : this.nodes.Length;
         var nodes = new GameRangeSpawnerNode[numNodes];
         for (int i = 0; i < numNodes; ++i)
-            nodes[i].sliceIndex = this.nodes[i].sliceIndex;
-        
+        {
+            ref var source = ref this.nodes[i];
+            ref var destination = ref nodes[i];
+            
+            destination.sliceIndex = source.sliceIndex;
+            destination.coolDownTime = source.coolDownTime;
+        }
+
         assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, nodes);
     }
 }

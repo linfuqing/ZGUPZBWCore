@@ -3,6 +3,7 @@ using Unity.Burst;
 using Unity.Burst.Intrinsics;
 using Unity.Entities;
 using Unity.Collections;
+using UnityEngine;
 using ZG;
 
 [BurstCompile, UpdateInGroup(typeof(GameRollbackSystemGroup)), UpdateBefore(typeof(GameNodeSystem))]
@@ -181,13 +182,15 @@ public partial struct GameNodeStatusSystem : ISystem
             updateStates.entityArray = chunk.GetNativeArray(entityType);
 #endif
             bool isDisabled;
-            //int count = chunk.Count;
-            var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
-            while (iterator.NextEntityIndex(out int i))
-            //for(int i = 0; i < count; ++i)
+            int count = chunk.Count;
+            //var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+            //while (iterator.NextEntityIndex(out int i))
+            for(int i = 0; i < count; ++i)
             {
-                isDisabled = (updateStates.Execute(i) & GameNodeStatus.OVER) == GameNodeStatus.OVER;
-                chunk.SetComponentEnabled(ref oldStatusType, i, !isDisabled);
+                var value = updateStates.Execute(i);
+                isDisabled = (value & GameNodeStatus.OVER) == GameNodeStatus.OVER;
+                if(isDisabled == chunk.IsComponentEnabled(ref oldStatusType, i))
+                    chunk.SetComponentEnabled(ref oldStatusType, i, !isDisabled);
             }
         }
     }
