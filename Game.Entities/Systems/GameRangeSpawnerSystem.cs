@@ -3,12 +3,14 @@ using Unity.Burst.Intrinsics;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
+using UnityEngine;
 using ZG;
 
 public struct GameRangeSpawnerNode : IBufferElementData
 {
     public int sliceIndex;
-    public float coolDownTime;
+    public float inTime;
+    public float outTime;
 }
 
 public struct GameRangeSpawnerEntity : IBufferElementData
@@ -19,7 +21,11 @@ public struct GameRangeSpawnerEntity : IBufferElementData
 public struct GameRangeSpawnerStatus : IComponentData
 {
     public int count;
-    public double coolDownTime;
+}
+
+public struct GameRangeSpawnerCoolDownTime : IComponentData
+{
+    public double value;
 }
 
 [BurstCompile, CreateAfter(typeof(GameRandomSpawnerSystem))]
@@ -28,6 +34,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
     private struct Spawn
     {
         public double time;
+        
         [ReadOnly]
         public GameRandomSpawner.Reader spawner;
         [ReadOnly]
@@ -57,12 +64,14 @@ public partial struct GameRangeSpawnerSystem : ISystem
 
         public NativeArray<GameRangeSpawnerStatus> states;
 
+        public NativeArray<GameRangeSpawnerCoolDownTime> coolDownTimes;
+
         public NativeQueue<Entity>.ParallelWriter results;
 
         public bool Execute(int index)
         {
-            var state = states[index];
-            if (state.coolDownTime > time)
+            var coolDownTime = coolDownTimes[index];
+            if (coolDownTime.value > time)
                 return false;
             
             var physicsShapeChildEntities = this.physicsShapeChildEntities[index];
@@ -92,6 +101,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
                     break;
             }
             
+            var state = states[index];
             bool result = false;
             if (isContains)
             {
@@ -114,12 +124,12 @@ public partial struct GameRangeSpawnerSystem : ISystem
                                 --numEntities;
                             }
                         }
-                        
+
                         if (state.count >= numNodes)
                         {
                             foreach (var physicsShapeChildEntity in physicsShapeChildEntities)
                             {
-                                if(!this.physicsTriggerEvents.HasBuffer(physicsShapeChildEntity.value))
+                                if (!this.physicsTriggerEvents.HasBuffer(physicsShapeChildEntity.value))
                                     continue;
 
                                 physicsTriggerEvents = this.physicsTriggerEvents[physicsShapeChildEntity.value];
@@ -132,13 +142,13 @@ public partial struct GameRangeSpawnerSystem : ISystem
                                         return false;
                                 }
                             }
-                            
+
                             state.count = 0;
                         }
 
                         foreach (var physicsShapeChildEntity in physicsShapeChildEntities)
                         {
-                            if(!this.physicsTriggerEvents.HasBuffer(physicsShapeChildEntity.value))
+                            if (!this.physicsTriggerEvents.HasBuffer(physicsShapeChildEntity.value))
                                 continue;
 
                             physicsTriggerEvents = this.physicsTriggerEvents[physicsShapeChildEntity.value];
@@ -147,25 +157,25 @@ public partial struct GameRangeSpawnerSystem : ISystem
                                 entity = physicsShapeParents.HasComponent(physicsTriggerEvent.entity)
                                     ? physicsShapeParents[physicsTriggerEvent.entity].entity
                                     : physicsTriggerEvent.entity;
-                                if (__IsVail(entity) && 
+                                if (__IsVail(entity) &&
                                     !entities.AsNativeArray().Contains(entity))
                                     entities.Add(entity);
                             }
                         }
 
+                        var node = nodes[state.count++];
+
+                        coolDownTime.value = nodes[state.count - 1].inTime + time;
+                        coolDownTimes[index] = coolDownTime;
+                        
                         if (randomNodes.Length > index)
                         {
-                            var node = nodes[state.count++];
-                            state.coolDownTime = time + node.coolDownTime;
-                            
                             GameRandomSpawnerNode randomNode;
                             randomNode.sliceIndex = node.sliceIndex;
                             randomNodes[index].Add(randomNode);
 
                             result = true;
                         }
-                        else
-                            ++state.count;
 
                         states[index] = state;
                     }
@@ -178,7 +188,18 @@ public partial struct GameRangeSpawnerSystem : ISystem
                 
                 rangeEntities[index].Clear();
                 
-                states[index] = default;
+                if (state.count > 0)
+                {
+                    var nodes = this.nodes[index];
+                    if (nodes.Length >= state.count)
+                    {
+                        coolDownTime.value = nodes[state.count - 1].outTime + time;
+                        coolDownTimes[index] = coolDownTime;
+                    }
+                }
+                
+                state.count = 0;
+                states[index] = state;
                 
                 results.Enqueue(entityArray[index]);
             }
@@ -229,6 +250,8 @@ public partial struct GameRangeSpawnerSystem : ISystem
 
         public ComponentTypeHandle<GameRangeSpawnerStatus> statusType;
 
+        public ComponentTypeHandle<GameRangeSpawnerCoolDownTime> coolDownTimeType;
+
         public NativeQueue<Entity>.ParallelWriter results;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask,
@@ -250,6 +273,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
             spawn.randomNodes = chunk.GetBufferAccessor(ref randomNodeType);
             spawn.rangeEntities = chunk.GetBufferAccessor(ref rangeEntityType);
             spawn.states = chunk.GetNativeArray(ref statusType);
+            spawn.coolDownTimes = chunk.GetNativeArray(ref coolDownTimeType);
             spawn.results = results;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -316,6 +340,8 @@ public partial struct GameRangeSpawnerSystem : ISystem
 
     private BufferTypeHandle<GameRangeSpawnerEntity> __rangeEntityType;
 
+    private ComponentTypeHandle<GameRangeSpawnerCoolDownTime> __coolDownTimeType;
+
     private ComponentTypeHandle<GameRangeSpawnerStatus> __statusType;
 
     private ComponentLookup<GameNodeStatus> __nodeStates;
@@ -331,7 +357,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
             __group = builder
                 .WithAll<PhysicsShapeChildEntity, GameRangeSpawnerNode>()
                 //.WithAllRW<GameRandomSpawnerNode>()
-                .WithAllRW<GameRangeSpawnerEntity>()
+                .WithAllRW<GameRangeSpawnerEntity, GameRangeSpawnerCoolDownTime>()
                 .WithAllRW<GameRangeSpawnerStatus>()
                 .Build(ref state);
                 
@@ -350,6 +376,8 @@ public partial struct GameRangeSpawnerSystem : ISystem
         __randomNodeType = state.GetBufferTypeHandle<GameRandomSpawnerNode>();
 
         __rangeEntityType = state.GetBufferTypeHandle<GameRangeSpawnerEntity>();
+        
+        __coolDownTimeType = state.GetComponentTypeHandle<GameRangeSpawnerCoolDownTime>();
         
         __statusType = state.GetComponentTypeHandle<GameRangeSpawnerStatus>();
 
@@ -386,6 +414,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
         spawn.randomNodeType = __randomNodeType.UpdateAsRef(ref state);
         spawn.rangeEntityType = __rangeEntityType.UpdateAsRef(ref state);
         spawn.statusType = __statusType.UpdateAsRef(ref state);
+        spawn.coolDownTimeType = __coolDownTimeType.UpdateAsRef(ref state);
         spawn.results = __entities.AsParallelWriter();
 
         ref var spawnerJobManager = ref __spawner.lookupJobManager;

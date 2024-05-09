@@ -6,6 +6,7 @@ using ZG;
 [EntityComponent(typeof(GameRangeSpawnerNode))]
 [EntityComponent(typeof(GameRangeSpawnerEntity))]
 [EntityComponent(typeof(GameRangeSpawnerStatus))]
+[EntityComponent(typeof(GameRangeSpawnerCoolDownTime))]
 public class GameRangeSpawnerComponent : EntityProxyComponent, IEntityComponent
 {
     [Serializable]
@@ -16,7 +17,8 @@ public class GameRangeSpawnerComponent : EntityProxyComponent, IEntityComponent
 #endif
         
         public int sliceIndex;
-        public float coolDownTime;
+        public float inTime;
+        public float outTime;
     }
 
     public Node[] nodes;
@@ -31,7 +33,8 @@ public class GameRangeSpawnerComponent : EntityProxyComponent, IEntityComponent
             ref var destination = ref nodes[i];
             
             destination.sliceIndex = source.sliceIndex;
-            destination.coolDownTime = source.coolDownTime;
+            destination.inTime = source.inTime;
+            destination.outTime = source.outTime;
         }
 
         assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, nodes);
