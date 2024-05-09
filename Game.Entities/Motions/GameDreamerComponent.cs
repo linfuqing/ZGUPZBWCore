@@ -8,9 +8,9 @@ using ZG;
 public enum GameDreamerStatus
 {
     Normal = 0x00,
-    Sleep = 0x05,
-    Dream = 0x09, 
-    Awake = 0x0D,
+    Dream = 0x08 | GameNodeStatus.DELAY, 
+    Sleep = 0x10 | GameNodeStatus.DELAY,
+    Awake = 0x18 | GameNodeStatus.DELAY,
 
     Unknown = 0x08
 }

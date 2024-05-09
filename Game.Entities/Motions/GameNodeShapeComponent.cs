@@ -69,7 +69,7 @@ public class GameNodeShapeComponent : EntityProxyComponent, IEntityComponent
         {
             get => _status;
             
-            internal set => _status = value;
+            set => _status = value;
         }
 #endif
 
