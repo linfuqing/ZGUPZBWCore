@@ -314,7 +314,7 @@ internal struct GameQuestManagerData
         return result;
     }
 
-    private void __Reward(
+    private readonly void __Reward(
         int rewardStartIndex, 
         int rewardCount, 
         in GameItemHandle itemHandle, 

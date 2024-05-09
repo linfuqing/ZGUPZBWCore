@@ -68,6 +68,8 @@ public class GameNodeShapeComponent : EntityProxyComponent, IEntityComponent
         public int status
         {
             get => _status;
+            
+            internal set => _status = value;
         }
 #endif
 
@@ -138,7 +140,7 @@ public class GameNodeShapeComponent : EntityProxyComponent, IEntityComponent
     //internal float _mass = 0.0f;
 
 #if UNITY_EDITOR
-    public Shape[] shape
+    public Shape[] shapes
     {
         get => _shapes;
 
