@@ -277,22 +277,31 @@ public struct GameQuestGuideManager
             }
 
             Guide child;
-            if (!isCompleted && __Contains(guide.variantSetIndex, variantType))
+            if (!isCompleted && 
+                __Contains(guide.variantSetIndex, variantType))
             {
                 if ((guide.flag & GameQuestGuideFlag.Hide) == GameQuestGuideFlag.Hide)
                     return false;
 
+                bool temp = true;
                 while (childIndex != -1)
                 {
                     if (!__IsChildCompleted(childIndex, ref priority, out childIndex, out child))
-                        return false;
+                    {
+                        temp = false;
+                        break;
+                    }
 
                     if ((child.flag & GameQuestGuideFlag.Key) != GameQuestGuideFlag.Key &&
                         !__IsCompleted(child.variantSetIndex))
-                        return false;
+                    {
+                        temp = false;
+                        break;
+                    }
                 }
 
-                return true;
+                if(temp)
+                    return true;
             }
 
             bool result = false;
@@ -357,17 +366,25 @@ public struct GameQuestGuideManager
                 if ((guide.flag & GameQuestGuideFlag.Hide) == GameQuestGuideFlag.Hide)
                     return false;
 
+                bool temp = true;
                 while (childIndex != -1)
                 {
                     if (!__IsChildCompleted(childIndex, ref priority, out childIndex, out child))
-                        return false;
+                    {
+                        temp = false;
+                        break;
+                    }
 
                     if ((child.flag & GameQuestGuideFlag.Key) != GameQuestGuideFlag.Key &&
                         !__IsCompleted(child.variantSetIndex))
-                        return false;
+                    {
+                        temp = false;
+                        break;
+                    }
                 }
 
-                return true;
+                if(temp)
+                    return true;
             }
 
             bool result = false;
