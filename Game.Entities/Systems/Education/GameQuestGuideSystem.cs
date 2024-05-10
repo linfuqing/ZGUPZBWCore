@@ -302,6 +302,8 @@ public struct GameQuestGuideManager
 
                 if(temp)
                     return true;
+                
+                childIndex = guide.childIndex;
             }
 
             bool result = false;
@@ -385,6 +387,8 @@ public struct GameQuestGuideManager
 
                 if(temp)
                     return true;
+
+                childIndex = guide.childIndex;
             }
 
             bool result = false;
