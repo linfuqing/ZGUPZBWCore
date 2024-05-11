@@ -475,11 +475,14 @@ public struct GameQuestGuideManager
             if (!__callbacks.TryGetValue(index, out var callback))
                 return false;
 
-            if ((callback.isGlobal ? __readOnly.IsPublished(callback.variantType) : __readOnly.IsPublished(new Variant(callback.variantType, callback.id))) == callback.isPublished)
+            bool isPublished = callback.isGlobal
+                ? __readOnly.IsPublished(callback.variantType)
+                : __readOnly.IsPublished(new Variant(callback.variantType, callback.id));
+            if (isPublished == callback.isPublished)
             {
-                if (__callbackStates[index])
+                if (isPublished != __callbackStates[index])
                 {
-                    __callbackStates[index] = false;
+                    __callbackStates[index] = isPublished;
 
                     CallbackResult callbackResult;
                     callbackResult.index = index;
@@ -488,8 +491,8 @@ public struct GameQuestGuideManager
                     __callbackResults.AddNoResize(callbackResult);
                 }
             }
-            else
-                __callbackStates[index] = true;
+            /*else
+                __callbackStates[index] = true;*/
 
             return true;
         }
@@ -604,7 +607,7 @@ public struct GameQuestGuideManager
         if (index >= __callbackStates.Length)
             __callbackStates.ResizeUninitialized(index + 1);
 
-        __callbackStates[index] = isPublished;
+        __callbackStates[index] = !isPublished;
 
         return index;
     }
