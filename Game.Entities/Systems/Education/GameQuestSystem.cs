@@ -971,7 +971,7 @@ public static class GameQuestUtility
                 count = math.max(count, 0);
 #endif
 
-                if (count != 0)
+                if (count != 0 || isOverride)
                 {
                     bitMask = (1 << bitCount) - 1;
                     originCount = (conditionBits >> bitOffset) & bitMask;
