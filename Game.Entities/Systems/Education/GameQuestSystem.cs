@@ -183,8 +183,8 @@ internal struct GameQuestManagerData
                 continue;
 
             command.count = itemManager.CountOf(itemHandle, condition.index);
-            if (command.count < 1)
-                continue;
+            /*if (command.count < 1)
+                continue;*/
 
             command.index = condition.index;
             command.label = info.label;

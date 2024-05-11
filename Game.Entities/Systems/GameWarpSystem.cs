@@ -141,6 +141,8 @@ public partial struct GameWarperSystem : ISystem
             raycastInput.End = math.float3(point.x, position.y - height, point.y);
             if (world.CastRay(raycastInput, out var raycastHit))
             {
+                //UnityEngine.Debug.LogError($"[SamplePosition]Hit {world.Bodies[raycastHit.RigidBodyIndex].Entity}");
+                
                 ref var collider = ref world.Bodies[raycastHit.RigidBodyIndex].Collider.Value;
                 if (collider.GetLeaf(raycastHit.ColliderKey, out var leaf))
                     collider = ref *leaf.Collider;
