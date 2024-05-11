@@ -366,7 +366,10 @@ public struct GameQuestGuideManager
             if (!isCompleted && __Contains(guide.variantSetIndex, variant))
             {
                 if ((guide.flag & GameQuestGuideFlag.Hide) == GameQuestGuideFlag.Hide)
-                    return false;
+                    return false; 
+                
+                if((guide.flag & GameQuestGuideFlag.Key) == GameQuestGuideFlag.Key)
+                    return true;
 
                 bool temp = true;
                 int priorityTemp = priority;
