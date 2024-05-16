@@ -46,7 +46,7 @@ public partial struct GameOwnerSystem : ISystem
 
         public BufferAccessor<GameFollower> followers;
 
-        [NativeDisableContainerSafetyRestriction]
+        [NativeDisableParallelForRestriction]
         public ComponentLookup<GameOwner> owners;
 
         public void Execute(int index)
@@ -78,7 +78,7 @@ public partial struct GameOwnerSystem : ISystem
         //[ReadOnly]
         public BufferTypeHandle<GameFollower> followerType;
 
-        [NativeDisableContainerSafetyRestriction]
+        [NativeDisableParallelForRestriction]
         public ComponentLookup<GameOwner> owners;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)

@@ -493,7 +493,7 @@ public partial struct GameDataCampSerializationContainerSystem : ISystem
     }
 }
 
-[BurstCompile,
+/*[BurstCompile,
     EntityDataSerializationSystem(typeof(GameEntityCamp)),
     CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
     UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
@@ -518,7 +518,7 @@ public partial struct GameDataEntityCampSerializationSystem : ISystem
     {
         __core.Update(ref state);
     }
-}
+}*/
 
 [BurstCompile,
     EntityDataDeserializationSystem(typeof(GameCampManager), (int)GameDataConstans.Version),
@@ -556,7 +556,7 @@ public partial struct GameDataCampDeserializationContainerSystem : ISystem
     }
 }
 
-[BurstCompile,
+/*[BurstCompile,
     EntityDataDeserializationSystem(typeof(GameEntityCamp), (int)GameDataConstans.Version),
     CreateAfter(typeof(EntityDataDeserializationComponentSystem)),
     UpdateInGroup(typeof(EntityDataDeserializationSystemGroup)), AutoCreateIn("Server")]
@@ -581,4 +581,4 @@ public partial struct GameDataCampDeserializationSystem : ISystem
     {
         __core.Update(ref state);
     }
-}
+}*/

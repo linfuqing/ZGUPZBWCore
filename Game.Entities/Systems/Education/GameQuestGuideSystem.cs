@@ -482,8 +482,6 @@ public struct GameQuestGuideManager
             {
                 if (isPublished != __callbackStates[index])
                 {
-                    __callbackStates[index] = isPublished;
-
                     CallbackResult callbackResult;
                     callbackResult.index = index;
                     callbackResult.handle = callback.handle;
@@ -493,6 +491,8 @@ public struct GameQuestGuideManager
             }
             /*else
                 __callbackStates[index] = true;*/
+
+            __callbackStates[index] = isPublished;
 
             return true;
         }

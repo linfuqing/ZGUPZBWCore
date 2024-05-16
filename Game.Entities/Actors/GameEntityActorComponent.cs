@@ -431,7 +431,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
 
     private SharedTimeManager<CallbackHandle> __timeManager;
 
-    public readonly static TypeIndex[] ActionComponentTypes = new TypeIndex[]
+    public readonly static TypeIndex[] ActionComponentTypes = 
     {
         //ComponentType.ReadOnly<CollisionWorldProxy>(),
         TypeManager.GetTypeIndex<GameActionData>(),
