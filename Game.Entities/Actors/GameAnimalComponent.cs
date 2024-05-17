@@ -239,6 +239,7 @@ public class GameAnimalComponent : ComponentDataProxy<GameAnimalData>
             GameAnimalBuff buff;
             buff.value = value;
             this.SetComponentData(buff);
+            this.SetComponentEnabled<GameAnimalBuff>(math.abs(value) > math.FLT_MIN_NORMAL);
         }
     }
     
@@ -292,6 +293,8 @@ public class GameAnimalComponent : ComponentDataProxy<GameAnimalData>
         buff.entity = entity;
         buff.value = value;
         bufferManager.Set(buff, time);
+        
+        this.SetComponentEnabled<GameAnimalBuff>(true);
     }
 
     public override void Init(in Entity entity, EntityComponentAssigner assigner)
