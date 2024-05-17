@@ -178,7 +178,7 @@ public partial struct GameTimeActorSystem : ISystem
                                 {
                                     command.version = version;
                                     command.index = action.index;
-                                    command.time = time;
+                                    //command.time = time;
                                     command.entity = Entity.Null;
                                     command.forward = math.forward(transform.rot);
                                     command.distance = float3.zero;

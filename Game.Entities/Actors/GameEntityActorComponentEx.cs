@@ -19,58 +19,58 @@ public class GameEntityActorComponentEx : MonoBehaviour
         instance = GetComponent<GameEntityActorComponent>();
     }
 
-    public int Pick(in GameDeadline time)
+    public int Pick()
     {
-        return instance.Do(time, pickTime, pickTime);
+        return instance.Do(pickTime, pickTime);
     }
     
-    public int Collect(in GameDeadline time)
+    public int Collect()
     {
-        return instance.Do(time, collectTime, collectTime);
+        return instance.Do(collectTime, collectTime);
     }
     
-    public int Use(in GameDeadline time)
+    public int Use()
     {
-        return instance.Do(time, useTime, useTime);
+        return instance.Do(useTime, useTime);
     }
 
-    public int Drop(in GameDeadline time)
+    public int Drop()
     {
-        return instance.Do(time, dropTime, dropTime);
+        return instance.Do(dropTime, dropTime);
     }
 
-    public int Set(in GameDeadline time)
+    public int Set()
     {
-        return instance.Do(time, setTime, setTime);
+        return instance.Do(setTime, setTime);
     }
 
-    public int Pick(EntityCommander commander, in GameDeadline time)
+    public int Pick(EntityCommander commander)
     {
-        return instance.Do(commander, time, pickTime, pickTime);
+        return instance.Do(commander, pickTime, pickTime);
     }
 
-    public int Collect(EntityCommander commander, in GameDeadline time)
+    public int Collect(EntityCommander commander)
     {
-        return instance.Do(commander, time, collectTime, collectTime);
+        return instance.Do(commander, collectTime, collectTime);
     }
 
-    public int Use(EntityCommander commander, in GameDeadline time)
+    public int Use(EntityCommander commander)
     {
-        return instance.Do(commander, time, useTime, useTime);
+        return instance.Do(commander, useTime, useTime);
     }
 
-    public int Delete(EntityCommander commander, in GameDeadline time)
+    public int Delete(EntityCommander commander)
     {
-        return instance.Do(commander, time, deleteTime, deleteTime);
+        return instance.Do(commander, deleteTime, deleteTime);
     }
 
-    public int Drop(EntityCommander commander, in GameDeadline time)
+    public int Drop(EntityCommander commander)
     {
-        return instance.Do(commander, time, dropTime, dropTime);
+        return instance.Do(commander, dropTime, dropTime);
     }
 
-    public int Set(EntityCommander commander, in GameDeadline time)
+    public int Set(EntityCommander commander)
     {
-        return instance.Do(commander, time, setTime, setTime);
+        return instance.Do(commander, setTime, setTime);
     }
 }

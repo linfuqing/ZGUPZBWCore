@@ -319,14 +319,14 @@ public struct GameEntityEventCommand : IComponentData, IEnableableComponent
     public int version;
     public float performTime;
     public float coolDownTime;
-    public GameDeadline time;
+    //public GameDeadline time;
 }
 
 public struct GameEntityActionCommand : IComponentData, IEnableableComponent
 {
     public int version;
     public int index;
-    public GameDeadline time;
+    //public GameDeadline time;
     public Entity entity;
     public float3 forward;
     public float3 distance;
@@ -339,7 +339,7 @@ public struct GameEntityBreakCommand : IComponentData, IEnableableComponent
     public float hit;
     public float alertTime;
     public float delayTime;
-    public GameDeadline time;
+    //public GameDeadline time;
     public float3 normal;
 }
 
@@ -577,7 +577,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
     }
 
     public int Do(
-        in GameDeadline time,
+        //in GameDeadline time,
         int index,
         in Entity target,
         in float3 forward,
@@ -587,7 +587,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         GameEntityActionCommand command;
         command.version = commandVersion;
         command.index = index;
-        command.time = time;
+        //command.time = time;
         command.entity = target;
         command.forward = forward;
         command.distance = distance;
@@ -601,7 +601,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
 
     public int Do(
         EntityCommander commander,
-        in GameDeadline time,
+        //in GameDeadline time,
         int index,
         in Entity target,
         in float3 forward,
@@ -611,7 +611,7 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         GameEntityActionCommand command;
         command.version = this.commandVersion;
         command.index = index;
-        command.time = time;
+        //command.time = time;
         command.entity = target;
         command.forward = forward;
         command.distance = distance;
@@ -633,13 +633,13 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         return command.version;
     }
 
-    public int Do(EntityCommander commander, in GameDeadline time, float performTime, float coolDownTime)
+    public int Do(EntityCommander commander, float performTime, float coolDownTime)
     {
         GameEntityEventCommand command;
         command.version = this.commandVersion;
         command.performTime = performTime;
         command.coolDownTime = coolDownTime;
-        command.time = time;
+        //command.time = time;
 
         commander.SetComponentData(entity, command);
 
@@ -654,13 +654,13 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         return command.version;
     }
 
-    public int Do(in GameDeadline time, float performTime, float coolDownTime)
+    public int Do(float performTime, float coolDownTime)
     {
         GameEntityEventCommand command;
         command.version = commandVersion;
         command.performTime = performTime;
         command.coolDownTime = coolDownTime;
-        command.time = time;
+        //command.time = time;
         //command.handle = timeEventHandle;
 
         this.SetComponentData(command);
@@ -669,28 +669,28 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         return command.version;
     }
 
-    public void Break(in GameDeadline time, float alertTime, float delayTime)
+    public void Break(float alertTime, float delayTime)
     {
         GameEntityBreakCommand command;
         command.version = commandVersion;
         command.hit = 0;
         command.alertTime = alertTime;
         command.delayTime = delayTime;
-        command.time = time;
+        //command.time = time;
         command.normal = float3.zero;
 
         this.SetComponentData(command);
         this.SetComponentEnabled<GameEntityBreakCommand>(true);
     }
 
-    public int Break(EntityCommander commander, in GameDeadline time, float alertTime, float delayTime)
+    public int Break(EntityCommander commander, float alertTime, float delayTime)
     {
         GameEntityBreakCommand command;
         command.version = this.commandVersion;
         command.hit = 0;
         command.alertTime = alertTime;
         command.delayTime = delayTime;
-        command.time = time;
+        //command.time = time;
         command.normal = float3.zero;
 
         //commander.SetComponentData<GameEntityActionCommand>(entity, default);
@@ -707,14 +707,14 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
         return command.version;
     }
 
-    public void Break(EntityCommander commander, in GameDeadline time, float delayTime)
+    public void Break(EntityCommander commander, float delayTime)
     {
-        Break(commander, time, 0.0f, delayTime);
+        Break(commander, 0.0f, delayTime);
     }
 
-    public void Break(in GameDeadline time, float delayTime)
+    public void Break(float delayTime)
     {
-        Break(time, 0.0f, delayTime);
+        Break(0.0f, delayTime);
     }
 
     public override void Init(in Entity entity, EntityComponentAssigner assigner)

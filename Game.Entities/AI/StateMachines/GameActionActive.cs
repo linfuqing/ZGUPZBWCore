@@ -715,7 +715,7 @@ public partial struct GameActionActiveSystem : ISystem
                     GameEntityActionCommand command;
                     command.version = commandVersions[index].value;
                     command.index = instance.entryActionIndex;
-                    command.time = time;
+                    //command.time = time;
                     command.entity = info.entity;
                     command.forward = forward / distance;
                     command.distance = float3.zero;
@@ -884,7 +884,7 @@ public partial struct GameActionActiveSystem : ISystem
                                     {
                                         command.version = commandVersions[index].value;
                                         command.index = conditions[info.conditionIndex].actionIndex;
-                                        command.time = time;
+                                        //command.time = time;
                                         command.entity = info.entity;
                                         command.forward = forward;
                                         command.distance = float3.zero;
@@ -954,7 +954,7 @@ public partial struct GameActionActiveSystem : ISystem
                                         {
                                             command.version = commandVersions[index].value;
                                             command.index = i;
-                                            command.time = time;
+                                            //command.time = time;
                                             command.entity = info.entity;
                                             command.forward = forward;
                                             command.distance = float3.zero;

@@ -434,6 +434,8 @@ public partial struct GameEntityEventSystem : ISystem
     {
         public bool isDisabled;
 
+        public GameTime now;
+
         [ReadOnly]
         public NativeArray<Entity> entityArray;
 
@@ -497,7 +499,7 @@ public partial struct GameEntityEventSystem : ISystem
             if (index < delay.Length)
             {
                 GameNodeDelay delay;
-                delay.time = command.time;
+                delay.time = now;
                 delay.startTime = half.zero;
                 delay.endTime = (half)command.coolDownTime;
                 this.delay[index] = delay;
@@ -507,7 +509,8 @@ public partial struct GameEntityEventSystem : ISystem
             {
                 GameEntityActorTime actorTime;
                 actorTime.actionMask = 0;
-                actorTime.value = command.time + command.performTime;
+                actorTime.value = now;
+                actorTime.value += command.performTime;
                 actorTimes[index] = actorTime;
                 
                 //UnityEngine.Debug.LogError($"Trigger {entity.Index} : {actorTime.value} : {frameIndex}");
@@ -518,14 +521,14 @@ public partial struct GameEntityEventSystem : ISystem
                 var actorInfo = actorInfos[index];
                 int version = ++actorInfo.version;
 
-                actorInfo.alertTime = command.time;
+                actorInfo.alertTime = now;
                 actorInfos[index] = actorInfo;
 
                 if (index < eventInfos.Length)
                 {
                     GameEntityEventInfo eventInfo;
                     eventInfo.version = version;
-                    eventInfo.time = command.time + command.coolDownTime;
+                    eventInfo.time = now + command.coolDownTime;
                     //eventInfo.timeEventHandle = command.handle;
                     eventInfos[index] = eventInfo;
                 }
@@ -544,6 +547,8 @@ public partial struct GameEntityEventSystem : ISystem
     [BurstCompile]
     public struct TriggerEx : IJobChunk
     {
+        public GameTime now;
+        
         [ReadOnly]
         public EntityTypeHandle entityArrayType;
 
@@ -584,6 +589,7 @@ public partial struct GameEntityEventSystem : ISystem
         {
             Trigger trigger;
             trigger.isDisabled = chunk.Has(ref disabledType);
+            trigger.now = now;
             trigger.entityArray = chunk.GetNativeArray(entityArrayType);
             trigger.states = chunk.GetNativeArray(ref statusType);
             trigger.commands = chunk.GetNativeArray(ref commandType);
@@ -668,10 +674,7 @@ public partial struct GameEntityEventSystem : ISystem
         }
     }
 
-
-#if GAME_DEBUG_COMPARSION
-    private GameRollbackFrame __frame;
-#endif
+    private GameRollbackTime __time;
 
     private EntityQuery __group;
 
@@ -714,16 +717,14 @@ public partial struct GameEntityEventSystem : ISystem
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-#if GAME_DEBUG_COMPARSION
-        __frame = new GameRollbackFrame(ref state);
-#endif
-
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __group = builder
                 .WithAllRW<GameEntityEventCommand, GameEntityCommandVersion>()
                 .WithAllRW<GameEntityEventInfo, GameNodeDelay>()
                 .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                 .Build(ref state);
+
+        __time = new GameRollbackTime(ref state);
 
         __entityArrayType = state.GetEntityTypeHandle();
         __disabledType = state.GetComponentTypeHandle<Disabled>(true);
@@ -766,6 +767,7 @@ public partial struct GameEntityEventSystem : ISystem
         __entities.Capacity = math.max(__entities.Capacity, __group.CalculateEntityCountWithoutFiltering());
 
         TriggerEx trigger;
+        trigger.now = __time.now;
         trigger.entityArrayType = __entityArrayType.UpdateAsRef(ref state);
         trigger.disabledType = __disabledType.UpdateAsRef(ref state);
         trigger.statusType = __statusType.UpdateAsRef(ref state);
@@ -781,7 +783,7 @@ public partial struct GameEntityEventSystem : ISystem
         trigger.entities = __entities.AsParallelWriter();
 
 #if GAME_DEBUG_COMPARSION
-        uint frameIndex = __frame.index;
+        uint frameIndex = __time.frameIndex;
 
         trigger.frameIndex = frameIndex;
         trigger.entityIndexType = state.GetComponentTypeHandle<GameEntityIndex>(true);
@@ -979,6 +981,8 @@ public partial struct GameEntityActorSystem : ISystem
 
         public float3 gravity;
 
+        public GameTime now;
+
         [ReadOnly]
         public BlobAssetReference<GameActionSetDefinition> actions;
 
@@ -1171,13 +1175,13 @@ public partial struct GameEntityActorSystem : ISystem
             var actorTime = actorTimes[index];
 #if GAME_DEBUG_COMPARSION
             stream.Begin(entityIndices[index].value);
-            stream.Assert(delayTimeName, actorTime.value > command.time ? (float)(actorTime.value - command.time) : 0.0f);
-            stream.Assert(commandTimeName, (double)command.time);
+            stream.Assert(delayTimeName, actorTime.value > now ? (float)(actorTime.value - now) : 0.0f);
+            //stream.Assert(commandTimeName, (double)command.time);
 #endif
 
-            double coolDown = this.actorActionInfos[index].Length > command.index ? (double)this.actorActionInfos[index][command.index].coolDownTime : 0.0f;
-            //UnityEngine.Debug.Log($"Do: {entityIndices[index].value} : {frameIndex} : {entityArray[index].Index} : {command.index} : {(double)actorTime.value} : {(double)command.time} : {coolDown} : {translations[index].Value}");//{(double)this.actorActionInfos[index][command.index].coolDownTime} : 
-            if ((actorTime.actionMask & action.instance.actorMask) != 0 || actorTime.value < command.time)
+            //double coolDown = this.actorActionInfos[index].Length > command.index ? (double)this.actorActionInfos[index][command.index].coolDownTime : 0.0f;
+            //UnityEngine.Debug.Log($"Do: {entityIndices[index].value} : {frameIndex} : {entityArray[index].Index} : {command.index} : {(double)actorTime.value} : {coolDown} : {translations[index].Value}");//{(double)this.actorActionInfos[index][command.index].coolDownTime} : 
+            if ((actorTime.actionMask & action.instance.actorMask) != 0 || actorTime.value < now)
             {
                 //double x = (double)actorTime.value, y = (double)command.time;
                 //UnityEngine.Debug.Log($"Do: {entityIndices[index].value} : {frameIndex} : {entityArray[index].Index} : {command.index} : {x} : {y}");
@@ -1187,7 +1191,7 @@ public partial struct GameEntityActorSystem : ISystem
                     actorActionInfos.Resize(actorActions.Length, NativeArrayOptions.ClearMemory);
 
                 var actorActionInfo = actorActionInfos[command.index];
-                if (actorActionInfo.coolDownTime < command.time)
+                if (actorActionInfo.coolDownTime < now)
                 {
                     //UnityEngine.Debug.Log($"Do: {entityIndices[index].value} : {frameIndex} : {entityArray[index].Index} : {command.index} : {x} : {y}");
 
@@ -1224,7 +1228,7 @@ public partial struct GameEntityActorSystem : ISystem
                         }
 
                         if (index < entityActions.Length)
-                            GameEntityAction.Break(command.time, entityActions[index], ref actionStates);
+                            GameEntityAction.Break(now, entityActions[index], ref actionStates);
 
                         var actor = actors[index];
                         if (actor.rangeScale > math.FLT_MIN_NORMAL)
@@ -1655,7 +1659,7 @@ public partial struct GameEntityActorSystem : ISystem
                                 /*if ((action.instance.flag & GameActionFlag.MoveOnSurface) == GameActionFlag.MoveOnSurface)
                                     velocityComponent.value = math.mul(surfaceRotation, velocityComponent.value);*/
 
-                                velocityComponent.time = command.time;
+                                velocityComponent.time = now;
                                 velocityComponent.time += action.info.actorMoveStartTime;
                                 --velocityComponent.time.count;
 
@@ -1688,7 +1692,7 @@ public partial struct GameEntityActorSystem : ISystem
                                     {
                                         GameNodeActorStatus status;
                                         status.value = GameNodeActorStatus.Status.Jump;
-                                        status.time = command.time;
+                                        status.time = now;
                                         actorStates[index] = status;
                                     }
                                 }
@@ -1700,7 +1704,7 @@ public partial struct GameEntityActorSystem : ISystem
                                 //UnityEngine.Debug.Log($"{velocity}");
 
                                 velocityComponent.value = velocity;
-                                velocityComponent.time = command.time;
+                                velocityComponent.time = now;
                                 velocityComponent.time += action.info.actorJumpStartTime;
                                 --velocityComponent.time.count;
 
@@ -1720,7 +1724,7 @@ public partial struct GameEntityActorSystem : ISystem
 
                                 velocityComponent.value = velocity;
 
-                                velocityComponent.time = command.time;
+                                velocityComponent.time = now;
                                 velocityComponent.time += action.info.actorMoveStartTimeIndirect;
                                 --velocityComponent.time.count;
 
@@ -1734,7 +1738,7 @@ public partial struct GameEntityActorSystem : ISystem
 
                                 velocityComponent.value = direction * action.info.actionMoveSpeed;
 
-                                velocityComponent.time = command.time;
+                                velocityComponent.time = now;
                                 velocityComponent.time += action.info.damageTime;
 
                                 velocityComponent.duration = 0.0f;// action.info.actionMoveTime;
@@ -1763,13 +1767,13 @@ public partial struct GameEntityActorSystem : ISystem
                             nodeStatusMap[entity] = nodeStatus;
                         }
 
-                        var artTime = command.time;
+                        GameDeadline artTime = now;
                         artTime += action.info.artTime;
                         if (index < this.delay.Length)
                         {
                             //var delay = this.delay[index];
                             GameNodeDelay delay;
-                            delay.time = command.time;
+                            delay.time = now;
                             if (action.info.delayDuration > math.FLT_MIN_NORMAL)
                             {
                                 delay.startTime = (half)action.info.delayStartTime;
@@ -1785,7 +1789,8 @@ public partial struct GameEntityActorSystem : ISystem
                         }
 
                         actorTime.actionMask = action.instance.actionMask;
-                        actorTime.value = command.time + action.info.performTime;
+                        actorTime.value = now;
+                        actorTime.value += action.info.performTime;
                         actorTimes[index] = actorTime;
 
                         //UnityEngine.Debug.LogError($"Actor {entity.Index} : {actorTime.value} : {frameIndex}");
@@ -1794,7 +1799,7 @@ public partial struct GameEntityActorSystem : ISystem
                         //distance += offset;
                         int version = ++actorInfo.version;
 
-                        actorInfo.alertTime = command.time;
+                        actorInfo.alertTime = now;
 
                         actorInfos[index] = actorInfo;
 
@@ -1812,7 +1817,8 @@ public partial struct GameEntityActorSystem : ISystem
 
                         actionInfos[entity] = actionInfo;
 
-                        actorActionInfo.coolDownTime = command.time + action.info.coolDownTime;
+                        actorActionInfo.coolDownTime = now;
+                        actorActionInfo.coolDownTime += action.info.coolDownTime;
                         actorActionInfos[command.index] = actorActionInfo;
 
                         //UnityEngine.Debug.Log($"Do : {entityIndices[index].value} : {frameIndex} : {position} : {distance}");
@@ -1828,7 +1834,7 @@ public partial struct GameEntityActorSystem : ISystem
                             result.value.version = version;
                             result.value.index = command.index;
                             result.value.actionIndex = actionIndex;
-                            result.value.time = command.time;
+                            result.value.time = now;
                             result.value.entity = entity;
                             result.valueEx.camp = camps[index].value;
                             result.valueEx.direction = direction;
@@ -1869,7 +1875,7 @@ public partial struct GameEntityActorSystem : ISystem
             }
 #if GAME_DEBUG_COMPARSION
             else
-                UnityEngine.Debug.Log($"Do Fail {entityArray[index].Index} : {entityIndices[index].value} : {(double)actorTime.value} : {(double)command.time}");
+                UnityEngine.Debug.Log($"Do Fail {entityArray[index].Index} : {entityIndices[index].value} : {(double)actorTime.value} : {(double)now}");
 
             stream.End();
 #endif
@@ -1881,6 +1887,8 @@ public partial struct GameEntityActorSystem : ISystem
     {
         public float3 gravity;
 
+        public GameTime now;
+        
         [ReadOnly]
         public BlobAssetReference<GameActionSetDefinition> actions;
 
@@ -2024,6 +2032,7 @@ public partial struct GameEntityActorSystem : ISystem
             Act act;
             act.isDisabled = chunk.Has(ref disabledType);
             act.gravity = gravity;
+            act.now = now;
             act.actions = actions;
             act.items = items;
             act.actionColliders = actionColliders;
@@ -2101,9 +2110,7 @@ public partial struct GameEntityActorSystem : ISystem
     private EntityQuery __actionSetGroup;
     private EntityQuery __actionInfoSetGroup;
 
-#if GAME_DEBUG_COMPARSION
-    private GameRollbackFrame __frame;
-#endif
+    private GameRollbackTime __time;
 
     private ComponentLookup<Disabled> __disabled;
 
@@ -2222,9 +2229,7 @@ public partial struct GameEntityActorSystem : ISystem
                 .WithAll<GameActionItemSetData>()
                 .Build(ref state);
 
-#if GAME_DEBUG_COMPARSION
-        __frame = new GameRollbackFrame(ref state);
-#endif
+        __time = new GameRollbackTime(ref state);
 
         __disabled = state.GetComponentLookup<Disabled>(true);
         __translations = state.GetComponentLookup<Translation>(true);
@@ -2298,6 +2303,7 @@ public partial struct GameEntityActorSystem : ISystem
 
         ActEx act;
         act.gravity = __physicsStepGroup.IsEmpty ? Unity.Physics.PhysicsStep.Default.Gravity : __physicsStepGroup.GetSingleton<Unity.Physics.PhysicsStep>().Gravity;
+        act.now = __time.now;
         act.actions = __actionSetGroup.GetSingleton<GameActionSetData>().definition;
         act.items = __actionInfoSetGroup.GetSingleton<GameActionItemSetData>().definition;
         act.actionColliders = __actionColliders.reader;
@@ -2345,7 +2351,7 @@ public partial struct GameEntityActorSystem : ISystem
         act.entityManager = entityManager.parallelWriter;
 
 #if GAME_DEBUG_COMPARSION
-        uint frameIndex = __frame.index;
+        uint frameIndex = __time.frameIndex;
 
         act.frameIndex = frameIndex;
         act.angleName = "angle";
@@ -2447,7 +2453,7 @@ public partial struct GameEntityHitSystem : ISystem
                         command.hit = math.max(hit.value - actionInfo.hit, 0.0f);
                         command.alertTime = instance.alertTime;
                         command.delayTime = instance.delayTime;
-                        command.time = hit.time;
+                        //command.time = hit.time;
                         command.normal = hit.normal;
 
                         commands[index] = command;
@@ -2643,6 +2649,7 @@ public partial struct GameEntityBreakSystem : ISystem
 
         //[ReadOnly]
         //public ComponentLookup<GameActionDisabled> actionDisabled;
+        public GameTime now;
 
         [ReadOnly]
         public NativeArray<Entity> entityArray;
@@ -2730,17 +2737,17 @@ public partial struct GameEntityBreakSystem : ISystem
 #if GAME_DEBUG_COMPARSION
             stream.Begin(entityIndices[index].value);
             stream.Assert(normalName, command.normal);
-            stream.Assert(commandTimeName, (double)command.time);
+            stream.Assert(commandTimeName, (double)now);
             stream.Assert(commandDelayTimeName, (double)command.delayTime);
             stream.Assert(commandAlertTimeName, (double)command.alertTime);
-            if(actorInfo.alertTime >= command.time)
+            if(actorInfo.alertTime >= now)
                 stream.Assert(alertTimeName, (double)actorInfo.alertTime);
 #endif
 
-            if (!isAlert || actorInfo.alertTime < command.time)//isAlert ? actorInfo.alertTime < command.time : actorInfo.castingTime > command.time)
+            if (!isAlert || actorInfo.alertTime < now)//isAlert ? actorInfo.alertTime < command.time : actorInfo.castingTime > command.time)
             {
                 if (index < entityActions.Length)
-                    GameEntityAction.Break(command.time, entityActions[index], ref actionStates);
+                    GameEntityAction.Break(now, entityActions[index], ref actionStates);
 
                 ++actorInfo.version;
 
@@ -2802,7 +2809,8 @@ public partial struct GameEntityBreakSystem : ISystem
                                     GameNodeVelocityComponent velocityComponent;
                                     velocityComponent.mode = GameNodeVelocityComponent.Mode.Direct;
                                     velocityComponent.duration = targetDeley.duration;
-                                    velocityComponent.time = command.time + targetDeley.startTime;
+                                    velocityComponent.time = now;
+                                    velocityComponent.time += targetDeley.startTime;
                                     velocityComponent.value = normal * targetDeley.speed;
 
                                     velocityComponents[index].Add(velocityComponent);
@@ -2821,7 +2829,8 @@ public partial struct GameEntityBreakSystem : ISystem
                         hits[index] = hit;
                 }
 
-                actorInfo.alertTime = command.time + (isAlert ? command.alertTime : 0.0f);
+                actorInfo.alertTime = now;
+                actorInfo.alertTime += isAlert ? command.alertTime : 0.0f;
                 //actorInfo.castingTime = command.time;
                 actorInfos[index] = actorInfo;
 
@@ -2829,7 +2838,7 @@ public partial struct GameEntityBreakSystem : ISystem
                 {
                     GameEntityActorTime actorTime;
                     actorTime.actionMask = 0;
-                    actorTime.value = command.time;
+                    actorTime.value = now;
                     actorTime.value += command.delayTime;
                     actorTimes[index] = actorTime;
                     
@@ -2839,7 +2848,7 @@ public partial struct GameEntityBreakSystem : ISystem
                 if (index < this.delay.Length)
                 {
                     GameNodeDelay delay;
-                    delay.time = command.time;
+                    delay.time = now;
                     delay.startTime = half.zero;
                     delay.endTime = (half)command.delayTime;
                     this.delay[index] = delay;
@@ -2864,7 +2873,7 @@ public partial struct GameEntityBreakSystem : ISystem
                 GameEntityBreakInfo breakInfo;
                 breakInfo.version = actorInfo.version;
                 breakInfo.delayIndex = delayIndex;
-                breakInfo.commandTime = command.time;
+                breakInfo.commandTime = now;
                 //breakInfo.timeEventHandle = TimeEventHandle.Null;
                 /*if (index < eventInfos.Length)
                 {
@@ -2894,8 +2903,7 @@ public partial struct GameEntityBreakSystem : ISystem
     [BurstCompile]
     private struct InterruptEx : IJobChunk
     {
-        //[ReadOnly]
-        //public ComponentLookup<GameActionDisabled> actionDisabled;
+        public GameTime now;
 
         [ReadOnly]
         public EntityTypeHandle entityArrayType;
@@ -2966,6 +2974,7 @@ public partial struct GameEntityBreakSystem : ISystem
         {
             Interrupt interrupt;
             interrupt.isDisabled = chunk.Has(ref disabledType);
+            interrupt.now = now;
             //interrupt.actionDisabled = actionDisabled;
             interrupt.actionStates = actionStates;
             interrupt.entityArray = chunk.GetNativeArray(entityArrayType);
@@ -3013,9 +3022,7 @@ public partial struct GameEntityBreakSystem : ISystem
 
     private EntityQuery __group;
     
-#if GAME_DEBUG_COMPARSION
-    private GameRollbackFrame __frame;
-#endif
+    private GameRollbackTime __time;
 
     private EntityTypeHandle __entityArrayType;
 
@@ -3069,9 +3076,7 @@ public partial struct GameEntityBreakSystem : ISystem
 
         __group.SetChangedVersionFilter(ComponentType.ReadWrite<GameEntityBreakCommand>());
 
-#if GAME_DEBUG_COMPARSION
-        __frame = new GameRollbackFrame(ref state);
-#endif
+        __time = new GameRollbackTime(ref state);
         
         __entityArrayType = state.GetEntityTypeHandle();
         __disabledType = state.GetComponentTypeHandle<Disabled>(true);
@@ -3106,6 +3111,7 @@ public partial struct GameEntityBreakSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         InterruptEx interrupt;
+        interrupt.now = __time.now;
         interrupt.entityArrayType = __entityArrayType.UpdateAsRef(ref state);
         interrupt.disabledType = __disabledType.UpdateAsRef(ref state);
         interrupt.nodeStatusType = __nodeStatusType.UpdateAsRef(ref state);
@@ -3128,7 +3134,7 @@ public partial struct GameEntityBreakSystem : ISystem
         interrupt.actionStates = __actionStates.UpdateAsRef(ref state);
 
 #if GAME_DEBUG_COMPARSION
-        interrupt.frameIndex = __frame.index;
+        interrupt.frameIndex = __time.frameIndex;
         interrupt.angleName = "angle";
         interrupt.normalName = "normal";
         interrupt.alertTimeName = "alertTime";

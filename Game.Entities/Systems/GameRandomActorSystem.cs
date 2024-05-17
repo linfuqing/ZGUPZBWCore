@@ -20,7 +20,7 @@ public partial struct GameRandomActorSystem : ISystem
             public int index;
             public int version;
 
-            public GameTime time;
+            //public GameTime time;
 
             public Random random;
 
@@ -37,7 +37,7 @@ public partial struct GameRandomActorSystem : ISystem
                 GameEntityActionCommand command;
                 command.version = version;
                 command.index = actions[startIndex + random.NextInt(count)].index;
-                command.time = time;
+                //command.time = time;
                 command.entity = Entity.Null;
                 command.forward = math.forward(rotation);
                 command.distance = float3.zero;
@@ -49,7 +49,7 @@ public partial struct GameRandomActorSystem : ISystem
             }
         }
 
-        public GameTime time;
+        //public GameTime time;
 
         public Random random;
 
@@ -82,7 +82,7 @@ public partial struct GameRandomActorSystem : ISystem
             ActionHandler actionHandler;
             actionHandler.index = index;
             actionHandler.version = versions[index].value;
-            actionHandler.time = time;
+            //actionHandler.time = time;
             actionHandler.random = random;
             actionHandler.rotation = rotations[index].Value;
             actionHandler.actions = actions[index];
@@ -137,7 +137,7 @@ public partial struct GameRandomActorSystem : ISystem
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             Act act;
-            act.time = time;
+            //act.time = time;
             long hash = math.aslong(time);
             act.random = new Random((uint)((int)(hash >> 32) ^ ((int)hash) ^ unfilteredChunkIndex));
             act.rotations = chunk.GetNativeArray(ref rotationType);

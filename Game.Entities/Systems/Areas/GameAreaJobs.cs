@@ -402,7 +402,7 @@ public struct GameAreaInvokeCommands<T> : IJobParallelForDefer//, IEntityCommand
 
     public T validator;
 
-    public unsafe void Execute(int index)
+    public void Execute(int index)
     {
         ref var definition = ref this.definition.Value;
 
