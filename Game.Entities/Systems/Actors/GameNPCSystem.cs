@@ -193,6 +193,17 @@ public struct GameNPCWorld
 
     public bool Contains(int index) => __npcs.ContainsKey(index);
 
+    public int GetIndexByStage(int index)
+    {
+        foreach (var npc in __npcs)
+        {
+            if (npc.Value.stageIndex == index)
+                return npc.Key;
+        }
+
+        return -1;
+    }
+
     public int GetStageIndex(int index) => __npcs.TryGetValue(index, out var npc) ? npc.stageIndex : -1;
 
     public float3 GetPosition(int index) => __npcs[index].position;
@@ -512,6 +523,15 @@ public struct GameNPCWorldShared : ILandscapeWorld<int>
         __CheckRead();
 
         return __data->instance.Contains(index);
+    }
+
+    public unsafe int GetIndexByStage(int index)
+    {
+        lookupJobManager.CompleteReadOnlyDependency();
+
+        __CheckRead();
+
+        return __data->instance.GetIndexByStage(index);
     }
 
     public unsafe int GetStageIndex(int index)

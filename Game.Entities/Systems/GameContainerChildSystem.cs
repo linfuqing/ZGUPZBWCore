@@ -542,6 +542,8 @@ public partial struct GameContainerChildSystem : ISystem
     public void OnDestroy(ref SystemState state)
     {
         __results.Dispose();
+        
+        statusResults.Dispose();
 
         childIndices.Dispose();
         parentIndices.Dispose();

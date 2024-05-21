@@ -528,6 +528,8 @@ public partial struct GameAreaPrefabSystem : ISystem, IGameAreaHandler<GameAreaN
     {
         __core.Dispose();
 
+        __versions.Dispose();
+
         __prefabIndices.Dispose();
 
         __areaIndices.Dispose();

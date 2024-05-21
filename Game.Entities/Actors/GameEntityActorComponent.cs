@@ -431,19 +431,6 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
 
     private SharedTimeManager<CallbackHandle> __timeManager;
 
-    public readonly static TypeIndex[] ActionComponentTypes = 
-    {
-        //ComponentType.ReadOnly<CollisionWorldProxy>(),
-        TypeManager.GetTypeIndex<GameActionData>(),
-        TypeManager.GetTypeIndex<GameActionDataEx>(),
-        TypeManager.GetTypeIndex<GameActionStatus>(),
-        TypeManager.GetTypeIndex<GameActionEntity>(),
-        TypeManager.GetTypeIndex<PhysicsGravityFactor>(),
-        TypeManager.GetTypeIndex<PhysicsVelocity>(),
-        TypeManager.GetTypeIndex<Translation>(),
-        TypeManager.GetTypeIndex<Rotation>()
-    };
-
     public int commandVersion
     {
         get
@@ -779,23 +766,21 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
 
         return actions;
     }
+}
 
-    /*void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
+public static class GameEntityActorUtility
+{
+
+    public readonly static TypeIndex[] ActionComponentTypes = 
     {
-        GameEntityActionInfo actionInfo;
-        actionInfo.commandVersion = 0;
-        actionInfo.version = 0;
-        actionInfo.index = -1;
-        actionInfo.hit = 0.0f;
-        actionInfo.time = default;
-        actionInfo.forward = float3.zero;
-        actionInfo.distance = float3.zero;
-        //actionInfo.offset = float3.zero;
-        actionInfo.entity = Entity.Null;
-        actionInfo.commander = Entity.Null;
-        assigner.SetComponentData(entity, actionInfo);
-
-        if (_delay != null)
-            assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, _delay);
-    }*/
+        //ComponentType.ReadOnly<CollisionWorldProxy>(),
+        TypeManager.GetTypeIndex<GameActionData>(),
+        TypeManager.GetTypeIndex<GameActionDataEx>(),
+        TypeManager.GetTypeIndex<GameActionStatus>(),
+        TypeManager.GetTypeIndex<GameActionEntity>(),
+        TypeManager.GetTypeIndex<PhysicsGravityFactor>(),
+        TypeManager.GetTypeIndex<PhysicsVelocity>(),
+        TypeManager.GetTypeIndex<Translation>(),
+        TypeManager.GetTypeIndex<Rotation>()
+    };
 }

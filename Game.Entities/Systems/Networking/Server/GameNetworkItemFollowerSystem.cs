@@ -483,6 +483,8 @@ public partial struct GameItemServerFollowerSystem : ISystem
     //[BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
+        __commands.Dispose();
+        
         __results.Dispose();
     }
 

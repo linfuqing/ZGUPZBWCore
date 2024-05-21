@@ -187,7 +187,7 @@ public struct GameFootstepManager
     {
         BurstUtility.InitializeJob<InitTags>();
 
-        __jobHandles = new NativeArrayLite<JobHandle>((int)JobHandleType.All, allocator);
+        __jobHandles = new NativeArray<JobHandle>((int)JobHandleType.All, allocator);
         __tagCounts = new NativeList<int>(allocator);
         __tagResults = new NativeList<GameFootstepTag>(allocator);
     }

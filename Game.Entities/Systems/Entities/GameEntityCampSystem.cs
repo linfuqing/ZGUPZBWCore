@@ -47,6 +47,8 @@ public partial struct GameEntityCampSystem : ISystem
         public NativeArray<Entity> entityArray;
         [ReadOnly]
         public NativeArray<GameEntityCamp> camps;
+        [ReadOnly] 
+        public NativeArray<GameEntityCampDefault> campDefaults;
         [ReadOnly]
         public BufferLookup<GameEntityCampOverrideBuffer> campOverrideBuffers;
         [ReadOnly]
@@ -88,6 +90,9 @@ public partial struct GameEntityCampSystem : ISystem
                 }
             }
 
+            if (result == -1)
+                result = campDefaults[index].value;
+
             var camp = camps[index];
             if (camp.value == result)
             {
@@ -105,6 +110,8 @@ public partial struct GameEntityCampSystem : ISystem
         public EntityTypeHandle entityType;
         [ReadOnly]
         public ComponentTypeHandle<GameEntityCamp> campType;
+        [ReadOnly] 
+        public ComponentTypeHandle<GameEntityCampDefault> campDefaultType;
         [ReadOnly]
         public BufferLookup<GameEntityCampOverrideBuffer> campOverrideBuffers;
         [ReadOnly]
@@ -124,6 +131,7 @@ public partial struct GameEntityCampSystem : ISystem
             Apply apply;
             apply.entityArray = chunk.GetNativeArray(entityType);
             apply.camps = chunk.GetNativeArray(ref campType);
+            apply.campDefaults = chunk.GetNativeArray(ref campDefaultType);
             apply.campOverrideBuffers = campOverrideBuffers;
             apply.campOverrides = campOverrides;
             apply.physicsColliders = physicsColliders;
@@ -140,7 +148,8 @@ public partial struct GameEntityCampSystem : ISystem
     private EntityQuery __group;
     
     private EntityTypeHandle __entityType;
-    private ComponentTypeHandle<GameEntityCamp> __campType;
+    private ComponentTypeHandle<GameEntityCamp> __campType;    
+    private ComponentTypeHandle<GameEntityCampDefault> __campDefaultType;
     private BufferLookup<GameEntityCampOverrideBuffer> __campOverrideBuffers;
     private ComponentLookup<GameEntityCampOverride> __campOverrides;
     private ComponentLookup<PhysicsCollider> __physicsColliders;
@@ -160,6 +169,7 @@ public partial struct GameEntityCampSystem : ISystem
 
         __entityType = state.GetEntityTypeHandle();
         __campType  = state.GetComponentTypeHandle<GameEntityCamp>(true);
+        __campDefaultType = state.GetComponentTypeHandle<GameEntityCampDefault>(true);
         __campOverrideBuffers = state.GetBufferLookup<GameEntityCampOverrideBuffer>(true);
         __campOverrides = state.GetComponentLookup<GameEntityCampOverride>(true);
         __physicsColliders = state.GetComponentLookup<PhysicsCollider>(true);
@@ -181,6 +191,7 @@ public partial struct GameEntityCampSystem : ISystem
         ApplyEx apply;
         apply.entityType = __entityType.UpdateAsRef(ref state);
         apply.campType = __campType.UpdateAsRef(ref state);
+        apply.campDefaultType = __campDefaultType.UpdateAsRef(ref state);
         apply.campOverrideBuffers = __campOverrideBuffers.UpdateAsRef(ref state);
         apply.campOverrides = __campOverrides.UpdateAsRef(ref state);
         apply.physicsColliders = __physicsColliders.UpdateAsRef(ref state);

@@ -237,7 +237,7 @@ public class GameEntityDataComponent : GameEntityComponentEx, IEntityComponent
     {
         get
         {
-            return new List<TypeIndex>(GameEntityActorComponent.ActionComponentTypes)
+            return new List<TypeIndex>(GameEntityActorUtility.ActionComponentTypes)
             {
                 TypeManager.GetTypeIndex<GameActionBuff>(),
                 TypeManager.GetTypeIndex<GameActionAttack>()

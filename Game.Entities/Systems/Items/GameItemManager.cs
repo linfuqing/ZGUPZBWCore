@@ -580,6 +580,8 @@ public struct GameItemManager
         __positiveFilters.Dispose();
 
         __negativefilters.Dispose();
+
+        __fungibleItems.Dispose();
     }
 
     public Enumerator GetEnumerator() => new Enumerator(in this);

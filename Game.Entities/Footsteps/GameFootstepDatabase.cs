@@ -22,22 +22,22 @@ public class GameFootstepDatabase : ScriptableObject, ISerializationCallbackRece
 
         public LayerMask layerMask;
 
-        [Tooltip("³£¹æËõ·Å£¬Êµ¼ÊËõ·Å+1£¬±ÈÈçÌî0£¬Êµ¼ÊÎª1")]
+        [Tooltip("ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Å£ï¿½Êµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½+1ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½0ï¿½ï¿½Êµï¿½ï¿½Îª1")]
         public float scale;
 
-        [Tooltip("¸ù¾İËÙ¶ÈÀ´Ëõ·ÅÁ£×Ó£¬Óë³£¹æËõ·Åµş¼Ó")]
+        [Tooltip("ï¿½ï¿½ï¿½ï¿½ï¿½Ù¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó£ï¿½ï¿½ë³£ï¿½ï¿½ï¿½ï¿½ï¿½Åµï¿½ï¿½ï¿½")]
         public float scalePerSpeed;
 
-        [Tooltip("¸ù¾İËÙ¶ÈÀ´·¢Éä¶ÔÓ¦ÊıÁ¿µÄÁ£×Ó")]
+        [Tooltip("ï¿½ï¿½ï¿½ï¿½ï¿½Ù¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½")]
         public float countPerSpeed;
 
-        [Tooltip("×îĞ¡ËÙ¶ÈÏŞÖÆ£¬ÔÚËÙ¶ÈÏŞÖÆ·¶Î§ÄÚ¸ÃÏî²ÅÉúĞ§")]
+        [Tooltip("ï¿½ï¿½Ğ¡ï¿½Ù¶ï¿½ï¿½ï¿½ï¿½Æ£ï¿½ï¿½ï¿½ï¿½Ù¶ï¿½ï¿½ï¿½ï¿½Æ·ï¿½Î§ï¿½Ú¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ğ§")]
         public float minSpeed;
 
-        [Tooltip("×î´óËÙ¶ÈÏŞÖÆ£¬ÔÚËÙ¶ÈÏŞÖÆ·¶Î§ÄÚ¸ÃÏî²ÅÉúĞ§")]
+        [Tooltip("ï¿½ï¿½ï¿½ï¿½Ù¶ï¿½ï¿½ï¿½ï¿½Æ£ï¿½ï¿½ï¿½ï¿½Ù¶ï¿½ï¿½ï¿½ï¿½Æ·ï¿½Î§ï¿½Ú¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ğ§")]
         public float maxSpeed;
 
-        [Tooltip("ÌîĞ´ºó´ÓAnimatorÀïÌáÈ¡Speed²ÎÊı£¬·ñÔò¸ù¾İ¶¯»­YÖáËÙ¶È×Ô¶¯¼ÆËã")]
+        [Tooltip("ï¿½ï¿½Ğ´ï¿½ï¿½ï¿½Animatorï¿½ï¿½ï¿½ï¿½È¡Speedï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½İ¶ï¿½ï¿½ï¿½Yï¿½ï¿½ï¿½Ù¶ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½ï¿½")]
         public string animatorControllerSpeedParameter;
 
         public void ToAsset(ref GameFootstepDefinition.Tag tag)
@@ -59,10 +59,10 @@ public class GameFootstepDatabase : ScriptableObject, ISerializationCallbackRece
     {
         public string bonePath;
 
-        [Tooltip("Ì§½ÅµÄ×îĞ¡¸ß¶È£¬´óÓÚÕâ¸ö¸ß¶È¿ÉÒÔÖØĞÂ¿ªÊ¼ÅĞ¶¨ÊÇ·ñÂä½Å")]
+        [Tooltip("Ì§ï¿½Åµï¿½ï¿½ï¿½Ğ¡ï¿½ß¶È£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ß¶È¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â¿ï¿½Ê¼ï¿½Ğ¶ï¿½ï¿½Ç·ï¿½ï¿½ï¿½ï¿½")]
         public float minPlaneHeight;
 
-        [Tooltip("Âä½ÅµÄ×î´ó¸ß¶È£¬Ğ¡ÓÚ¸Ã¸ß¶ÈÇÒ³¬¹ı×îĞ¡ËÙ¶ÈÅĞ¶¨Îª½ÅÓ¡")]
+        [Tooltip("ï¿½ï¿½Åµï¿½ï¿½ï¿½ï¿½ß¶È£ï¿½Ğ¡ï¿½Ú¸Ã¸ß¶ï¿½ï¿½Ò³ï¿½ï¿½ï¿½ï¿½ï¿½Ğ¡ï¿½Ù¶ï¿½ï¿½Ğ¶ï¿½Îªï¿½ï¿½Ó¡")]
         public float maxPlaneHeight;
 
         public Tag[] tags;
@@ -136,6 +136,11 @@ public class GameFootstepDatabase : ScriptableObject, ISerializationCallbackRece
     private BlobAssetReference<GameFootstepDefinition> __definition;
 
     public BlobAssetReference<GameFootstepDefinition> definition => __definition;
+
+    ~GameFootstepDatabase()
+    {
+        Dispose();
+    }
 
     public void Dispose()
     {

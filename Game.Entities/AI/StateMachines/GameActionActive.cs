@@ -1365,7 +1365,7 @@ public partial struct GameActionActiveSystem : ISystem
         __commands = state.GetComponentLookup<GameEntityActionCommand>();
         __versions = state.GetComponentLookup<GameNodeVersion>();
 
-        __actionColliders = SingletonAssetContainer<BlobAssetReference<Collider>>.instance;
+        __actionColliders = SingletonAssetContainer<BlobAssetReference<Collider>>.Retain();
 
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __core = new StateMachineSystemCore(
@@ -1379,7 +1379,7 @@ public partial struct GameActionActiveSystem : ISystem
     [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
-
+        __actionColliders.Release();
     }
 
     [BurstCompile]

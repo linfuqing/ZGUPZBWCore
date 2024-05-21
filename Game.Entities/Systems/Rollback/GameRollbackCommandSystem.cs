@@ -36,7 +36,7 @@ public struct GameRollbackBVH
 
     public int GetRigidbodyIndex(in Entity entity)
     {
-        //始终用初始化数据，否则有可能不同步。这里需要再深入思考
+        //始锟斤拷锟矫筹拷始锟斤拷锟斤拷锟捷ｏ拷锟斤拷锟斤拷锟叫匡拷锟杰诧拷同锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷要锟斤拷锟斤拷锟斤拷思锟斤拷
         /*if (__rigidbodyIndices.TryGetValue(entity, out int rigidbodyIndex))
             return rigidbodyIndex;*/
 
@@ -319,7 +319,6 @@ public partial struct GameBVHRollbackSystem : ISystem, IRollbackCore
     [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
-
     }
 
     [BurstCompile]
@@ -420,6 +419,9 @@ internal static class GameBVHRollbackUtility
         public void Dispose()
         {
             __bvhs.lookupJobManager.CompleteReadWriteDependency();
+
+            foreach (var bvh in __bvhs)
+                bvh.Value.Dispose();
 
             __bvhs.Dispose();
         }

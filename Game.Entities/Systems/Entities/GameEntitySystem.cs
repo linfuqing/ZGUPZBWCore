@@ -2275,13 +2275,15 @@ public partial struct GameEntityActorSystem : ISystem
 
         __endFrameBarrier = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameEntityActionBeginFactorySystem>().pool;
 
-        __actionColliders = SingletonAssetContainer<BlobAssetReference<Collider>>.instance;
+        __actionColliders = SingletonAssetContainer<BlobAssetReference<Collider>>.Retain();
 
         //state.RequireForUpdate(__group);
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
+        __actionColliders.Release();
         /*if (actions.IsCreated)
             actions.Dispose();
 

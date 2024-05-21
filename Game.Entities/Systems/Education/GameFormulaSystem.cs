@@ -75,6 +75,7 @@ public struct GameFormulaManager : IDisposable
             __infos.Dispose();
             __types.Dispose();
             __parentIndices.Dispose();
+            __levels.Dispose();
         }
 
         public void Reset(GameFormulaData[] datas)

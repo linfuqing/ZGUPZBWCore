@@ -384,6 +384,8 @@ public partial struct GameSpawnerTimeSystem : ISystem
 
         __timeManager.Dispose();
 
+        __commands.Dispose();
+
         __entitiesToCannel.Dispose();
         __entitiesToInvoke.Dispose();
     }

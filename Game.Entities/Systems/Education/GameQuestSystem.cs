@@ -129,6 +129,7 @@ internal struct GameQuestManagerData
     public void Dispose()
     {
         __infos.Dispose();
+        __options.Dispose();
         __conditions.Dispose();
         __rewards.Dispose();
     }
