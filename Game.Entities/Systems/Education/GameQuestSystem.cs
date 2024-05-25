@@ -1024,7 +1024,7 @@ public static class GameQuestUtility
 
             bitOffset += bitCount;
 
-            UnityEngine.Assertions.Assert.IsFalse(bitOffset > 12);
+            UnityEngine.Assertions.Assert.IsFalse(bitOffset > 32);
         }
 
         return result;

@@ -1768,7 +1768,8 @@ public partial struct GameDataItemSiblingDeserializationSystem : ISystem
 
         public bool Fallback(int index)
         {
-            return false;
+            //Disabled
+            return true;
         }
 
         public void Deserialize(in Key key, ref EntityDataReader reader)
