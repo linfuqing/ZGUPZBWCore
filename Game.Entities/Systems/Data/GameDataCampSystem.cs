@@ -349,21 +349,31 @@ public partial struct GameDataCampSystem : ISystem
 {
     private struct Serialize
     {
-        public int minSerializableCamp;
+        //public int minSerializableCamp;
 
         [ReadOnly]
         public NativeArray<Entity> entityArray;
 
-        [ReadOnly]
-        public NativeArray<GameEntityCamp> camps;
+        /*[ReadOnly]
+        public NativeArray<GameEntityCamp> camps;*/
+
+        [ReadOnly] 
+        public NativeArray<GameOwner> owners;
+
+        [ReadOnly] 
+        public ComponentLookup<EntityDataSerializable> serializables;
 
         public EntityCommandQueue<EntityCommandStructChange>.ParallelWriter entityManager;
 
         public void Execute(int index)
         {
-            if (camps[index].value < minSerializableCamp)
+            /*if (camps[index].value < minSerializableCamp)
+                return;*/
+            
+            //只往上追溯一阶
+            if (!serializables.HasComponent(owners[index].entity))
                 return;
-
+            
             entityManager.Enqueue(EntityCommandStructChange.Create<EntityDataSerializable>(entityArray[index]));
         }
     }
@@ -371,22 +381,30 @@ public partial struct GameDataCampSystem : ISystem
     [BurstCompile]
     private struct SerializeEx : IJobChunk, IEntityCommandProducerJob
     {
-        public int minSerializableCamp;
+        //public int minSerializableCamp;
 
         [ReadOnly]
         public EntityTypeHandle entityType;
 
-        [ReadOnly]
-        public ComponentTypeHandle<GameEntityCamp> campType;
+        //[ReadOnly]
+        //public ComponentTypeHandle<GameEntityCamp> campType;
+
+        [ReadOnly] 
+        public ComponentTypeHandle<GameOwner> ownerType;
+
+        [ReadOnly] 
+        public ComponentLookup<EntityDataSerializable> serializables;
 
         public EntityCommandQueue<EntityCommandStructChange>.ParallelWriter entityManager;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             Serialize serialize;
-            serialize.minSerializableCamp = minSerializableCamp;
+            //serialize.minSerializableCamp = minSerializableCamp;
             serialize.entityArray = chunk.GetNativeArray(entityType);
-            serialize.camps = chunk.GetNativeArray(ref campType);
+            //serialize.camps = chunk.GetNativeArray(ref campType);
+            serialize.owners = chunk.GetNativeArray(ref ownerType);
+            serialize.serializables = serializables;
             serialize.entityManager = entityManager;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -399,7 +417,11 @@ public partial struct GameDataCampSystem : ISystem
 
     private EntityTypeHandle __entityType;
 
-    private ComponentTypeHandle<GameEntityCamp> __campType;
+    //private ComponentTypeHandle<GameEntityCamp> __campType;
+
+    private ComponentTypeHandle<GameOwner> __ownerType;
+
+    private ComponentLookup<EntityDataSerializable> __serializables;
 
     private EntityCommandPool<EntityCommandStructChange> __entityManager;
 
@@ -415,16 +437,18 @@ public partial struct GameDataCampSystem : ISystem
     {
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __group = builder
-                .WithAll<GameEntityCamp>()
+                .WithAll<GameOwner>()
                 .WithNone<GameNonSerialized, EntityDataSerializable>()
                 .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                 .Build(ref state);
 
-        __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameEntityCamp>());
+        __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameOwner>());
 
         __entityType = state.GetEntityTypeHandle();
 
-        __campType = state.GetComponentTypeHandle<GameEntityCamp>(true);
+        __ownerType = state.GetComponentTypeHandle<GameOwner>(true);
+
+        __serializables = state.GetComponentLookup<EntityDataSerializable>(true);
 
         __entityManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameDataStructChangeSystem>().manager.addComponentPool;
 
@@ -443,9 +467,11 @@ public partial struct GameDataCampSystem : ISystem
         var entityManager = __entityManager.Create();
 
         SerializeEx serialize;
-        serialize.minSerializableCamp = manager.BuiltInCamps;
+        //serialize.minSerializableCamp = manager.BuiltInCamps;
         serialize.entityType = __entityType.UpdateAsRef(ref state);
-        serialize.campType = __campType.UpdateAsRef(ref state);
+        serialize.ownerType = __ownerType.UpdateAsRef(ref state);
+        serialize.serializables = __serializables.UpdateAsRef(ref state);
+        //serialize.campType = __campType.UpdateAsRef(ref state);
         serialize.entityManager = entityManager.parallelWriter;
 
         var jobHandle = serialize.ScheduleParallelByRef(__group, state.Dependency);
