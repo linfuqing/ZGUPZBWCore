@@ -2,6 +2,7 @@ using System;
 using Unity.Burst;
 using Unity.Entities;
 using Unity.Collections;
+using Unity.Mathematics;
 using ZG;
 
 public struct GameRollbackFrameCount : IComponentData
@@ -121,13 +122,13 @@ public struct GameRollbackManager
         get => __time.frameOffset;
     }
 
-    public uint frameIndex => (uint)(__frameSyncSystemGroup.frameIndex + frameOffset);
+    public uint frameIndex => (uint)math.max((long)__frameSyncSystemGroup.frameIndex + frameOffset, 0);
 
-    public uint realFrameIndex => (uint)(__frameSyncSystemGroup.realFrameIndex + frameOffset);
+    public uint realFrameIndex => (uint)math.max((long)__frameSyncSystemGroup.realFrameIndex + frameOffset, 0);
 
-    public uint syncFrameIndex => (uint)(__frameSyncSystemGroup.syncFrameIndex + frameOffset);
+    public uint syncFrameIndex => (uint)math.max((long)__frameSyncSystemGroup.syncFrameIndex + frameOffset, 0);
 
-    public uint clearFrameIndex => (uint)(__frameSyncSystemGroup.clearFrameIndex + frameOffset);
+    public uint clearFrameIndex => (uint)math.max((long)__frameSyncSystemGroup.clearFrameIndex + frameOffset, 0);
 
     public float delta => __time.frameDelta;
 

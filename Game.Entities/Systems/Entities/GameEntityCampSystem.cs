@@ -94,7 +94,7 @@ public partial struct GameEntityCampSystem : ISystem
                 result = campDefaults[index].value;
 
             var camp = camps[index];
-            if (camp.value == result)
+            if (camp.value != result)
             {
                 camp.value = result;
 

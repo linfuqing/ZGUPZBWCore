@@ -488,7 +488,7 @@ public partial class GameEntityActionSharedObjectFactorySystem : SystemBase
         if (!isAction && instance.parentEntity != Entity.Null)
         {
             var children = entityManager.HasComponent<GameEntitySharedActionChild>(instance.parentEntity) ?
-                entityManager.GetBuffer<GameEntitySharedActionChild>(instance.parentEntity) : default;
+                entityManager.GetBuffer<GameEntitySharedActionChild>(instance.parentEntity, true) : default;
             int childIndex = children.IsCreated ? children.Reinterpret<Entity>().AsNativeArray().IndexOf(entity) : -1;
             if (childIndex == -1)
             {

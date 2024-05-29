@@ -44,6 +44,7 @@ public struct GameQuestRewardData
     public GameQuestRewardType type;
     public int index;
     public int count;
+    public float chance;
 }
 
 [Serializable]

@@ -3,7 +3,13 @@ using Unity.Entities;
 using Unity.Physics.Systems;
 using ZG;
 
-[UpdateInGroup(typeof(FixedStepSimulationSystemGroup)), UpdateBefore(typeof(BuildPhysicsWorld))]
+[CreateAfter(typeof(GamePhysicsWorldBuildSystem)), 
+ CreateAfter(typeof(EndFramePhysicsSystem)), 
+ CreateAfter(typeof(StepPhysicsWorld)), 
+ CreateAfter(typeof(BuildPhysicsWorld)), 
+ CreateAfter(typeof(FixedStepSimulationSystemGroup)), 
+ UpdateInGroup(typeof(FixedStepSimulationSystemGroup)), 
+ UpdateBefore(typeof(BuildPhysicsWorld))]
 public partial class GamePhysicsWorldApplySystem : SystemBase
 {
     private static readonly FieldInfo __BuildPhysicsWorldInputDependencyToComplete = typeof(BuildPhysicsWorld).GetField("m_InputDependencyToComplete", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -11,6 +17,7 @@ public partial class GamePhysicsWorldApplySystem : SystemBase
 
     public int innerloopBatchCount = 1;
 
+    private SystemHandle __systemHandle;
     private SharedPhysicsWorld __physicsWorld;
     private BuildPhysicsWorld __buildPhysicsWorld;
     private StepPhysicsWorld __stepPhysicsWorld;
@@ -21,13 +28,14 @@ public partial class GamePhysicsWorldApplySystem : SystemBase
         base.OnCreate();
 
         World world = World;
-        __physicsWorld = world.GetOrCreateSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
+        __systemHandle = world.GetExistingSystem<GamePhysicsWorldBuildSystem>();
+        __physicsWorld = world.Unmanaged.GetUnsafeSystemRef<GamePhysicsWorldBuildSystem>(__systemHandle).physicsWorld;
 
-        __endFramePhysicsSystem = world.GetOrCreateSystemManaged<EndFramePhysicsSystem>();
-        __stepPhysicsWorld = world.GetOrCreateSystemManaged<StepPhysicsWorld>();
-        __buildPhysicsWorld = world.GetOrCreateSystemManaged<BuildPhysicsWorld>();
+        __endFramePhysicsSystem = world.GetExistingSystemManaged<EndFramePhysicsSystem>();
+        __stepPhysicsWorld = world.GetExistingSystemManaged<StepPhysicsWorld>();
+        __buildPhysicsWorld = world.GetExistingSystemManaged<BuildPhysicsWorld>();
 
-        world.GetOrCreateSystemManaged<FixedStepSimulationSystemGroup>().Timestep = 0.1f;
+        world.GetExistingSystemManaged<FixedStepSimulationSystemGroup>().Timestep = 0.1f;
     }
 
     protected override void OnStartRunning()
@@ -43,6 +51,11 @@ public partial class GamePhysicsWorldApplySystem : SystemBase
 
         __buildPhysicsWorld.CollisionWorldProxyGroup.CompleteDependency();
 
+        var world = World.Unmanaged;
+        ref var system = ref world.GetUnsafeSystemRef<GamePhysicsWorldBuildSystem>(__systemHandle);
+        if (system.isDirty)
+            __systemHandle.Update(world);
+        
         __physicsWorld.CopyTo(
             innerloopBatchCount, 
             __buildPhysicsWorld.JointEntityGroup, 

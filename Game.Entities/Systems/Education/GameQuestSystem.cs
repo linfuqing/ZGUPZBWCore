@@ -238,6 +238,7 @@ internal struct GameQuestManagerData
     public readonly bool Complete(
         int questIndex,
         in GameItemHandle itemHandle,
+        ref Random random, 
         ref DynamicBuffer<GameQuest> quests,
         ref DynamicBuffer<GameFormulaCommand> formulaCommands,
         ref NativeQueue<GameQuestItem>.ParallelWriter items,
@@ -263,6 +264,7 @@ internal struct GameQuestManagerData
         __Reward(
             info.rewardStartIndex, 
             info.rewardCount, 
+            random.NextFloat(), 
             itemHandle, 
             ref quests, 
             ref formulaCommands, 
@@ -278,6 +280,7 @@ internal struct GameQuestManagerData
         ref DynamicBuffer<GameQuest> quests,
         ref DynamicBuffer<GameFormulaCommand> formulaCommands,
         ref NativeQueue<GameQuestItem>.ParallelWriter items,
+        ref Random random, 
         out int money)
     {
         bool result = false;
@@ -303,6 +306,7 @@ internal struct GameQuestManagerData
             __Reward(
                 option.rewardStartIndex,
                 option.rewardCount, 
+                random.NextFloat(), 
                 itemHandle,
                 ref quests, 
                 ref formulaCommands,
@@ -318,6 +322,7 @@ internal struct GameQuestManagerData
     private readonly void __Reward(
         int rewardStartIndex, 
         int rewardCount, 
+        float chance, 
         in GameItemHandle itemHandle, 
         ref DynamicBuffer<GameQuest> quests,
         ref DynamicBuffer<GameFormulaCommand> formulaCommands,
@@ -331,38 +336,44 @@ internal struct GameQuestManagerData
         for (i = 0; i < rewardCount; ++i)
         {
             reward = __rewards[rewardStartIndex + i];
-            switch (reward.type)
+            if (reward.chance < chance)
+                chance -= reward.chance;
+            else
             {
-                case GameQuestRewardType.Quest:
-                    if (GameQuestUtility.IndexOf(reward.index, quests) == -1)
-                    {
-                        GameQuest temp;
-                        temp.index = reward.index;
-                        temp.conditionBits = 0;
-                        temp.status = GameQuestStatus.Normal;
+                switch (reward.type)
+                {
+                    case GameQuestRewardType.Quest:
+                        if (GameQuestUtility.IndexOf(reward.index, quests) == -1)
+                        {
+                            GameQuest temp;
+                            temp.index = reward.index;
+                            temp.conditionBits = 0;
+                            temp.status = GameQuestStatus.Normal;
 
-                        for (j = 0; j < reward.count; ++j)
-                            quests.Add(temp);
-                    }
-                    break;
-                case GameQuestRewardType.Formula:
-                    GameFormulaCommand formulaCommand;
-                    formulaCommand.index = reward.index;
-                    formulaCommand.count = reward.count;
+                            for (j = 0; j < reward.count; ++j)
+                                quests.Add(temp);
+                        }
 
-                    formulaCommands.Add(formulaCommand);
-                    break;
-                case GameQuestRewardType.Item:
-                    GameQuestItem item;
-                    item.type = reward.index;
-                    item.count = reward.count;
-                    item.handle = itemHandle;
+                        break;
+                    case GameQuestRewardType.Formula:
+                        GameFormulaCommand formulaCommand;
+                        formulaCommand.index = reward.index;
+                        formulaCommand.count = reward.count;
 
-                    items.Enqueue(item);
-                    break;
-                case GameQuestRewardType.Money:
-                    money += reward.count;
-                    break;
+                        formulaCommands.Add(formulaCommand);
+                        break;
+                    case GameQuestRewardType.Item:
+                        GameQuestItem item;
+                        item.type = reward.index;
+                        item.count = reward.count;
+                        item.handle = itemHandle;
+
+                        items.Enqueue(item);
+                        break;
+                    case GameQuestRewardType.Money:
+                        money += reward.count;
+                        break;
+                }
             }
         }
     }
@@ -469,6 +480,7 @@ public struct GameQuestManager
     public readonly unsafe bool Complete(
         int questIndex,
         in GameItemHandle itemHandle,
+        ref Random random, 
         ref DynamicBuffer<GameQuest> quests,
         ref DynamicBuffer<GameFormulaCommand> formulaCommands,
         ref NativeQueue<GameQuestItem>.ParallelWriter items,
@@ -479,6 +491,7 @@ public struct GameQuestManager
         return _data->Complete(
             questIndex, 
             itemHandle, 
+            ref random, 
             ref quests, 
             ref formulaCommands, 
             ref items, 
@@ -491,6 +504,7 @@ public struct GameQuestManager
         ref DynamicBuffer<GameQuest> quests,
         ref DynamicBuffer<GameFormulaCommand> formulaCommands,
         ref NativeQueue<GameQuestItem>.ParallelWriter items,
+        ref Random random, 
         out int money)
     {
         __CheckRead();
@@ -501,6 +515,7 @@ public struct GameQuestManager
             ref quests, 
             ref formulaCommands, 
             ref items, 
+            ref random, 
             out money);
     }
 
@@ -598,6 +613,8 @@ public partial struct GameQuestSystem : ISystem
 {
     private struct Command
     {
+        public Random random;
+        
         [ReadOnly] 
         public GameItemManager.Hierarchy itemManager;
         
@@ -677,6 +694,7 @@ public partial struct GameQuestSystem : ISystem
                     ref quests,
                     ref formulaCommands,
                     ref items,
+                    ref random, 
                     out int moneyTemp);
 
                 money += moneyTemp;
@@ -716,6 +734,7 @@ public partial struct GameQuestSystem : ISystem
                     if (manager.Complete(
                         command.index,
                         itemHandle,
+                        ref random, 
                         ref quests,
                         ref formulaCommands,
                         ref items,
@@ -732,6 +751,8 @@ public partial struct GameQuestSystem : ISystem
     [BurstCompile]
     private struct CommandEx : IJobChunk
     {
+        public double time;
+        
         [ReadOnly] 
         public GameItemManager.Hierarchy itemManager;
         [ReadOnly]
@@ -753,6 +774,7 @@ public partial struct GameQuestSystem : ISystem
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             Command command;
+            command.random = new Random(RandomUtility.Hash(time) ^ (uint)unfilteredChunkIndex);
             command.itemManager = itemManager;
             command.manager = manager;
             command.itemRoots = chunk.GetNativeArray(ref itemRootType);
@@ -877,6 +899,7 @@ public partial struct GameQuestSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         CommandEx command;
+        command.time = state.WorldUnmanaged.Time.ElapsedTime;
         command.itemManager = __itemManager.hierarchy;
         command.manager = manager;
         command.itemRootType = __itemRootType.UpdateAsRef(ref state);

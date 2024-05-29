@@ -5,6 +5,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
+using UnityEngine;
 using ZG;
 
 [/*AlwaysUpdateSystem, */BurstCompile, UpdateInGroup(typeof(GameRollbackSystemGroup)), UpdateAfter(typeof(GameStatusSystemGroup))]
@@ -76,6 +77,8 @@ public partial struct GameContainerChildSystem : ISystem
                 child = children[i];
                 if (child.entity == Entity.Null)
                     continue;
+                
+                //Debug.LogError($"Fin ");
 
                 childIndex.value = child.index;
                 childIndex.entity = child.entity;
@@ -552,6 +555,9 @@ public partial struct GameContainerChildSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
+        //if(!__group.IsEmpty)
+            //Debug.LogError($"Container System {UnityEngine.Time.frameCount} : {state.World.Name}");
+        
         var childIndices = this.childIndices;
         var parentIndices = this.parentIndices;
 

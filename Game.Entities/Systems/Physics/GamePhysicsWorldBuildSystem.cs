@@ -11,6 +11,9 @@ public partial struct GamePhysicsWorldBuildSystem : ISystem
 {
     public static readonly int InnerloopBatchCount = 4;
 
+    private int __timeFrameCount;
+    
+    private EntityQuery __timeFrameGroup;
     private EntityQuery __physicsStepGroup;
     private EntityQuery __staticEntityGroup;
     private EntityQuery __dynamicEntityGroup;
@@ -28,6 +31,8 @@ public partial struct GamePhysicsWorldBuildSystem : ISystem
     private ComponentTypeHandle<PhysicsGravityFactor> __physicsGravityFactorType;
     private ComponentTypeHandle<PhysicsDamping> __physicsDampingType;
 
+    public bool isDirty => __timeFrameCount != __timeFrameGroup.GetSingleton<TimeFrame>().count;
+
     public SharedPhysicsWorld physicsWorld
     {
         get;
@@ -35,47 +40,32 @@ public partial struct GamePhysicsWorldBuildSystem : ISystem
         private set;
     }
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         state.SetAlwaysUpdateSystem(true);
-
-        physicsWorld = new SharedPhysicsWorld(0, 0, Allocator.Persistent);
+        
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __timeFrameGroup = builder
+                .WithAll<TimeFrame>()
+                .WithOptions(EntityQueryOptions.IncludeSystems)
+                .Build(ref state);
 
         __physicsStepGroup = state.GetEntityQuery(
             ComponentType.ReadOnly<PhysicsStep>());
 
-        __dynamicEntityGroup = state.GetEntityQuery(new EntityQueryDesc
-        {
-            All = new ComponentType[]
-            {
-                ComponentType.ReadOnly<PhysicsVelocity>(),
-                ComponentType.ReadOnly<Translation>(),
-                ComponentType.ReadOnly<Rotation>()
-            },
-            None = new ComponentType[]
-            {
-                typeof(PhysicsExclude)
-            }
-        });
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __dynamicEntityGroup = builder
+                .WithAll<PhysicsVelocity, Translation, Rotation>()
+                .WithNone<PhysicsExclude>()
+                .Build(ref state);
 
-        __staticEntityGroup = state.GetEntityQuery(new EntityQueryDesc
-        {
-            All = new ComponentType[]
-            {
-                ComponentType.ReadOnly<PhysicsCollider>()
-            },
-            Any = new ComponentType[]
-            {
-                ComponentType.ReadOnly<LocalToWorld>(),
-                ComponentType.ReadOnly<Translation>(),
-                ComponentType.ReadOnly<Rotation>()
-            },
-            None = new ComponentType[]
-            {
-                typeof(PhysicsExclude),
-                typeof(PhysicsVelocity)
-            }
-        });
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __staticEntityGroup = builder
+                .WithAll<PhysicsCollider>()
+                .WithAny<LocalToWorld, Translation, Rotation>()
+                .WithNone<PhysicsExclude, PhysicsVelocity>()
+                .Build(ref state);
 
         __entityType = state.GetEntityTypeHandle();
         __parentType = state.GetComponentTypeHandle<Parent>(true);
@@ -89,8 +79,11 @@ public partial struct GamePhysicsWorldBuildSystem : ISystem
         __physicsMassOverrideType = state.GetComponentTypeHandle<PhysicsMassOverride>(true);
         __physicsGravityFactorType = state.GetComponentTypeHandle<PhysicsGravityFactor>(true);
         __physicsDampingType = state.GetComponentTypeHandle<PhysicsDamping>(true);
+        
+        physicsWorld = new SharedPhysicsWorld(0, 0, Allocator.Persistent);
     }
 
+    //[BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
         physicsWorld.Dispose();
@@ -99,6 +92,8 @@ public partial struct GamePhysicsWorldBuildSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
+        __timeFrameCount = __timeFrameGroup.GetSingleton<TimeFrame>().count;
+        
         PhysicsStep physicsStep;
         if (__physicsStepGroup.IsEmptyIgnoreFilter)
             physicsStep = PhysicsStep.Default;
