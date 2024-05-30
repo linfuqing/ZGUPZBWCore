@@ -708,9 +708,10 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
     {
         base.Init(entity, assigner);
 
-        /*GameEntityCommandVersion version;
+        //注掉就会不同步
+        GameEntityCommandVersion version;
         version.value = 1;
-        assigner.SetComponentData(entity, version);*/
+        assigner.SetComponentData(entity, version);
 
         if (__entityComponent == null)
             __entityComponent = transform.GetComponentInParent<GameEntityComponentEx>(true);
@@ -721,17 +722,16 @@ public class GameEntityActorComponent : ComponentDataProxy<GameEntityActorData>,
             entity, 
             __entityComponent.actionEntityArchetype);
 
-        /*GameEntityEventInfo eventInfo;
+        GameEntityEventInfo eventInfo;
         eventInfo.version = 0;
-        eventInfo.timeEventHandle = TimeEventHandle.Null;
-        assigner.SetComponentData(entity, eventInfo);*/
+        eventInfo.time = 0.0;
+        assigner.SetComponentData(entity, eventInfo);
 
-        /*GameEntityBreakInfo breakInfo;
+        GameEntityBreakInfo breakInfo;
         breakInfo.version = 0;
         breakInfo.delayIndex = -1;
         breakInfo.commandTime = 0.0;
-        //breakInfo.timeEventHandle = TimeEventHandle.Null;
-        assigner.SetComponentData(entity, breakInfo);*/
+        assigner.SetComponentData(entity, breakInfo);
 
         if (_mass > math.FLT_MIN_NORMAL)
         {
