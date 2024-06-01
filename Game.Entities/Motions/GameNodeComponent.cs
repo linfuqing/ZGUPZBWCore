@@ -777,9 +777,9 @@ public class GameNodeComponent : EntityProxyComponent, IEntityComponent
 
         int version = UpdateVersion(
             GameNodeVersion.Type.Position, 
-            0, 
+            0 
 #if GAME_DEBUG_COMPARSION
-            frameIndex
+            , frameIndex
 #endif
             );
 
