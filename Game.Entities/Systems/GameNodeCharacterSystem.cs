@@ -452,7 +452,8 @@ public partial struct GameNodeCharacterSystem : ISystem
         public FixedString32Bytes hitsName;
         public FixedString32Bytes angleName;
         public FixedString32Bytes characterAngleName;
-        public FixedString32Bytes flagName;
+        public FixedString32Bytes directName;
+        public FixedString32Bytes dragName;
         public FixedString32Bytes distanceName;
         public FixedString32Bytes surfaceRotationName;
         public FixedString32Bytes velocityName;
@@ -480,7 +481,7 @@ public partial struct GameNodeCharacterSystem : ISystem
             bool isKinematic = index < characterVelocities.Length,
                 isCanSwim = (instance.flag & GameNodeCharacterData.Flag.CanSwim) == GameNodeCharacterData.Flag.CanSwim,
                 isFlyOnly = (instance.flag & GameNodeCharacterData.Flag.FlyOnly) == GameNodeCharacterData.Flag.FlyOnly;
-            GameNodeAngle angle = angles[index];
+            var angle = angles[index];
             var characterAngle = characterAngles[index];
             ///必须,否则将导致ACT之后不同步
             bool isAngleChanged = angle.value != characterAngle.value;
@@ -514,7 +515,8 @@ public partial struct GameNodeCharacterSystem : ISystem
             stream.Assert(oldStatusName, oldStatus);
             stream.Assert(angleName, angle.value);
             stream.Assert(characterAngleName, characterAngle.value);
-            stream.Assert(flagName, direct);
+            stream.Assert(directName, directs[index].value);
+            stream.Assert(dragName, drag.velocity);
             stream.Assert(distanceName, indirect.value);
             stream.Assert(velocityName, indirect.velocity);
 #endif
@@ -2081,7 +2083,8 @@ public partial struct GameNodeCharacterSystem : ISystem
         public FixedString32Bytes hitsName;
         public FixedString32Bytes angleName;
         public FixedString32Bytes characterAngleName;
-        public FixedString32Bytes flagName;
+        public FixedString32Bytes directName;
+        public FixedString32Bytes dragName;
         public FixedString32Bytes distanceName;
         public FixedString32Bytes surfaceRotationName;
         public FixedString32Bytes velocityName;
@@ -2144,7 +2147,8 @@ public partial struct GameNodeCharacterSystem : ISystem
             applyTransforms.hitsName = hitsName;
             applyTransforms.angleName = angleName;
             applyTransforms.characterAngleName = characterAngleName;
-            applyTransforms.flagName = flagName;
+            applyTransforms.directName = directName;
+            applyTransforms.dragName = dragName;
             applyTransforms.distanceName = distanceName;
             applyTransforms.surfaceRotationName = surfaceRotationName;
             applyTransforms.velocityName = velocityName;
@@ -2333,7 +2337,8 @@ public partial struct GameNodeCharacterSystem : ISystem
             applyTransforms.hitsName = "hits";
             applyTransforms.angleName = "angle";
             applyTransforms.characterAngleName = "characterAngle";
-            applyTransforms.flagName = "flag";
+            applyTransforms.directName = "direct";
+            applyTransforms.dragName = "drag";
             applyTransforms.distanceName = "distance";
             applyTransforms.surfaceRotationName = "surfaceRotation";
             applyTransforms.velocityName = "velocity";

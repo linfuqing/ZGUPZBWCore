@@ -274,6 +274,11 @@ public struct GameNodeVelocityComponent : IBufferElementData
     public GameDeadline time;
 
     public float3 value;
+
+    public override string ToString()
+    {
+        return $"GameNodeVelocityComponent({mode}, {duration}, {time}, {value})";
+    }
 }
 
 public struct GameNodeDesiredStatus : IComponentData
@@ -314,7 +319,7 @@ public struct GameNodeDirection : IComponentData
 
     public override string ToString()
     {
-        return $"{version} : {value}";
+        return $"GameNodeDirection({version} : {value})";
     }
 }
 
@@ -370,6 +375,19 @@ public struct GameNodeVersion : IComponentData, IEnableableComponent
 
     public Type type;
     public int value;
+
+#if GAME_DEBUG_COMPARSION
+    public uint frameIndex;
+#endif
+    
+    public override string ToString()
+    {
+        return $"Version({type}, {value})"
+#if GAME_DEBUG_COMPARSION
+               + $"[{frameIndex}]"
+#endif
+            ;
+    }
 }
 
 [RequireComponent(typeof(GameNodeStatusComponent))]
@@ -674,14 +692,24 @@ public class GameNodeComponent : EntityProxyComponent, IEntityComponent
     public int SetDirection(
         EntityCommander commander, 
         float3 value, 
-        int version = -1, 
+#if GAME_DEBUG_COMPARSION
+        uint frameIndex, 
+#endif
+        int version = 0, 
         GameNodeDirection.Mode mode = GameNodeDirection.Mode.Forward)
     {
         /*float length = math.length(direction);
         if (length > 1.0f)
             direction /= length;*/
 
-        version = version < 0 ? UpdateVersion(commander, GameNodeVersion.Type.Direction) : version;
+        version = UpdateVersion(
+            commander, 
+            GameNodeVersion.Type.Direction, 
+            version
+#if GAME_DEBUG_COMPARSION
+            , frameIndex
+#endif
+            );
 
         /*if(__syncSystemGroup == null)
             __syncSystemGroup = world.GetExistingSystem<GameSyncSystemGroup>();
@@ -701,13 +729,25 @@ public class GameNodeComponent : EntityProxyComponent, IEntityComponent
         return version;
     }
 
-    public int SetDirection(in float3 value, int version = -1, GameNodeDirection.Mode mode = GameNodeDirection.Mode.Forward)
+    public int SetDirection(
+        in float3 value, 
+#if GAME_DEBUG_COMPARSION
+        uint frameIndex, 
+#endif
+        int version = 0, 
+        GameNodeDirection.Mode mode = GameNodeDirection.Mode.Forward)
     {
         /*float length = math.length(direction);
         if (length > 1.0f)
             direction /= length;*/
 
-        version = version < 0 ? UpdateVersion(GameNodeVersion.Type.Direction) : version;
+        version = UpdateVersion(
+            GameNodeVersion.Type.Direction, 
+            version
+#if GAME_DEBUG_COMPARSION
+            , frameIndex
+#endif
+            );
 
         /*if(__syncSystemGroup == null)
             __syncSystemGroup = world.GetExistingSystem<GameSyncSystemGroup>();
@@ -725,11 +765,23 @@ public class GameNodeComponent : EntityProxyComponent, IEntityComponent
         return version;
     }
     
-    public int SetPosition(in float3 value, GameNodePosition.Mode mode = GameNodePosition.Mode.Normal, bool isClear = true)
+    public int SetPosition(
+        in float3 value, 
+#if GAME_DEBUG_COMPARSION
+        uint frameIndex, 
+#endif
+        GameNodePosition.Mode mode = GameNodePosition.Mode.Normal, 
+        bool isClear = true)
     {
         //Debug.Log($"{world.Name} : {transform.root.name} : {value}");
 
-        int version = UpdateVersion(GameNodeVersion.Type.Position);
+        int version = UpdateVersion(
+            GameNodeVersion.Type.Position, 
+            0, 
+#if GAME_DEBUG_COMPARSION
+            frameIndex
+#endif
+            );
 
         GameNodeDirection direction;
         direction.mode = GameNodeDirection.Mode.None;
@@ -756,12 +808,22 @@ public class GameNodeComponent : EntityProxyComponent, IEntityComponent
     public int SetPosition(
         EntityCommander commander, 
         in float3 value, 
+#if GAME_DEBUG_COMPARSION
+        uint frameIndex, 
+#endif
         GameNodePosition.Mode mode = GameNodePosition.Mode.Normal, 
         bool isClear = true)
     {
         //Debug.Log($"{world.Name} : {transform.root.name} : {value}");
 
-        int version = UpdateVersion(commander, GameNodeVersion.Type.Position);
+        int version = UpdateVersion(
+            commander, 
+            GameNodeVersion.Type.Position, 
+            0
+#if GAME_DEBUG_COMPARSION
+            , frameIndex
+#endif
+            );
 
         Entity entity = base.entity;
 
@@ -797,7 +859,11 @@ public class GameNodeComponent : EntityProxyComponent, IEntityComponent
         this.SetBuffer<GameNodePosition>();
     }
 
-    public void Clear(EntityCommander commander)
+    public void Clear(EntityCommander commander
+#if GAME_DEBUG_COMPARSION
+        , uint frameIndex
+#endif
+        )
     {
         Entity entity = base.entity;
 
@@ -813,39 +879,78 @@ public class GameNodeComponent : EntityProxyComponent, IEntityComponent
         direct.value = float3.zero;
         commander.SetComponentData(entity, direct);
 
-        SetDirection(commander, 0.0f);
+        SetDirection(
+            commander, 
+            0.0f
+#if GAME_DEBUG_COMPARSION
+            , frameIndex
+#endif
+            );
 
         commander.SetComponentData<GameNodeDelay>(entity, default);
 
         commander.SetBuffer<GameNodeVelocityComponent>(entity);
     }
 
-    public int UpdateVersion(GameNodeVersion.Type type)
+    public int UpdateVersion(
+        GameNodeVersion.Type type, 
+        int origin
+#if GAME_DEBUG_COMPARSION
+        , uint frameIndex
+#endif
+        )
     {
-        var gameObjectEntity = base.gameObjectEntity;
-        var versionCommand = gameObjectEntity.GetComponentData<GameNodeVersionCommand>();
-        var version = gameObjectEntity.GetComponentData<GameNodeVersion>();
-        version.type = type;
-        version.value = math.max(version.value, versionCommand.value) + 1;
-        gameObjectEntity.SetComponentData(version);
-
-        gameObjectEntity.SetComponentEnabled<GameNodeVersion>(true);
-
-        return version.value;
-    }
-
-    public int UpdateVersion(EntityCommander commander, GameNodeVersion.Type type)
-    {
-        var gameObjectEntity = base.gameObjectEntity;
-        var version = gameObjectEntity.GetComponentData<GameNodeVersion>();
-        var versionCommand = gameObjectEntity.GetComponentData<GameNodeVersionCommand>();
-        versionCommand.value = math.max(versionCommand.value, version.value) + 1;
-        gameObjectEntity.SetComponentData(versionCommand);
+        GameNodeVersion version;
+        GameNodeVersionCommand versionCommand;
+        if (origin == 0)
+        {
+            var gameObjectEntity = base.gameObjectEntity;
+            versionCommand = gameObjectEntity.GetComponentData<GameNodeVersionCommand>();
+            version = gameObjectEntity.GetComponentData<GameNodeVersion>();
+            versionCommand.value = math.max(version.value, versionCommand.value) + 1;
+        }
+        else
+            versionCommand.value = origin;
 
         version.type = type;
         version.value = versionCommand.value;
-        commander.SetComponentData(entity, version);
+#if GAME_DEBUG_COMPARSION
+        version.frameIndex = frameIndex;
+#endif
+        gameObjectEntity.SetComponentData(version);
+        gameObjectEntity.SetComponentEnabled<GameNodeVersion>(true);
 
+        return versionCommand.value;
+    }
+
+    public int UpdateVersion(
+        EntityCommander commander, 
+        GameNodeVersion.Type type, 
+        int origin
+#if GAME_DEBUG_COMPARSION
+        , uint frameIndex
+#endif
+        )
+    {
+        GameNodeVersion version;
+        GameNodeVersionCommand versionCommand;
+        if (origin == 0)
+        {
+            var gameObjectEntity = base.gameObjectEntity;
+            version = gameObjectEntity.GetComponentData<GameNodeVersion>();
+            versionCommand = gameObjectEntity.GetComponentData<GameNodeVersionCommand>();
+            versionCommand.value = math.max(versionCommand.value, version.value) + 1;
+            gameObjectEntity.SetComponentData(versionCommand);
+        }
+        else
+            versionCommand.value = origin;
+
+        version.type = type;
+        version.value = versionCommand.value;
+#if GAME_DEBUG_COMPARSION
+        version.frameIndex = frameIndex;
+#endif
+        commander.SetComponentData(entity, version);
         commander.SetComponentEnabled<GameNodeVersion>(entity, true);
 
         return versionCommand.value;
@@ -855,7 +960,7 @@ public class GameNodeComponent : EntityProxyComponent, IEntityComponent
     {
         if (this.GetFactory().GetEntity(entity, true) != Entity.Null)
             return;
-        
+
         GameNodeSurface surface;
         surface.rotation = quaternion.identity;
         assigner.SetComponentData(entity, surface);

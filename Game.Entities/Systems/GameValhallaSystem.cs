@@ -63,6 +63,8 @@ public struct GameValhallaDefinition
 
     public struct Level
     {
+        public int type;
+        
         public float maxExp;
 
         public LevelExp expToDestroy;
@@ -982,7 +984,8 @@ public partial struct GameValhallaSystem : ISystem
         {
             var command = commands[index];
 
-            int itemType = definition.Value.soulToItemTypes[command.value.type];
+            ref var definition = ref this.definition.Value;
+            int type = definition.levels[command.value.levelIndex].type, itemType = definition.soulToItemTypes[type];
             if (itemType == -1)
                 return;
 
@@ -1001,7 +1004,7 @@ public partial struct GameValhallaSystem : ISystem
             {
                 GameValhallaCommand result;
                 result.variant = command.value.variant;
-                result.type = command.value.type;
+                result.type = type;
                 result.entity = command.entity;
                 result.transform = command.transform;
                 result.nickname = command.value.nickname;
@@ -1024,7 +1027,7 @@ public partial struct GameValhallaSystem : ISystem
             assigner.SetComponentData(entity, item);
 
             GameItemObjectData instance;
-            instance.type = command.value.type;
+            instance.type = type;
             assigner.SetComponentData(entity, instance);
 
             GameItemName name;

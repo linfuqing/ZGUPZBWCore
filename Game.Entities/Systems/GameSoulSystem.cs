@@ -10,7 +10,7 @@ using Random = Unity.Mathematics.Random;
 
 public struct GameSoulData
 {
-    public int type;
+    //public int type;
     public int variant;
     public int levelIndex;
     public float power;
@@ -268,7 +268,7 @@ public struct GameSoulManager : IDisposable
         var soul = souls[soulIndex];
         var level = __levels[soul.data.levelIndex];
         var next = __nexts[level.nextStartIndex + nextIndex];
-        soul.data.type = __levels[next.levelIndex].type;
+        //soul.data.type = __levels[next.levelIndex].type;
         soul.data.levelIndex = next.levelIndex;
         soul.data.power += next.power * soul.data.exp / level.maxExp;
         soul.data.exp = 0.0f;
@@ -317,7 +317,7 @@ public partial struct GameSoulSystem : ISystem
             if (!souls.HasBuffer(result.entity))
                 return;
 
-            result.value.type = instances[index].type;
+            //result.value.type = instances[index].type;
             result.value.nickname = names[index].value;
             result.value.variant = variants[index].value;
             result.value.levelIndex = levelHandle - 1;

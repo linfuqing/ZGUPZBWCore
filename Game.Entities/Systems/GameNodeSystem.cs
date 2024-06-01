@@ -327,7 +327,7 @@ public partial struct GameNodeSystem : ISystem
             //instance.angularSpeed = math.abs(instance.angularSpeed * speedScale);
 
 #if GAME_DEBUG_COMPARSION
-            //UnityEngine.Debug.Log($"Node {entityIndices[index].value} : {frameIndex} : {entityArray[index].Index} : {status.value} : {this.delay[index]} : {speedScales[index].value.value} : {this.translations[index].Value}");
+            //UnityEngine.Debug.Log($"Node {entityIndices[index].value} : {frameIndex} : {entityArray[index].Index} : {status.value} : {this.delay[index]} : {speedScales[index].value.value} : {this.translations[index].Value} : {directions[index]}");
 
             stream.Begin(entityIndices[index].value);
             stream.Assert(statusName, status.value);

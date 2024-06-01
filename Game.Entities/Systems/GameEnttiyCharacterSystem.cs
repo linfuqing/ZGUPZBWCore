@@ -17,8 +17,12 @@ public partial struct GameEntityCharacterSystem : ISystem
 
         [ReadOnly]
         public CollisionWorld collisionWorld;
+        [ReadOnly] 
+        public ComponentLookup<GameEntityCamp> campMap;
         [ReadOnly]
         public NativeArray<Entity> entityArray;
+        [ReadOnly] 
+        public NativeArray<GameEntityCamp> camps;
         [ReadOnly]
         public BufferAccessor<GameEntityCharacterHit> instances;
         [ReadOnly]
@@ -39,12 +43,14 @@ public partial struct GameEntityCharacterSystem : ISystem
             Entity entity = entityArray[index];
             float hit;
             uint belongsTo;
-            int numInstance = instances.Length, numDistanceHits = distanceHits.Length, i, j;
+            int i, j, numInstance = instances.Length, numDistanceHits = distanceHits.Length, camp = camps[index].value;
             for (i = 0; i < numDistanceHits; ++i)
             {
                 distanceHit = distanceHits[i];
                 rigidbody = rigidbodies[distanceHit.value.RigidBodyIndex];
-                if (!healthDamages.HasBuffer(rigidbody.Entity))
+                if (!healthDamages.HasBuffer(rigidbody.Entity) || 
+                    !campMap.HasComponent(rigidbody.Entity) || 
+                    campMap[rigidbody.Entity].value == camp)
                     continue;
 
                 ref var collider = ref rigidbody.Collider.Value;
@@ -79,7 +85,11 @@ public partial struct GameEntityCharacterSystem : ISystem
         [ReadOnly]
         public CollisionWorldContainer collisionWorld;
         [ReadOnly]
+        public ComponentLookup<GameEntityCamp> camps;
+        [ReadOnly]
         public EntityTypeHandle entityType;
+        [ReadOnly]
+        public ComponentTypeHandle<GameEntityCamp> campType;
         [ReadOnly]
         public BufferTypeHandle<GameEntityCharacterHit> instanceType;
         [ReadOnly]
@@ -93,7 +103,9 @@ public partial struct GameEntityCharacterSystem : ISystem
             calculateHits.deltaTime = deltaTime;
             calculateHits.time = time;
             calculateHits.collisionWorld = collisionWorld;
+            calculateHits.campMap = camps;
             calculateHits.entityArray = chunk.GetNativeArray(entityType);
+            calculateHits.camps = chunk.GetNativeArray(ref campType);
             calculateHits.instances = chunk.GetBufferAccessor(ref instanceType);
             calculateHits.distanceHits = chunk.GetBufferAccessor(ref distanceHitType);
             calculateHits.healthDamages = healthDamages;
@@ -105,13 +117,33 @@ public partial struct GameEntityCharacterSystem : ISystem
     }
 
     private EntityQuery __group;
-    private SharedPhysicsWorld __physicsWorld;
 
+    private ComponentLookup<GameEntityCamp> __camps;
+    
+    private EntityTypeHandle __entityType;
+    private ComponentTypeHandle<GameEntityCamp> __campType;
+    private BufferTypeHandle<GameEntityCharacterHit> __instanceType;
+    private BufferTypeHandle<GameNodeCharacterDistanceHit> __distanceHitType;
+
+    private BufferLookup<GameEntityHealthDamage> __healthDamages;
+
+    private SharedPhysicsWorld __physicsWorld;
+    
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameEntityCharacterHit>(),
-            ComponentType.ReadOnly<GameNodeCharacterDistanceHit>());
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                .WithAll<GameEntityCharacterHit, GameNodeCharacterDistanceHit>()
+                .Build(ref state);
+
+        __camps = state.GetComponentLookup<GameEntityCamp>(true);
+        
+        __entityType = state.GetEntityTypeHandle();
+        __campType = state.GetComponentTypeHandle<GameEntityCamp>(true);
+        __instanceType = state.GetBufferTypeHandle<GameEntityCharacterHit>(true);
+        __distanceHitType = state.GetBufferTypeHandle<GameNodeCharacterDistanceHit>(true);
+        __healthDamages = state.GetBufferLookup<GameEntityHealthDamage>();
 
         __physicsWorld = state.World.GetOrCreateSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
     }
@@ -130,14 +162,16 @@ public partial struct GameEntityCharacterSystem : ISystem
         calculateHits.deltaTime = time.DeltaTime;
         calculateHits.time = time.ElapsedTime;
         calculateHits.collisionWorld = __physicsWorld.collisionWorld;
-        calculateHits.entityType = state.GetEntityTypeHandle();
-        calculateHits.instanceType = state.GetBufferTypeHandle<GameEntityCharacterHit>(true);
-        calculateHits.distanceHitType = state.GetBufferTypeHandle<GameNodeCharacterDistanceHit>(true);
-        calculateHits.healthDamages = state.GetBufferLookup<GameEntityHealthDamage>();
+        calculateHits.camps = __camps.UpdateAsRef(ref state);
+        calculateHits.entityType = __entityType.UpdateAsRef(ref state);
+        calculateHits.campType = __campType.UpdateAsRef(ref state);
+        calculateHits.instanceType = __instanceType.UpdateAsRef(ref state);
+        calculateHits.distanceHitType = __distanceHitType.UpdateAsRef(ref state);
+        calculateHits.healthDamages = __healthDamages.UpdateAsRef(ref state);
 
         ref var lookupJobManager = ref __physicsWorld.lookupJobManager;
 
-        var jobHandle = calculateHits.Schedule(__group, JobHandle.CombineDependencies(lookupJobManager.readOnlyJobHandle, state.Dependency));
+        var jobHandle = calculateHits.ScheduleByRef(__group, JobHandle.CombineDependencies(lookupJobManager.readOnlyJobHandle, state.Dependency));
 
         lookupJobManager.AddReadOnlyDependency(jobHandle);
 

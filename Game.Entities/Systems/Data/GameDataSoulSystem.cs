@@ -4,7 +4,7 @@ using Unity.Entities;
 using Unity.Jobs;
 using ZG;
 
-[assembly: RegisterGenericJobType(typeof(EntityDataIndexBufferInit<GameSoul, GameSoulTypeWrapper>))]
+//[assembly: RegisterGenericJobType(typeof(EntityDataIndexBufferInit<GameSoul, GameSoulTypeWrapper>))]
 
 #region GameSoul
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<GameDataSoulSerializationSystem.Serializer, GameDataSoulSerializationSystem.SerializerFactory>))]
@@ -21,7 +21,7 @@ using ZG;
 //[assembly: EntityDataDeserialize(typeof(GameSoulIndex), (int)GameDataConstans.Version)]
 #endregion
 
-public struct GameSoulTypeWrapper : IEntityDataIndexReadWriteWrapper<GameSoul>, 
+/*public struct GameSoulTypeWrapper : IEntityDataIndexReadWriteWrapper<GameSoul>, 
     IEntityDataSerializationIndexWrapper<GameSoul>, 
     IEntityDataDeserializationIndexWrapper<GameSoul>
 {
@@ -55,9 +55,9 @@ public struct GameSoulTypeWrapper : IEntityDataIndexReadWriteWrapper<GameSoul>,
     {
         return EntityDataIndexReadWriteWrapperUtility.Deserialize<GameSoul, GameSoulTypeWrapper>(ref this, ref reader, guidIndices);
     }
-}
+}*/
 
-[BurstCompile,
+/*[BurstCompile,
     CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
     UpdateInGroup(typeof(EntityDataSerializationSystemGroup), OrderFirst = true),
     UpdateBefore(typeof(EntityDataSerializationTypeGUIDSystem)), 
@@ -122,22 +122,20 @@ public partial struct GameDataSoulSerializationInitSystem : ISystem
         state.Dependency = jobHandle;
     }
 
-}
-
-//[DisableAutoCreation, /*UpdateAfter(typeof(GameDataSoulTypeContainerSerializationSystem)), */UpdateAfter(typeof(GameDataLevelContainerSerializationSystem))]
+}*/
 
 [BurstCompile,
     EntityDataSerializationSystem(typeof(GameSoul)),
     CreateAfter(typeof(GameDataLevelContainerSerializationSystem)),
-    CreateAfter(typeof(GameDataSoulSerializationInitSystem)),
+    //CreateAfter(typeof(GameDataSoulSerializationInitSystem)),
     UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server"),
     UpdateAfter(typeof(GameDataLevelContainerSerializationSystem))]
 public partial struct GameDataSoulSerializationSystem : ISystem
 {
     public struct Serializer : IEntityDataSerializer
     {
-        [ReadOnly]
-        public SharedHashMap<int, int>.Reader typeGUIDIndices;
+        //[ReadOnly]
+        //public SharedHashMap<int, int>.Reader typeGUIDIndices;
 
         [ReadOnly]
         public SharedHashMap<int, int>.Reader levelGUIDIndices;
@@ -149,23 +147,15 @@ public partial struct GameDataSoulSerializationSystem : ISystem
         {
             var instances = this.instances[index];
             GameSoul instance;
-            int numInstances = instances.Length, activeCount = 0;
-            for(int i = 0; i < numInstances; ++i)
-            {
-                if (instances[i].data.type == -1)
-                    continue;
-
-                ++activeCount;
-            }
-
-            writer.Write(activeCount);
+            int numInstances = instances.Length;
+            writer.Write(numInstances);
             for (int i = 0; i < numInstances; ++i)
             {
                 instance = instances[i];
-                if (instance.data.type == -1)
-                    continue;
+                //if (instance.data.type == -1)
+                //    continue;
 
-                instance.data.type = typeGUIDIndices[instance.data.type];
+                //instance.data.type = typeGUIDIndices[instance.data.type];
                 instance.data.levelIndex = levelGUIDIndices[instance.data.levelIndex];
 
                 writer.Write(instance);
@@ -175,8 +165,8 @@ public partial struct GameDataSoulSerializationSystem : ISystem
 
     public struct SerializerFactory : IEntityDataFactory<Serializer>
     {
-        [ReadOnly]
-        public SharedHashMap<int, int>.Reader typeGUIDIndices;
+        //[ReadOnly]
+        //public SharedHashMap<int, int>.Reader typeGUIDIndices;
 
         [ReadOnly]
         public SharedHashMap<int, int>.Reader levelGUIDIndices;
@@ -187,7 +177,7 @@ public partial struct GameDataSoulSerializationSystem : ISystem
         public Serializer Create(in ArchetypeChunk chunk, int unfilteredChunkIndex)
         {
             Serializer serializer;
-            serializer.typeGUIDIndices = typeGUIDIndices;
+            //serializer.typeGUIDIndices = typeGUIDIndices;
             serializer.levelGUIDIndices = levelGUIDIndices;
             serializer.instances = chunk.GetBufferAccessor(ref instanceType);
 
@@ -196,7 +186,7 @@ public partial struct GameDataSoulSerializationSystem : ISystem
     }
 
     private BufferTypeHandle<GameSoul> __instanceType;
-    private SharedHashMap<int, int> __typeGUIDIndices;
+    //private SharedHashMap<int, int> __typeGUIDIndices;
     private SharedHashMap<int, int> __levelGUIDIndices;
     private EntityDataSerializationSystemCore __core;
 
@@ -206,7 +196,7 @@ public partial struct GameDataSoulSerializationSystem : ISystem
         __instanceType = state.GetBufferTypeHandle<GameSoul>(true);
 
         var world = state.WorldUnmanaged;
-        __typeGUIDIndices = world.GetExistingSystemUnmanaged<EntityDataSerializationInitializationSystem>().typeGUIDIndices;
+        //__typeGUIDIndices = world.GetExistingSystemUnmanaged<EntityDataSerializationInitializationSystem>().typeGUIDIndices;
         __levelGUIDIndices = world.GetExistingSystemUnmanaged<GameDataLevelContainerSerializationSystem>().guidIndices;
 
         __core = EntityDataSerializationSystemCore.Create<GameSoul>(ref state);
@@ -221,21 +211,21 @@ public partial struct GameDataSoulSerializationSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        ref var typeGUIDIndicesJobManager = ref __typeGUIDIndices.lookupJobManager;
+        //ref var typeGUIDIndicesJobManager = ref __typeGUIDIndices.lookupJobManager;
         ref var levelGUIDIndicesJobManager = ref __levelGUIDIndices.lookupJobManager;
 
         SerializerFactory serializerFactory;
-        serializerFactory.typeGUIDIndices = __typeGUIDIndices.reader;
+        //serializerFactory.typeGUIDIndices = __typeGUIDIndices.reader;
         serializerFactory.levelGUIDIndices = __levelGUIDIndices.reader;
         serializerFactory.instanceType = __instanceType.UpdateAsRef(ref state);
 
-        state.Dependency = JobHandle.CombineDependencies(state.Dependency, typeGUIDIndicesJobManager.readOnlyJobHandle, levelGUIDIndicesJobManager.readOnlyJobHandle);
+        state.Dependency = JobHandle.CombineDependencies(state.Dependency, /*typeGUIDIndicesJobManager.readOnlyJobHandle, */levelGUIDIndicesJobManager.readOnlyJobHandle);
 
         __core.Update<Serializer, SerializerFactory>(ref serializerFactory, ref state);
 
         var jobHandle = state.Dependency;
 
-        typeGUIDIndicesJobManager.AddReadOnlyDependency(jobHandle);
+        //typeGUIDIndicesJobManager.AddReadOnlyDependency(jobHandle);
 
         levelGUIDIndicesJobManager.AddReadOnlyDependency(jobHandle);
     }
@@ -290,8 +280,8 @@ public partial struct GameDataSoulDeserializationSystem : ISystem
         [ReadOnly]
         public SharedList<int>.Reader guidIndices;
 
-        [ReadOnly]
-        public SharedList<int>.Reader typeGUIDIndices;
+        //[ReadOnly]
+        //public SharedList<int>.Reader typeGUIDIndices;
 
         public BufferAccessor<GameSoul> instances;
 
@@ -311,7 +301,7 @@ public partial struct GameDataSoulDeserializationSystem : ISystem
             {
                 ref var instance = ref instances.ElementAt(i);
 
-                instance.data.type = typeGUIDIndices[instance.data.type];
+                //instance.data.type = typeGUIDIndices[instance.data.type];
 
                 instance.data.levelIndex = guidIndices[instance.data.levelIndex];
             }
@@ -323,8 +313,8 @@ public partial struct GameDataSoulDeserializationSystem : ISystem
         [ReadOnly]
         public SharedList<int>.Reader guidIndices;
 
-        [ReadOnly]
-        public SharedList<int>.Reader typeGUIDIndices;
+        //[ReadOnly]
+        //public SharedList<int>.Reader typeGUIDIndices;
 
         public BufferTypeHandle<GameSoul> instanceType;
 
@@ -332,7 +322,7 @@ public partial struct GameDataSoulDeserializationSystem : ISystem
         {
             Deserializer deserializer;
             deserializer.guidIndices = guidIndices;
-            deserializer.typeGUIDIndices = typeGUIDIndices;
+            //deserializer.typeGUIDIndices = typeGUIDIndices;
             deserializer.instances = chunk.GetBufferAccessor(ref instanceType);
 
             return deserializer;
@@ -343,7 +333,7 @@ public partial struct GameDataSoulDeserializationSystem : ISystem
 
     private SharedList<int> __guidIndices;
 
-    private SharedList<int> __typeGUIDIndices;
+    //private SharedList<int> __typeGUIDIndices;
 
     private EntityDataDeserializationSystemCore __core;
 
@@ -354,7 +344,7 @@ public partial struct GameDataSoulDeserializationSystem : ISystem
 
         var world = state.WorldUnmanaged; 
         __guidIndices = world.GetExistingSystemUnmanaged<GameDataLevelContainerDeserializationSystem>().guidIndices;
-        __typeGUIDIndices = world.GetExistingSystemUnmanaged<EntityDataDeserializationInitializationSystem>().typeGUIDIndices;
+        //__typeGUIDIndices = world.GetExistingSystemUnmanaged<EntityDataDeserializationInitializationSystem>().typeGUIDIndices;
 
         __core = EntityDataDeserializationSystemCore.Create<GameSoul>(ref state);
     }
@@ -369,20 +359,20 @@ public partial struct GameDataSoulDeserializationSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         ref var guidIndicesJobManager = ref __guidIndices.lookupJobManager;
-        ref var typeGUIDIndicesJobManager = ref __typeGUIDIndices.lookupJobManager;
+        //ref var typeGUIDIndicesJobManager = ref __typeGUIDIndices.lookupJobManager;
 
-        state.Dependency = JobHandle.CombineDependencies(guidIndicesJobManager.readOnlyJobHandle, typeGUIDIndicesJobManager.readOnlyJobHandle, state.Dependency);
+        state.Dependency = JobHandle.CombineDependencies(guidIndicesJobManager.readOnlyJobHandle/*, typeGUIDIndicesJobManager.readOnlyJobHandle*/, state.Dependency);
 
         DeserializerFactory deserializerFactory;
         deserializerFactory.guidIndices = __guidIndices.reader;
-        deserializerFactory.typeGUIDIndices = __typeGUIDIndices.reader;//__typeSystem.indices;
+        //deserializerFactory.typeGUIDIndices = __typeGUIDIndices.reader;//__typeSystem.indices;
         deserializerFactory.instanceType = __instanceType.UpdateAsRef(ref state);
 
         __core.Update<Deserializer, DeserializerFactory>(ref deserializerFactory, ref state, true);
 
         var jobHandle = state.Dependency;
 
-        typeGUIDIndicesJobManager.AddReadOnlyDependency(jobHandle);
+        //typeGUIDIndicesJobManager.AddReadOnlyDependency(jobHandle);
         guidIndicesJobManager.AddReadOnlyDependency(jobHandle);
     }
 }

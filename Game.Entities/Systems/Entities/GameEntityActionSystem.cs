@@ -128,6 +128,11 @@ public partial struct GameEntityActionSystem : ISystem
         private NativeFactory<GameEntityActionDamager>.ParallelWriter __damagers;
         //private T __handler;
 
+#if GAME_DEBUG_COMPARSION
+        private uint __frameIndex;
+
+        private ComponentLookup<GameEntityIndex> __entityIndices;
+#endif
         public bool EarlyOutOnFirstHit => false;
 
         public int NumHits { get; private set; }
@@ -157,7 +162,12 @@ public partial struct GameEntityActionSystem : ISystem
             in ComponentLookup<GameEntityActorMass> masses,
             ref DynamicBuffer<GameActionEntity> actionEntities,
             ref NativeFactory<EntityData<GameNodeVelocityComponent>>.ParallelWriter impacts, 
-            ref NativeFactory<GameEntityActionDamager>.ParallelWriter damagers)
+            ref NativeFactory<GameEntityActionDamager>.ParallelWriter damagers
+#if GAME_DEBUG_COMPARSION    
+            , uint frameIndex, 
+            ComponentLookup<GameEntityIndex> entityIndices
+#endif
+            )
         {
             //hitValue = 0.0f;
 
@@ -186,6 +196,11 @@ public partial struct GameEntityActionSystem : ISystem
 
             NumHits = 0;
             MaxFraction = distance;
+            
+#if GAME_DEBUG_COMPARSION
+            __frameIndex = frameIndex;
+            __entityIndices = entityIndices;
+#endif
         }
 
         public bool AddHit(DistanceHit hit)
@@ -237,6 +252,8 @@ public partial struct GameEntityActionSystem : ISystem
                 impact.value.value = normal * math.min(__impactForce * __masses[rigidbody.Entity].inverseValue, __impactMaxSpeed > math.FLT_MIN_NORMAL ? __impactMaxSpeed : float.MaxValue);
                 impact.value.value = Math.ProjectOnPlaneSafe(impact.value.value, __up);
                 impact.entity = rigidbody.Entity;
+                
+                //UnityEngine.Debug.LogError($"{__entityIndices[rigidbody.Entity]} : {__frameIndex} : {impact.value}");
 
                 __impacts.Create().value = impact;
             }
@@ -282,6 +299,12 @@ public partial struct GameEntityActionSystem : ISystem
         private NativeFactory<GameEntityActionDamager>.ParallelWriter __damagers;
         private TQueryResultWrapper __wrapper;
 
+#if GAME_DEBUG_COMPARSION
+        private uint __frameIndex;
+
+        private ComponentLookup<GameEntityIndex> __entityIndices;
+#endif
+
         //public string log;
 
         public bool EarlyOutOnFirstHit => false;
@@ -321,7 +344,12 @@ public partial struct GameEntityActionSystem : ISystem
             ref NativeFactory<EntityData<GameNodeVelocityComponent>>.ParallelWriter impacts,
             ref NativeFactory<GameEntityActionHiter>.ParallelWriter hiters, 
             ref NativeFactory<GameEntityActionDamager>.ParallelWriter damagers, 
-            ref TQueryResultWrapper wrapper)
+            ref TQueryResultWrapper wrapper
+#if GAME_DEBUG_COMPARSION
+            , uint frameIndex, 
+            in ComponentLookup<GameEntityIndex> entityIndices
+#endif
+            )
         {
             //log = "";
             //hitValue = 0.0f;
@@ -360,6 +388,11 @@ public partial struct GameEntityActionSystem : ISystem
             MaxFraction = maxFraction;
 
             closestHit = default;
+            
+#if GAME_DEBUG_COMPARSION
+            __frameIndex = frameIndex;
+            __entityIndices = entityIndices;
+#endif
         }
 
         public bool AddHit(TQueryResult hit)
@@ -534,6 +567,8 @@ public partial struct GameEntityActionSystem : ISystem
 
                     __impacts.Create().value = impact;
 
+                    //UnityEngine.Debug.LogError($"{__entityIndices[entity]} : {__frameIndex} : {impact.value}");
+
                     //UnityEngine.Debug.Log($"{normal} : {position - transform.value.pos} : {__direction}");
 
                     //UnityEngine.Debug.Log($"Impact {entity.Index} : {(double)impact.value.time} : {__time} : {__start.value.pos} : {__start.value.rot.value} : {__end.value.pos} : {__end.value.rot.value}");
@@ -572,7 +607,11 @@ public partial struct GameEntityActionSystem : ISystem
                     __masses,
                     ref __actionEntities,
                     ref __impacts, 
-                    ref __damagers);
+                    ref __damagers
+#if GAME_DEBUG_COMPARSION    
+                    , __frameIndex, __entityIndices
+#endif
+                    );
 
                 __collisionWorld.CalculateDistance(pointDistanceInput, ref collector);
 
@@ -1358,7 +1397,11 @@ public partial struct GameEntityActionSystem : ISystem
                             ref impacts,
                             ref actionManager.hiters, 
                             ref actionManager.damagers, 
-                            ref wrapper);
+                            ref wrapper
+#if GAME_DEBUG_COMPARSION
+                            , frameIndex, entityIndices
+#endif
+                            );
                         collisionWorld.CastCollider(colliderCastInput, ref castCollector);
                         isDestroy = castCollector.Apply(out result);
 
@@ -1413,7 +1456,11 @@ public partial struct GameEntityActionSystem : ISystem
                             ref impacts,
                             ref actionManager.hiters,
                             ref actionManager.damagers,
-                            ref wrapper);
+                            ref wrapper
+#if GAME_DEBUG_COMPARSION    
+                            , frameIndex, entityIndices
+#endif
+                            );
                         collisionWorld.CalculateDistance(colliderDistanceInput, ref castCollector);
                         isDestroy = castCollector.Apply(out result);
                         

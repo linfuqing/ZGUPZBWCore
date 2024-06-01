@@ -163,7 +163,7 @@ public partial struct GameEntityCampSystem : ISystem
     {
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __group = builder
-                .WithAll<PhysicsTriggerEvent>()
+                .WithAll<PhysicsTriggerEvent, GameSoul>()
                 .WithAllRW<GameEntityCamp>()
                 .Build(ref state);
 

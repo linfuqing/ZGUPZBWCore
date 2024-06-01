@@ -172,12 +172,11 @@ public partial struct GameOwnerSystem : ISystem
         public ComponentLookup<GameOwner> owners;
 
         [ReadOnly]
-        public ComponentLookup<GameNodeStatus> states;
-
-        [ReadOnly]
         public ComponentLookup<GameEntityCampDefault> camps;
 
         public ComponentLookup<GameEntityCamp> entityCamps;
+
+        public ComponentLookup<GameNodeStatus> states;
 
         public BufferLookup<GameFollower> followers;
 
@@ -199,6 +198,24 @@ public partial struct GameOwnerSystem : ISystem
                 int numFollowers = followers.Length;
                 for (int i = 0; i < numFollowers; ++i)
                     UpdateCamp(followers[i].entity, value);
+            }
+        }
+
+        public void UpdateStatus(in Entity entity, in GameNodeStatus value)
+        {
+            if (followers.HasBuffer(entity))
+            {
+                var followers = this.followers[entity];
+                Entity follower;
+                int numFollowers = followers.Length;
+                for (int i = 0; i < numFollowers; ++i)
+                {
+                    follower = followers[i].entity;
+                    if (states.HasComponent(follower))
+                        states[follower] = value;
+                    
+                    UpdateStatus(follower, value);
+                }
             }
         }
 
@@ -228,8 +245,18 @@ public partial struct GameOwnerSystem : ISystem
                 }
             }
 
+            var status = states[entity];
+            bool isDead = states.HasComponent(entity) &&
+                          ((GameEntityStatus)status.value & GameEntityStatus.Mask) == GameEntityStatus.Dead;
+            Entity owner = owners[entity].entity;
+            if (owner != Entity.Null && isDead)
+            {
+                owner = Entity.Null;
+
+                UpdateStatus(entity, status);
+            }
+            
             GameEntityCamp camp;
-            var owner = states.HasComponent(entity) && ((GameEntityStatus)states[entity].value & GameEntityStatus.Mask) != GameEntityStatus.Dead ? owners[entity].entity : Entity.Null;
             if (followers.HasBuffer(owner))
             {
                 //UnityEngine.Debug.LogError($"{owner} Own {entity}");
@@ -402,16 +429,15 @@ public partial struct GameOwnerSystem : ISystem
                     .WithAll<GameEntityCamp>()
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
-        __groupToApply.SetChangedVersionFilter(ComponentType.ReadOnly<GameEntityCamp>());
 
         __entityType = state.GetEntityTypeHandle();
         __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
         //__oldStatusType = state.GetComponentTypeHandle<GameNodeOldStatus>(true);
         __ownerType = state.GetComponentTypeHandle<GameOwner>(true);
         __owners = state.GetComponentLookup<GameOwner>();
-        __states = state.GetComponentLookup<GameNodeStatus>(true);
         __camps = state.GetComponentLookup<GameEntityCampDefault>(true);
         __entityCamps = state.GetComponentLookup<GameEntityCamp>();
+        __states = state.GetComponentLookup<GameNodeStatus>();
         __followers = state.GetBufferLookup<GameFollower>();
         __followerType = state.GetBufferTypeHandle<GameFollower>();
 
@@ -465,9 +491,9 @@ public partial struct GameOwnerSystem : ISystem
         Own own;
         own.entityArray = __entities.AsDeferredJobArray();
         own.owners = owners;
-        own.states = __states.UpdateAsRef(ref state);
         own.camps = __camps.UpdateAsRef(ref state);
         own.entityCamps = entityCamps;
+        own.states = __states.UpdateAsRef(ref state);
         own.followers = followers;
         own.origins = origins.writer;
         jobHandle = own.ScheduleByRef(jobHandle);
