@@ -19,7 +19,7 @@ public enum GameQuestGuideVariantType
     Money,
     Entity,
     EntityToKill,
-    EntityToTame,
+    EntityToOwn,
     Item,
     ItemToUse,
     ItemToEquip,
@@ -527,7 +527,7 @@ public struct GameQuestGuideManager
 
     public ReadWrite readWrite => new ReadWrite(ref this);
 
-    public GameQuestGuideManager(AllocatorManager.AllocatorHandle allocator)
+    public GameQuestGuideManager(in AllocatorManager.AllocatorHandle allocator)
     {
         __guides = new NativePool<Guide>(allocator);
         __guideIndices = new NativeHashMap<int, int>(1, allocator);
@@ -792,7 +792,7 @@ public struct GameQuestGuideManager
             switch (variantSet.value.type)
             {
                 case GameQuestGuideVariantType.EntityToKill:
-                case GameQuestGuideVariantType.EntityToTame:
+                case GameQuestGuideVariantType.EntityToOwn:
                 case GameQuestGuideVariantType.ItemToUse:
                 case GameQuestGuideVariantType.FormulaToUse:
                     __variants.Remove(variantSet.value);

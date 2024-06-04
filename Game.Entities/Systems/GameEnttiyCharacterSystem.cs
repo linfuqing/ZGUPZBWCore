@@ -6,7 +6,9 @@ using Unity.Collections;
 using Unity.Physics;
 using ZG;
 
-[BurstCompile, UpdateInGroup(typeof(GameNodeCharacterSystemGroup))/*, UpdateAfter(typeof(GameNodeCharacterSystemGroup))*/]
+[BurstCompile, 
+ CreateAfter(typeof(GamePhysicsWorldBuildSystem)), 
+ UpdateInGroup(typeof(GameNodeCharacterSystemGroup))/*, UpdateAfter(typeof(GameNodeCharacterSystemGroup))*/]
 public partial struct GameEntityCharacterSystem : ISystem
 {
     private struct CalculateHits
@@ -145,7 +147,7 @@ public partial struct GameEntityCharacterSystem : ISystem
         __distanceHitType = state.GetBufferTypeHandle<GameNodeCharacterDistanceHit>(true);
         __healthDamages = state.GetBufferLookup<GameEntityHealthDamage>();
 
-        __physicsWorld = state.World.GetOrCreateSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
+        __physicsWorld = state.WorldUnmanaged.GetExistingSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
     }
 
     public void OnDestroy(ref SystemState state)

@@ -835,7 +835,7 @@ public partial struct GameInputSystem : ISystem
         public NativeArray<GameEntityCamp> camps;
 
         public NativeArray<GameInputSelectionTarget> results;
-
+        
         public bool IsSelectable(
             in Entity entity,
             int camp,
@@ -984,7 +984,8 @@ public partial struct GameInputSystem : ISystem
                 var status = states[entity].value & (int)GameEntityStatus.Mask;
                 if ((int)GameEntityStatus.Dead == status)
                     return false;
-                else if ((int)GameEntityStatus.KnockedOut == status)
+                
+                if ((int)GameEntityStatus.KnockedOut == status)
                     return true;
             }
 
@@ -1057,6 +1058,39 @@ public partial struct GameInputSystem : ISystem
         }
     }
 
+    [BurstCompile]
+    private struct GuideStart : IJob
+    {
+        public int counter;
+        
+        public GameQuestGuideManager manager;
+
+        public NativeList<int> guideResults;
+
+        public void Execute()
+        {
+            foreach (var guideResult in guideResults)
+                manager.Remove(GameQuestGuideVariantType.Entity, guideResult, 1);
+
+            guideResults.Clear();
+            guideResults.Capacity = math.max(guideResults.Capacity, counter);
+        }
+    }
+
+    [BurstCompile]
+    private struct GuideEnd : IJob
+    {
+        public GameQuestGuideManager manager;
+
+        public NativeList<int> guideResults;
+
+        public void Execute()
+        {
+            foreach (var guideResult in guideResults)
+                manager.Add(GameQuestGuideVariantType.Entity, guideResult, 1);
+        }
+    }
+
     private struct Guide
     {
         public BlobAssetReference<GameActionSetDefinition> actionSetDefinition;
@@ -1093,12 +1127,14 @@ public partial struct GameInputSystem : ISystem
         [ReadOnly]
         public BufferAccessor<GameInputActionInstance> actionInstances;
 
-        public NativeArray<GameInputGuideTarget> results;
+        public NativeArray<GameInputGuideTarget> guideTargets;
+
+        public NativeList<int>.ParallelWriter guideResults;
 
         public void Execute(int index)
         {
-            GameInputGuideTarget result;
-            result.entity = Entity.Null;
+            GameInputGuideTarget guideTarget;
+            guideTarget.entity = Entity.Null;
 
             ref var actionSetDefinition = ref this.actionSetDefinition.Value;
 
@@ -1117,18 +1153,17 @@ public partial struct GameInputSystem : ISystem
 
                 if (!pickables.HasComponent(target.entity))
                 {
-                    isContains = campMap.HasComponent(target.entity) && campMap[target.entity].value != camp;
+                    isContains = campMap.HasComponent(target.entity) && campMap[target.entity].value == camp;
                     if (factories.HasComponent(target.entity))
                     {
                         if (factories[target.entity].status != GameFactoryStatus.Complete &&
-                            isContains)
+                            !isContains)
                             continue;
                     }
                     else
                     {
-                        if (isContains)
+                        if (!isContains)
                         {
-                            isContains = false;
                             if (colliders.HasComponent(target.entity))
                             {
                                 belongsTo = colliders[target.entity].Value.Value.Filter.BelongsTo;
@@ -1155,12 +1190,15 @@ public partial struct GameInputSystem : ISystem
                     }
                 }
                 
-                result.entity = target.entity;
+                guideTarget.entity = target.entity;
 
                 break;
             }
 
-            results[index] = result;
+            guideTargets[index] = guideTarget;
+            
+            if(guideTarget.entity != Entity.Null)
+                guideResults.AddNoResize(identityTypes[guideTarget.entity].value);
         }
     }
 
@@ -1201,7 +1239,9 @@ public partial struct GameInputSystem : ISystem
         [ReadOnly]
         public BufferTypeHandle<GameInputActionInstance> actionInstanceType;
 
-        public ComponentTypeHandle<GameInputGuideTarget> resultType;
+        public ComponentTypeHandle<GameInputGuideTarget> guideTargetType;
+        
+        public NativeList<int>.ParallelWriter guideResults;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -1218,7 +1258,8 @@ public partial struct GameInputSystem : ISystem
             guide.camps = chunk.GetNativeArray(ref campType);
             guide.actorActions = chunk.GetBufferAccessor(ref actorActionType);
             guide.actionInstances = chunk.GetBufferAccessor(ref actionInstanceType);
-            guide.results = chunk.GetNativeArray(ref resultType);
+            guide.guideTargets = chunk.GetNativeArray(ref guideTargetType);
+            guide.guideResults = guideResults;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -1266,6 +1307,8 @@ public partial struct GameInputSystem : ISystem
 
     private NativeList<int> __hits;
 
+    private NativeList<int> __guideResults;
+
     public static readonly float MaxDistance = 4.0f;
 
     public SharedList<GameInputTarget> targets
@@ -1306,6 +1349,8 @@ public partial struct GameInputSystem : ISystem
 
         __hits = new NativeList<int>(Allocator.Persistent);
 
+        __guideResults = new NativeList<int>(Allocator.Persistent);
+
         targets = new SharedList<GameInputTarget>(Allocator.Persistent);
     }
 
@@ -1315,6 +1360,8 @@ public partial struct GameInputSystem : ISystem
         __targetDistances.Dispose();
 
         __hits.Dispose();
+
+        __guideResults.Dispose();
 
         targets.Dispose();
     }
@@ -1401,11 +1448,22 @@ public partial struct GameInputSystem : ISystem
 
         var submitJobHandle = select.ScheduleParallelByRef(__group, jobHandle);
 
-        var questGuideManager = SystemAPI.GetSingleton<GameQuestGuideManagerShared>();
+        var questGuideManagerShared = SystemAPI.GetSingleton<GameQuestGuideManagerShared>();
+        var questGuideManager = questGuideManagerShared.value;
+
+        GuideStart guideStart;
+        guideStart.counter = __group.CalculateEntityCount(); 
+        guideStart.manager = questGuideManager;
+        guideStart.guideResults = __guideResults;
+        
+        ref var questGuideJobManager = ref questGuideManagerShared.lookupJobManager;
+
+        var questGuideJobHandle =
+            guideStart.ScheduleByRef(JobHandle.CombineDependencies(questGuideJobManager.readWriteJobHandle, jobHandle));
 
         GuideEx guide;
         guide.actionSetDefinition = actionSetDefinition;
-        guide.manager = questGuideManager.value.readOnly;
+        guide.manager = questGuideManager.readOnly;
         guide.targets = targetsReader;
         guide.identityTypes = __identityTypes.UpdateAsRef(ref state);
         guide.colliders = colliders;
@@ -1416,11 +1474,15 @@ public partial struct GameInputSystem : ISystem
         guide.campType = campType;
         guide.actorActionType = actorActionType;
         guide.actionInstanceType = actionInstanceType;
-        guide.resultType = __guideTargetType.UpdateAsRef(ref state);
+        guide.guideTargetType = __guideTargetType.UpdateAsRef(ref state);
+        guide.guideResults = __guideResults.AsParallelWriter();
 
-        ref var questGuideJobManager = ref questGuideManager.lookupJobManager;
+        questGuideJobHandle = guide.ScheduleParallelByRef(__group, questGuideJobHandle);
 
-        var questGuideJobHandle = guide.ScheduleParallelByRef(__group, JobHandle.CombineDependencies(questGuideJobManager.readOnlyJobHandle, jobHandle));
+        GuideEnd guideEnd;
+        guideEnd.manager = questGuideManager;
+        guideEnd.guideResults = __guideResults;
+        questGuideJobHandle = guideEnd.ScheduleByRef(questGuideJobHandle);
 
         questGuideJobManager.AddReadOnlyDependency(questGuideJobHandle);
 
