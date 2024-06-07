@@ -11,7 +11,7 @@ public class GameMeshStreamingSettings : MeshInstanceStreamingSettings<GameMeshS
     {
         public float4 position;
 
-        public float3 normal { get; set; }
+        public float4 normal { get; set; }
 
         //public float4 tangent { get; set; }
 
@@ -23,7 +23,7 @@ public class GameMeshStreamingSettings : MeshInstanceStreamingSettings<GameMeshS
         {
             this.position = math.float4(math.transform(matrix, position), 1.0f);
 
-            this.normal = math.rotate(matrix, normal);
+            this.normal = math.float4(math.rotate(matrix, normal), 0.0f);
 
             //this.tangent = 0.0f;// math.mul(matrix, tangent);
         }

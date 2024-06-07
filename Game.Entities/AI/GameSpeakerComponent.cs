@@ -6,8 +6,8 @@ using ZG;
 [Serializable]
 public struct GameSpeakerData : IComponentData
 {
-    [Mask]
-    public GameActionTargetType type;
+    //[Mask]
+    //public GameActionTargetType type;
     public LayerMask layerMask;
     public float radius;
 }
