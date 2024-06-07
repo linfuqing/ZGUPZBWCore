@@ -38,9 +38,15 @@ public struct GameRangeSpawnerCoolDownTime : IComponentData
     public double value;
 }
 
-[BurstCompile, CreateAfter(typeof(GameRandomSpawnerSystem))]
+[BurstCompile, CreateAfter(typeof(GameRandomSpawnerSystem)), CreateAfter(typeof(GameItemSystem))]
 public partial struct GameRangeSpawnerSystem : ISystem
 {
+    private struct MoveItem
+    {
+        public GameItemHandle source;
+        public GameItemHandle destination;
+    }
+    
     private struct Spawn
     {
         public double time;
@@ -52,13 +58,15 @@ public partial struct GameRangeSpawnerSystem : ISystem
         [ReadOnly]
         public ComponentLookup<PhysicsShapeParent> physicsShapeParents;
         [ReadOnly] 
+        public ComponentLookup<GameAreaNodePresentation> areaNodePresentations;
+        [ReadOnly] 
         public ComponentLookup<GameAreaNode> areaNodes;
         [ReadOnly]
         public ComponentLookup<GameNodeStatus> nodeStates;
         [ReadOnly]
-        public ComponentLookup<GameEntityCamp> campMap;
+        public ComponentLookup<GameItemRoot> itemRoots;
         [ReadOnly]
-        public NativeArray<GameEntityCamp> camps;
+        public ComponentLookup<GameOwner> owners;
         [ReadOnly] 
         public NativeArray<Entity> entityArray;
         [ReadOnly]
@@ -81,6 +89,8 @@ public partial struct GameRangeSpawnerSystem : ISystem
         public NativeQueue<EntityData<Entity>>.ParallelWriter outputs;
 
         public NativeQueue<Entity>.ParallelWriter results;
+
+        public NativeQueue<MoveItem>.ParallelWriter moveItems;
 
         public bool Execute(int index)
         {
@@ -236,9 +246,43 @@ public partial struct GameRangeSpawnerSystem : ISystem
                 states[index] = state;
                 
                 results.Enqueue(temp.entity);
+
+                MoveItem moveItem;
+                foreach (var physicsShapeChildEntity in physicsShapeChildEntities)
+                {
+                    if (!this.physicsTriggerEvents.HasBuffer(physicsShapeChildEntity.value))
+                        continue;
+
+                    physicsTriggerEvents = this.physicsTriggerEvents[physicsShapeChildEntity.value];
+                    foreach (var physicsTriggerEvent in physicsTriggerEvents)
+                    {
+                        entity = physicsShapeParents.HasComponent(physicsTriggerEvent.entity)
+                            ? physicsShapeParents[physicsTriggerEvent.entity].entity
+                            : physicsTriggerEvent.entity;
+                        if (!itemRoots.HasComponent(entity))
+                            continue;
+
+                        moveItem.source = itemRoots[entity].handle;
+                        moveItem.destination = __GetItemRoot(entity);
+                        
+                        if(moveItem.source.Equals(moveItem.destination))
+                            continue;
+                        
+                        moveItems.Enqueue(moveItem);
+                    }
+                }
             }
 
             return result;
+        }
+
+        private GameItemHandle __GetItemRoot(in Entity entity)
+        {
+            Entity owner = owners.HasComponent(entity) ? owners[entity].entity : Entity.Null;
+            if (owner == Entity.Null)
+                return itemRoots.HasComponent(entity) ? itemRoots[entity].handle : GameItemHandle.Empty;
+
+            return __GetItemRoot(owner);
         }
 
         private bool __IsVail(in Entity entity)
@@ -246,6 +290,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
             return nodeStates.HasComponent(entity) &&
                    ((GameEntityStatus)nodeStates[entity].value & GameEntityStatus.Mask) !=
                    GameEntityStatus.Dead && 
+                   areaNodePresentations.HasComponent(entity) && 
                    areaNodes.HasComponent(entity) && 
                    areaNodes[entity].areaIndex != -1;
         }
@@ -262,13 +307,15 @@ public partial struct GameRangeSpawnerSystem : ISystem
         [ReadOnly]
         public ComponentLookup<PhysicsShapeParent> physicsShapeParents;
         [ReadOnly] 
+        public ComponentLookup<GameAreaNodePresentation> areaNodePresentations;
+        [ReadOnly] 
         public ComponentLookup<GameAreaNode> areaNodes;
         [ReadOnly]
         public ComponentLookup<GameNodeStatus> nodeStates;
         [ReadOnly]
-        public ComponentLookup<GameEntityCamp> camps;
+        public ComponentLookup<GameItemRoot> itemRoots;
         [ReadOnly]
-        public ComponentTypeHandle<GameEntityCamp> campType;
+        public ComponentLookup<GameOwner> owners;
         [ReadOnly] 
         public EntityTypeHandle entityType;
         [ReadOnly]
@@ -292,6 +339,8 @@ public partial struct GameRangeSpawnerSystem : ISystem
 
         public NativeQueue<Entity>.ParallelWriter results;
 
+        public NativeQueue<MoveItem>.ParallelWriter moveItems;
+
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask,
             in v128 chunkEnabledMask)
         {
@@ -300,10 +349,11 @@ public partial struct GameRangeSpawnerSystem : ISystem
             spawn.spawner = spawner;
             spawn.physicsTriggerEvents = physicsTriggerEvents;
             spawn.physicsShapeParents = physicsShapeParents;
+            spawn.areaNodePresentations = areaNodePresentations;
             spawn.areaNodes = areaNodes;
             spawn.nodeStates = nodeStates;
-            spawn.campMap = camps;
-            spawn.camps = chunk.GetNativeArray(ref campType);
+            spawn.itemRoots = itemRoots;
+            spawn.owners = owners;
             spawn.entityArray = chunk.GetNativeArray(entityType);
             spawn.physicsShapeChildEntities = chunk.GetBufferAccessor(ref physicsShapeChildEntityType);
             spawn.followers = chunk.GetBufferAccessor(ref followerType);
@@ -315,6 +365,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
             spawn.inputs = inputs;
             spawn.outputs = outputs;
             spawn.results = results;
+            spawn.moveItems = moveItems;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -328,6 +379,8 @@ public partial struct GameRangeSpawnerSystem : ISystem
     [BurstCompile]
     private struct Apply : IJob
     {
+        public GameItemManager itemManager;
+        
         [ReadOnly] 
         public BufferLookup<GameFollower> followers;
 
@@ -340,6 +393,8 @@ public partial struct GameRangeSpawnerSystem : ISystem
         public NativeQueue<EntityData<Entity>> outputs;
 
         public NativeQueue<Entity> entities;
+
+        public NativeQueue<MoveItem> moveItems;
 
         public GameRandomSpawner.Writer spawner;
         
@@ -383,6 +438,17 @@ public partial struct GameRangeSpawnerSystem : ISystem
                 if (this.rangeSpawners.HasBuffer(temp.value))
                     this.rangeSpawners[temp.value].Reinterpret<Entity>().Add(temp.entity);
             }
+
+            int parentChildIndex;
+            GameItemHandle parentHandle;
+            GameItemInfo item;
+            while (moveItems.TryDequeue(out var moveItem))
+            {
+                if (itemManager.TryGetValue(moveItem.source, out item) &&
+                    itemManager.Find(moveItem.destination, item.type, item.count, out parentChildIndex,
+                        out parentHandle))
+                    itemManager.Move(moveItem.source, parentHandle, parentChildIndex);
+            }
         }
     }
 
@@ -391,9 +457,10 @@ public partial struct GameRangeSpawnerSystem : ISystem
     private BufferLookup<GameFollower> __followers;
     private BufferLookup<PhysicsTriggerEvent> __physicsTriggerEvents;
     private ComponentLookup<PhysicsShapeParent> __physicsShapeParents;
+    private ComponentLookup<GameAreaNodePresentation> __areaNodePresentations;
     private ComponentLookup<GameAreaNode> __areaNodes;
-    private ComponentLookup<GameEntityCamp> __camps;
-    private ComponentTypeHandle<GameEntityCamp> __campType;
+    private ComponentLookup<GameItemRoot> __itemRoots;
+    private ComponentLookup<GameOwner> __owners;
 
     private EntityTypeHandle __entityType;
     private BufferTypeHandle<PhysicsShapeChildEntity> __physicsShapeChildEntityType;
@@ -418,6 +485,9 @@ public partial struct GameRangeSpawnerSystem : ISystem
     private NativeQueue<EntityData<Entity>> __inputs;
     private NativeQueue<EntityData<Entity>> __outputs;
     private NativeQueue<Entity> __entities;
+    private NativeQueue<MoveItem> __moveItems;
+
+    private GameItemManagerShared __itemManager;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
@@ -433,9 +503,10 @@ public partial struct GameRangeSpawnerSystem : ISystem
         __followers = state.GetBufferLookup<GameFollower>(true);
         __physicsTriggerEvents = state.GetBufferLookup<PhysicsTriggerEvent>(true);
         __physicsShapeParents = state.GetComponentLookup<PhysicsShapeParent>(true);
+        __areaNodePresentations = state.GetComponentLookup<GameAreaNodePresentation>(true);
         __areaNodes = state.GetComponentLookup<GameAreaNode>(true);
-        __camps = state.GetComponentLookup<GameEntityCamp>(true);
-        __campType = state.GetComponentTypeHandle<GameEntityCamp>(true);
+        __itemRoots = state.GetComponentLookup<GameItemRoot>(true);
+        __owners = state.GetComponentLookup<GameOwner>(true);
         __entityType = state.GetEntityTypeHandle();
         __physicsShapeChildEntityType = state.GetBufferTypeHandle<PhysicsShapeChildEntity>(true);
         __followerType = state.GetBufferTypeHandle<GameFollower>(true);
@@ -454,11 +525,16 @@ public partial struct GameRangeSpawnerSystem : ISystem
         
         __rangeSpawners = state.GetBufferLookup<GameRangeSpawner>();
 
-        __spawner = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameRandomSpawnerSystem>().spawner;
+        var world = state.WorldUnmanaged;
+
+        __spawner = world.GetExistingSystemUnmanaged<GameRandomSpawnerSystem>().spawner;
+        
+        __itemManager = world.GetExistingSystemUnmanaged<GameItemSystem>().manager;
 
         __inputs = new NativeQueue<EntityData<Entity>>(Allocator.Persistent);
         __outputs = new NativeQueue<EntityData<Entity>>(Allocator.Persistent);
         __entities = new NativeQueue<Entity>(Allocator.Persistent);
+        __moveItems = new NativeQueue<MoveItem>(Allocator.Persistent);
     }
 
     public void OnDestroy(ref SystemState state)
@@ -476,10 +552,11 @@ public partial struct GameRangeSpawnerSystem : ISystem
         spawn.spawner = __spawner.reader;
         spawn.physicsTriggerEvents = __physicsTriggerEvents.UpdateAsRef(ref state);
         spawn.physicsShapeParents = __physicsShapeParents.UpdateAsRef(ref state);
+        spawn.areaNodePresentations = __areaNodePresentations.UpdateAsRef(ref state);
         spawn.areaNodes = __areaNodes.UpdateAsRef(ref state);
         spawn.nodeStates = nodeStates;
-        spawn.camps = __camps.UpdateAsRef(ref state);
-        spawn.campType = __campType.UpdateAsRef(ref state);
+        spawn.itemRoots = __itemRoots.UpdateAsRef(ref state);
+        spawn.owners = __owners.UpdateAsRef(ref state);
         spawn.entityType = __entityType.UpdateAsRef(ref state);
         spawn.physicsShapeChildEntityType = __physicsShapeChildEntityType.UpdateAsRef(ref state);
         spawn.followerType = __followerType.UpdateAsRef(ref state);
@@ -491,22 +568,29 @@ public partial struct GameRangeSpawnerSystem : ISystem
         spawn.inputs = __inputs.AsParallelWriter();
         spawn.outputs = __outputs.AsParallelWriter();
         spawn.results = __entities.AsParallelWriter();
+        spawn.moveItems = __moveItems.AsParallelWriter();
 
         ref var spawnerJobManager = ref __spawner.lookupJobManager;
 
         var jobHandle = spawn.ScheduleParallelByRef(__group,
-            JobHandle.CombineDependencies(spawnerJobManager.readOnlyJobHandle, state.Dependency));
+            JobHandle.CombineDependencies(spawnerJobManager.readWriteJobHandle, state.Dependency));
 
         Apply apply;
+        apply.itemManager = __itemManager.value;
         apply.followers = __followers.UpdateAsRef(ref state);
         apply.rangeSpawners = __rangeSpawners.UpdateAsRef(ref state);
         apply.nodeStates = nodeStates;
         apply.inputs = __inputs;
         apply.outputs = __outputs;
         apply.entities = __entities;
+        apply.moveItems = __moveItems;
         apply.spawner = __spawner.writer;
 
-        jobHandle = apply.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, spawnerJobManager.readWriteJobHandle));
+        ref var itemManagerJobManager = ref __itemManager.lookupJobManager;
+
+        jobHandle = apply.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, itemManagerJobManager.readWriteJobHandle));
+
+        itemManagerJobManager.readWriteJobHandle = jobHandle;
 
         spawnerJobManager.readWriteJobHandle = jobHandle;
 

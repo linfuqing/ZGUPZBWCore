@@ -1556,3 +1556,128 @@ public partial struct GameNodeClearSystem : ISystem
         state.EntityManager.RemoveComponent<GameNodeLookTarget>(__group);
     }
 }
+
+[BurstCompile, UpdateInGroup(typeof(FixedStepSimulationSystemGroup)), UpdateAfter(typeof(PhysicsTriggerEventSystem))]
+public partial struct GameNodeChildrenTriggerEventSystem : ISystem
+{
+    private struct UpdateChildren
+    {
+        [ReadOnly]
+        public NativeArray<Entity> entityArray;
+
+        [ReadOnly]
+        public NativeArray<GameNodeParent> parents;
+
+        [ReadOnly]
+        public BufferLookup<PhysicsTriggerEvent> physicsTriggerEvents;
+
+        public NativeQueue<EntityData<PhysicsTriggerEvent>>.ParallelWriter results;
+
+        public void Execute(int index)
+        {
+            var parent = parents[index].entity;
+            if (!this.physicsTriggerEvents.HasBuffer(parent))
+                return;
+
+            EntityData<PhysicsTriggerEvent> result;
+            var physicsTriggerEvents = this.physicsTriggerEvents[parent];
+            foreach (var physicsTriggerEvent in physicsTriggerEvents)
+            {
+                result.entity = physicsTriggerEvent.entity;
+                result.value.entity = entityArray[index];
+                result.value.bodyIndexA = physicsTriggerEvent.bodyIndexB;
+                result.value.bodyIndexB = physicsTriggerEvent.bodyIndexA;
+                result.value.colliderKeyA = physicsTriggerEvent.colliderKeyB;
+                result.value.colliderKeyB = physicsTriggerEvent.colliderKeyA;
+                
+                results.Enqueue(result);
+            }
+        }
+    }
+
+    [BurstCompile]
+    private struct UpdateChildrenEx : IJobChunk
+    {
+        [ReadOnly]
+        public EntityTypeHandle entityType;
+
+        [ReadOnly]
+        public ComponentTypeHandle<GameNodeParent> parentType;
+
+        [ReadOnly]
+        public BufferLookup<PhysicsTriggerEvent> physicsTriggerEvents;
+
+        public NativeQueue<EntityData<PhysicsTriggerEvent>>.ParallelWriter results;
+
+        public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+        {
+            UpdateChildren updateChildren;
+            updateChildren.entityArray = chunk.GetNativeArray(entityType);
+            updateChildren.parents = chunk.GetNativeArray(ref parentType);
+            updateChildren.physicsTriggerEvents = physicsTriggerEvents;
+            updateChildren.results = results;
+
+            var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+            while (iterator.NextEntityIndex(out int i))
+                updateChildren.Execute(i);
+        }
+    }
+
+    [BurstCompile]
+    private struct Apply : IJob
+    {
+        public BufferLookup<PhysicsTriggerEvent> physicsTriggerEvents;
+        public NativeQueue<EntityData<PhysicsTriggerEvent>> results;
+
+        public void Execute()
+        {
+            while (results.TryDequeue(out var result))
+                physicsTriggerEvents[result.entity].Add(result.value);
+        }
+    }
+
+    private EntityQuery __group;
+
+    private EntityTypeHandle __entityType;
+
+    private ComponentTypeHandle<GameNodeParent> __parentType;
+
+    private BufferLookup<PhysicsTriggerEvent> __physicsTriggerEvents;
+
+    private NativeQueue<EntityData<PhysicsTriggerEvent>> __results;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        __group = state.GetEntityQuery(ComponentType.ReadOnly<GameNodeParent>());
+
+        __entityType = state.GetEntityTypeHandle();
+        __parentType = state.GetComponentTypeHandle<GameNodeParent>(true);
+        __physicsTriggerEvents = state.GetBufferLookup<PhysicsTriggerEvent>();
+        __results = new NativeQueue<EntityData<PhysicsTriggerEvent>>(Allocator.Persistent);
+    }
+
+    //[BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        __results.Dispose();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        var physicsTriggerEvents = __physicsTriggerEvents.UpdateAsRef(ref state);
+        
+        UpdateChildrenEx updateChildren;
+        updateChildren.entityType = __entityType.UpdateAsRef(ref state);
+        updateChildren.parentType = __parentType.UpdateAsRef(ref state);
+        updateChildren.physicsTriggerEvents = physicsTriggerEvents;
+        updateChildren.results = __results.AsParallelWriter();
+        var jobHandle = updateChildren.ScheduleParallelByRef(__group, state.Dependency);
+
+        Apply apply;
+        apply.physicsTriggerEvents = physicsTriggerEvents;
+        apply.results = __results;
+        state.Dependency = apply.ScheduleByRef(jobHandle);
+    }
+}
