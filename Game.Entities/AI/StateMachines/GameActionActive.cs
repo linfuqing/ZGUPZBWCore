@@ -224,6 +224,7 @@ public struct GameActionActiveInfo : IComponentData
     public Status status;
     public int groupMask;
     public int conditionIndex;
+    //public float watcherTime;
     public double activeTime;
     public double alertTime;
     public float3 position;
@@ -275,7 +276,7 @@ public partial struct GameActionActiveSystem : ISystem
 
             if (runningStatus < instance.speakerPriority && instance.speakerTime > math.FLT_MIN_NORMAL && speakerInfos.Length > index)
             {
-                GameSpeakerInfo speakerInfo = speakerInfos[index];
+                var speakerInfo = speakerInfos[index];
                 if (translationMap.HasComponent(speakerInfo.target) && 
                     !disabled.HasComponent(speakerInfo.target) &&
                     speakerInfo.time + instance.speakerTime > time &&
@@ -295,7 +296,7 @@ public partial struct GameActionActiveSystem : ISystem
 
             if (runningStatus < instance.watcherPriority && index < watcherInfos.Length)
             {
-                GameWatcherInfo watcherInfo = watcherInfos[index];
+                var watcherInfo = watcherInfos[index];
                 if (translationMap.HasComponent(watcherInfo.target) &&
                     !disabled.HasComponent(watcherInfo.target) && 
                     watcherInfo.time + instance.watcherTime > time && 
@@ -514,6 +515,9 @@ public partial struct GameActionActiveSystem : ISystem
         public NativeArray<Entity> entityArray;
 
         [ReadOnly]
+        public NativeArray<GameOwner> owners;
+
+        [ReadOnly]
         public NativeArray<GameNodeStatus> states;
 
         [ReadOnly]
@@ -657,7 +661,7 @@ public partial struct GameActionActiveSystem : ISystem
             Entity speakerEntity = Entity.Null;
             if (speakerInfos.Length > index)
             {
-                GameSpeakerInfo speakerInfo = speakerInfos[index];
+                var speakerInfo = speakerInfos[index];
                 speakerEntity = speakerInfo.target;
                 if (speakerEntity != Entity.Null)
                 {
@@ -728,6 +732,9 @@ public partial struct GameActionActiveSystem : ISystem
                 return instance.watcherPriority;
             }
 
+            if (index < owners.Length && owners[index].entity != Entity.Null)
+                instance.maxDistance = 15.0f;
+            
             if (isWatch)
             {
                 if (distance > instance.maxDistance)
@@ -745,7 +752,9 @@ public partial struct GameActionActiveSystem : ISystem
                 {
                     info.activeTime = time + instance.watcherTime;
 
-                    if (info.entity == speakerEntity)
+                    if (info.entity == speakerEntity/* || 
+                        index < owners.Length && 
+                        owners[index].entity != Entity.Null*/)
                         isWatch = false;
                 }
             }
@@ -831,7 +840,7 @@ public partial struct GameActionActiveSystem : ISystem
                 {
                     if (!isWatch && (instance.flag & GameActionActiveFlag.Sly) == GameActionActiveFlag.Sly)
                         isRunAway = hasPosition;
-                    else if ((!isWatch || !protectedTimes.HasComponent(info.entity) || protectedTimes[info.entity].value < time))
+                    else if (!isWatch || !protectedTimes.HasComponent(info.entity) || protectedTimes[info.entity].value < time)
                     {
                         if (actorTimes[index].value >= time || commands.IsComponentEnabled(entity))
                             isRunAway = false;
@@ -1148,6 +1157,8 @@ public partial struct GameActionActiveSystem : ISystem
         [ReadOnly]
         public EntityTypeHandle entityType;
         [ReadOnly]
+        public ComponentTypeHandle<GameOwner> ownerType;
+        [ReadOnly]
         public ComponentTypeHandle<GameNodeStatus> statusType;
         [ReadOnly]
         public ComponentTypeHandle<GameNodeDelay> delayType;
@@ -1229,6 +1240,7 @@ public partial struct GameActionActiveSystem : ISystem
             run.physicsColliders = physicsColliders;
             run.protectedTimes = protectedTimes;
             run.entityArray = chunk.GetNativeArray(entityType);
+            run.owners = chunk.GetNativeArray(ref ownerType);
             run.states = chunk.GetNativeArray(ref statusType);
             run.delay = chunk.GetNativeArray(ref delayType);
             run.angles = chunk.GetNativeArray(ref angleType);
@@ -1281,6 +1293,8 @@ public partial struct GameActionActiveSystem : ISystem
     private EntityTypeHandle __entityType;
 
     private ComponentTypeHandle<Translation> __translationType;
+
+    private ComponentTypeHandle<GameOwner> __ownerType;
 
     private ComponentTypeHandle<GameNodeStatus> __statusType;
     private ComponentTypeHandle<GameNodeDelay> __delayType;
@@ -1337,6 +1351,7 @@ public partial struct GameActionActiveSystem : ISystem
         __protectedTimes = state.GetComponentLookup<GameActionActiveProtectedTime>(true);
         __entityType = state.GetEntityTypeHandle();
         __translationType = state.GetComponentTypeHandle<Translation>(true);
+        __ownerType = state.GetComponentTypeHandle<GameOwner>(true);
         __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
         __delayType = state.GetComponentTypeHandle<GameNodeDelay>(true);
         __angleType = state.GetComponentTypeHandle<GameNodeAngle>(true);
@@ -1410,6 +1425,7 @@ public partial struct GameActionActiveSystem : ISystem
         factoryRun.physicsColliders = __physicsColliders.UpdateAsRef(ref state);
         factoryRun.protectedTimes = __protectedTimes.UpdateAsRef(ref state);
         factoryRun.entityType = __entityType.UpdateAsRef(ref state);
+        factoryRun.ownerType = __ownerType.UpdateAsRef(ref state);
         factoryRun.statusType = __statusType.UpdateAsRef(ref state);
         factoryRun.delayType = __delayType.UpdateAsRef(ref state);
         factoryRun.angleType = __angleType.UpdateAsRef(ref state);

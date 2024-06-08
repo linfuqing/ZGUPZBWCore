@@ -3,6 +3,7 @@ using Unity.Burst;
 using Unity.Burst.Intrinsics;
 using Unity.Entities;
 using Unity.Collections;
+using Unity.Mathematics;
 using Unity.Physics;
 using Unity.Physics.Systems;
 using ZG;
@@ -25,8 +26,9 @@ public partial struct GameSpeakerSystem : ISystem
 
         private NativeSlice<RigidBody> __rigidBodies;
         private ComponentLookup<GameEntityCamp> __camps;
-        private ComponentLookup<GameSpeakerInfo> __speakerInfos;
+        private ComponentLookup<GameWatcherData> __watchers;
         private ComponentLookup<GameWatcherInfo> __watcherInfos;
+        private ComponentLookup<GameSpeakerInfo> __speakerInfos;
 
         public bool EarlyOutOnFirstHit => false;
 
@@ -46,8 +48,9 @@ public partial struct GameSpeakerSystem : ISystem
             //in GameEntityNode node,
             in NativeSlice<RigidBody> rigidBodies,
             in ComponentLookup<GameEntityCamp> camps,
-            ref ComponentLookup<GameSpeakerInfo> speakerInfos, 
-            ref ComponentLookup<GameWatcherInfo> watcherInfos)
+            in ComponentLookup<GameWatcherData> watchers, 
+            ref ComponentLookup<GameWatcherInfo> watcherInfos, 
+            ref ComponentLookup<GameSpeakerInfo> speakerInfos)
         {
             //__type = type;
             __camp = camp;
@@ -62,8 +65,9 @@ public partial struct GameSpeakerSystem : ISystem
             __rigidBodies = rigidBodies;
 
             __camps = camps;
-            __speakerInfos = speakerInfos;
+            __watchers = watchers;
             __watcherInfos = watcherInfos;
+            __speakerInfos = speakerInfos;
 
             MaxFraction = maxFraction;
             result = default;
@@ -92,9 +96,11 @@ public partial struct GameSpeakerSystem : ISystem
                 if (!__watcherInfos.HasComponent(rigidBody.Entity))
                     return false;
 
+                var watcher = __watchers[rigidBody.Entity];
+
                 GameWatcherInfo watcherInfo;
                 watcherInfo.type = GameWatcherInfo.Type.Main;
-                watcherInfo.time = __time;
+                watcherInfo.time = __time + new Random(RandomUtility.Hash(__time) ^ (uint)rigidBody.Entity.Index).NextFloat(watcher.minTime, watcher.maxTime);
                 watcherInfo.target = __destination;
 
                 __watcherInfos[rigidBody.Entity] = watcherInfo;
@@ -124,11 +130,14 @@ public partial struct GameSpeakerSystem : ISystem
         [ReadOnly]
         public ComponentLookup<GameEntityCamp> camps;
 
-        [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameSpeakerInfo> speakerInfos;
-
+        [ReadOnly]
+        public ComponentLookup<GameWatcherData> watchers;
+        
         [NativeDisableParallelForRestriction]
         public ComponentLookup<GameWatcherInfo> watcherInfos;
+
+        [NativeDisableParallelForRestriction]
+        public ComponentLookup<GameSpeakerInfo> speakerInfos;
 
         public void Execute(int index)
         {
@@ -177,8 +186,9 @@ public partial struct GameSpeakerSystem : ISystem
                 rigidbody.Entity, 
                 rigidbodies,
                 camps,
-                ref speakerInfos, 
-                ref watcherInfos);
+                watchers, 
+                ref watcherInfos, 
+                ref speakerInfos);
             collisionWorld.CalculateDistance(pointDistanceInput, ref collector);
         }
     }
@@ -204,11 +214,14 @@ public partial struct GameSpeakerSystem : ISystem
         [ReadOnly]
         public ComponentLookup<GameEntityCamp> camps;
 
-        [NativeDisableParallelForRestriction]
-        public ComponentLookup<GameSpeakerInfo> speakerInfos;
+        [ReadOnly]
+        public ComponentLookup<GameWatcherData> watchers;
 
         [NativeDisableParallelForRestriction]
         public ComponentLookup<GameWatcherInfo> watcherInfos;
+
+        [NativeDisableParallelForRestriction]
+        public ComponentLookup<GameSpeakerInfo> speakerInfos;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -219,8 +232,9 @@ public partial struct GameSpeakerSystem : ISystem
             speak.healthDamageCounts = chunk.GetNativeArray(ref healthDamageCountType);
             speak.healthDamages = chunk.GetBufferAccessor(ref healthDamageType);
             speak.camps = camps;
-            speak.speakerInfos = speakerInfos;
+            speak.watchers = watchers;
             speak.watcherInfos = watcherInfos;
+            speak.speakerInfos = speakerInfos;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -240,9 +254,11 @@ public partial struct GameSpeakerSystem : ISystem
 
     private ComponentLookup<GameEntityCamp> __camps;
 
-    private ComponentLookup<GameSpeakerInfo> __speakerInfos;
+    private ComponentLookup<GameWatcherData> __watchers;
 
     private ComponentLookup<GameWatcherInfo> __watcherInfos;
+
+    private ComponentLookup<GameSpeakerInfo> __speakerInfos;
 
     private SharedPhysicsWorld __physicsWorld;
 
@@ -259,8 +275,9 @@ public partial struct GameSpeakerSystem : ISystem
         __healthDamageType = state.GetBufferTypeHandle<GameEntityHealthDamage>(true);
         __instanceType = state.GetComponentTypeHandle<GameSpeakerData>(true);
         __camps = state.GetComponentLookup<GameEntityCamp>(true);
-        __speakerInfos = state.GetComponentLookup<GameSpeakerInfo>();
+        __watchers = state.GetComponentLookup<GameWatcherData>(true);
         __watcherInfos = state.GetComponentLookup<GameWatcherInfo>();
+        __speakerInfos = state.GetComponentLookup<GameSpeakerInfo>();
         
         __physicsWorld = state.WorldUnmanaged.GetExistingSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
     }
@@ -281,8 +298,9 @@ public partial struct GameSpeakerSystem : ISystem
         speak.healthDamageType = __healthDamageType.UpdateAsRef(ref state);
         speak.instanceType = __instanceType.UpdateAsRef(ref state);
         speak.camps = __camps.UpdateAsRef(ref state);
-        speak.speakerInfos = __speakerInfos.UpdateAsRef(ref state);
+        speak.watchers = __watchers.UpdateAsRef(ref state);
         speak.watcherInfos = __watcherInfos.UpdateAsRef(ref state);
+        speak.speakerInfos = __speakerInfos.UpdateAsRef(ref state);
 
         ref var lookupJobManager = ref __physicsWorld.lookupJobManager;
 
