@@ -331,6 +331,7 @@ internal struct GameQuestManagerData
     {
         money = 0;
 
+        bool isReset = true;
         int i, j;
         float chance = 0.0f, randomValue = random.NextFloat();
         GameQuestRewardData reward;
@@ -339,9 +340,20 @@ internal struct GameQuestManagerData
             reward = __rewards[rewardStartIndex + i];
             chance += reward.chance;
             if (chance > 1.0f)
+            {
                 chance -= 1.0f;
 
-            if (chance < randomValue)
+                isReset = true;
+            }
+
+            if (isReset)
+            {
+                if (chance < randomValue)
+                    continue;
+                
+                isReset = false;
+            }
+            else
                 continue;
 
             switch (reward.type)
