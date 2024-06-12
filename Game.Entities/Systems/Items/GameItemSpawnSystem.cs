@@ -101,7 +101,10 @@ public struct GameItemSpawnRange : IComponentData
 
     public RigidTransform Next(ref Random random)
     {
-        return math.RigidTransform(center.rot, center.pos + random.NextFloat3Direction() * random.NextFloat(radius));
+        if(radius > math.FLT_MIN_NORMAL)
+            return math.RigidTransform(center.rot, center.pos + random.NextFloat3Direction() * random.NextFloat(radius));
+
+        return RigidTransform.identity;
     }
 }
 
@@ -207,7 +210,7 @@ public partial struct GameItemSpawnSystem : ISystem
             Key key;
             Value value;
             GameItemSpawnData result;
-            var range = ranges[index];
+            var range = index < ranges.Length ? ranges[index] : default;
             for (i = 0; i < numCommands; ++i)
             {
                 ref readonly var command = ref commands.ElementAt(i);
@@ -285,7 +288,7 @@ public partial struct GameItemSpawnSystem : ISystem
             Key key;
             Value value;
             GameItemSpawnData result;
-            var range = ranges[index];
+            var range = index < ranges.Length ? ranges[index] : default;
             for (i = 0; i < numCommands; ++i)
             {
                 ref readonly var command = ref commands.ElementAt(i);
@@ -438,7 +441,7 @@ public partial struct GameItemSpawnSystem : ISystem
     {
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __group = builder
-                    .WithAll<Translation, Rotation>()
+                    //.WithAll<Translation, Rotation>()
                     .WithAnyRW<GameItemSpawnCommand, GameItemSpawnHandleCommand>()
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
