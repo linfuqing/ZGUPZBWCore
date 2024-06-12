@@ -148,13 +148,19 @@ public partial struct GameItemRootStatusSystem : ISystem, IEntityCommandProducer
                 spawnHandleCommand.transform = math.RigidTransform(rotations[index].Value, translations[index].Value);
                 spawnHandleCommand.owner = entityArray[index];
 
-                while (enumerator.MoveNext())
+                GameItemHandle siblingHandle;
+                do
                 {
-                    spawnHandleCommand.handle = enumerator.Current.handle;
-                    spawnHandleCommands.Add(spawnHandleCommand);
-                    
-                    handlesToDetach.Enqueue(spawnHandleCommand.handle);
-                }
+                    while (enumerator.MoveNext())
+                    {
+                        spawnHandleCommand.handle = enumerator.Current.handle;
+                        spawnHandleCommands.Add(spawnHandleCommand);
+
+                        handlesToDetach.Enqueue(spawnHandleCommand.handle);
+                    }
+
+                    siblingHandle = item.siblingHandle;
+                } while (hierarchy.GetChildren(siblingHandle, out enumerator, out item));
             }
 
             GameItemRoot root;
