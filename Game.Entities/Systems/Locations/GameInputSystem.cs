@@ -331,6 +331,9 @@ public struct GameInputAction : IComponentData
         in ComponentLookup<GameEntityCamp> camps,
         in ComponentLookup<PhysicsShapeCompoundCollider> colliders)
     {
+        if (!camps.HasComponent(entity))
+            return false;
+        
         if(!states.HasComponent(entity) || ((GameEntityStatus)states[entity].value & GameEntityStatus.Mask) == GameEntityStatus.Dead)
             return false;
 
@@ -346,7 +349,7 @@ public struct GameInputAction : IComponentData
             if ((collider.Value.Filter.BelongsTo & layerMask) == 0)
                 return false;
         }
-
+        
         return /*states.HasComponent(entity) &&
            (((GameEntityStatus)states[entity].value & GameEntityStatus.Mask) != GameEntityStatus.Dead) &&
            (layerMask == 0 || colliders.HasComponent(entity) && (colliders[entity].value.Value.Filter.BelongsTo & layerMask) != 0) &&*/
