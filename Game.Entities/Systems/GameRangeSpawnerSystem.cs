@@ -23,7 +23,7 @@ public struct GameRangeSpawnerNode : IBufferElementData
     public float outTime;
 }
 
-public struct GameRangeSpawnerEntity : IBufferElementData
+public struct GameRangeSpawnerEntity : IBufferElementData, IEnableableComponent
 {
     public Entity value;
 }
@@ -92,7 +92,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
 
         public NativeQueue<MoveItem>.ParallelWriter moveItems;
 
-        public bool Execute(int index)
+        public bool Execute(int index, ref bool isRangeEntityEnabled)
         {
             var coolDownTime = coolDownTimes[index];
             if (coolDownTime.value > time)
@@ -132,50 +132,30 @@ public partial struct GameRangeSpawnerSystem : ISystem
                 if ((followers.Length <= index || followers[index].Length < 1) &&
                     spawner.IsEmpty(entityArray[index]))
                 {
+                    EntityData<Entity> temp;
+                    temp.entity = entityArray[index];
+
+                    var rangeEntities = this.rangeEntities[index].Reinterpret<Entity>();
+                    int numRangeEntities = rangeEntities.Length;
+                    for (int i = 0; i < numRangeEntities; ++i)
+                    {
+                        entity = rangeEntities[i];
+                        if (!__IsVail(entity))
+                        {
+                            temp.value = entity;
+                            outputs.Enqueue(temp);
+
+                            rangeEntities.RemoveAtSwapBack(i--);
+
+                            --numRangeEntities;
+                        }
+                    }
+
+                    var rangeEntityArray = rangeEntities.AsNativeArray();
                     var nodes = this.nodes[index];
                     int numNodes = nodes.Length;
-                    if (numNodes > 0)
+                    if (numNodes <= state.count)
                     {
-                        EntityData<Entity> temp;
-                        temp.entity = entityArray[index];
-                        
-                        var entities = rangeEntities[index].Reinterpret<Entity>();
-                        int numEntities = entities.Length;
-                        for (int i = 0; i < numEntities; ++i)
-                        {
-                            entity = entities[i];
-                            if (!__IsVail(entity))
-                            {
-                                temp.value = entity;
-                                outputs.Enqueue(temp);
-                                
-                                entities.RemoveAtSwapBack(i--);
-
-                                --numEntities;
-                            }
-                        }
-
-                        if (state.count >= numNodes)
-                        {
-                            foreach (var physicsShapeChildEntity in physicsShapeChildEntities)
-                            {
-                                if (!this.physicsTriggerEvents.HasBuffer(physicsShapeChildEntity.value))
-                                    continue;
-
-                                physicsTriggerEvents = this.physicsTriggerEvents[physicsShapeChildEntity.value];
-                                foreach (var physicsTriggerEvent in physicsTriggerEvents)
-                                {
-                                    entity = physicsShapeParents.HasComponent(physicsTriggerEvent.entity)
-                                        ? physicsShapeParents[physicsTriggerEvent.entity].entity
-                                        : physicsTriggerEvent.entity;
-                                    if (entities.AsNativeArray().Contains(entity))
-                                        return false;
-                                }
-                            }
-
-                            state.count = 0;
-                        }
-
                         foreach (var physicsShapeChildEntity in physicsShapeChildEntities)
                         {
                             if (!this.physicsTriggerEvents.HasBuffer(physicsShapeChildEntity.value))
@@ -187,22 +167,48 @@ public partial struct GameRangeSpawnerSystem : ISystem
                                 entity = physicsShapeParents.HasComponent(physicsTriggerEvent.entity)
                                     ? physicsShapeParents[physicsTriggerEvent.entity].entity
                                     : physicsTriggerEvent.entity;
-                                if (__IsVail(entity) &&
-                                    !entities.AsNativeArray().Contains(entity))
-                                {
-                                    entities.Add(entity);
-
-                                    temp.value = entity;
-                                    inputs.Enqueue(temp);
-                                }
+                                if (rangeEntityArray.Contains(entity))
+                                    return false;
                             }
                         }
 
-                        var node = nodes[state.count++];
+                        state.count = 0;
+                    }
 
-                        coolDownTime.value = nodes[state.count - 1].inTime + time;
+                    foreach (var physicsShapeChildEntity in physicsShapeChildEntities)
+                    {
+                        if (!this.physicsTriggerEvents.HasBuffer(physicsShapeChildEntity.value))
+                            continue;
+
+                        physicsTriggerEvents = this.physicsTriggerEvents[physicsShapeChildEntity.value];
+                        foreach (var physicsTriggerEvent in physicsTriggerEvents)
+                        {
+                            entity = physicsShapeParents.HasComponent(physicsTriggerEvent.entity)
+                                ? physicsShapeParents[physicsTriggerEvent.entity].entity
+                                : physicsTriggerEvent.entity;
+                            if (__IsVail(entity) &&
+                                !rangeEntityArray.Contains(entity))
+                            {
+                                ++numRangeEntities;
+                                
+                                rangeEntities.Add(entity);
+                                rangeEntityArray = rangeEntities.AsNativeArray();
+
+                                temp.value = entity;
+                                inputs.Enqueue(temp);
+                            }
+                        }
+                    }
+
+                    isRangeEntityEnabled = true;
+
+                    if (state.count < numNodes)
+                    {
+                        var node = nodes[state.count];
+
+                        coolDownTime.value = nodes[state.count].inTime + time;
                         coolDownTimes[index] = coolDownTime;
-                        
+
                         if (randomNodes.Length > index)
                         {
                             GameRandomSpawnerNode randomNode;
@@ -211,9 +217,11 @@ public partial struct GameRangeSpawnerSystem : ISystem
 
                             result = true;
                         }
-
-                        states[index] = state;
                     }
+                    
+                    ++state.count;
+
+                    states[index] = state;
                 }
             }
             else
@@ -231,6 +239,8 @@ public partial struct GameRangeSpawnerSystem : ISystem
                 }
                 
                 rangeEntities.Clear();
+
+                isRangeEntityEnabled = false;
                 
                 if (state.count > 0)
                 {
@@ -370,8 +380,12 @@ public partial struct GameRangeSpawnerSystem : ISystem
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
             {
-                if(spawn.Execute(i))
+                bool isRangeEntityEnabledSource = chunk.IsComponentEnabled(ref rangeEntityType, i), isRangeEntityEnabledDestination = isRangeEntityEnabledSource;
+                if(spawn.Execute(i, ref isRangeEntityEnabledDestination))
                     chunk.SetComponentEnabled(ref randomNodeType, i, true);
+                
+                if(isRangeEntityEnabledDestination != isRangeEntityEnabledSource)
+                    chunk.SetComponentEnabled(ref rangeEntityType, i, isRangeEntityEnabledDestination);
             }
         }
     }
@@ -495,9 +509,14 @@ public partial struct GameRangeSpawnerSystem : ISystem
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __group = builder
                 .WithAll<PhysicsShapeChildEntity, GameRangeSpawnerNode>()
-                //.WithAllRW<GameRandomSpawnerNode>()
                 .WithAllRW<GameRangeSpawnerEntity, GameRangeSpawnerCoolDownTime>()
                 .WithAllRW<GameRangeSpawnerStatus>()
+                .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState)
+                .AddAdditionalQuery()
+                .WithAll<Disabled, PhysicsShapeChildEntity, GameRangeSpawnerNode>()
+                .WithAllRW<GameRangeSpawnerEntity, GameRangeSpawnerCoolDownTime>()
+                .WithAllRW<GameRangeSpawnerStatus>()
+                .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                 .Build(ref state);
                 
         __followers = state.GetBufferLookup<GameFollower>(true);
