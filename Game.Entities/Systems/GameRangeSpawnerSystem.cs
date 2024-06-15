@@ -46,6 +46,19 @@ public partial struct GameRangeSpawnerSystem : ISystem
         public GameItemHandle source;
         public GameItemHandle destination;
     }
+
+    [BurstCompile]
+    private struct Enable : IJobChunk
+    {
+        public BufferTypeHandle<GameRangeSpawnerEntity> rangeEntityType;
+
+        public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+        {
+            var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+            while (iterator.NextEntityIndex(out int i))
+                chunk.SetComponentEnabled(ref rangeEntityType, i, true);
+        }
+    }
     
     private struct Spawn
     {
@@ -466,7 +479,8 @@ public partial struct GameRangeSpawnerSystem : ISystem
         }
     }
 
-    private EntityQuery __group;
+    private EntityQuery __groupToEnable;
+    private EntityQuery __groupToUpdate;
 
     private BufferLookup<GameFollower> __followers;
     private BufferLookup<PhysicsTriggerEvent> __physicsTriggerEvents;
@@ -477,6 +491,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
     private ComponentLookup<GameOwner> __owners;
 
     private EntityTypeHandle __entityType;
+    
     private BufferTypeHandle<PhysicsShapeChildEntity> __physicsShapeChildEntityType;
     private BufferTypeHandle<GameFollower> __followerType;
 
@@ -507,13 +522,14 @@ public partial struct GameRangeSpawnerSystem : ISystem
     public void OnCreate(ref SystemState state)
     {
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
-            __group = builder
+            __groupToEnable = builder
+                .WithAll<GameRangeSpawnerNode>()
+                .WithNone<GameRangeSpawnerEntity>()
+                .Build(ref state);
+
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __groupToUpdate = builder
                 .WithAll<PhysicsShapeChildEntity, GameRangeSpawnerNode>()
-                .WithAllRW<GameRangeSpawnerEntity, GameRangeSpawnerCoolDownTime>()
-                .WithAllRW<GameRangeSpawnerStatus>()
-                .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState)
-                .AddAdditionalQuery()
-                .WithAll<Disabled, PhysicsShapeChildEntity, GameRangeSpawnerNode>()
                 .WithAllRW<GameRangeSpawnerEntity, GameRangeSpawnerCoolDownTime>()
                 .WithAllRW<GameRangeSpawnerStatus>()
                 .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
@@ -564,6 +580,12 @@ public partial struct GameRangeSpawnerSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
+        var rangeEntityType = __rangeEntityType.UpdateAsRef(ref state);
+        
+        Enable enable;
+        enable.rangeEntityType = rangeEntityType;
+        var jobHandle = enable.ScheduleParallelByRef(__groupToEnable, state.Dependency);
+        
         var nodeStates = __nodeStates.UpdateAsRef(ref state);
         
         SpawnEx spawn;
@@ -581,7 +603,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
         spawn.followerType = __followerType.UpdateAsRef(ref state);
         spawn.nodeType = __nodeType.UpdateAsRef(ref state);
         spawn.randomNodeType = __randomNodeType.UpdateAsRef(ref state);
-        spawn.rangeEntityType = __rangeEntityType.UpdateAsRef(ref state);
+        spawn.rangeEntityType = rangeEntityType;
         spawn.statusType = __statusType.UpdateAsRef(ref state);
         spawn.coolDownTimeType = __coolDownTimeType.UpdateAsRef(ref state);
         spawn.inputs = __inputs.AsParallelWriter();
@@ -591,8 +613,8 @@ public partial struct GameRangeSpawnerSystem : ISystem
 
         ref var spawnerJobManager = ref __spawner.lookupJobManager;
 
-        var jobHandle = spawn.ScheduleParallelByRef(__group,
-            JobHandle.CombineDependencies(spawnerJobManager.readWriteJobHandle, state.Dependency));
+        jobHandle = spawn.ScheduleParallelByRef(__groupToUpdate,
+            JobHandle.CombineDependencies(spawnerJobManager.readWriteJobHandle, jobHandle));
 
         Apply apply;
         apply.itemManager = __itemManager.value;
