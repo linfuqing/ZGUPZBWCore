@@ -206,14 +206,33 @@ public class GameNodeShapeComponent : EntityProxyComponent, IEntityComponent
 
     public void SetParent(EntityCommander commander, IPhysicsComponent value, int authority = 0)
     {
-        Entity entity = this.entity;
-        commander.AddComponent<PhysicsExclude>(entity);
+        Entity source = this.entity;
+        commander.AddComponent<PhysicsExclude>(source);
+
+        RigidTransform transform = value.GetTransform();
+        Translation translation;
+        translation.Value = transform.pos;
+        Rotation rotation;
+        rotation.Value = transform.rot;
+        
+        Entity destination = value.entity;
+        if (commander.TryGetComponentData(destination, ref translation))
+            transform.pos = translation.Value;
+
+        if (commander.TryGetComponentData(destination, ref rotation))
+            transform.rot = rotation.Value;
+
+        translation = this.GetComponentData<Translation>();
+        rotation = this.GetComponentData<Rotation>();
+
+        commander.TryGetComponentData(source, ref translation);
+        commander.TryGetComponentData(source, ref rotation);
 
         GameNodeParent parent;
         parent.authority = authority;
-        parent.entity = value.entity;
-        parent.transform = math.mul(math.inverse(value.GetTransform()), math.RigidTransform(this.GetComponentData<Rotation>().Value, this.GetComponentData<Translation>().Value));
-        commander.AddComponentData(entity, parent);
+        parent.entity = destination;
+        parent.transform = math.mul(math.inverse(transform), math.RigidTransform(rotation.Value, translation.Value));
+        commander.AddComponentData(source, parent);
     }
     
     public BlobAssetReference<Unity.Physics.Collider> GetCollider(int index)

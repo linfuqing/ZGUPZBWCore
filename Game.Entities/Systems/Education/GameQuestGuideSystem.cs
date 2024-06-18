@@ -431,6 +431,20 @@ public struct GameQuestGuideManager
 
     public struct ReadWrite
     {
+        [BurstCompile]
+        private struct Resize : IJob
+        {
+            [ReadOnly]
+            public NativePool<Callback> callbacks;
+
+            public NativeList<CallbackResult> callbackResults;
+            
+            public void Execute()
+            {
+                callbackResults.Capacity = math.max(callbackResults.Capacity, callbackResults.Length + callbacks.length);
+            }
+        }
+        
         private ReadOnly __readOnly;
 
         [ReadOnly]
@@ -440,17 +454,22 @@ public struct GameQuestGuideManager
 
         private NativeList<CallbackResult>.ParallelWriter __callbackResults;
 
-        public ReadWrite(ref GameQuestGuideManager manager)
+        public ReadWrite(ref GameQuestGuideManager manager, ref JobHandle jobHandle)
         {
             __readOnly = manager.readOnly;
             __callbacks = manager.__callbacks;
 
             //manager.__callbackStates.ResizeUninitialized(__callbacks.capacity);
 
-            __callbackStates = manager.__callbackStates.AsArray();
+            __callbackStates = manager.__callbackStates.AsDeferredJobArray();
 
-            manager.__callbackResults.Capacity = math.max(manager.__callbackResults.Capacity, manager.__callbackResults.Length + __callbacks.length);
             __callbackResults = manager.__callbackResults.AsParallelWriter();
+
+            Resize resize;
+            resize.callbacks = manager.__callbacks;
+            resize.callbackResults = manager.__callbackResults;
+
+            jobHandle = resize.ScheduleByRef(jobHandle);
         }
 
         /*public void DispatchEvents()
@@ -525,8 +544,6 @@ public struct GameQuestGuideManager
 
     public ReadOnly readOnly => new ReadOnly(this);
 
-    public ReadWrite readWrite => new ReadWrite(ref this);
-
     public GameQuestGuideManager(in AllocatorManager.AllocatorHandle allocator)
     {
         __guides = new NativePool<Guide>(allocator);
@@ -548,6 +565,8 @@ public struct GameQuestGuideManager
         __callbackStates.Dispose();
         __callbackResults.Dispose();
     }
+
+    public ReadWrite AsReadWrite(ref JobHandle jobHandle) => new ReadWrite(ref this, ref jobHandle);
 
     public void InvokeAllResults()
     {
@@ -579,9 +598,10 @@ public struct GameQuestGuideManager
         int innerloopBatchCount,
         in JobHandle inputDeps)
     {
+        var jobHandle = inputDeps;
         DispatchEventsJob dispatchEventsJob;
-        dispatchEventsJob.readWrite = readWrite;
-        return __callbacks.ScheduleParallelForDefer(ref dispatchEventsJob, innerloopBatchCount, inputDeps);
+        dispatchEventsJob.readWrite = AsReadWrite(ref jobHandle);
+        return __callbacks.ScheduleParallelForDefer(ref dispatchEventsJob, innerloopBatchCount, jobHandle);
     }
 
     public int Register(Action<int> value, int? id, GameQuestGuideVariantType variantType, bool isPublished)

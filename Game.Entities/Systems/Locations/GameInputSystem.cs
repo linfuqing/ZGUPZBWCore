@@ -1487,7 +1487,7 @@ public partial struct GameInputSystem : ISystem
         guideEnd.guideResults = __guideResults;
         questGuideJobHandle = guideEnd.ScheduleByRef(questGuideJobHandle);
 
-        questGuideJobManager.AddReadOnlyDependency(questGuideJobHandle);
+        questGuideJobManager.readWriteJobHandle = questGuideJobHandle;
 
         state.Dependency = JobHandle.CombineDependencies(submitJobHandle, questGuideJobHandle);
     }
