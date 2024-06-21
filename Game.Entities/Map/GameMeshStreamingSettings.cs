@@ -33,7 +33,15 @@ public class GameMeshStreamingSettings : MeshInstanceStreamingSettings<GameMeshS
             position.w = 0.0f;
         }
 
-        float3 IVertex.position => position.xyz;
+        float3 IVertex.position 
+        {
+            get
+            {
+                UnityEngine.Assertions.Assert.IsFalse(math.any(math.isnan(position.xyz)));
+                
+                return position.xyz;
+            }
+        }
     }
 
     public struct MeshWrapper : IMeshWrapper<Triangle<Vertex>>
