@@ -16,7 +16,7 @@ public struct GameClipTargetWeight : IComponentData, IEnableableComponent
 }
 
 [Unity.Rendering.MaterialProperty("_ClipTargetWeight")]
-public struct ClipTargetWeight : IComponentData
+public struct ClipTargetWeight : ICleanupComponentData
 {
     public float value;
 }

@@ -673,7 +673,12 @@ public partial class GameClipTargetRenderSystem : SystemBase
     {
         base.OnCreate();
 
-        __group = GetEntityQuery(ComponentType.ReadOnly<ClipTargetWeight>(), ComponentType.Exclude<MaterialMeshInfo>());
+        using(var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                .WithAll<ClipTargetWeight>()
+                .WithNone<MaterialMeshInfo>()
+                .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                .Build(this);
 
         __materialMeshInfos = GetComponentLookup<MaterialMeshInfo>();
 
