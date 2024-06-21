@@ -1447,7 +1447,8 @@ public partial class GameAnimatorApplySystem : SystemBase
         ActorStatus,
         Height,
         Forward,
-        Turn
+        Turn, 
+        Other
     }
 
     public struct Result
@@ -1470,24 +1471,12 @@ public partial class GameAnimatorApplySystem : SystemBase
                     instance.SetBool(id, Mathf.Abs(value) > 0.0f);
                     break;
                 case ResultType.DesiredStatus:
-                    instance.SetInteger(id, Mathf.RoundToInt(value));
-                    break;
                 case ResultType.ActorStatus:
-                    /*if ((animator.GetInteger(GameAnimatorFlag.triggerHashMoveStatus) == (int)GameNodeActorStatus.Status.Fall ||
-                        animator.GetInteger(GameAnimatorFlag.triggerHashMoveStatus) == (int)GameNodeActorStatus.Status.Jump) &&
-                        value == (int)GameNodeActorStatus.Status.Normal)
-                        Debug.Log(animator.GetBool(GameAnimatorFlag.triggerHashBusy));*/
-
                     instance.SetInteger(id, Mathf.RoundToInt(value));
                     break;
                 case ResultType.Height:
-                    instance.SetFloat(id, value);
-                    break;
                 case ResultType.Forward:
-                    instance.SetFloat(id, value);
-                    break;
                 case ResultType.Turn:
-                    //Debug.Log(value);
                     instance.SetFloat(id, value);
                     break;
             }
@@ -1518,90 +1507,3 @@ public partial class GameAnimatorApplySystem : SystemBase
             result.Apply();
     }
 }
-
-/*[UpdateAfter(typeof(GameAnimatorMoveSystem))]
-public partial class GameAnimatorSystem : ComponentSystem
-{
-    private float __elapsedTime;
-    private double __time;
-
-    private GameUpdateSystemGroup __updateSystemGroup;
-
-    public double time => __time + __elapsedTime;
-
-    protected override void OnCreate()
-    {
-        base.OnCreate();
-        
-        __updateSystemGroup = World.GetOrCreateSystem<GameUpdateSystemGroup>();
-    }
-
-    protected override void OnUpdate()
-    {
-        double time = __updateSystemGroup.time - __updateSystemGroup.syncDelta;
-        if(time > __time)
-        {
-            __time = time;
-
-            __elapsedTime = 0.0f;
-        }
-
-        Entities.ForEach<Animator, GameAnimatorFlag, GameNodeDelay>(__Update);
-        
-        Entities.WithNone<GameNodeParent>().ForEach<Animator, GameAnimatorMoveInfo, GameAnimatorFlag>(__Update);
-        
-        Entities.WithNone<GameNodeParent>().ForEach<Animator, GameAnimatorHeightInfo, GameAnimatorFlag, GameNodeCharacterData, GameNodeCharacterSurface>(__Update);
-
-        __elapsedTime += Time.DeltaTime;
-    }
-
-    private void __Update(
-        Animator animator,
-        [ReadOnly]ref GameAnimatorFlag flag,
-        [ReadOnly]ref GameNodeDelay delay)
-    {
-        if (animator == null)
-            return;
-
-        if ((flag.value & GameAnimatorFlag.ENABLE_BUSY) != GameAnimatorFlag.ENABLE_BUSY)
-            return;
-
-        animator.SetBool(GameAnimatorFlag.triggerHashBusy, delay.time > time);
-    }
-    
-    private void __Update(
-        Animator animator,
-        [ReadOnly]ref GameAnimatorMoveInfo moveInfo,
-        [ReadOnly]ref GameAnimatorFlag flag)
-    {
-        if (animator == null)
-            return;
-
-        animator.SetFloat(GameAnimatorFlag.triggerHashMove, moveInfo.forwardAmount);
-
-        if ((flag.value & GameAnimatorFlag.ENABLE_TURN) == GameAnimatorFlag.ENABLE_TURN)
-            animator.SetFloat(GameAnimatorFlag.triggerHashTurn, moveInfo.turnAmount);
-    }
-
-    private void __Update(
-        Animator animator,
-        ref GameAnimatorHeightInfo heightInfo,
-        [ReadOnly]ref GameAnimatorFlag flag,
-        [ReadOnly]ref GameNodeCharacterData character,
-        [ReadOnly]ref GameNodeCharacterSurface surface)
-    {
-        if (animator == null)
-            return;
-
-        if ((flag.value & GameAnimatorFlag.ENABLE_HEIGHT) != GameAnimatorFlag.ENABLE_HEIGHT)
-            return;
-        
-        heightInfo.amount = Mathf.SmoothDamp(
-            heightInfo.amount, 
-            (math.max(surface.fraction, character.stepFraction) - character.stepFraction) / (1.0f - character.stepFraction), 
-            ref heightInfo.velocity, 
-            __updateSystemGroup.updateDelta);
-
-        animator.SetFloat(GameAnimatorFlag.triggerHashHeight, heightInfo.amount);
-    }
-}*/

@@ -772,9 +772,6 @@ public partial struct GameNodeSystem : ISystem
         public GameTime time;
 
         [ReadOnly]
-        public ComponentLookup<GameNodeDirection> directions;
-
-        [ReadOnly]
         public BufferTypeHandle<GameNodeSpeedSection> speedSectionType;
         [ReadOnly]
         public ComponentTypeHandle<Translation> translationType;
@@ -895,7 +892,7 @@ public partial struct GameNodeSystem : ISystem
     private EntityQuery __updateDataGroup;*/
     private GameUpdateTime __time;
 
-    private ComponentLookup<GameNodeDirection> __directions;
+    //private ComponentLookup<GameNodeDirection> __directions;
 
     private BufferTypeHandle<GameNodeSpeedSection> __speedSectionType;
     private ComponentTypeHandle<Translation> __translationType;
@@ -937,7 +934,7 @@ public partial struct GameNodeSystem : ISystem
 
         __time = new GameUpdateTime(ref state);
 
-        __directions = state.GetComponentLookup<GameNodeDirection>(true);
+        //__directions = state.GetComponentLookup<GameNodeDirection>(true);
         __speedSectionType = state.GetBufferTypeHandle<GameNodeSpeedSection>(true);
         __translationType = state.GetComponentTypeHandle<Translation>(true);
         __staticThresholdType = state.GetComponentTypeHandle<GameNodeStaticThreshold>(true);
@@ -975,7 +972,7 @@ public partial struct GameNodeSystem : ISystem
         UpdateTransformsEx updateTransforms;
         updateTransforms.isUpdate = __time.IsVail(-1);// updateData.IsUpdate(syncData.frameIndex, -1);
         updateTransforms.time = __time.RollbackTime.now;// syncData.now;
-        updateTransforms.directions = __directions.UpdateAsRef(ref state);
+        //updateTransforms.directions = __directions.UpdateAsRef(ref state);
         updateTransforms.speedSectionType = __speedSectionType.UpdateAsRef(ref state);
         updateTransforms.translationType = __translationType.UpdateAsRef(ref state);
         updateTransforms.staticThresholdType = __staticThresholdType.UpdateAsRef(ref state);
@@ -1172,7 +1169,7 @@ public partial struct GameNodeChildrenSystem : ISystem
 
         public void Execute(int index)
         {
-            GameNodeParent parent = parents[index];
+            var parent = parents[index];
             if (!translationMap.HasComponent(parent.entity))
                 return;
 
