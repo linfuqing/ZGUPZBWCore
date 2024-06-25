@@ -5,6 +5,8 @@ using ZG;
 
 public struct GameClipTargetData : IComponentData
 {
+    public float weightMin;
+
     public float weightSpeed;
 
     public float height;
@@ -26,6 +28,9 @@ public struct ClipTargetWeight : ICleanupComponentData
 public class GameClipTargetComponent : EntityProxyComponent, IEntityComponent
 {
     [SerializeField]
+    internal float _weightMin = -10.0f;
+
+    [SerializeField]
     internal float _weightSpeed = 1f;
 
     [SerializeField]
@@ -34,6 +39,7 @@ public class GameClipTargetComponent : EntityProxyComponent, IEntityComponent
     void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
     {
         GameClipTargetData instance;
+        instance.weightMin = _weightMin;
         instance.weightSpeed = _weightSpeed;
         instance.height = _height;
         //instance.visibleCallback = new Action(__Visible).Register();

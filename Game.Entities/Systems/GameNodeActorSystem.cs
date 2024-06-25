@@ -267,7 +267,7 @@ public partial struct GameNodeActorSystem : ISystem
 
                                     if ((nodeStatus.value & GameNodeActorStatus.NODE_STATUS_ACT) == GameNodeActorStatus.NODE_STATUS_ACT)
                                     { 
-                                        //if (valueTime - actorStatus.time > instance.fallDelayTime)
+                                        if (valueTime - actorStatus.time > instance.fallDelayTime)
                                         {
                                             if (instance.fallToStepDelayTime > math.FLT_MIN_NORMAL || delay.Check(valueTime))
                                             {
@@ -283,7 +283,7 @@ public partial struct GameNodeActorSystem : ISystem
                                             {
                                                 GameNodeVelocityComponent velocityComponent;
                                                 velocityComponent.mode = GameNodeVelocityComponent.Mode.Direct;
-                                                velocityComponent.time = time;
+                                                velocityComponent.time = valueTime;
                                                 velocityComponent.duration = instance.fallToStepTime;
                                                 velocityComponent.value = math.forward(quaternion.RotateY(characterAangles[index].value)) * instance.fallToStepSpeed;
 

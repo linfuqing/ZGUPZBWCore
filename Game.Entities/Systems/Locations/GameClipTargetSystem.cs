@@ -13,7 +13,6 @@ using UnityEngine;
 using ZG;
 using UnityEngine.Rendering;
 using ZG.Entities.Physics;
-using static ZG.MotionClipWeightMaskDefinition;
 
 public struct GameLocationClipTargetFactory : IComponentData
 {
@@ -76,14 +75,10 @@ public partial struct GameLocationClipTargetWeightSystem : ISystem, IEntityComma
 
         public float3 forward;
 
+        public GameContainerHierarchyEnumerator enumerator;
+        
         [ReadOnly]
         public SharedHashMap<Entity, MeshInstanceRendererBuilder>.Reader rendererBuilders;
-
-        [ReadOnly]
-        public SharedMultiHashMap<Entity, EntityData<int>>.Reader childIndices;
-
-        [ReadOnly]
-        public SharedMultiHashMap<Entity, EntityData<int>>.Reader parentIndices;
 
         [ReadOnly]
         public ComponentLookup<GameClipTargetData> instances;
@@ -126,19 +121,19 @@ public partial struct GameLocationClipTargetWeightSystem : ISystem, IEntityComma
             {
                 sources.SetComponentEnabled(entity, true);
 
-                if(physicsRaycastCollidersToIgnore.IsComponentEnabled(entity))
+                if(!physicsRaycastCollidersToIgnore.IsComponentEnabled(entity))
                     physicsRaycastCollidersToIgnore.SetComponentEnabled(entity, true);
 
                 float changedWeightValue = instance.weightSpeed * deltaTime;
 
                 var weight = sources[entity];
-                weight.value = math.min(weight.value + changedWeightValue, 1.0f) + changedWeightValue;
+                weight.value = math.clamp(weight.value, 0.0f, 1.0f) + changedWeightValue;
                 sources[entity] = weight;
 
                 if (renderers.HasBuffer(entity) && !rendererBuilders.ContainsKey(entity))
                 {
                     ClipTargetWeight targetWeight;
-                    targetWeight.value = weight.value;
+                    targetWeight.value = math.min(weight.value, 1.0f);
                     foreach (var renderer in renderers[entity])
                     {
                         if (destinations.HasComponent(renderer.entity))
@@ -153,7 +148,6 @@ public partial struct GameLocationClipTargetWeightSystem : ISystem, IEntityComma
         public void Execute(int index)
         {
             var distanceHits = this.distanceHits[index];
-            GameContainerEnumerator enumerator;
             Entity entity;
             float3 position = translations[index].Value;
             int numDistanceHits = distanceHits.Length;
@@ -162,7 +156,7 @@ public partial struct GameLocationClipTargetWeightSystem : ISystem, IEntityComma
                 entity = distanceHits[i].value.Entity;
                 Execute(position, entity);
 
-                enumerator = new GameContainerEnumerator(entity, parentIndices, childIndices);
+                enumerator.Init(entity);
                 while (enumerator.MoveNext())
                     Execute(position, enumerator.Current);
             }
@@ -218,26 +212,28 @@ public partial struct GameLocationClipTargetWeightSystem : ISystem, IEntityComma
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
-            Visible visible;
-            visible.deltaTime = deltaTime;
-            visible.forward = forward;
-            visible.rendererBuilders = rendererBuilders;
-            visible.childIndices = childIndices;
-            visible.parentIndices = parentIndices;
-            visible.instances = instances;
-            visible.translationMap = translations;
-            visible.translations = chunk.GetNativeArray(ref translationType);
-            visible.distanceHits = chunk.GetBufferAccessor(ref distanceHitType);
-            visible.renderers = renderers;
-            visible.physicsRaycastCollidersToIgnore = physicsRaycastCollidersToIgnore;
-            visible.sources = sources;
-            visible.destinations = destinations;
-            visible.entityManager = entityManager;
-            visible.entities = entities;
+            using (var enumerator = new GameContainerHierarchyEnumerator(Allocator.Temp, parentIndices, childIndices))
+            {
+                Visible visible;
+                visible.deltaTime = deltaTime;
+                visible.forward = forward;
+                visible.enumerator = enumerator;
+                visible.rendererBuilders = rendererBuilders;
+                visible.instances = instances;
+                visible.translationMap = translations;
+                visible.translations = chunk.GetNativeArray(ref translationType);
+                visible.distanceHits = chunk.GetBufferAccessor(ref distanceHitType);
+                visible.renderers = renderers;
+                visible.physicsRaycastCollidersToIgnore = physicsRaycastCollidersToIgnore;
+                visible.sources = sources;
+                visible.destinations = destinations;
+                visible.entityManager = entityManager;
+                visible.entities = entities;
 
-            var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
-            while (iterator.NextEntityIndex(out int i))
-                visible.Execute(i);
+                var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+                while (iterator.NextEntityIndex(out int i))
+                    visible.Execute(i);
+            }
         }
     }
 
@@ -265,17 +261,20 @@ public partial struct GameLocationClipTargetWeightSystem : ISystem, IEntityComma
 
         public bool Execute(int index)
         {
+            Entity entity = entityArray[index];
+            
+            var instance = instances[index];
             var weight = sources[index];
 
-            weight.value -= instances[index].weightSpeed * deltaTime;
-            bool result = weight.value < 0.0f;
-            if(result)
+            weight.value -= instance.weightSpeed * deltaTime;
+            bool result = weight.value < instance.weightMin;//0.0f;
+            if (result)
                 weight.value = 0.0f;
 
-            if(index < renderers.Length && !rendererBuilders.ContainsKey(entityArray[index]))
+            if(index < renderers.Length && !rendererBuilders.ContainsKey(entity))
             {
                 ClipTargetWeight targetWeight;
-                targetWeight.value = weight.value;
+                targetWeight.value = math.max(weight.value, 0.0f);
                 foreach (var renderer in renderers[index])
                 {
                     if (destinations.HasComponent(renderer.entity))
@@ -555,7 +554,7 @@ public partial class GameClipTargetRenderSystem : SystemBase
 
         public NativeList<BatchMaterialID> materialsToInvisible;
 
-        public unsafe void Execute(int index)
+        public void Execute(int index)
         {
             Entity entity = entities[index];
             if (!entityMaterials.TryGetValue(entity, out var material))
@@ -666,7 +665,7 @@ public partial class GameClipTargetRenderSystem : SystemBase
     private NativeHashMap<BatchMaterialID, MaterialRef> __materialRefs;
 
     private NativeParallelMultiHashMap<BatchMaterialID, Entity> __materialsToVisible;
-
+    
     private EntitiesGraphicsSystem __entitiesGraphicsSystem;
 
     protected override void OnCreate()

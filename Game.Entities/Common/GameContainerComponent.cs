@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using ZG;
 
@@ -120,6 +121,89 @@ public struct GameContainerEnumerator : IEnumerator<Entity>
         __flag = 0;
         __parent.Dispose();
         __children.Dispose();
+    }
+
+    object IEnumerator.Current => Current;
+}
+
+public struct GameContainerHierarchyEnumerator : IEnumerator<Entity>
+{
+    private SharedMultiHashMap<Entity, EntityData<int>>.Reader __parentIndices;
+    private SharedMultiHashMap<Entity, EntityData<int>>.Reader __childIndices;
+    private UnsafeList<GameContainerEnumerator> __enumerators;
+    private UnsafeHashSet<Entity> __entities;
+
+    public Entity Current => __enumerators.Length > 0 ? __enumerators[^1].Current : Entity.Null;
+
+    public GameContainerHierarchyEnumerator(
+        in AllocatorManager.AllocatorHandle allocator, 
+        in SharedMultiHashMap<Entity, EntityData<int>>.Reader parentIndices, 
+        in SharedMultiHashMap<Entity, EntityData<int>>.Reader childIndices)
+    {
+        __parentIndices = parentIndices;
+        __childIndices = childIndices;
+
+        __enumerators = new UnsafeList<GameContainerEnumerator>(1, allocator);
+        
+        __entities = new UnsafeHashSet<Entity>(1, allocator);
+    }
+
+    public void Dispose()
+    {
+        __entities.Dispose();
+        
+        foreach (var enumerator in __enumerators)
+            enumerator.Dispose();
+        
+        __enumerators.Dispose();
+    }
+
+    public void Init(in Entity entity)
+    {
+        foreach (var enumerator in __enumerators)
+            enumerator.Dispose();
+
+        __enumerators.Clear();
+        __enumerators.Add(new GameContainerEnumerator(entity, __parentIndices, __childIndices));
+        
+        __entities.Clear();
+        __entities.Add(entity);
+    }
+
+    public bool MoveNext()
+    {
+        GameContainerEnumerator enumerator, childEnumerator;
+        while (__enumerators.Length > 0)
+        {
+            enumerator = __enumerators[^1];
+            childEnumerator = new GameContainerEnumerator(enumerator.Current, __parentIndices, __childIndices);
+            while (childEnumerator.MoveNext())
+            {
+                if (__entities.Add(childEnumerator.Current))
+                {
+                    __enumerators.Add(childEnumerator);
+                    
+                    return true;
+                }
+            }
+
+            if (enumerator.MoveNext())
+            {
+                __enumerators[^1] = enumerator;
+
+                if (__entities.Add(enumerator.Current))
+                    return true;
+            }
+            else
+                __enumerators.RemoveAt(__enumerators.Length - 1);
+        }
+
+        return false;
+    }
+
+    void IEnumerator.Reset()
+    {
+        throw new NotImplementedException();
     }
 
     object IEnumerator.Current => Current;
