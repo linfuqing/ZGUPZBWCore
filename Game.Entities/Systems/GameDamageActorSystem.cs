@@ -6,7 +6,7 @@ using Unity.Collections;
 using Unity.Mathematics;
 using ZG;
 
-[BurstCompile, UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(GameRandomSpawnerSystem)), UpdateBefore(typeof(GameEntityHealthSystem))]
+[BurstCompile, UpdateInGroup(typeof(TimeSystemGroup)), /*UpdateBefore(typeof(GameRandomSpawnerSystem)), */UpdateBefore(typeof(GameEntityHealthSystem))]
 public partial struct GameDamageActorSystem : ISystem
 {
     private struct Act

@@ -138,7 +138,7 @@ public struct GameValhallaInitializer : IEntityDataInitializer
     CreateAfter(typeof(GameItemSystem)),
     CreateAfter(typeof(GameSoulSystem)),
     CreateAfter(typeof(GameItemRootEntitySystem)), 
-    UpdateInGroup(typeof(InitializationSystemGroup))]
+    UpdateInGroup(typeof(GameItemSystemGroup), OrderFirst = true)]
 public partial struct GameValhallaSystem : ISystem
 {
     private struct UpgradeResult

@@ -538,7 +538,7 @@ public struct GameItemResultManager
             if (commandIndex < commandStartIndex || commandIndex >= commandStartIndex + commandCount)
                 return false;
 
-            return this.handle.Equals(handle);
+            return true;//this.handle.Equals(handle);
         }
 
         public override string ToString()
@@ -1128,7 +1128,7 @@ public struct GameItemResultManager
             for (int i = 0; i < numItemMasks; ++i)
             {
                 ref readonly var itemMask = ref itemMasks.ElementAt(i);
-                if (itemMask.Check(commandIndexToMask) && itemMask.handle.Equals(command.destinationParentHandle) || itemMask.handle.Equals(command.destinationHandle))
+                if (itemMask.Check(commandIndexToMask) && (itemMask.handle.Equals(command.destinationParentHandle) || itemMask.handle.Equals(command.destinationHandle)))
                     return true;
             }
 

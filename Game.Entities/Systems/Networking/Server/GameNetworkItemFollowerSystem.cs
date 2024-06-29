@@ -303,6 +303,10 @@ public partial struct GameItemServerFollowerSystem : ISystem
         [ReadOnly] 
         public ComponentLookup<GameServerItemFollowerData> instances;
 
+        //public SharedList<GameSpawnData>.Writer spawnCommands;
+        
+        //public SharedList<GameValhallaCommand>.Writer valhallaCommands;
+
         public NativeQueue<GameItemOwnSystem.Command> commands;
 
         public NativeQueue<Result> results;

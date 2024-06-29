@@ -195,8 +195,7 @@ public struct GameRandomSpawner
 [BurstCompile,
     CreateAfter(typeof(GameItemSystem)),
     CreateAfter(typeof(GameItemObjectInitSystem)),
-    UpdateInGroup(typeof(TimeSystemGroup)), 
-    UpdateAfter(typeof(GameSyncSystemGroup))]
+    UpdateInGroup(typeof(GameItemSystemGroup), OrderFirst = true)]
 public partial struct GameRandomSpawnerSystem : ISystem
 {
     private struct Spawn
