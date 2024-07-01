@@ -39,6 +39,21 @@ public struct GameQuestConditionData
 }
 
 [Serializable]
+public struct GameQuestRewardResult
+{
+    public GameQuestRewardType type;
+    public int index;
+    public int count;
+
+    public GameQuestRewardResult(GameQuestRewardType type, int index, int count)
+    {
+        this.type = type;
+        this.index = index;
+        this.count = count;
+    }
+}
+
+[Serializable]
 public struct GameQuestRewardData
 {
     public GameQuestRewardType type;
