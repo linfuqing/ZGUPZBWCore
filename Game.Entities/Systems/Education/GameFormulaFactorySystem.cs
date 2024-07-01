@@ -429,9 +429,29 @@ public partial struct GameFormulaFactorySystem : ISystem
                                                     owner,
                                                     itemRootMap[status.entity].handle,
                                                     ref formula);
+                                            }
+                                        }
 
-                                                if(isCompleted)
-                                                    break;
+                                        if (!isCompleted)
+                                        {
+                                            foreach (var factoryEntity in factoryEntities)
+                                            {
+                                                if (factoryEntity.value != status.entity)
+                                                {
+                                                    isCompleted = Complete(
+                                                        false,
+                                                        status.formulaIndex,
+                                                        status.level,
+                                                        statusCount,
+                                                        status.entity,
+                                                        factory,
+                                                        owner,
+                                                        itemRootMap[factoryEntity.value].handle,
+                                                        ref formula);
+
+                                                    if (isCompleted)
+                                                        break;
+                                                }
                                             }
                                         }
                                     }
