@@ -823,10 +823,12 @@ public partial struct GameFormulaFactorySystem : ISystem
                             //UnityEngine.Assertions.Assert.AreNotEqual(0, count);
                             if (status.value == GameFormulaFactoryStatus.Status.Running)
                             {
-                                if(time.value > math.FLT_MIN_NORMAL)
+                                if (time.value > math.FLT_MIN_NORMAL)
+                                {
                                     count -= (int)math.ceil(time.value / definition.values[status.formulaIndex].time);
-                            
-                                UnityEngine.Assertions.Assert.IsTrue(count < status.count);
+
+                                    UnityEngine.Assertions.Assert.IsTrue(count < status.count);
+                                }
                             }
                             break;
                         default:
