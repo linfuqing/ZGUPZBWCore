@@ -373,9 +373,13 @@ public partial struct GameFormulaFactorySystem : ISystem
             RunningStatus result = 0;
             var time = times[index];
             time.value -= deltaTime * timeScale;
-            times[index] = time;
-            if (time.value < math.FLT_MIN_NORMAL)
+            if (time.value > math.FLT_MIN_NORMAL)
+                times[index] = time;
+            else
             {
+                time.value = 0.0f;
+                times[index] = time;
+                
                 var status = states[index];
                 if (status.formulaIndex == -1)
                     result |= RunningStatus.Stop;
@@ -815,10 +819,12 @@ public partial struct GameFormulaFactorySystem : ISystem
                         case GameFormulaFactoryStatus.Status.Completed:
                             count = status.count - status.usedCount;
                             
-                            UnityEngine.Assertions.Assert.AreNotEqual(0, count);
+                            //当同时采集时，不能下断言
+                            //UnityEngine.Assertions.Assert.AreNotEqual(0, count);
                             if (status.value == GameFormulaFactoryStatus.Status.Running)
                             {
-                                count -= (int)math.ceil(time.value / definition.values[status.formulaIndex].time);
+                                if(time.value > math.FLT_MIN_NORMAL)
+                                    count -= (int)math.ceil(time.value / definition.values[status.formulaIndex].time);
                             
                                 UnityEngine.Assertions.Assert.IsTrue(count < status.count);
                             }

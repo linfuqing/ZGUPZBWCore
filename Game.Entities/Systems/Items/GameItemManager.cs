@@ -2081,9 +2081,10 @@ public struct GameItemManager
 
         if ((flag & GameItemFindFlag.Children) == GameItemFindFlag.Children && children.TryGetFirstValue(handle.index, out var child, out var iterator))
         {
-            FindResult result;
             Info temp;
-            var typeCount = types[type].count;
+            Handle resultParentHandle = Handle.Empty;
+            int resultParentChildIndex = -1, typeCount = types[type].count;
+            var result = FindResult.None;
             do
             {
                 if (items.TryGetValue(child.handle, out temp) && temp.type == type && temp.count + count <= typeCount)
@@ -2096,24 +2097,39 @@ public struct GameItemManager
 
                 if ((typeDefinition.flag & GameItemTypeDefinition.Flag.HideInHierarchy) != GameItemTypeDefinition.Flag.HideInHierarchy)
                 {
-                    result = __Find(
-                        flag | GameItemFindFlag.Self,
-                        //depth - 1,
-                        type,
-                        count,
-                        child.handle,
-                        types,
-                        items,
-                        children,
-                        positiveFilters,
-                        negativeFilters,
-                        out parentChildIndex,
-                        out parentHandle);
+                    switch (__Find(
+                                flag | GameItemFindFlag.Self,
+                                //depth - 1,
+                                type,
+                                count,
+                                child.handle,
+                                types,
+                                items,
+                                children,
+                                positiveFilters,
+                                negativeFilters,
+                                out parentChildIndex,
+                                out parentHandle))
+                    {
+                        case FindResult.Empty:
+                            result = FindResult.Empty;
 
-                    if(result != FindResult.None)
-                        return result;
+                            resultParentChildIndex = parentChildIndex;
+                            resultParentHandle = parentHandle;
+                            break;
+                        case FindResult.Normal:
+                            return FindResult.Normal;
+                    }
                 }
             } while (children.TryGetNextValue(out child, ref iterator));
+
+            if (result != FindResult.None)
+            {
+                parentChildIndex = resultParentChildIndex;
+                parentHandle = resultParentHandle;
+                
+                return result;
+            }
         }
 
         if ((flag & GameItemFindFlag.Self) == GameItemFindFlag.Self && 
