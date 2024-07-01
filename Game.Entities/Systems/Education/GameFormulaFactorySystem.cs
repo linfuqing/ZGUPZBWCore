@@ -429,10 +429,12 @@ public partial struct GameFormulaFactorySystem : ISystem
                                                     owner,
                                                     itemRootMap[status.entity].handle,
                                                     ref formula);
+
+                                                break;
                                             }
                                         }
 
-                                        if (!isCompleted)
+                                        /*if (!isCompleted)
                                         {
                                             foreach (var factoryEntity in factoryEntities)
                                             {
@@ -453,7 +455,7 @@ public partial struct GameFormulaFactorySystem : ISystem
                                                         break;
                                                 }
                                             }
-                                        }
+                                        }*/
                                     }
 
                                     if (!isCompleted && !Complete(
