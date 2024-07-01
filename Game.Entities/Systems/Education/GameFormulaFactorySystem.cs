@@ -430,7 +430,8 @@ public partial struct GameFormulaFactorySystem : ISystem
                                                     itemRootMap[status.entity].handle,
                                                     ref formula);
 
-                                                break;
+                                                if(isCompleted)
+                                                    break;
                                             }
                                         }
                                     }
