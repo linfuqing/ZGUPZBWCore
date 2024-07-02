@@ -996,15 +996,13 @@ public partial struct GameFormulaFactorySystem : ISystem
 
                             continue;
                         }
-                        else
-                        {
-                            status.formulaIndex = instance.formulaIndex;
-                            status.level = instance.level;
-                            status.entity = instance.entity;
+                        
+                        status.formulaIndex = instance.formulaIndex;
+                        status.level = instance.level;
+                        status.entity = instance.entity;
 
-                            status.count = 0;
-                            status.usedCount = 0;
-                        }
+                        status.count = 0;
+                        status.usedCount = 0;
                     }
 
                     timeValue = __CommandToRun(

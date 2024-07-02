@@ -1576,18 +1576,30 @@ public partial struct GameNodeChildrenTriggerEventSystem : ISystem
             if (!this.physicsTriggerEvents.HasBuffer(parent))
                 return;
 
+            Entity entity = entityArray[index];
             EntityData<PhysicsTriggerEvent> result;
             var physicsTriggerEvents = this.physicsTriggerEvents[parent];
             foreach (var physicsTriggerEvent in physicsTriggerEvents)
             {
-                result.entity = physicsTriggerEvent.entity;
-                result.value.entity = entityArray[index];
-                result.value.bodyIndexA = physicsTriggerEvent.bodyIndexB;
-                result.value.bodyIndexB = physicsTriggerEvent.bodyIndexA;
-                result.value.colliderKeyA = physicsTriggerEvent.colliderKeyB;
-                result.value.colliderKeyB = physicsTriggerEvent.colliderKeyA;
+                if (this.physicsTriggerEvents.HasBuffer(entity))
+                {
+                    result.entity = entity;
+                    result.value = physicsTriggerEvent;
+                    
+                    results.Enqueue(result);
+                }
                 
-                results.Enqueue(result);
+                if (this.physicsTriggerEvents.HasBuffer(physicsTriggerEvent.entity))
+                {
+                    result.entity = physicsTriggerEvent.entity;
+                    result.value.entity = entity;
+                    result.value.bodyIndexA = physicsTriggerEvent.bodyIndexB;
+                    result.value.bodyIndexB = physicsTriggerEvent.bodyIndexA;
+                    result.value.colliderKeyA = physicsTriggerEvent.colliderKeyB;
+                    result.value.colliderKeyB = physicsTriggerEvent.colliderKeyA;
+
+                    results.Enqueue(result);
+                }
             }
         }
     }
