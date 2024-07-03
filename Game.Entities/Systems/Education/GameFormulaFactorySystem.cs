@@ -58,8 +58,8 @@ public struct GameFormulaFactoryDefinition
 
                     if (result.chance > chance)
                         return i;
-                    else
-                        chance -= result.chance;
+                    
+                    chance -= result.chance;
                 }
             }
 
@@ -886,27 +886,13 @@ public partial struct GameFormulaFactorySystem : ISystem
                     if (status.formulaIndex == -1)
                         continue;
 
-                    switch (status.value)
-                    {
-                        case GameFormulaFactoryStatus.Status.Running:
-                        case GameFormulaFactoryStatus.Status.Completed:
-                            count = status.count - status.usedCount;
+                    count = status.count - status.usedCount;
                             
-                            //当同时采集时，不能下断言
-                            //UnityEngine.Assertions.Assert.AreNotEqual(0, count);
-                            if (status.value == GameFormulaFactoryStatus.Status.Running)
-                            {
-                                if (time.value > math.FLT_MIN_NORMAL)
-                                {
-                                    count -= (int)math.ceil(time.value / definition.values[status.formulaIndex].time);
+                    if (status.value == GameFormulaFactoryStatus.Status.Running && time.value > math.FLT_MIN_NORMAL)
+                    {
+                        count -= (int)math.ceil(time.value / definition.values[status.formulaIndex].time);
 
-                                    UnityEngine.Assertions.Assert.IsTrue(count < status.count);
-                                }
-                            }
-                            break;
-                        default:
-                            count = 0;
-                            break;
+                        UnityEngine.Assertions.Assert.IsTrue(count < status.count);
                     }
 
                     if (count < 1)
@@ -939,14 +925,15 @@ public partial struct GameFormulaFactorySystem : ISystem
 
                     status.usedCount += count;
 
-                    if (status.value == GameFormulaFactoryStatus.Status.Completed)
+                    if (status.usedCount == status.count)
                     {
-                        UnityEngine.Assertions.Assert.AreEqual(status.usedCount, status.count);
                         if (mode.value == GameFormulaFactoryMode.Mode.Auto)
                         {
                             count = status.count;
 
                             status.value = GameFormulaFactoryStatus.Status.Normal;
+                            status.count = 0;
+                            status.usedCount = 0;
                         }
                         else
                         {
@@ -968,28 +955,31 @@ public partial struct GameFormulaFactorySystem : ISystem
                                 if (timeValue > 0.0f)
                                 {
                                     time.value = timeValue;
+                                    times[index] = time;
                                     
                                     status.value = GameFormulaFactoryStatus.Status.Running;
                                     status.formulaIndex = instance.formulaIndex;
                                     status.level = instance.level;
-                                    status.count = instance.count;
-                                    status.usedCount = 0;
+                                    status.count += instance.count;
                                     status.entity = instance.entity;
+
+                                    statusMap[entity] = status;
 
                                     break;
                                 }
                             }
                             else
                             {
-                                status.value = GameFormulaFactoryStatus.Status.Normal;
-
                                 time.value = 0.0f;
+                                times[index] = time;
+                                
+                                status.value = GameFormulaFactoryStatus.Status.Normal;
+                                status.count = 0;
+                                status.usedCount = 0;
                             }
 
                             statusMap[entity] = status;
 
-                            times[index] = time;
-                            
                             continue;
                             //return time;
                         }
@@ -1054,9 +1044,8 @@ public partial struct GameFormulaFactorySystem : ISystem
 
                     if (timeValue > 0.0f)
                     {
-                        status.count += instance.count;
-                        //if (status.value != GameFormulaFactoryStatus.Status.Running)
                         status.value = GameFormulaFactoryStatus.Status.Running;
+                        status.count += instance.count;
 
                         statusMap[entity] = status;
 
