@@ -472,6 +472,7 @@ public partial struct GameFormulaFactorySystem : ISystem
                                             ref formula))
                                         return 0;
 
+                                    status.usedCount = status.count;
                                     if (mode.value == GameFormulaFactoryMode.Mode.Auto)
                                     {
                                         Command(index, status.formulaIndex, status.count, factory);
@@ -479,8 +480,8 @@ public partial struct GameFormulaFactorySystem : ISystem
                                         result |= RunningStatus.Command;
                                     }
                                 }
-                                else
-                                    status.value = GameFormulaFactoryStatus.Status.Completed;
+                                /*else
+                                    status.value = GameFormulaFactoryStatus.Status.Completed;*/
                                 break;
                             case GameFormulaFactoryMode.Mode.Once:
                                 if (!Complete(
@@ -495,6 +496,7 @@ public partial struct GameFormulaFactorySystem : ISystem
                                         ref formula))
                                     return 0;
 
+                                status.usedCount = status.count;
                                 //factoryStatus = GameFactoryStatus.Complete;
                                 break;
                             case GameFormulaFactoryMode.Mode.Repeat:
@@ -510,6 +512,8 @@ public partial struct GameFormulaFactorySystem : ISystem
                                         ref formula))
                                     return 0;
 
+                                status.usedCount = status.count;
+                                
                                 Command(
                                     index, 
                                     status.formulaIndex, 
@@ -532,6 +536,8 @@ public partial struct GameFormulaFactorySystem : ISystem
                                         ref formula))
                                     return 0;
 
+                                status.usedCount = status.count;
+                                
                                 if (formula.Test(
                                     ref handle,
                                     count,
@@ -562,6 +568,8 @@ public partial struct GameFormulaFactorySystem : ISystem
                                         ref formula))
                                     return 0;
 
+                                status.usedCount = status.count;
+
                                 break;
                             default:
                                 return 0;// throw new InvalidOperationException();
@@ -573,79 +581,52 @@ public partial struct GameFormulaFactorySystem : ISystem
                     {
                         ref var instance = ref instances.ElementAt(0);
 
-                        if (status.value == GameFormulaFactoryStatus.Status.Completed)
+                        ref var instanceFormula = ref definition.values[instance.formulaIndex];
+                        if (instanceFormula.Test(
+                                ref handle,
+                                instance.count,
+                                factory,
+                                factory,
+                                default,
+                                default,
+                                itemManager))
                         {
-                            /*if (instance.formulaIndex == status.formulaIndex &&
-                                instance.level == status.level &&
-                                instance.entity == status.entity &&
-                                status.count < formula.capacity)
+                            RunningResult runningResult;
+                            runningResult.entity = instance.entity;
+                            runningResult.factory = factory;
+
+                            switch (mode.ownerType)
                             {
-                                ++status.count;
-
-                                instances.RemoveAt(0);
-
-                                time.value = formula.time;
-                                times[index] = time;
-
-                                status.value = GameFormulaFactoryStatus.Status.Running;
+                                case GameFormulaFactoryMode.OwnerType.User:
+                                    runningResult.owner = instance.entity;
+                                    break;
+                                case GameFormulaFactoryMode.OwnerType.Factory:
+                                    runningResult.owner = factory;
+                                    break;
+                                default:
+                                    runningResult.owner = Entity.Null;
+                                    break;
                             }
-                            else*/
-                                result |= RunningStatus.Stop;
-                        }
-                        else
-                        {
-                            ref var instanceFormula = ref definition.values[instance.formulaIndex];
-                            if (instanceFormula.Test(
-                                    ref handle,
-                                    instance.count,
-                                    factory,
-                                    factory,
-                                    default,
-                                    default,
-                                    itemManager))
-                            {
-                                RunningResult runningResult;
-                                runningResult.entity = instance.entity;
-                                runningResult.factory = factory;
 
-                                switch (mode.ownerType)
-                                {
-                                    case GameFormulaFactoryMode.OwnerType.User:
-                                        runningResult.owner = instance.entity;
-                                        break;
-                                    case GameFormulaFactoryMode.OwnerType.Factory:
-                                        runningResult.owner = factory;
-                                        break;
-                                    default:
-                                        runningResult.owner = Entity.Null;
-                                        break;
-                                }
+                            runningResult.formulaIndex = instance.formulaIndex;
+                            runningResult.count = instance.count;
+                            runningResults.Enqueue(runningResult);
 
-                                runningResult.formulaIndex = instance.formulaIndex;
-                                runningResult.count = instance.count;
-                                runningResults.Enqueue(runningResult);
+                            status.value = GameFormulaFactoryStatus.Status.Running;
+                            status.formulaIndex = instance.formulaIndex;
+                            status.level = instance.level;
+                            status.count = instance.count;
+                            status.entity = instance.entity;
 
-                                status.value = GameFormulaFactoryStatus.Status.Running;
-                                status.formulaIndex = instance.formulaIndex;
-                                status.level = instance.level;
-                                status.count = instance.count;
-                                status.entity = instance.entity;
+                            instances.RemoveAt(0);
 
-                                instances.RemoveAt(0);
-
-                                time.value = math.max(instanceFormula.time * status.count, math.FLT_MIN_NORMAL);
-                                times[index] = time;
-                            }
+                            time.value = math.max(instanceFormula.time * status.count, math.FLT_MIN_NORMAL);
+                            times[index] = time;
                         }
                     }
                     else
                     {
-                        if (status.value == GameFormulaFactoryStatus.Status.Running)
-                        {
-                            status.value = GameFormulaFactoryStatus.Status.Normal;
-
-                            status.usedCount = status.count;
-                        }
+                        status.value = status.usedCount < status.count ? GameFormulaFactoryStatus.Status.Completed : GameFormulaFactoryStatus.Status.Normal;
 
                         result |= RunningStatus.Stop;
                     }
@@ -1073,9 +1054,9 @@ public partial struct GameFormulaFactorySystem : ISystem
             }
 
             var runningStatus = RunningStatus.Stop;
-            if (i < numCommands)
+            if (++i < numCommands)
             {
-                commands.RemoveRange(0, i + 1);
+                commands.RemoveRange(0, i);
 
                 runningStatus |= RunningStatus.Command;
             }
