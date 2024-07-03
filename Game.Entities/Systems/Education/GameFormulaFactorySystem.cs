@@ -682,12 +682,12 @@ public partial struct GameFormulaFactorySystem : ISystem
             completedResult.handle = handle;
             if (!itemManager.Find(
                     completedResult.handle,
-                formulaResult.itemType,
-                formulaResult.itemCount * count,
-                out completedResult.parentChildIndex,
-                out completedResult.parentHandle))
+                    formulaResult.itemType,
+                    formulaResult.itemCount * count,
+                    out completedResult.parentChildIndex,
+                    out completedResult.parentHandle))
             {
-                if(!isForce)
+                if (!isForce)
                     return false;
             }
 
@@ -1009,24 +1009,10 @@ public partial struct GameFormulaFactorySystem : ISystem
                     if (GameFormulaManager.IndexOf(formulaIndex, formulas[command.entity], out temp) == -1)
                         temp = default;
 
-                    if (instances.Length > 0)
-                    {
-                        instance.formulaIndex = formulaIndex;
-                        instance.level = temp.level;
-                        instance.count = count;
-                        instance.entity = command.entity;
-                        instances.Add(instance);
-                        
-                        instance = instances[0];
-                        instances.RemoveAt(0);
-                    }
-                    else
-                    {
-                        instance.formulaIndex = formulaIndex;
-                        instance.level = temp.level;
-                        instance.count = count;
-                        instance.entity = command.entity;
-                    }
+                    instance.formulaIndex = formulaIndex;
+                    instance.level = temp.level;
+                    instance.count = count;
+                    instance.entity = command.entity;
 
                     if (instance.formulaIndex != status.formulaIndex ||
                         instance.level != status.level ||
@@ -1034,7 +1020,7 @@ public partial struct GameFormulaFactorySystem : ISystem
                     {
                         if (status.usedCount < status.count)
                         {
-                            instances.Insert(0, instance);
+                            instances.Add(instance);
 
                             continue;
                         }
