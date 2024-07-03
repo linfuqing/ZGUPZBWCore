@@ -612,10 +612,31 @@ public partial struct GameFormulaFactorySystem : ISystem
                                 instance.count,
                                 entity,
                                 factory,
-                                default,
+                                moneys,
                                 itemRootMap,
                                 itemManager))
                         {
+                            if (instance.formulaIndex == status.formulaIndex &&
+                                instance.level == status.level &&
+                                instance.entity == status.entity)
+                            {
+                                if (status.count != status.usedCount)
+                                    return 0;
+                                
+                                status.count = 0;
+                                status.usedCount = 0;
+                            }
+                            else
+                            {
+                                status.formulaIndex = instance.formulaIndex;
+                                status.level = instance.level;
+                                status.entity = instance.entity;
+                                
+                                status.count += instance.count;
+                            }
+
+                            status.value = GameFormulaFactoryStatus.Status.Running;
+                            
                             RunningResult runningResult;
                             runningResult.entity = instance.entity;
                             runningResult.factory = factory;
@@ -636,12 +657,6 @@ public partial struct GameFormulaFactorySystem : ISystem
                             runningResult.formulaIndex = instance.formulaIndex;
                             runningResult.count = instance.count;
                             runningResults.Enqueue(runningResult);
-
-                            status.value = GameFormulaFactoryStatus.Status.Running;
-                            status.formulaIndex = instance.formulaIndex;
-                            status.level = instance.level;
-                            status.count = instance.count;
-                            status.entity = instance.entity;
 
                             instances.RemoveAt(0);
 
