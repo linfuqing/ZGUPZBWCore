@@ -127,7 +127,7 @@ public partial struct GameLocationClipTargetWeightSystem : ISystem, IEntityComma
                 float changedWeightValue = instance.weightSpeed * deltaTime;
 
                 var weight = sources[entity];
-                weight.value = math.clamp(weight.value, 0.0f, 1.0f) + changedWeightValue;
+                weight.value = math.clamp(weight.value + changedWeightValue, 0.0f, 1.0f) + changedWeightValue;
                 sources[entity] = weight;
 
                 if (renderers.HasBuffer(entity) && !rendererBuilders.ContainsKey(entity))
@@ -255,6 +255,9 @@ public partial struct GameLocationClipTargetWeightSystem : ISystem, IEntityComma
         [NativeDisableParallelForRestriction]
         public ComponentLookup<ClipTargetWeight> destinations;
 
+        [NativeDisableParallelForRestriction]
+        public ComponentLookup<PhysicsRaycastColliderToIgnore> physicsRaycastCollidersToIgnore;
+
         public BufferAccessor<MeshInstanceNode> renderers;
 
         public EntityCommandQueue<Entity>.ParallelWriter entityManager;
@@ -267,6 +270,9 @@ public partial struct GameLocationClipTargetWeightSystem : ISystem, IEntityComma
             var weight = sources[index];
 
             weight.value -= instance.weightSpeed * deltaTime;
+            if(weight.value < 0.0f && physicsRaycastCollidersToIgnore.IsComponentEnabled(entity))
+                physicsRaycastCollidersToIgnore.SetComponentEnabled(entity, false);
+            
             bool result = weight.value < instance.weightMin;//0.0f;
             if (result)
                 weight.value = 0.0f;
@@ -309,12 +315,13 @@ public partial struct GameLocationClipTargetWeightSystem : ISystem, IEntityComma
 
         public ComponentTypeHandle<GameClipTargetWeight> sourceType;
 
-        public ComponentTypeHandle<PhysicsRaycastColliderToIgnore> physicsRaycastColliderToIgnoreType;
-
         public BufferTypeHandle<MeshInstanceNode> rendererType;
 
         [NativeDisableParallelForRestriction]
         public ComponentLookup<ClipTargetWeight> destinations;
+
+        [NativeDisableParallelForRestriction]
+        public ComponentLookup<PhysicsRaycastColliderToIgnore> physicsRaycastCollidersToIgnore;
 
         public EntityCommandQueue<Entity>.ParallelWriter entityManager;
 
@@ -328,17 +335,14 @@ public partial struct GameLocationClipTargetWeightSystem : ISystem, IEntityComma
             invisible.sources = chunk.GetNativeArray(ref sourceType);
             invisible.renderers = chunk.GetBufferAccessor(ref rendererType);
             invisible.destinations = destinations;
+            invisible.physicsRaycastCollidersToIgnore = physicsRaycastCollidersToIgnore;
             invisible.entityManager = entityManager;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
             {
                 if (invisible.Execute(i))
-                {
                     chunk.SetComponentEnabled(ref sourceType, i, false);
-
-                    chunk.SetComponentEnabled(ref physicsRaycastColliderToIgnoreType, i, false);
-                }
             }
         }
     }
@@ -437,6 +441,7 @@ public partial struct GameLocationClipTargetWeightSystem : ISystem, IEntityComma
         var rendererBuilders = __rendererBuilders.reader;
         ref var rendererBuilderJobManager = ref __rendererBuilders.lookupJobManager;
         var destinations = __destinations.UpdateAsRef(ref state);
+        var physicsRaycastCollidersToIgnore = __physicsRaycastCollidersToIgnore.UpdateAsRef(ref state);
         JobHandle? result = null;
         var inputDeps = state.Dependency;
         float deltaTime = state.WorldUnmanaged.Time.DeltaTime;
@@ -482,7 +487,7 @@ public partial struct GameLocationClipTargetWeightSystem : ISystem, IEntityComma
             visible.childIndices = childIndices;
             visible.parentIndices = parentIndices;
             visible.renderers = __renderers.UpdateAsRef(ref state);
-            visible.physicsRaycastCollidersToIgnore = __physicsRaycastCollidersToIgnore.UpdateAsRef(ref state);
+            visible.physicsRaycastCollidersToIgnore = physicsRaycastCollidersToIgnore;
             visible.sources = __sources.UpdateAsRef(ref state);
             visible.destinations = destinations;
             visible.entityManager = entityManager.parallelWriter;
@@ -508,7 +513,7 @@ public partial struct GameLocationClipTargetWeightSystem : ISystem, IEntityComma
             invisible.entityType = __entityType.UpdateAsRef(ref state);
             invisible.instanceType = __instanceType.UpdateAsRef(ref state);
             invisible.sourceType = __weightType.UpdateAsRef(ref state);
-            invisible.physicsRaycastColliderToIgnoreType = __physicsRaycastCollidersToIgnoreType.UpdateAsRef(ref state);
+            invisible.physicsRaycastCollidersToIgnore = physicsRaycastCollidersToIgnore;
             invisible.rendererType = __rendererType.UpdateAsRef(ref state);
             invisible.destinations = __destinations;
             invisible.entityManager = entityManager.parallelWriter;
