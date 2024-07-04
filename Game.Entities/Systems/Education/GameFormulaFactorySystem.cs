@@ -1035,7 +1035,7 @@ public partial struct GameFormulaFactorySystem : ISystem
                     {
                         if (status.usedCount < status.count)
                         {
-                            instances.Add(instance);
+                            //instances.Add(instance);
 
                             continue;
                         }

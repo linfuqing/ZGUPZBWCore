@@ -17,6 +17,8 @@ public struct GameFactory : IComponentData
 
     public int count;
 
+    public uint id;
+
     //public float time;
 }
 
