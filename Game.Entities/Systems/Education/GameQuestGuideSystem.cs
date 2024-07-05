@@ -17,7 +17,9 @@ public enum GameQuestGuideFlag
 public enum GameQuestGuideVariantType
 {
     Money,
-    Entity,
+    Entity, 
+    EntityEnemy,
+    EntityAlly,
     EntityToKill,
     EntityToOwn,
     Item,
@@ -36,7 +38,7 @@ public interface IGameQuestGuideVariant
     int count { get; }
 }
 
-public interface IGameQuestGuide<T> where T : IGameQuestGuideVariant
+public interface IGameQuestGuide<out T> where T : IGameQuestGuideVariant
 {
     string name { get; }
 

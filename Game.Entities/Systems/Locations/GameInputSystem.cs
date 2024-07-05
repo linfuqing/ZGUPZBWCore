@@ -623,6 +623,7 @@ public struct GameInputSelectionTarget : IComponentData
 
 public struct GameInputGuideTarget : IComponentData
 {
+    public GameQuestGuideVariantType type;
     public Entity entity;
 }
 
@@ -1068,12 +1069,12 @@ public partial struct GameInputSystem : ISystem
         
         public GameQuestGuideManager manager;
 
-        public NativeList<int> guideResults;
+        public NativeList<GameQuestGuideManager.Variant> guideResults;
 
         public void Execute()
         {
             foreach (var guideResult in guideResults)
-                manager.Remove(GameQuestGuideVariantType.Entity, guideResult, 1);
+                manager.Remove(guideResult.type, guideResult.id, 1);
 
             guideResults.Clear();
             guideResults.Capacity = math.max(guideResults.Capacity, counter);
@@ -1085,12 +1086,12 @@ public partial struct GameInputSystem : ISystem
     {
         public GameQuestGuideManager manager;
 
-        public NativeList<int> guideResults;
+        public NativeList<GameQuestGuideManager.Variant> guideResults;
 
         public void Execute()
         {
             foreach (var guideResult in guideResults)
-                manager.Add(GameQuestGuideVariantType.Entity, guideResult, 1);
+                manager.Add(guideResult.type, guideResult.id, 1);
         }
     }
 
@@ -1132,11 +1133,12 @@ public partial struct GameInputSystem : ISystem
 
         public NativeArray<GameInputGuideTarget> guideTargets;
 
-        public NativeList<int>.ParallelWriter guideResults;
+        public NativeList<GameQuestGuideManager.Variant>.ParallelWriter guideResults;
 
         public void Execute(int index)
         {
             GameInputGuideTarget guideTarget;
+            guideTarget.type = GameQuestGuideVariantType.Entity;
             guideTarget.entity = Entity.Null;
 
             ref var actionSetDefinition = ref this.actionSetDefinition.Value;
@@ -1151,16 +1153,48 @@ public partial struct GameInputSystem : ISystem
                 if (states.HasComponent(target.entity) && (((GameEntityStatus)states[target.entity].value & GameEntityStatus.Mask) == GameEntityStatus.Dead))
                     continue;
 
-                if (!identityTypes.HasComponent(target.entity) || !manager.IsPublished(GameQuestGuideVariantType.Entity, identityTypes[target.entity].value))
+                if (!identityTypes.HasComponent(target.entity))
                     continue;
+
+                if (manager.IsPublished(GameQuestGuideVariantType.Entity, identityTypes[target.entity].value))
+                {
+                    guideTarget.type = GameQuestGuideVariantType.Entity;
+
+                    isContains = campMap.HasComponent(target.entity) && campMap[target.entity].value == camp;
+                }
+                else
+                {
+                    if(!campMap.HasComponent(target.entity))
+                        continue;
+
+                    if (campMap[target.entity].value == camp)
+                    {
+                        if (manager.IsPublished(GameQuestGuideVariantType.EntityAlly,
+                                identityTypes[target.entity].value))
+                        {
+                            guideTarget.type = GameQuestGuideVariantType.EntityAlly;
+
+                            isContains = true;
+                        }
+                        else
+                            continue;
+                    }
+                    else if (manager.IsPublished(GameQuestGuideVariantType.EntityEnemy,
+                                 identityTypes[target.entity].value))
+                    {
+                        guideTarget.type = GameQuestGuideVariantType.EntityEnemy;
+
+                        isContains = false;
+                    }
+                    else
+                        continue;
+                }
 
                 if (!pickables.HasComponent(target.entity))
                 {
-                    isContains = campMap.HasComponent(target.entity) && campMap[target.entity].value == camp;
                     if (factories.HasComponent(target.entity))
                     {
-                        if (factories[target.entity].status != GameFactoryStatus.Complete &&
-                            !isContains)
+                        if (factories[target.entity].status != GameFactoryStatus.Complete)
                             continue;
                     }
                     else
@@ -1199,9 +1233,14 @@ public partial struct GameInputSystem : ISystem
             }
 
             guideTargets[index] = guideTarget;
-            
-            if(guideTarget.entity != Entity.Null)
-                guideResults.AddNoResize(identityTypes[guideTarget.entity].value);
+
+            if (guideTarget.entity != Entity.Null)
+            {
+                GameQuestGuideManager.Variant variant;
+                variant.type = guideTarget.type;
+                variant.id = identityTypes[guideTarget.entity].value;
+                guideResults.AddNoResize(variant);
+            }
         }
     }
 
@@ -1244,7 +1283,7 @@ public partial struct GameInputSystem : ISystem
 
         public ComponentTypeHandle<GameInputGuideTarget> guideTargetType;
         
-        public NativeList<int>.ParallelWriter guideResults;
+        public NativeList<GameQuestGuideManager.Variant>.ParallelWriter guideResults;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -1310,7 +1349,7 @@ public partial struct GameInputSystem : ISystem
 
     private NativeList<int> __hits;
 
-    private NativeList<int> __guideResults;
+    private NativeList<GameQuestGuideManager.Variant> __guideResults;
 
     public static readonly float MaxDistance = 4.0f;
 
@@ -1352,7 +1391,7 @@ public partial struct GameInputSystem : ISystem
 
         __hits = new NativeList<int>(Allocator.Persistent);
 
-        __guideResults = new NativeList<int>(Allocator.Persistent);
+        __guideResults = new NativeList<GameQuestGuideManager.Variant>(Allocator.Persistent);
 
         targets = new SharedList<GameInputTarget>(Allocator.Persistent);
     }
