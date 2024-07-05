@@ -18,8 +18,8 @@ public enum GameQuestGuideVariantType
 {
     Money,
     Entity, 
-    EntityEnemy,
     EntityAlly,
+    EntityEnemy,
     EntityToKill,
     EntityToOwn,
     Item,
