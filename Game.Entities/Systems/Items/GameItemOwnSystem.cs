@@ -64,13 +64,10 @@ public partial struct GameItemOwnSystem : ISystem
         public NativeArray<GameItemOwner> owners;
 
         [ReadOnly] 
-        public ComponentLookup<GameItemFollowerMax> followerMaxes;
-
-        [ReadOnly] 
         public BufferLookup<GameItemFollower> followers;
 
         public SharedList<Command>.ParallelWriter commands;
-        
+
         public void Execute(int index)
         {
             Entity owner = owners[index].entity;
@@ -101,9 +98,9 @@ public partial struct GameItemOwnSystem : ISystem
                 Command command;
                 if (isEmpty)
                 {
-                    if (followerMaxes.HasComponent(owner) && followerMaxes[owner].count <= numFollowers)
+                    /*if (followerMaxes.HasComponent(owner) && followerMaxes[owner].count <= numFollowers)
                         command.type = CommandType.Delete;
-                    else
+                    else*/
                         command.type = CommandType.Add;
                 }
                 else
@@ -130,8 +127,8 @@ public partial struct GameItemOwnSystem : ISystem
         [ReadOnly]
         public ComponentTypeHandle<GameItemOwner> ownerType;
 
-        [ReadOnly] 
-        public ComponentLookup<GameItemFollowerMax> followerMaxes;
+        //[ReadOnly] 
+        //public ComponentLookup<GameItemFollowerMax> followerMaxes;
 
         [ReadOnly] 
         public BufferLookup<GameItemFollower> followers;
@@ -144,7 +141,7 @@ public partial struct GameItemOwnSystem : ISystem
             didChange.entityArray = chunk.GetNativeArray(entityType);
             didChange.instances = chunk.GetNativeArray(ref instanceType);
             didChange.owners = chunk.GetNativeArray(ref ownerType);
-            didChange.followerMaxes = followerMaxes;
+            //didChange.followerMaxes = followerMaxes;
             didChange.followers = followers;
             didChange.commands = commands;
 
@@ -159,25 +156,39 @@ public partial struct GameItemOwnSystem : ISystem
     {
         public GameItemManager itemManager;
         
-        [ReadOnly] 
-        public SharedList<Command>.Reader commands;
+        public NativeList<Command> commands;
 
         public BufferLookup<GameItemFollower> followers;
 
+        [ReadOnly] 
+        public ComponentLookup<GameItemFollowerMax> followerMaxes;
+
         public void Execute()
         {
-            int i, numFollowers;
+            int numFollowers, numCommands = commands.Length;
             GameItemFollower follower;
             DynamicBuffer<GameItemFollower> followers;
-            foreach (var command in commands.AsArray())
+            for(int i = 0; i < numCommands; ++i)
             {
+                ref var command = ref commands.ElementAt(i);
                 followers = this.followers[command.source];
                 switch (command.type)
                 {
                     case CommandType.Add:
-                        follower.handle = command.handle;
-                        follower.entity = command.destination;
-                        followers.Add(follower);
+                        if (followerMaxes.HasComponent(command.source) &&
+                            followerMaxes[command.source].count <= followers.Length)
+                        {
+                            itemManager.Remove(command.handle, 0);
+                            
+                            command.type = CommandType.Delete;
+                        }
+                        else
+                        {
+                            follower.handle = command.handle;
+                            follower.entity = command.destination;
+                            followers.Add(follower);
+                        }
+
                         break;
                     case CommandType.Remove:
                         numFollowers = followers.Length;
@@ -251,13 +262,15 @@ public partial struct GameItemOwnSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
+        NativeList<Command> commands = this.commands.writer;
         var counter = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
         var jobHandle = __group.CalculateEntityCountAsync(counter, state.Dependency);
+        
         Resize resize;
         resize.counter = counter;
-        resize.commands = commands.writer;
+        resize.commands = commands;
 
-        ref var commandsJobManager = ref commands.lookupJobManager;
+        ref var commandsJobManager = ref this.commands.lookupJobManager;
         
         jobHandle = resize.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, commandsJobManager.readWriteJobHandle));
 
@@ -267,15 +280,16 @@ public partial struct GameItemOwnSystem : ISystem
         didChange.entityType = __entityType.UpdateAsRef(ref state);
         didChange.instanceType = __instanceType.UpdateAsRef(ref state);
         didChange.ownerType = __ownerType.UpdateAsRef(ref state);
-        didChange.followerMaxes = __followerMaxes.UpdateAsRef(ref state);
+        //didChange.followerMaxes = __followerMaxes.UpdateAsRef(ref state);
         didChange.followers = __followers;
-        didChange.commands = commands.parallelWriter;
+        didChange.commands = this.commands.parallelWriter;
         jobHandle = didChange.ScheduleParallelByRef(__group, jobHandle);
 
         Apply apply;
         apply.itemManager = __itemManager.value;
+        apply.commands = commands;
         apply.followers = followers;
-        apply.commands = commands.reader;
+        apply.followerMaxes = __followerMaxes.UpdateAsRef(ref state);
 
         ref var itemManagerJobManager = ref __itemManager.lookupJobManager;
         
