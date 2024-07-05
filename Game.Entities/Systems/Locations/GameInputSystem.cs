@@ -1145,7 +1145,7 @@ public partial struct GameInputSystem : ISystem
 
             var actionInstances = this.actionInstances[index];
             var actorActions = this.actorActions[index];
-            int camp = camps[index].value;
+            int camp = camps[index].value, identityType;
             uint belongsTo;
             bool isContains;
             foreach (var target in targets)
@@ -1156,36 +1156,23 @@ public partial struct GameInputSystem : ISystem
                 if (!identityTypes.HasComponent(target.entity))
                     continue;
 
-                if (manager.IsPublished(GameQuestGuideVariantType.Entity, identityTypes[target.entity].value))
-                {
+                identityType = identityTypes[target.entity].value;
+                isContains = campMap.HasComponent(target.entity) && campMap[target.entity].value == camp;
+                if (manager.IsPublished(GameQuestGuideVariantType.Entity, identityType))
                     guideTarget.type = GameQuestGuideVariantType.Entity;
-
-                    isContains = campMap.HasComponent(target.entity) && campMap[target.entity].value == camp;
-                }
                 else
                 {
-                    if(!campMap.HasComponent(target.entity))
-                        continue;
-
-                    if (campMap[target.entity].value == camp)
+                    if (isContains)
                     {
                         if (manager.IsPublished(GameQuestGuideVariantType.EntityAlly,
-                                identityTypes[target.entity].value))
-                        {
+                                identityType))
                             guideTarget.type = GameQuestGuideVariantType.EntityAlly;
-
-                            isContains = true;
-                        }
                         else
                             continue;
                     }
                     else if (manager.IsPublished(GameQuestGuideVariantType.EntityEnemy,
-                                 identityTypes[target.entity].value))
-                    {
+                                 identityType))
                         guideTarget.type = GameQuestGuideVariantType.EntityEnemy;
-
-                        isContains = false;
-                    }
                     else
                         continue;
                 }
