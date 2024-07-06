@@ -117,8 +117,8 @@ public partial struct GameRidigbodyFactorySystem : ISystem
     public static readonly int InnerloopBatchCount = 4;
 
     private EntityQuery __groupToCreateMasses;
-    //private EntityQuery __groupToCreateOrigins;
-    //private EntityQuery __groupToDestroy;
+    private EntityQuery __groupToCreateOrigins;
+    private EntityQuery __groupToDestroy;
 
     private EntityTypeHandle __entityType;
 
@@ -139,7 +139,7 @@ public partial struct GameRidigbodyFactorySystem : ISystem
                     .WithNone<PhysicsMass>()
                     .Build(ref state);
 
-        /*using (var builder = new EntityQueryBuilder(Allocator.Temp))
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __groupToCreateOrigins = builder
                 .WithAll<GameRidigbodyData>()
                 .WithNone<GameRidigbodyOrigin>()
@@ -152,7 +152,7 @@ public partial struct GameRidigbodyFactorySystem : ISystem
                 .AddAdditionalQuery()
                 .WithAll<GameRidigbodyOrigin, Disabled>()
                 .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
-                .Build(ref state);*/
+                .Build(ref state);
 
         __entityType = state.GetEntityTypeHandle();
 
@@ -176,7 +176,7 @@ public partial struct GameRidigbodyFactorySystem : ISystem
     {
         var entityManager = state.EntityManager;
 
-        /*entityManager.RemoveComponent<GameRidigbodyOrigin>(__groupToDestroy);
+        entityManager.RemoveComponent<GameRidigbodyOrigin>(__groupToDestroy);
 
         int count = __groupToCreateOrigins.CalculateEntityCount();
         if (count > 0)
@@ -194,9 +194,9 @@ public partial struct GameRidigbodyFactorySystem : ISystem
 
                 entityManager.AddComponentData(__groupToCreateOrigins, origins);
             }
-        }*/
+        }
 
-        int count = __groupToCreateMasses.CalculateEntityCount();
+        count = __groupToCreateMasses.CalculateEntityCount();
         if (count > 0)
         {
             var entities = new NativeList<Entity>(count, Allocator.TempJob);
@@ -225,7 +225,7 @@ public partial struct GameRidigbodyFactorySystem : ISystem
     }
 }
 
-/*[BurstCompile,
+[BurstCompile,
     CreateAfter(typeof(GamePhysicsWorldBuildSystem)),
     UpdateInGroup(typeof(FixedStepSimulationSystemGroup)),
     UpdateAfter(typeof(EndFramePhysicsSystem))]
@@ -427,4 +427,4 @@ public partial struct GameRidigbodySystem : ISystem
 
         state.Dependency = jobHandle;
     }
-}*/
+}
