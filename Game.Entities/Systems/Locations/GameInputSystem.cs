@@ -678,11 +678,14 @@ public partial struct GameInputSystem : ISystem
         public NativeArray<int> hits;
         [ReadOnly]
         public NativeArray<Entity> entityArray;
+        [ReadOnly] 
+        public NativeArray<GameNodeParent> parents;
         public NativeParallelHashMap<Entity, float>.ParallelWriter targetDistances;
 
         public void Execute(int index)
         {
-            Entity entity = entityArray[index];
+            Entity entity = index < parents.Length ? parents[index].entity : Entity.Null;
+            entity = entity == Entity.Null ? entityArray[index] : entity;
             int rigidbodyIndex = collisionWorld.GetRigidBodyIndex(entity);
             if (rigidbodyIndex == -1)
                 return;
@@ -747,6 +750,8 @@ public partial struct GameInputSystem : ISystem
         public NativeArray<int> hits;
         [ReadOnly]
         public EntityTypeHandle entityType;
+        [ReadOnly]
+        public ComponentTypeHandle<GameNodeParent> parentType;
         public NativeParallelHashMap<Entity, float>.ParallelWriter targetDistances;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
@@ -758,6 +763,7 @@ public partial struct GameInputSystem : ISystem
             findTargets.collisionWorld = collisionWorld;
             findTargets.hits = hits;
             findTargets.entityArray = chunk.GetNativeArray(entityType);
+            findTargets.parents = chunk.GetNativeArray(ref parentType);
             findTargets.targetDistances = targetDistances;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -1322,6 +1328,8 @@ public partial struct GameInputSystem : ISystem
 
     private ComponentTypeHandle<GameEntityCamp> __campType;
 
+    private ComponentTypeHandle<GameNodeParent> __parentType;
+    
     private BufferTypeHandle<GameEntityActorActionData> __actorActionType;
 
     private BufferTypeHandle<GameInputActionInstance> __actionInstanceType;
@@ -1367,6 +1375,7 @@ public partial struct GameInputSystem : ISystem
         __states = state.GetComponentLookup<GameNodeStatus>(true);
         __camps = state.GetComponentLookup<GameEntityCamp>(true);
         __campType = state.GetComponentTypeHandle<GameEntityCamp>(true);
+        __parentType = state.GetComponentTypeHandle<GameNodeParent>(true);
         __actorActionType = state.GetBufferTypeHandle<GameEntityActorActionData>(true);
         __actionInstanceType = state.GetBufferTypeHandle<GameInputActionInstance>(true);
         __selectionTargetType = state.GetComponentTypeHandle<GameInputSelectionTarget>();
@@ -1429,6 +1438,7 @@ public partial struct GameInputSystem : ISystem
         findTargets.collisionWorld = collisionWorld;
         findTargets.hits = __hits.AsDeferredJobArray();
         findTargets.entityType = __entityType.UpdateAsRef(ref state);
+        findTargets.parentType = __parentType.UpdateAsRef(ref state);
         findTargets.targetDistances = __targetDistances.AsParallelWriter();
         jobHandle = findTargets.ScheduleParallelByRef(__group, jobHandle);
 
