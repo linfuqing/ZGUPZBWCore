@@ -30,6 +30,8 @@ public class GameFormulaFactoryComponent : EntityProxyComponent, IEntityComponen
 
     public bool hasTime => _time > 0.0f || _formulaIndex != -1;
 
+    public float timeScaleDefault => _timeScale;
+
     public GameFormulaFactoryStatus status
     {
         get
