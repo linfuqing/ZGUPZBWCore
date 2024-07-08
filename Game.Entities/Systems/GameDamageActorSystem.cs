@@ -6,7 +6,7 @@ using Unity.Collections;
 using Unity.Mathematics;
 using ZG;
 
-[BurstCompile, UpdateInGroup(typeof(TimeSystemGroup)), /*UpdateBefore(typeof(GameRandomSpawnerSystem)), */UpdateBefore(typeof(GameEntityHealthSystem))]
+[BurstCompile, UpdateInGroup(typeof(TimeSystemGroup)), /*UpdateBefore(typeof(GameRandomSpawnerSystem)), */UpdateBefore(typeof(GameEntityHealthSystem)), UpdateAfter(typeof(GameSyncSystemGroup))]
 public partial struct GameDamageActorSystem : ISystem
 {
     private struct Act
@@ -147,11 +147,11 @@ public partial struct GameDamageActorSystem : ISystem
     {
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __group = builder
-                .WithAll<GameEntityHealthDamage, GameDamageActorLevel>()
+                .WithAll<GameEntityHealthDamage, GameEntityHealthDamageCount, GameDamageActorLevel>()
                 .WithAllRW<GameDamageActorHit>()
                 .Build(ref state);
 
-        __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameEntityHealthDamage>());
+        //__group.SetChangedVersionFilter(ComponentType.ReadOnly<GameEntityHealthDamage>());
 
         __levelType = state.GetBufferTypeHandle<GameDamageActorLevel>(true);
         __damageType = state.GetBufferTypeHandle<GameEntityHealthDamage>(true);
