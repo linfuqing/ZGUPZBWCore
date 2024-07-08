@@ -22,11 +22,8 @@ public struct GameEntityNode
 
     public bool Predicate(GameActionTargetType type, GameEntityNode node)
     {
-        if ((type & GameActionTargetType.Self) == GameActionTargetType.Self)
-        {
-            if (node.entity == entity)
-                return true;
-        }
+        if (node.entity == entity)
+            return (type & GameActionTargetType.Self) == GameActionTargetType.Self;
 
         if ((type & GameActionTargetType.Ally) == GameActionTargetType.Ally)
         {
