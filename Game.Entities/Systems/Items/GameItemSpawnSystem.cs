@@ -170,7 +170,7 @@ public partial struct GameItemSpawnSystem : ISystem
         public int identityType;
     }
 
-    public struct SpawnHandles
+    private struct SpawnHandles
     {
         public Random random;
 
@@ -253,7 +253,7 @@ public partial struct GameItemSpawnSystem : ISystem
         }
     }
 
-    public struct Spawn
+    private struct Spawn
     {
         public Random random;
 
@@ -323,7 +323,7 @@ public partial struct GameItemSpawnSystem : ISystem
     }
 
     [BurstCompile]
-    public struct SpawnEx : IJobChunk//, IEntityCommandProducerJob
+    private struct SpawnEx : IJobChunk//, IEntityCommandProducerJob
     {
         public uint hash;
 

@@ -732,8 +732,8 @@ public partial struct GameActionActiveSystem : ISystem
                 return instance.watcherPriority;
             }
 
-            if (index < owners.Length && owners[index].entity != Entity.Null)
-                instance.maxDistance = 15.0f;
+            /*if (index < owners.Length && owners[index].entity != Entity.Null)
+                instance.maxDistance = 15.0f;*/
             
             if (isWatch)
             {

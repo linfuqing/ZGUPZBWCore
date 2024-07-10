@@ -14,95 +14,6 @@ public enum GameItemStatus
     Picked = 0x3F
 }
 
-/*[UpdateInGroup(typeof(InitializationSystemGroup)), UpdateAfter(typeof(GameItemRootEntitySystem))]
-public partial class GameItemRootSystem : SystemBase
-{
-    [BurstCompile]
-    private struct Change : IJob
-    {
-        [ReadOnly]
-        public NativeHashMap<GameItemHandle, Entity> rootEntities;
-
-        [ReadOnly]
-        public NativeArray<GameItemManager.Command> commands;
-
-        public ComponentLookup<GameNodeStatus> states;
-
-        public void Execute()
-        {
-            int length = commands.Length;
-            Entity entity;
-            GameItemManager.Command command;
-            for (int i = 0; i < length; ++i)
-            {
-                command = commands[i];
-                if (!command.sourceParentHandle.Equals(GameItemHandle.Empty))
-                    continue;
-
-                if (!rootEntities.TryGetValue(command.sourceHandle, out entity))
-                    continue;
-
-                GameNodeStatus status;
-                switch (command.commandType)
-                {
-                    case GameItemManager.CommandType.Destroy:
-                        int j;
-                        GameItemManager.Command tempCommand;
-                        for (j = i + 1; j < length; ++j)
-                        {
-                            tempCommand = commands[j];
-                            if (tempCommand.commandType == GameItemManager.CommandType.Create && tempCommand.destinationHandle.Equals(command.sourceHandle))
-                                break;
-                        }
-
-                        if (j < length)
-                            continue;
-
-                        break;
-                    case GameItemManager.CommandType.Move:
-                        break;
-                    default:
-                        continue;
-                }
-
-                status.value = (int)GameEntityStatus.Dead;
-                states[entity] = status;
-            }
-        }
-    }
-
-    private GameItemSystem __itemSystem;
-    private GameItemRootEntitySystem __itemRootEntitySystem;
-
-    protected override void OnCreate()
-    {
-        base.OnCreate();
-
-        World world = World;
-        __itemSystem = world.GetOrCreateSystem<GameItemSystem>();
-        __itemRootEntitySystem = world.GetOrCreateSystem<GameItemRootEntitySystem>();
-    }
-
-    protected override void OnUpdate()
-    {
-        if (!__itemSystem.isCreated)
-            return;
-
-        Change change;
-        change.rootEntities = __itemRootEntitySystem.entities;
-        change.commands = __itemSystem.oldCommands;
-        change.states = GetComponentLookup<GameNodeStatus>();
-
-        var jobHandle = JobHandle.CombineDependencies(__itemSystem.readOnlyJobHandle, __itemRootEntitySystem.readOnlyJobHandle);
-        jobHandle = change.Schedule(jobHandle);
-
-        __itemSystem.AddReadOnlyDependency(jobHandle);
-        __itemRootEntitySystem.AddReadOnlyDependency(jobHandle);
-
-        Dependency = jobHandle;
-    }
-}*/
-
 [BurstCompile]//, CreateAfter(typeof(GameItemSystem)), UpdateInGroup(typeof(GameItemSystemGroup), OrderFirst = true)/*, UpdateBefore(typeof(GameItemSystem))*/]
 public partial struct GameItemRootStatusSystem : ISystem, IEntityCommandProducerJob
 {
@@ -129,8 +40,10 @@ public partial struct GameItemRootStatusSystem : ISystem, IEntityCommandProducer
         public NativeQueue<GameItemHandle>.ParallelWriter handlesToDetach;
         public NativeQueue<GameItemHandle>.ParallelWriter handlesToRemove;
         
-        public bool Execute(int index)
+        public bool Execute(int index, out int spawnCount)
         {
+            spawnCount = 0;
+            
             var status = (GameEntityStatus)states[index].value;
             if ((status & GameEntityStatus.Mask) != GameEntityStatus.Dead)
                 return false;
@@ -157,6 +70,8 @@ public partial struct GameItemRootStatusSystem : ISystem, IEntityCommandProducer
                         spawnHandleCommands.Add(spawnHandleCommand);
 
                         handlesToDetach.Enqueue(spawnHandleCommand.handle);
+
+                        ++spawnCount;
                     }
 
                     siblingHandle = item.siblingHandle;
@@ -216,11 +131,12 @@ public partial struct GameItemRootStatusSystem : ISystem, IEntityCommandProducer
 
             //EntityCommandStructChange command;
             //command.componentType = ComponentType.ReadOnly<GameItemRoot>();
-            
+
+            int spawnCount;
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
             {
-                if(collectRoots.Execute(i))
+                if(collectRoots.Execute(i, out spawnCount))
 
                 /*if (entityArray.IsCreated)
                 {
@@ -230,6 +146,9 @@ public partial struct GameItemRootStatusSystem : ISystem, IEntityCommandProducer
                 }
                 else*/
                     chunk.SetComponentEnabled(ref rootType, i, false);
+                
+                if(spawnCount > 0)
+                    chunk.SetComponentEnabled(ref spawnHandleCommandType, i, true);
             }
         }
     }

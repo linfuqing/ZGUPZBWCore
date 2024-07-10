@@ -214,9 +214,9 @@ public struct GameActionGroup : IBufferElementData
     public int mask;
     public float chance;
 
-    [Tooltip("Cos(×îĞ¡½Ç¶È)")]
+    [Tooltip("Cos(æœ€å°è§’åº¦)")]
     public float minDot;
-    [Tooltip("Cos(×î´ó½Ç¶È)")]
+    [Tooltip("Cos(æœ€å¤§è§’åº¦)")]
     public float maxDot;
 
     public float minDistance;
