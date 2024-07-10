@@ -8,7 +8,7 @@ using Unity.Mathematics;
 using UnityEngine;
 using ZG;
 
-[/*AlwaysUpdateSystem, */BurstCompile, UpdateInGroup(typeof(GameRollbackSystemGroup)), UpdateAfter(typeof(GameStatusSystemGroup))]
+[BurstCompile]//, UpdateInGroup(typeof(GameRollbackSystemGroup)), UpdateAfter(typeof(GameStatusSystemGroup))]
 public partial struct GameContainerChildSystem : ISystem
 {
     private struct Dirty
@@ -635,7 +635,7 @@ public partial struct GameContainerChildStatusSystem : ISystem
 
         public void Execute()
         {
-            results.Clear();
+            //results.Clear();
 
             results.capacity = math.max(results.capacity, results.length + counter[0]);
         }

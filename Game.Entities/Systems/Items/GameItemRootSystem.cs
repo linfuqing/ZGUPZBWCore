@@ -21,8 +21,8 @@ public partial struct GameItemRootStatusSystem : ISystem, IEntityCommandProducer
     {
         public GameItemManager.Hierarchy hierarchy;
 
-        [ReadOnly] 
-        public NativeArray<Entity> entityArray;
+        //[ReadOnly] 
+        //public NativeArray<Entity> entityArray;
 
         [ReadOnly] 
         public NativeArray<Translation> translations;
@@ -59,7 +59,7 @@ public partial struct GameItemRootStatusSystem : ISystem, IEntityCommandProducer
                 GameItemSpawnHandleCommand spawnHandleCommand;
                 spawnHandleCommand.spawnType = GameItemSpawnType.Drop;
                 spawnHandleCommand.transform = math.RigidTransform(rotations[index].Value, translations[index].Value);
-                spawnHandleCommand.owner = entityArray[index];
+                spawnHandleCommand.owner = Entity.Null;//entityArray[index];
 
                 GameItemHandle siblingHandle;
                 do
@@ -93,8 +93,8 @@ public partial struct GameItemRootStatusSystem : ISystem, IEntityCommandProducer
     {
         public GameItemManager.Hierarchy hierarchy;
 
-        [ReadOnly] 
-        public EntityTypeHandle entityType;
+        //[ReadOnly] 
+        //public EntityTypeHandle entityType;
 
         [ReadOnly] 
         public ComponentTypeHandle<Translation> translationType;
@@ -120,7 +120,7 @@ public partial struct GameItemRootStatusSystem : ISystem, IEntityCommandProducer
             
             CollectRoots collectRoots;
             collectRoots.hierarchy = hierarchy;
-            collectRoots.entityArray = chunk.GetNativeArray(entityType);
+            //collectRoots.entityArray = chunk.GetNativeArray(entityType);
             collectRoots.translations = chunk.GetNativeArray(ref translationType);
             collectRoots.rotations = chunk.GetNativeArray(ref rotationType);
             collectRoots.states = chunk.GetNativeArray(ref statusType);
@@ -321,7 +321,7 @@ public partial struct GameItemRootStatusSystem : ISystem, IEntityCommandProducer
 
             CollectRootsEx collect;
             collect.hierarchy = __itemManager.hierarchy;
-            collect.entityType = __entityType.UpdateAsRef(ref state);
+            //collect.entityType = __entityType.UpdateAsRef(ref state);
             collect.translationType = __translationType.UpdateAsRef(ref state);
             collect.rotationType = __rotationType.UpdateAsRef(ref state);
             collect.statusType = __statusType.UpdateAsRef(ref state);

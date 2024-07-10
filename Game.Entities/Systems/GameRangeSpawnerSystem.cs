@@ -6,14 +6,19 @@ using Unity.Entities;
 using Unity.Jobs;
 using ZG;
 
-public struct GameRangeSpawner : IBufferElementData
-{
-    public Entity entity;
-}
-
 public struct GameRangeSpawnerOrigin : IComponentData
 {
     public float3 value;
+}
+
+public struct GameRangeSpawnerTarget : IComponentData, IEnableableComponent
+{
+    public float3 value;
+}
+
+public struct GameRangeSpawner : IBufferElementData, IEnableableComponent
+{
+    public Entity entity;
 }
 
 public struct GameRangeSpawnerNode : IBufferElementData
@@ -461,15 +466,23 @@ public partial struct GameRangeSpawnerSystem : ISystem
                 {
                     rangeSpawners = this.rangeSpawners[temp.value].Reinterpret<Entity>();
                     index = rangeSpawners.AsNativeArray().IndexOf(temp.entity);
-                    if(index != -1)
+                    if (index != -1)
+                    {
                         rangeSpawners.RemoveAtSwapBack(index);
+                        if(rangeSpawners.Length < 1)
+                            this.rangeSpawners.SetBufferEnabled(temp.value, false);
+                    }
                 }
             }
             
             while (inputs.TryDequeue(out var temp))
             {
                 if (this.rangeSpawners.HasBuffer(temp.value))
+                {
                     this.rangeSpawners[temp.value].Reinterpret<Entity>().Add(temp.entity);
+                    
+                    this.rangeSpawners.SetBufferEnabled(temp.value, true);
+                }
             }
 
             int parentChildIndex;
@@ -485,8 +498,82 @@ public partial struct GameRangeSpawnerSystem : ISystem
         }
     }
 
+    private struct Filter
+    {
+        [ReadOnly]
+        public ComponentLookup<GameRangeSpawnerOrigin> origins;
+        [ReadOnly]
+        public ComponentLookup<PhysicsShapeParent> physicsShapeParents;
+        [ReadOnly]
+        public BufferAccessor<PhysicsTriggerEvent> physicsTriggerEvents;
+        [ReadOnly]
+        public BufferAccessor<GameRangeSpawner> spawners;
+        
+        public NativeArray<GameRangeSpawnerTarget> targets;
+
+        public bool Execute(int index)
+        {
+            Entity entity;
+            GameRangeSpawnerTarget target;
+            var physicsTriggerEvents = this.physicsTriggerEvents[index];
+            var spawners = this.spawners[index];
+            foreach (var spawner in spawners)
+            {
+                if(!origins.HasComponent(spawner.entity))
+                    continue;
+
+                foreach (var physicsTriggerEvent in physicsTriggerEvents)
+                {
+                    entity = physicsShapeParents.HasComponent(physicsTriggerEvent.entity)
+                        ? physicsShapeParents[physicsTriggerEvent.entity].entity
+                        : physicsTriggerEvent.entity;
+                    if (entity == spawner.entity)
+                    {
+                        target.value = origins[entity].value;
+                        targets[index] = target;
+
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+    }
+
+    [BurstCompile]
+    private struct FilterEx : IJobChunk
+    {
+        [ReadOnly]
+        public ComponentLookup<GameRangeSpawnerOrigin> origins;
+        [ReadOnly]
+        public ComponentLookup<PhysicsShapeParent> physicsShapeParents;
+        [ReadOnly]
+        public BufferTypeHandle<PhysicsTriggerEvent> physicsTriggerEventType;
+        [ReadOnly]
+        public BufferTypeHandle<GameRangeSpawner> spawnerType;
+
+        public ComponentTypeHandle<GameRangeSpawnerTarget> targetType;
+
+        public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask,
+            in v128 chunkEnabledMask)
+        {
+            Filter filter;
+            filter.origins = origins;
+            filter.physicsShapeParents = physicsShapeParents;
+            filter.physicsTriggerEvents = chunk.GetBufferAccessor(ref physicsTriggerEventType);
+            filter.spawners = chunk.GetBufferAccessor(ref spawnerType);
+            filter.targets = chunk.GetNativeArray(ref targetType);
+            
+            var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+            while (iterator.NextEntityIndex(out int i))
+                chunk.SetComponentEnabled(ref targetType, i, filter.Execute(i));
+        }
+    }
+
     private EntityQuery __groupToEnable;
     private EntityQuery __groupToUpdate;
+    private EntityQuery __groupToFilter;
 
     private BufferLookup<GameFollower> __followers;
     private BufferLookup<PhysicsTriggerEvent> __physicsTriggerEvents;
@@ -495,10 +582,12 @@ public partial struct GameRangeSpawnerSystem : ISystem
     private ComponentLookup<GameAreaNode> __areaNodes;
     private ComponentLookup<GameItemRoot> __itemRoots;
     private ComponentLookup<GameOwner> __owners;
+    private ComponentLookup<GameRangeSpawnerOrigin> __origins;
 
     private EntityTypeHandle __entityType;
     
     private BufferTypeHandle<PhysicsShapeChildEntity> __physicsShapeChildEntityType;
+    private BufferTypeHandle<PhysicsTriggerEvent> __physicsTriggerEventType;
     private BufferTypeHandle<GameFollower> __followerType;
 
     private BufferTypeHandle<GameRangeSpawnerNode> __nodeType;
@@ -506,6 +595,10 @@ public partial struct GameRangeSpawnerSystem : ISystem
     private BufferTypeHandle<GameRandomSpawnerNode> __randomNodeType;
 
     private BufferTypeHandle<GameRangeSpawnerEntity> __rangeEntityType;
+
+    private BufferTypeHandle<GameRangeSpawner> __rangeSpawnerType;
+
+    private ComponentTypeHandle<GameRangeSpawnerTarget> __targetType;
 
     private ComponentTypeHandle<GameRangeSpawnerCoolDownTime> __coolDownTimeType;
 
@@ -541,6 +634,14 @@ public partial struct GameRangeSpawnerSystem : ISystem
                 .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                 .Build(ref state);
                 
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __groupToFilter = builder
+                .WithAll<PhysicsTriggerEvent>()
+                .WithAny<GameRangeSpawner>()
+                .WithAnyRW<GameRangeSpawnerTarget>()
+                .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                .Build(ref state);
+
         __followers = state.GetBufferLookup<GameFollower>(true);
         __physicsTriggerEvents = state.GetBufferLookup<PhysicsTriggerEvent>(true);
         __physicsShapeParents = state.GetComponentLookup<PhysicsShapeParent>(true);
@@ -548,8 +649,11 @@ public partial struct GameRangeSpawnerSystem : ISystem
         __areaNodes = state.GetComponentLookup<GameAreaNode>(true);
         __itemRoots = state.GetComponentLookup<GameItemRoot>(true);
         __owners = state.GetComponentLookup<GameOwner>(true);
+        __origins = state.GetComponentLookup<GameRangeSpawnerOrigin>(true);
+        
         __entityType = state.GetEntityTypeHandle();
         __physicsShapeChildEntityType = state.GetBufferTypeHandle<PhysicsShapeChildEntity>(true);
+        __physicsTriggerEventType = state.GetBufferTypeHandle<PhysicsTriggerEvent>(true);
         __followerType = state.GetBufferTypeHandle<GameFollower>(true);
 
         __nodeType = state.GetBufferTypeHandle<GameRangeSpawnerNode>(true);
@@ -558,6 +662,10 @@ public partial struct GameRangeSpawnerSystem : ISystem
 
         __rangeEntityType = state.GetBufferTypeHandle<GameRangeSpawnerEntity>();
         
+        __rangeSpawnerType = state.GetBufferTypeHandle<GameRangeSpawner>();
+        
+        __targetType = state.GetComponentTypeHandle<GameRangeSpawnerTarget>();
+
         __coolDownTimeType = state.GetComponentTypeHandle<GameRangeSpawnerCoolDownTime>();
         
         __statusType = state.GetComponentTypeHandle<GameRangeSpawnerStatus>();
@@ -592,13 +700,14 @@ public partial struct GameRangeSpawnerSystem : ISystem
         enable.rangeEntityType = rangeEntityType;
         var jobHandle = enable.ScheduleParallelByRef(__groupToEnable, state.Dependency);
         
+        var physicsShapeParents = __physicsShapeParents.UpdateAsRef(ref state);
         var nodeStates = __nodeStates.UpdateAsRef(ref state);
         
         SpawnEx spawn;
         spawn.time = state.WorldUnmanaged.Time.ElapsedTime;
         spawn.spawner = __spawner.reader;
         spawn.physicsTriggerEvents = __physicsTriggerEvents.UpdateAsRef(ref state);
-        spawn.physicsShapeParents = __physicsShapeParents.UpdateAsRef(ref state);
+        spawn.physicsShapeParents = physicsShapeParents;
         spawn.areaNodePresentations = __areaNodePresentations.UpdateAsRef(ref state);
         spawn.areaNodes = __areaNodes.UpdateAsRef(ref state);
         spawn.nodeStates = nodeStates;
@@ -640,6 +749,14 @@ public partial struct GameRangeSpawnerSystem : ISystem
         itemManagerJobManager.readWriteJobHandle = jobHandle;
 
         spawnerJobManager.readWriteJobHandle = jobHandle;
+
+        FilterEx filter;
+        filter.origins = __origins.UpdateAsRef(ref state);
+        filter.physicsShapeParents = physicsShapeParents;
+        filter.physicsTriggerEventType = __physicsTriggerEventType.UpdateAsRef(ref state);
+        filter.spawnerType = __rangeSpawnerType.UpdateAsRef(ref state);
+        filter.targetType = __targetType.UpdateAsRef(ref state);
+        jobHandle = filter.ScheduleParallelByRef(__groupToFilter, jobHandle);
 
         state.Dependency = jobHandle;
     }

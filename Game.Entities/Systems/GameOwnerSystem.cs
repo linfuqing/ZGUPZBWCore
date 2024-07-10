@@ -2,7 +2,6 @@
 using Unity.Burst;
 using Unity.Burst.Intrinsics;
 using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
@@ -36,7 +35,7 @@ public struct GameFollower : IBufferElementData, IEnableableComponent
     public Entity entity;
 }
 
-[BurstCompile, AutoCreateIn("Server"), UpdateInGroup(typeof(GameStatusSystemGroup))]
+[BurstCompile, AutoCreateIn("Server"), UpdateInGroup(typeof(FrameSyncSystemGroup), OrderFirst = true)]
 public partial struct GameOwnerSystem : ISystem
 {
     private struct UpdateStates

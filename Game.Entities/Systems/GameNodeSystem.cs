@@ -1444,7 +1444,7 @@ public partial struct GameNodeVelocityComponentSystem : ISystem
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(GameRollbackSystemGroup)), UpdateBefore(typeof(GameStatusSystemGroup))]
+[BurstCompile, UpdateInGroup(typeof(GameNodeInitSystemGroup))]
 public partial struct GameNodeAngleSystem : ISystem
 {
     private struct Look
