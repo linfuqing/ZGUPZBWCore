@@ -18,7 +18,8 @@ public partial struct GameSpeakerSystem : ISystem
     public struct Collector : ICollector<DistanceHit>
     {
         //private GameActionTargetType __type;
-        private int __camp;
+        //private int __sourceCamp;
+        private int __sourceCamp;
         private double __time;
         private Entity __source;
         private Entity __destination;
@@ -40,7 +41,8 @@ public partial struct GameSpeakerSystem : ISystem
 
         public Collector(
             //GameActionTargetType type,
-            int camp, 
+            //int sourceCamp, 
+            int sourceCamp, 
             float maxFraction,
             double time,
             in Entity source,
@@ -53,7 +55,8 @@ public partial struct GameSpeakerSystem : ISystem
             ref ComponentLookup<GameSpeakerInfo> speakerInfos)
         {
             //__type = type;
-            __camp = camp;
+            //__sourceCamp = sourceCamp;
+            __sourceCamp = sourceCamp;
 
             __time = time;
 
@@ -80,18 +83,8 @@ public partial struct GameSpeakerSystem : ISystem
             if (!__camps.HasComponent(rigidBody.Entity))
                 return false;
 
-            if (__camps[rigidBody.Entity].value == __camp)
-            {
-                if (!__speakerInfos.HasComponent(rigidBody.Entity))
-                    return false;
-
-                GameSpeakerInfo speakerInfo;
-                speakerInfo.time = __time;
-                speakerInfo.target = __source;
-
-                __speakerInfos[rigidBody.Entity] = speakerInfo;
-            }
-            else
+            int camp = __camps[rigidBody.Entity].value;
+            if (camp == __sourceCamp)
             {
                 if (!__watcherInfos.HasComponent(rigidBody.Entity))
                     return false;
@@ -104,6 +97,17 @@ public partial struct GameSpeakerSystem : ISystem
                 watcherInfo.target = __destination;
 
                 __watcherInfos[rigidBody.Entity] = watcherInfo;
+            }
+            else// if (camp == __camp)
+            {
+                if (!__speakerInfos.HasComponent(rigidBody.Entity))
+                    return false;
+
+                GameSpeakerInfo speakerInfo;
+                speakerInfo.time = __time;
+                speakerInfo.target = __source;
+
+                __speakerInfos[rigidBody.Entity] = speakerInfo;
             }
 
             return true;
@@ -167,8 +171,8 @@ public partial struct GameSpeakerSystem : ISystem
             if (!camps.HasComponent(rigidbody.Entity))
                 return;
 
-            int camp = camps[rigidbody.Entity].value;
-            if (camp == camps[healthDamage.entity].value)
+            int camp = camps[rigidbody.Entity].value, sourceCamp = camps[healthDamage.entity].value;
+            if (camp == sourceCamp)
                 return;
             
             PointDistanceInput pointDistanceInput = default;
@@ -179,7 +183,8 @@ public partial struct GameSpeakerSystem : ISystem
 
             var collector = new Collector(
                 //instance.type,
-                camp,
+                //camp,
+                sourceCamp, 
                 instance.radius,
                 healthDamage.time, 
                 healthDamage.entity,
