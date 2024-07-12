@@ -64,26 +64,30 @@ public struct GameCampManager
             group.count = 1;
         }*/
 
-        Free(source);
-
         if (__groupCamps.TryGetValue(groupID, out int destination))
         {
-            if (__groups.TryGetValue(destination, out var group))
-                ++group.count;
-            else
-                group.count = 1;
-            
-            __groups.Insert(destination, group);
+            if (destination != source)
+            {
+                Free(source);
+                
+                if (__groups.TryGetValue(destination, out var group))
+                    ++group.count;
+                else
+                    group.count = 1;
+
+                __groups.Insert(destination, group);
+            }
         }
         else
         {
+            Free(source);
+            
             Group group;
             group.id = groupID;
             group.count = 1;
             destination = __groups.Add(group);
 
             __groupCamps[groupID] = destination;
-            
         }
         
         return destination;// + builtInCamps;
@@ -119,7 +123,11 @@ public struct GameCampManager
             if (--group.count > 0)
                 __groups[camp] = group;
             else
+            {
                 __groups.RemoveAt(camp);
+
+                __groupCamps.Remove(group.id);
+            }
 
             return true;
         }
