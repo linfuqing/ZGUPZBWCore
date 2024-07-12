@@ -302,16 +302,19 @@ public partial struct GameOwnerSystem : ISystem
         [ReadOnly]
         public BufferLookup<GameFollower> followers;
 
-        public ComponentLookup<GameEntityCamp> camps;
+        [ReadOnly]
+        public ComponentLookup<GameEntityCampDefault> camps;
+
+        public ComponentLookup<GameEntityCamp> entityCamps;
 
         public void Execute(in Entity entity, in GameEntityCamp value)
         {
-            if (camps.HasComponent(entity))
+            if (entityCamps.HasComponent(entity))
             {
-                if (camps[entity].value == value.value)
+                if (entityCamps[entity].value == value.value)
                     return;
 
-                camps[entity] = value;
+                entityCamps[entity] = value;
             }
 
             if (this.followers.HasBuffer(entity))
@@ -329,19 +332,13 @@ public partial struct GameOwnerSystem : ISystem
             if (!this.followers.HasBuffer(entity))
                 return;
 
-            var camp = camps[entity];
+            GameEntityCamp camp;
+            camp.value = camps[entity].value;
 
             var followers = this.followers[entity];
             int numFollowers = followers.Length;
             for (int i = 0; i < numFollowers; ++i)
                 Execute(followers[i].entity, camp);
-        }
-
-        public void Execute()
-        {
-            int length = entityArray.Length;
-            for (int i = 0; i < length; ++i)
-                Execute(i);
         }
     }
 
@@ -354,7 +351,10 @@ public partial struct GameOwnerSystem : ISystem
         [ReadOnly]
         public BufferLookup<GameFollower> followers;
 
-        public ComponentLookup<GameEntityCamp> camps;
+        [ReadOnly]
+        public ComponentLookup<GameEntityCampDefault> camps;
+
+        public ComponentLookup<GameEntityCamp> entityCamps;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
@@ -362,6 +362,7 @@ public partial struct GameOwnerSystem : ISystem
             updateCamps.entityArray = chunk.GetNativeArray(entityType);
             updateCamps.followers = followers;
             updateCamps.camps = camps;
+            updateCamps.entityCamps = entityCamps;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -406,8 +407,6 @@ public partial struct GameOwnerSystem : ISystem
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        BurstUtility.InitializeJob<Own>();
-
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __groupToUpdate = builder
                     .WithAllRW<GameFollower>()
@@ -425,9 +424,11 @@ public partial struct GameOwnerSystem : ISystem
 
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __groupToApply = builder
-                    .WithAll<GameEntityCamp>()
+                    .WithAll<GameEntityCampDefault, GameFollower>()
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
+        __groupToApply.AddChangedVersionFilter(ComponentType.ReadOnly<GameEntityCampDefault>());
+        __groupToApply.AddChangedVersionFilter(ComponentType.ReadOnly<GameFollower>());
 
         __entityType = state.GetEntityTypeHandle();
         __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
@@ -486,11 +487,12 @@ public partial struct GameOwnerSystem : ISystem
         jobHandle = didChange.ScheduleParallelByRef(__groupToChange, jobHandle);
 
         var entityCamps = __entityCamps.UpdateAsRef(ref state);
+        var camps = __camps.UpdateAsRef(ref state);
 
         Own own;
         own.entityArray = __entities.AsDeferredJobArray();
         own.owners = owners;
-        own.camps = __camps.UpdateAsRef(ref state);
+        own.camps = camps;
         own.entityCamps = entityCamps;
         own.states = __states.UpdateAsRef(ref state);
         own.followers = followers;
@@ -502,7 +504,8 @@ public partial struct GameOwnerSystem : ISystem
         UpdateCampEx updateCamp;
         updateCamp.entityType = entityType;
         updateCamp.followers = followers;
-        updateCamp.camps = entityCamps;
+        updateCamp.camps = camps;
+        updateCamp.entityCamps = entityCamps;
 
         state.Dependency = updateCamp.ScheduleByRef(__groupToApply, jobHandle);
     }
