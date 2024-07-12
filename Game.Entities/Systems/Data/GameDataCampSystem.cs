@@ -48,9 +48,9 @@ public struct GameCampManager
         __groupCamps.Dispose();
     }
 
-    public int GetCamp(int groupID, int originCamp)
+    public int GetCamp(int groupID, int source)
     {
-        int source = originCamp;// - builtInCamps;
+        //int source = originCamp;// - builtInCamps;
         if (groupID == 0)
         {
             Free(source);
@@ -58,32 +58,34 @@ public struct GameCampManager
             return Alloc();
         }
 
-        if (!__groups.TryGetValue(source, out var group))
+        /*if (!__groups.TryGetValue(source, out var group))
         {
             group.id = 0;
             group.count = 1;
-        }
+        }*/
 
-        if (!__groupCamps.TryGetValue(groupID, out int destination))
+        Free(source);
+
+        if (__groupCamps.TryGetValue(groupID, out int destination))
         {
-            destination = source < 0 || group.count > 1 ? __groups.nextIndex : source;
-
-            __groupCamps[groupID] = destination;
-        }
-
-        if (destination != source)
-        {
-            Free(source);
-
-            if (__groups.TryGetValue(destination, out group))
+            if (__groups.TryGetValue(destination, out var group))
                 ++group.count;
             else
                 group.count = 1;
+            
+            __groups.Insert(destination, group);
         }
+        else
+        {
+            Group group;
+            group.id = groupID;
+            group.count = 1;
+            destination = __groups.Add(group);
 
-        group.id = groupID;
-        __groups.Insert(destination, group);
-
+            __groupCamps[groupID] = destination;
+            
+        }
+        
         return destination;// + builtInCamps;
     }
 
