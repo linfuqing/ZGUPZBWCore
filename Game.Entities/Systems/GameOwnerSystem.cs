@@ -2,6 +2,7 @@
 using Unity.Burst;
 using Unity.Burst.Intrinsics;
 using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
@@ -300,22 +301,15 @@ public partial struct GameOwnerSystem : ISystem
         public NativeArray<Entity> entityArray;
 
         [ReadOnly]
-        public BufferLookup<GameFollower> followers;
+        public NativeArray<GameEntityCamp> camps;
 
-        //[ReadOnly]
-        public ComponentLookup<GameEntityCampDefault> camps;
+        [ReadOnly]
+        public BufferLookup<GameFollower> followers;
 
         public ComponentLookup<GameEntityCamp> entityCamps;
 
         public void Execute(in Entity entity, int value)
         {
-            if (camps.HasComponent(entity) && camps[entity].value != value)
-            {
-                GameEntityCampDefault camp;
-                camp.value = value;
-                camps[entity] = camp;
-            }
-            
             if (entityCamps.HasComponent(entity) && entityCamps[entity].value != value)
             {
                 GameEntityCamp camp;
@@ -339,31 +333,49 @@ public partial struct GameOwnerSystem : ISystem
                 return;
 
             var followers = this.followers[entity];
-            int numFollowers = followers.Length;
+            int numFollowers = followers.Length, camp = camps[index].value;
             for (int i = 0; i < numFollowers; ++i)
-                Execute(followers[i].entity, camps[entity].value);
+                Execute(followers[i].entity, camp);
         }
     }
 
     [BurstCompile]
     private struct UpdateCampEx : IJobChunk
     {
+        public uint lastSystemVersion;
+        
         [ReadOnly]
         public EntityTypeHandle entityType;
 
         [ReadOnly]
+        public ComponentTypeHandle<GameEntityCamp> entityCampType;
+
+        [ReadOnly]
+        public ComponentTypeHandle<GameEntityCampDefault> campType;
+
+        [ReadOnly]
+        public BufferTypeHandle<GameFollower> followerType;
+
+        [ReadOnly, NativeDisableContainerSafetyRestriction]
         public BufferLookup<GameFollower> followers;
 
-        public ComponentLookup<GameEntityCampDefault> camps;
-
+        [NativeDisableContainerSafetyRestriction]
         public ComponentLookup<GameEntityCamp> entityCamps;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             UpdateCamps updateCamps;
+            if (chunk.DidChange(ref entityCampType, lastSystemVersion))
+                updateCamps.camps = chunk.GetNativeArray(ref entityCampType);
+            else if(chunk.DidChange(ref campType, lastSystemVersion))
+                updateCamps.camps = chunk.GetNativeArray(ref campType).Reinterpret<GameEntityCamp>();
+            else if (chunk.DidChange(ref followerType, lastSystemVersion))
+                updateCamps.camps = chunk.GetNativeArray(ref entityCampType);
+            else
+                return;
+            
             updateCamps.entityArray = chunk.GetNativeArray(entityType);
             updateCamps.followers = followers;
-            updateCamps.camps = camps;
             updateCamps.entityCamps = entityCamps;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -379,6 +391,10 @@ public partial struct GameOwnerSystem : ISystem
     private EntityQuery __groupToApply;
 
     private EntityTypeHandle __entityType;
+
+    private ComponentTypeHandle<GameEntityCamp> __entityCampType;
+
+    private ComponentTypeHandle<GameEntityCampDefault> __campType;
 
     private ComponentTypeHandle<GameNodeStatus> __statusType;
     //private ComponentTypeHandle<GameNodeOldStatus> __oldStatusType;
@@ -430,10 +446,12 @@ public partial struct GameOwnerSystem : ISystem
                     .WithAllRW<GameEntityCampDefault>()
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
-        __groupToApply.AddChangedVersionFilter(ComponentType.ReadOnly<GameEntityCampDefault>());
-        __groupToApply.AddChangedVersionFilter(ComponentType.ReadOnly<GameFollower>());
+        //__groupToApply.AddChangedVersionFilter(ComponentType.ReadOnly<GameEntityCampDefault>());
+        //__groupToApply.AddChangedVersionFilter(ComponentType.ReadOnly<GameFollower>());
 
         __entityType = state.GetEntityTypeHandle();
+        __entityCampType = state.GetComponentTypeHandle<GameEntityCamp>(true);
+        __campType = state.GetComponentTypeHandle<GameEntityCampDefault>(true);
         __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
         //__oldStatusType = state.GetComponentTypeHandle<GameNodeOldStatus>(true);
         __ownerType = state.GetComponentTypeHandle<GameOwner>(true);
@@ -461,10 +479,11 @@ public partial struct GameOwnerSystem : ISystem
     {
         var statusType = __statusType.UpdateAsRef(ref state);
         var owners = __owners.UpdateAsRef(ref state);
+        var followerType = __followerType.UpdateAsRef(ref state);
 
         UpdateStateEx updateState;
         updateState.statusType = statusType;
-        updateState.followerType = __followerType.UpdateAsRef(ref state);
+        updateState.followerType = followerType;
         updateState.owners = owners;
         var jobHandle = updateState.ScheduleParallelByRef(__groupToUpdate, state.Dependency);
 
@@ -505,9 +524,12 @@ public partial struct GameOwnerSystem : ISystem
         lookupJobManager.readWriteJobHandle = jobHandle;
 
         UpdateCampEx updateCamp;
+        updateCamp.lastSystemVersion = state.LastSystemVersion;
         updateCamp.entityType = entityType;
+        updateCamp.entityCampType = __entityCampType.UpdateAsRef(ref state);
+        updateCamp.campType = __campType.UpdateAsRef(ref state);
+        updateCamp.followerType = followerType;
         updateCamp.followers = followers;
-        updateCamp.camps = camps;
         updateCamp.entityCamps = entityCamps;
 
         state.Dependency = updateCamp.ScheduleByRef(__groupToApply, jobHandle);
