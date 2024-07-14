@@ -338,13 +338,10 @@ public partial struct GameOwnerSystem : ISystem
             if (!this.followers.HasBuffer(entity))
                 return;
 
-            GameEntityCamp camp;
-            camp.value = camps[entity].value;
-
             var followers = this.followers[entity];
             int numFollowers = followers.Length;
             for (int i = 0; i < numFollowers; ++i)
-                Execute(followers[i].entity, camp);
+                Execute(followers[i].entity, camps[entity].value);
         }
     }
 
