@@ -492,7 +492,7 @@ public partial struct GameDataCampSystem : ISystem
     }
 }
 
-[BurstCompile,
+/*[BurstCompile,
     EntityDataSerializationSystem(typeof(GameCampManager)),
     CreateAfter(typeof(GameDataCampSystem)),
     CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
@@ -529,33 +529,6 @@ public partial struct GameDataCampSerializationContainerSystem : ISystem
     }
 }
 
-/*[BurstCompile,
-    EntityDataSerializationSystem(typeof(GameEntityCamp)),
-    CreateAfter(typeof(EntityDataSerializationInitializationSystem)),
-    UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
-public partial struct GameDataEntityCampSerializationSystem : ISystem
-{
-    private EntityDataSerializationSystemCoreEx __core;
-
-    [BurstCompile]
-    public void OnCreate(ref SystemState state)
-    {
-        __core = EntityDataSerializationSystemCoreEx.Create<GameEntityCamp>(ref state);
-    }
-
-    [BurstCompile]
-    public void OnDestroy(ref SystemState state)
-    {
-        __core.Dispose();
-    }
-
-    [BurstCompile]
-    public void OnUpdate(ref SystemState state)
-    {
-        __core.Update(ref state);
-    }
-}*/
-
 [BurstCompile,
     EntityDataDeserializationSystem(typeof(GameCampManager), (int)GameDataConstans.Version),
     CreateAfter(typeof(EntityDataDeserializationContainerSystem)),
@@ -590,7 +563,7 @@ public partial struct GameDataCampDeserializationContainerSystem : ISystem
 
         __manager.lookupJobManager.readWriteJobHandle = state.Dependency;
     }
-}
+}*/
 
 /*[BurstCompile,
     EntityDataDeserializationSystem(typeof(GameEntityCamp), (int)GameDataConstans.Version),

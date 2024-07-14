@@ -1,4 +1,5 @@
-﻿using Unity.Jobs;
+﻿using System;
+using Unity.Jobs;
 using Unity.Burst;
 using Unity.Burst.Intrinsics;
 using Unity.Entities;
@@ -2433,8 +2434,9 @@ public partial struct GameNodeCharacterColliderSystem : ISystem
 
         public void Execute(int index)
         {
+            var collider = colliders[index].value;
             GameNodeCharacterCenterOfMass centerOfMass;
-            centerOfMass.value = colliders[index].value.Value.MassProperties.MassDistribution.Transform.pos;
+            centerOfMass.value = collider.IsCreated ? collider.Value.MassProperties.MassDistribution.Transform.pos : float3.zero;
             centerOfMasses[index] = centerOfMass;
         }
     }
@@ -2460,23 +2462,24 @@ public partial struct GameNodeCharacterColliderSystem : ISystem
     }
 
     private EntityQuery __group;
+    private ComponentTypeHandle<GameNodeCharacterCollider> __colliderType;
+    private ComponentTypeHandle<GameNodeCharacterCenterOfMass> __centerOfMassType;
 
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameNodeCharacterCollider>(),
-                    ComponentType.ReadWrite<GameNodeCharacterCenterOfMass>()
-                }, 
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
-
-        __group.SetChangedVersionFilter(typeof(GameNodeCharacterCollider));
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                .WithAll<GameNodeCharacterCollider>()
+                .WithAllRW<GameNodeCharacterCenterOfMass>()
+                .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                .Build(ref state);
+        __group.SetChangedVersionFilter(ComponentType.ReadOnly<GameNodeCharacterCollider>());
+        
+        __colliderType = state.GetComponentTypeHandle<GameNodeCharacterCollider>(true);
+        __centerOfMassType = state.GetComponentTypeHandle<GameNodeCharacterCenterOfMass>();
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 
@@ -2486,9 +2489,9 @@ public partial struct GameNodeCharacterColliderSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         CalculateEx calculate;
-        calculate.colliderType = state.GetComponentTypeHandle<GameNodeCharacterCollider>(true);
-        calculate.centerOfMassType = state.GetComponentTypeHandle<GameNodeCharacterCenterOfMass>();
-        state.Dependency = calculate.ScheduleParallel(__group, state.Dependency);
+        calculate.colliderType = __colliderType.UpdateAsRef(ref state);
+        calculate.centerOfMassType = __centerOfMassType.UpdateAsRef(ref state);
+        state.Dependency = calculate.ScheduleParallelByRef(__group, state.Dependency);
     }
 }
 
