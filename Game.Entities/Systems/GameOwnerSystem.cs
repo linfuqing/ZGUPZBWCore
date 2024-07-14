@@ -302,19 +302,25 @@ public partial struct GameOwnerSystem : ISystem
         [ReadOnly]
         public BufferLookup<GameFollower> followers;
 
-        [ReadOnly]
+        //[ReadOnly]
         public ComponentLookup<GameEntityCampDefault> camps;
 
         public ComponentLookup<GameEntityCamp> entityCamps;
 
-        public void Execute(in Entity entity, in GameEntityCamp value)
+        public void Execute(in Entity entity, int value)
         {
-            if (entityCamps.HasComponent(entity))
+            if (camps.HasComponent(entity) && camps[entity].value != value)
             {
-                if (entityCamps[entity].value == value.value)
-                    return;
-
-                entityCamps[entity] = value;
+                GameEntityCampDefault camp;
+                camp.value = value;
+                camps[entity] = camp;
+            }
+            
+            if (entityCamps.HasComponent(entity) && entityCamps[entity].value != value)
+            {
+                GameEntityCamp camp;
+                camp.value = value;
+                entityCamps[entity] = camp;
             }
 
             if (this.followers.HasBuffer(entity))
@@ -351,7 +357,6 @@ public partial struct GameOwnerSystem : ISystem
         [ReadOnly]
         public BufferLookup<GameFollower> followers;
 
-        [ReadOnly]
         public ComponentLookup<GameEntityCampDefault> camps;
 
         public ComponentLookup<GameEntityCamp> entityCamps;
@@ -424,7 +429,8 @@ public partial struct GameOwnerSystem : ISystem
 
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __groupToApply = builder
-                    .WithAll<GameEntityCampDefault, GameFollower>()
+                    .WithAll<GameFollower>()
+                    .WithAllRW<GameEntityCampDefault>()
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
         __groupToApply.AddChangedVersionFilter(ComponentType.ReadOnly<GameEntityCampDefault>());
@@ -435,7 +441,7 @@ public partial struct GameOwnerSystem : ISystem
         //__oldStatusType = state.GetComponentTypeHandle<GameNodeOldStatus>(true);
         __ownerType = state.GetComponentTypeHandle<GameOwner>(true);
         __owners = state.GetComponentLookup<GameOwner>();
-        __camps = state.GetComponentLookup<GameEntityCampDefault>(true);
+        __camps = state.GetComponentLookup<GameEntityCampDefault>();
         __entityCamps = state.GetComponentLookup<GameEntityCamp>();
         __states = state.GetComponentLookup<GameNodeStatus>();
         __followers = state.GetBufferLookup<GameFollower>();
