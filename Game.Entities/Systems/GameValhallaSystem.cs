@@ -920,7 +920,7 @@ public partial struct GameValhallaSystem : ISystem
     }
 
     [BurstCompile]
-    public struct Add : IJob
+    private struct Add : IJob
     {
         public NativeQueue<TimeEvent<Command>> inputs;
         public TimeManager<Command>.Writer outputs;

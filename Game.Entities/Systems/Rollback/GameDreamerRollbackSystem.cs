@@ -170,7 +170,7 @@ public partial struct GameDreamerRollbackSystem : ISystem, IRollbackCore
         public RollbackComponentRestoreFunction<GameDreamer> dreamers;
         public RollbackComponentRestoreFunction<GameDreamerInfo> dreamerInfos;
         public RollbackComponentRestoreFunction<GameDreamerVersion> versions;
-        public RollbackBufferRestoreFunction<GameDreamerEvent> events;
+        //public RollbackBufferRestoreFunction<GameDreamerEvent> events;
 
         public EntityAddDataQueue.ParallelWriter entityManager;
 
@@ -186,7 +186,7 @@ public partial struct GameDreamerRollbackSystem : ISystem, IRollbackCore
 
             dreamerInfos.Invoke(entityIndex, entity);
             versions.Invoke(entityIndex, entity);
-            events.Invoke(entityIndex, entity);
+            //events.Invoke(entityIndex, entity);
         }
     }
 
@@ -195,14 +195,14 @@ public partial struct GameDreamerRollbackSystem : ISystem, IRollbackCore
         public RollbackComponentSaveFunction<GameDreamer> dreamers;
         public RollbackComponentSaveFunction<GameDreamerInfo> dreamerInfos;
         public RollbackComponentSaveFunction<GameDreamerVersion> versions;
-        public RollbackBufferSaveFunction<GameDreamerEvent> events;
+        //public RollbackBufferSaveFunction<GameDreamerEvent> events;
 
         public void Execute(in ArchetypeChunk chunk, int firstEntityIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             dreamers.Invoke(chunk, firstEntityIndex, useEnabledMask, chunkEnabledMask);
             dreamerInfos.Invoke(chunk, firstEntityIndex, useEnabledMask, chunkEnabledMask);
             versions.Invoke(chunk, firstEntityIndex, useEnabledMask, chunkEnabledMask);
-            events.Invoke(chunk, firstEntityIndex, useEnabledMask, chunkEnabledMask);
+            //events.Invoke(chunk, firstEntityIndex, useEnabledMask, chunkEnabledMask);
         }
     }
 
@@ -211,11 +211,11 @@ public partial struct GameDreamerRollbackSystem : ISystem, IRollbackCore
         public RollbackComponentClearFunction<GameDreamer> dreamers;
         public RollbackComponentClearFunction<GameDreamerInfo> dreamerInfos;
         public RollbackComponentClearFunction<GameDreamerVersion> versions;
-        public RollbackBufferClearFunction<GameDreamerEvent> events;
+        //public RollbackBufferClearFunction<GameDreamerEvent> events;
 
         public void Remove(int fromIndex, int count)
         {
-            events.Remove(fromIndex, count);
+            //events.Remove(fromIndex, count);
         }
 
         public void Move(int fromIndex, int toIndex, int count)
@@ -223,7 +223,7 @@ public partial struct GameDreamerRollbackSystem : ISystem, IRollbackCore
             dreamers.Move(fromIndex, toIndex, count);
             dreamerInfos.Move(fromIndex, toIndex, count);
             versions.Move(fromIndex, toIndex, count);
-            events.Move(fromIndex, toIndex, count);
+            //events.Move(fromIndex, toIndex, count);
         }
 
         public void Resize(int count)
@@ -231,7 +231,7 @@ public partial struct GameDreamerRollbackSystem : ISystem, IRollbackCore
             dreamers.Resize(count);
             dreamerInfos.Resize(count);
             versions.Resize(count);
-            events.Resize(count);
+            //events.Resize(count);
         }
     }
 
@@ -245,7 +245,7 @@ public partial struct GameDreamerRollbackSystem : ISystem, IRollbackCore
     private RollbackComponent<GameDreamer> __dreamers;
     private RollbackComponent<GameDreamerInfo> __dreamerInfos;
     private RollbackComponent<GameDreamerVersion> __versions;
-    private RollbackBuffer<GameDreamerEvent> __events;
+    //private RollbackBuffer<GameDreamerEvent> __events;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
@@ -270,7 +270,7 @@ public partial struct GameDreamerRollbackSystem : ISystem, IRollbackCore
         __dreamers = containerManager.CreateComponent<GameDreamer>(ref state);
         __dreamerInfos = containerManager.CreateComponent<GameDreamerInfo>(ref state);
         __versions = containerManager.CreateComponent<GameDreamerVersion>(ref state);
-        __events = containerManager.CreateBuffer<GameDreamerEvent>(ref state);
+        //__events = containerManager.CreateBuffer<GameDreamerEvent>(ref state);
     }
 
     [BurstCompile]
@@ -303,7 +303,7 @@ public partial struct GameDreamerRollbackSystem : ISystem, IRollbackCore
         restore.dreamers = __manager.DelegateRestore(__dreamers, ref state);
         restore.dreamerInfos = __manager.DelegateRestore(__dreamerInfos, ref state);
         restore.versions = __manager.DelegateRestore(__versions, ref state);
-        restore.events = __manager.DelegateRestore(__events, ref state);
+        //restore.events = __manager.DelegateRestore(__events, ref state);
         restore.entityManager = entityManager.AsComponentParallelWriter<GameDreamer>(__manager.countAndStartIndex, ref inputDeps);
 
         jobHandle = __manager.ScheduleParallel(restore, frameIndex, JobHandle.CombineDependencies(jobHandle, inputDeps), false);
@@ -321,7 +321,7 @@ public partial struct GameDreamerRollbackSystem : ISystem, IRollbackCore
         save.dreamers = __manager.DelegateSave(__dreamers, ref data, ref state);
         save.dreamerInfos = __manager.DelegateSave(__dreamerInfos, ref data, ref state);
         save.versions = __manager.DelegateSave(__versions, ref data, ref state);
-        save.events = __manager.DelegateSave(__events, __group, ref data, ref state);
+        //save.events = __manager.DelegateSave(__events, __group, ref data, ref state);
 
         state.Dependency = __manager.ScheduleParallel(
             save,
@@ -337,7 +337,7 @@ public partial struct GameDreamerRollbackSystem : ISystem, IRollbackCore
         clear.dreamers = __manager.DelegateClear(__dreamers);
         clear.dreamerInfos = __manager.DelegateClear(__dreamerInfos);
         clear.versions = __manager.DelegateClear(__versions);
-        clear.events = __manager.DelegateClear(__events);
+        //clear.events = __manager.DelegateClear(__events);
 
         state.Dependency = __manager.Schedule(clear, maxFrameIndex, frameIndex, frameCount, state.Dependency);
     }

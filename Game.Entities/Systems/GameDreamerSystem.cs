@@ -8,6 +8,7 @@ using Unity.Mathematics;
 using ZG;
 
 [BurstCompile, 
+ CreateAfter(typeof(EndFrameSyncSystemGroupStructChangeSystem)), 
     UpdateInGroup(typeof(GameRollbackSystemGroup)),
     UpdateAfter(typeof(GameStatusSystemGroup)), 
     UpdateBefore(typeof(GameNodeInitSystemGroup))]
@@ -156,12 +157,14 @@ public partial struct GameDreamerSystem : ISystem
                             statusOutputs[entity] = status;
 
                             var version = versions[entity];
+                            version.status = GameDreamerStatus.Awake;
+                            version.index = dreamerInfo.currentIndex;
                             ++version.value;
                             versions[entity] = version;
 
-                            result.status = GameDreamerStatus.Awake;
+                            result.status = version.status;
                             result.version = version.value;
-                            result.index = dreamerInfo.currentIndex;
+                            result.index = version.index;
                             result.time = time;
                             result.dreamTime = time;
 
@@ -236,12 +239,14 @@ public partial struct GameDreamerSystem : ISystem
                                 this.delay[index] = delay;
 
                                 var version = versions[entity];
+                                version.status = GameDreamerStatus.Sleep;
+                                version.index = dreamerInfo.currentIndex;
                                 ++version.value;
                                 versions[entity] = version;
 
-                                result.status = GameDreamerStatus.Sleep;
+                                result.status = version.status;
                                 result.version = version.value;
-                                result.index = dreamerInfo.currentIndex;
+                                result.index = version.index;
                                 result.time = this.time;
                                 result.dreamTime = time;
 
@@ -301,12 +306,14 @@ public partial struct GameDreamerSystem : ISystem
                                     statusOutputs[entity] = status;
 
                                     var version = versions[entity];
+                                    version.status = GameDreamerStatus.Dream;
+                                    version.index = dreamerInfos[index].currentIndex;
                                     ++version.value;
                                     versions[entity] = version;
 
-                                    result.status = GameDreamerStatus.Dream;
+                                    result.status = version.status;
                                     result.version = version.value;
-                                    result.index = dreamerInfos[index].currentIndex;
+                                    result.index = version.index;
                                     result.time = time;
                                     result.dreamTime = dreamer.time;
 
@@ -324,7 +331,7 @@ public partial struct GameDreamerSystem : ISystem
                                 continue;*/
                             default:
                                 //UnityEngine.Debug.Log($"Dream: {entityIndices[index].value} : {entityArray[index].Index} : {statusOutputs[entity].value} : {(int)dreamer.status} : {(double)dreamer.time} : {frameIndex}");
-                                dreamer.status = GameDreamerStatus.Unknown;
+                                dreamer.status = GameDreamerStatus.Unknown; 
                                 dreamer.time = time;
                                 break;
                         }
@@ -352,12 +359,14 @@ public partial struct GameDreamerSystem : ISystem
                                     dreamers[index] = dreamer;
 
                                     var version = versions[entity];
+                                    version.status = GameDreamerStatus.Awake;
+                                    version.index = dreamerInfos[index].currentIndex;
                                     ++version.value;
                                     versions[entity] = version;
 
-                                    result.status = GameDreamerStatus.Awake;
+                                    result.status = version.status;
                                     result.version = version.value;
-                                    result.index = dreamerInfos[index].currentIndex;
+                                    result.index = version.index;
                                     result.time = time;
                                     result.dreamTime = dreamer.time;
 
@@ -417,12 +426,14 @@ public partial struct GameDreamerSystem : ISystem
                     stream.End();
 #endif
                     var version = versions[entity];
+                    version.status = dreamer.status;
+                    version.index = dreamerInfos[index].currentIndex;
                     ++version.value;
                     versions[entity] = version;
 
-                    result.status = dreamer.status;// GameDreamerStatus.Normal;
+                    result.status = version.status;// GameDreamerStatus.Normal;
                     result.version = version.value;
-                    result.index = dreamerInfos[index].currentIndex;
+                    result.index = version.index;
                     result.time = time;
                     result.dreamTime = dreamer.time;
 
@@ -509,29 +520,30 @@ public partial struct GameDreamerSystem : ISystem
                 dreaming.Execute(i);
         }
     }
-
+    
     private EntityQuery __group;
     //private EntityQuery __syncDataGroup;
     private GameRollbackTime __time;
     private EntityCommandPool<EntityCommandStructChange> __endFrameBarrier;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __group = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameNodeStatus>(),
-            ComponentType.ReadOnly<GameDream>(),
-            ComponentType.ReadWrite<GameDreamer>(),
-            ComponentType.ReadWrite<GameDreamerInfo>(),
-            ComponentType.ReadWrite<GameDreamerVersion>(),
-            ComponentType.ReadWrite<GameNodeDelay>(), 
-            ComponentType.Exclude<Disabled>());
-
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                .WithAll<GameDream>()
+                .WithAllRW<GameDreamer, GameDreamerInfo>()
+                .WithAllRW<GameDreamerVersion, GameNodeDelay>()
+                .WithAllRW<GameNodeStatus>()
+                .Build(ref state);
+        
         //__syncDataGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameSyncData>());
         __time = new GameRollbackTime(ref state);
 
-        __endFrameBarrier = state.World.GetOrCreateSystemUnmanaged<EndFrameSyncSystemGroupStructChangeSystem>().manager.removeComponentPool;
+        __endFrameBarrier = state.WorldUnmanaged.GetExistingSystemUnmanaged<EndFrameSyncSystemGroupStructChangeSystem>().manager.removeComponentPool;
     }
 
+    [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
 
@@ -582,49 +594,124 @@ public partial struct GameDreamerSystem : ISystem
     }
 }
 
-[UpdateInGroup(typeof(TimeSystemGroup)), UpdateAfter(typeof(GameSyncSystemGroup))]
-public partial class GameDreamEventSystem : SystemBase
+[BurstCompile, CreateAfter(typeof(CallbackSystem)), UpdateInGroup(typeof(TimeSystemGroup)), UpdateAfter(typeof(GameSyncSystemGroup))]
+public partial struct GameDreamEventSystem : ISystem
 {
-    private struct Invoke
+    [BurstCompile]
+    private struct Resize : IJobChunk
     {
         [ReadOnly]
-        public NativeArray<Entity> entityArray;
+        public BufferTypeHandle<GameDreamerEvent> eventType;
+
+        [NativeDisableParallelForRestriction]
+        public NativeArray<int> functionCountAndSize;
+
+        public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+        {
+            int functionCount = 0;
+            var events = chunk.GetBufferAccessor(ref eventType);
+            var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+            while (iterator.NextEntityIndex(out int i))
+                functionCount += events[i].Length;
+
+            if (functionCount > 0)
+            {
+                functionCountAndSize.Add(0, functionCount);
+                functionCountAndSize.Add(1, functionCount * UnsafeUtility.SizeOf<GameDreamerFunctionWrapper>());
+            }
+        }
+    }
+    
+    private struct Invoke
+    {
+        public bool hasDream;
+        public double animationTime;
+        public GameTime time;
+        
+        [ReadOnly] 
+        public NativeArray<EntityObject<GameDreamerComponent>> targets;
+        public NativeArray<GameDreamerVersion> versions;
         public BufferAccessor<GameDreamerEvent> events;
-        public NativeQueue<EntityData<GameDreamerEvent>>.ParallelWriter results;
+        public SharedFunctionFactory.ParallelWriter functionFactory;
 
         public void Execute(int index)
         {
-            EntityData<GameDreamerEvent> result;
-            result.entity = entityArray[index];
-
+            GameDreamerFunctionWrapper functionWrapper;
+            var version = versions[index];
             var events = this.events[index];
             int numEvents = events.Length;
-            for(int i = 0; i < numEvents; ++i)
+            if (numEvents > 0)
             {
-                result.value = events[i];
+                functionWrapper.target = targets[index];
+                
+                int i;
+                for (i = 0; i < numEvents; ++i)
+                {
+                    functionWrapper.result = events[i];
+                    if (functionWrapper.result.version > version.value)
+                        continue;
 
-                results.Enqueue(result);
-            }    
-            events.Clear();
+                    if (functionWrapper.result.time > animationTime)
+                        break;
+
+                    functionFactory.Invoke(ref functionWrapper);
+                }
+
+                events.RemoveRange(0, i);
+            }
+
+            switch (version.status)
+            {
+                case GameDreamerStatus.Dream:
+                case GameDreamerStatus.Sleep:
+                case GameDreamerStatus.Awake:
+                    if (!hasDream && events.Length < 1)
+                    {
+                        functionWrapper.result.status = GameDreamerStatus.Normal;
+                        functionWrapper.result.version = ++version.value;
+                        functionWrapper.result.index = version.index;
+                        functionWrapper.result.time = time;
+                        functionWrapper.result.dreamTime = time;
+
+                        events.Add(functionWrapper.result);
+
+                        version.status = GameDreamerStatus.Normal;
+                        versions[index] = version;
+                    }
+                    
+                    break;
+            }
         }
     }
 
     [BurstCompile]
     private struct InvokeEx : IJobChunk
     {
-        [ReadOnly]
-        public EntityTypeHandle entityType;
+        public double animationTime;
+        public GameTime time;
+
+        [ReadOnly] 
+        public ComponentTypeHandle<GameDreamer> dreamerType;
+
+        [ReadOnly] 
+        public ComponentTypeHandle<EntityObject<GameDreamerComponent>> targetType;
+        
+        public ComponentTypeHandle<GameDreamerVersion> versionType;
 
         public BufferTypeHandle<GameDreamerEvent> eventType;
 
-        public NativeQueue<EntityData<GameDreamerEvent>>.ParallelWriter results;
+        public SharedFunctionFactory.ParallelWriter functionFactory;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             Invoke invoke;
-            invoke.entityArray = chunk.GetNativeArray(entityType);
+            invoke.hasDream = chunk.Has(ref dreamerType);
+            invoke.animationTime = animationTime;
+            invoke.time = time;
+            invoke.targets = chunk.GetNativeArray(ref targetType);
+            invoke.versions = chunk.GetNativeArray(ref versionType);
             invoke.events = chunk.GetBufferAccessor(ref eventType);
-            invoke.results = results;
+            invoke.functionFactory = functionFactory;
 
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
@@ -632,82 +719,78 @@ public partial class GameDreamEventSystem : SystemBase
         }
     }
 
-    private JobHandle __jobHandle;
     private EntityQuery __group;
-    private NativeQueue<EntityData<GameDreamerEvent>> __results;
+    private EntityQuery __animationElapsedTimeGroup;
+    private GameRollbackTime __time;
+    
+    private ComponentTypeHandle<GameDreamer> __dreamerType;
 
-    public NativeQueue<EntityData<GameDreamerEvent>> results
+    private ComponentTypeHandle<EntityObject<GameDreamerComponent>> __targetType;
+        
+    private ComponentTypeHandle<GameDreamerVersion> __versionType;
+
+    private BufferTypeHandle<GameDreamerEvent> __eventType;
+
+    private SharedFunctionFactory __functionFactory;
+
+    private NativeArray<int> __functionCountAndSize;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
     {
-        get
-        {
-            __jobHandle.Complete();
-            __jobHandle = default;
+        __animationElapsedTimeGroup = GameAnimationElapsedTime.GetEntityQuery(ref state);
 
-            return __results;
-        }
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __group = builder
+                .WithAll<EntityObject<GameDreamerComponent>>()
+                .WithAllRW<GameDreamerVersion, GameDreamerEvent>()
+                .Build(ref state);
+        
+        __time = new GameRollbackTime(ref state);
+        
+        __dreamerType = state.GetComponentTypeHandle<GameDreamer>(true);
+        __targetType = state.GetComponentTypeHandle<EntityObject<GameDreamerComponent>>(true);
+        __versionType = state.GetComponentTypeHandle<GameDreamerVersion>();
+        __eventType = state.GetBufferTypeHandle<GameDreamerEvent>();
+        
+        __functionFactory = state.WorldUnmanaged.GetExistingSystemUnmanaged<CallbackSystem>().functionFactory;
+
+        __functionCountAndSize = new NativeArray<int>(2, Allocator.Persistent, NativeArrayOptions.ClearMemory);
     }
 
-    protected override void OnCreate()
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
-        base.OnCreate();
-
-        __group = GetEntityQuery(
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadWrite<GameDreamerEvent>(), 
-                    ComponentType.ReadOnly<GameDreamerVersion>()
-                }, 
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
-        __group.SetChangedVersionFilter(typeof(GameDreamerVersion));
-
-        __results = new NativeQueue<EntityData<GameDreamerEvent>>(Allocator.Persistent);
+        __functionCountAndSize.Dispose();
     }
 
-    protected override void OnDestroy()
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
     {
-        __results.Dispose();
+        var jobHandle = state.Dependency;
+        var eventType = __eventType.UpdateAsRef(ref state);
+        
+        Resize resize;
+        resize.eventType = eventType;
+        resize.functionCountAndSize = __functionCountAndSize;
+        jobHandle = resize.ScheduleParallelByRef(__group, jobHandle);
 
-        base.OnDestroy();
-    }
-
-    protected override void OnUpdate()
-    {
+        ref var functionFactoryJobManager = ref __functionFactory.lookupJobManager;
+        jobHandle = JobHandle.CombineDependencies(jobHandle, functionFactoryJobManager.readWriteJobHandle);
+        
         InvokeEx invoke;
-        invoke.entityType = GetEntityTypeHandle();
-        invoke.eventType = GetBufferTypeHandle<GameDreamerEvent>();
-        invoke.results = __results.AsParallelWriter();
-        __jobHandle = invoke.ScheduleParallel(__group, Dependency);
+        invoke.time = __time.now;
+        invoke.animationTime = __animationElapsedTimeGroup.GetSingleton<GameAnimationElapsedTime>().value;
+        invoke.dreamerType = __dreamerType.UpdateAsRef(ref state);
+        invoke.targetType = __targetType.UpdateAsRef(ref state);
+        invoke.versionType = __versionType.UpdateAsRef(ref state);
+        invoke.eventType = eventType;
+        invoke.functionFactory = __functionFactory.AsParallelWriter(__functionCountAndSize, ref jobHandle);
 
-        Dependency = __jobHandle;
-    }
-}
+        jobHandle = invoke.ScheduleParallelByRef(__group, jobHandle);
+        
+        functionFactoryJobManager.readWriteJobHandle = jobHandle;
 
-public partial class GameDreamEventCallbackSystem : SystemBase
-{
-    private GameDreamEventSystem __eventSystem;
-
-    protected override void OnCreate()
-    {
-        base.OnCreate();
-
-        __eventSystem = World.GetOrCreateSystemManaged<GameDreamEventSystem>();
-    }
-
-    protected override void OnUpdate()
-    {
-        GameDreamerComponent instance = null;
-        var enttiyManager = EntityManager;
-        Entity entity = Entity.Null;
-        var results = __eventSystem.results;
-        while(results.TryDequeue(out var result))
-        {
-            if(result.entity != entity)
-                instance = enttiyManager.GetComponentData<EntityObject<GameDreamerComponent>>(result.entity).value;
-
-            instance._Changed(result.value);
-        }
+        state.Dependency = jobHandle;
     }
 }

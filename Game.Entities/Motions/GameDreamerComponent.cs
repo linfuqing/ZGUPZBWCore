@@ -15,6 +15,24 @@ public enum GameDreamerStatus
     Unknown = 0x08
 }
 
+public struct GameDreamerFunctionWrapper : IFunctionWrapper
+{
+    public EntityObject<GameDreamerComponent> target;
+    public GameDreamerEvent result;
+    
+    public void Invoke()
+    {
+        var target = this.target.value;
+        if (target != null)
+        {
+            /*if(target.gameObjectEntity.worldName.Contains("Client"))
+                UnityEngine.Debug.LogError(result.status);*/
+            
+            target._Changed(result);
+        }
+    }
+}
+
 [InternalBufferCapacity(4)]
 public struct GameDream : IBufferElementData
 {
@@ -36,6 +54,8 @@ public struct GameDreamerEvent : IBufferElementData
 public struct GameDreamerVersion : IComponentData
 {
     public int value;
+    public int index;
+    public GameDreamerStatus status;
 }
 
 public struct GameDreamer : IComponentData
@@ -81,11 +101,16 @@ public class GameDreamerComponent : EntityProxyComponent, IEntityComponent
     {
         public Dream[] dreams;
     }
+
+    public delegate void Awaking(
+        bool isDispose, 
+        int index, 
+        int level);
     
     public event Action onSleep;
     public event Action onAwake;
     public event Action onSleeping;
-    public event Action<bool> onAwaking;
+    public event Awaking onAwaking;
 
     [UnityEngine.SerializeField]
     internal Dreams[] _dreams = null;
@@ -415,6 +440,8 @@ public class GameDreamerComponent : EntityProxyComponent, IEntityComponent
         this.SetComponentData(temp);*/
 
         GameDreamerVersion version;
+        version.status = GameDreamerStatus.Normal;
+        version.index = -1;
         version.value = __version;
         assigner.SetComponentData(entity, version);
 
@@ -477,7 +504,7 @@ public class GameDreamerComponent : EntityProxyComponent, IEntityComponent
             status = GameDreamerStatus.Unknown;
 
             if (onAwaking != null)
-                onAwaking(true);
+                onAwaking(true, index, level);
         }
 
         index = -1;
@@ -510,7 +537,7 @@ public class GameDreamerComponent : EntityProxyComponent, IEntityComponent
                 status = result.status;
                 index = i;
                 level = result.index;
-
+                
                 switch (result.status)
                 {
                     case GameDreamerStatus.Sleep:
@@ -527,7 +554,7 @@ public class GameDreamerComponent : EntityProxyComponent, IEntityComponent
                         break;
                     default:
                         if (onAwaking != null)
-                            onAwaking(false);
+                            onAwaking(false, index, level);
                         break;
                 }
 
