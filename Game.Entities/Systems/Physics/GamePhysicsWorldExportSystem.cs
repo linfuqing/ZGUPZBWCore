@@ -63,8 +63,8 @@ public partial class GamePhysicsWorldExportSystem : SystemBase
         }
     }
 
-    private static readonly FieldInfo __ExportPhysicsWorldInputDependency = typeof(ExportPhysicsWorld).GetField("m_InputDependency", BindingFlags.Instance | BindingFlags.NonPublic);
-    private static readonly FieldInfo __ExportPhysicsWorldOutputDependency = typeof(ExportPhysicsWorld).GetField("m_OutputDependency", BindingFlags.Instance | BindingFlags.NonPublic);
+    //private static readonly FieldInfo __ExportPhysicsWorldInputDependency = typeof(ExportPhysicsWorld).GetField("m_InputDependency", BindingFlags.Instance | BindingFlags.NonPublic);
+    //private static readonly FieldInfo __ExportPhysicsWorldOutputDependency = typeof(ExportPhysicsWorld).GetField("m_OutputDependency", BindingFlags.Instance | BindingFlags.NonPublic);
 
     private BuildPhysicsWorld __buildPhysicsWorld;
     private StepPhysicsWorld __stepPhysicsWorld;
@@ -107,7 +107,9 @@ public partial class GamePhysicsWorldExportSystem : SystemBase
 
         Dependency = jobHandle;
 
-        __ExportPhysicsWorldOutputDependency.SetValue(__exportPhysicsWorld, jobHandle);
-        __ExportPhysicsWorldInputDependency.SetValue(__exportPhysicsWorld, default(JobHandle));
+        __exportPhysicsWorld.m_OutputDependency = jobHandle;
+        __exportPhysicsWorld.m_InputDependency = default;
+        //__ExportPhysicsWorldOutputDependency.SetValue(__exportPhysicsWorld, jobHandle);
+        //__ExportPhysicsWorldInputDependency.SetValue(__exportPhysicsWorld, default(JobHandle));
     }
 }

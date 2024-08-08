@@ -17,7 +17,7 @@ public class GameFootstepSettings : MonoBehaviour, IGameFootstepResources
     {
         get
         {
-            return __instance;
+            return __instance == null ? null : __instance;
         }
     }
 

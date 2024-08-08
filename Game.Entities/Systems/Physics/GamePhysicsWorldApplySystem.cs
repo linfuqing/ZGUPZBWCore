@@ -12,8 +12,8 @@ using ZG;
  UpdateBefore(typeof(BuildPhysicsWorld))]
 public partial class GamePhysicsWorldApplySystem : SystemBase
 {
-    private static readonly FieldInfo __BuildPhysicsWorldInputDependencyToComplete = typeof(BuildPhysicsWorld).GetField("m_InputDependencyToComplete", BindingFlags.Instance | BindingFlags.NonPublic);
-    private static readonly FieldInfo __BuildPhysicsWorldOutputDependency = typeof(BuildPhysicsWorld).GetField("m_OutputDependency", BindingFlags.Instance | BindingFlags.NonPublic);
+    //private static readonly FieldInfo __BuildPhysicsWorldInputDependencyToComplete = typeof(BuildPhysicsWorld).GetField("m_InputDependencyToComplete", BindingFlags.Instance | BindingFlags.NonPublic);
+    //private static readonly FieldInfo __BuildPhysicsWorldOutputDependency = typeof(BuildPhysicsWorld).GetField("m_OutputDependency", BindingFlags.Instance | BindingFlags.NonPublic);
 
     public int innerloopBatchCount = 1;
 
@@ -66,7 +66,10 @@ public partial class GamePhysicsWorldApplySystem : SystemBase
 
         __stepPhysicsWorld.AddInputDependency(jobHandle);
 
-        __BuildPhysicsWorldOutputDependency.SetValue(__buildPhysicsWorld, jobHandle);
-        __BuildPhysicsWorldInputDependencyToComplete.SetValue(__buildPhysicsWorld, default(Unity.Jobs.JobHandle));
+        __buildPhysicsWorld.m_OutputDependency = jobHandle;
+        __buildPhysicsWorld.m_InputDependencyToComplete = default;
+
+        //__BuildPhysicsWorldOutputDependency.SetValue(__buildPhysicsWorld, jobHandle);
+        //__BuildPhysicsWorldInputDependencyToComplete.SetValue(__buildPhysicsWorld, default(Unity.Jobs.JobHandle));
     }
 }
