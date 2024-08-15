@@ -12,7 +12,7 @@ public enum GameQuestConditionType
     Kill,
     Own,
     Select, 
-    Formula
+    Upgrade
 }
 
 public enum GameQuestRewardType
