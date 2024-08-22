@@ -643,6 +643,11 @@ public partial struct GameActionActiveSystem : ISystem
             return math.lengthsq(position) <= distance * distance;
         }
 
+        public bool IsVail(in Entity entity)
+        {
+            return !disabled.HasComponent(entity) && translations.HasComponent(entity) && rotations.HasComponent(entity);
+        }
+
         public unsafe int Execute(bool isEntry, int index)
         {
             var instance = instances[index];
@@ -657,25 +662,23 @@ public partial struct GameActionActiveSystem : ISystem
 
             var info = infos[index];
 
-            bool isWatch = true;
+            bool isVail = false, isWatch = true;
             Entity speakerEntity = Entity.Null;
             if (speakerInfos.Length > index)
             {
                 var speakerInfo = speakerInfos[index];
                 speakerEntity = speakerInfo.target;
-                if (speakerEntity != Entity.Null)
+                double speakerTime = speakerInfo.time + instance.speakerTime;
+                if (time < speakerTime && IsVail(speakerEntity))
                 {
-                    double speakerTime = speakerInfo.time + instance.speakerTime;
-                    if (time < speakerTime)
-                    {
-                        isWatch = false;
+                    isVail = true;
+                    isWatch = false;
 
-                        if (info.activeTime < speakerTime)
-                        {
-                            info.activeTime = speakerTime;
-                            info.position = source;
-                            info.entity = speakerInfo.target;
-                        }
+                    if (info.activeTime < speakerTime)
+                    {
+                        info.activeTime = speakerTime;
+                        info.position = source;
+                        info.entity = speakerInfo.target;
                     }
                 }
             }
@@ -683,18 +686,16 @@ public partial struct GameActionActiveSystem : ISystem
             if (isWatch && watcherInfos.Length > index)
             {
                 var watcherInfo = watcherInfos[index];
-                if (watcherInfo.target != Entity.Null)
+                if (watcherInfo.target != info.entity && IsVail(watcherInfo.target))
                 {
-                    if (watcherInfo.target != info.entity/* && (time - watcherInfo.time) < instance.watcherTime*/)
-                    {
-                        info.entity = watcherInfo.target;
+                    isVail = true;
+                    info.entity = watcherInfo.target;
 
-                        isEntry = true;
-                    }
+                    isEntry = true;
                 }
             }
 
-            if (disabled.HasComponent(info.entity) || !translations.HasComponent(info.entity) || !rotations.HasComponent(info.entity))
+            if (!isVail && !IsVail(info.entity))
             {
                 info.activeTime = time;
 

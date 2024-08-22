@@ -51,9 +51,8 @@ public class GameActionNormal : StateMachineNode
     [Tooltip("散步下次路点范围。")]
     public float range = 5.0f;
 
-    [Tooltip("小于该高度则回头")]
-    [Range(0.0f, 1.0f)]
-    public float slope = 0.5f;
+    [Tooltip("卡住超过这个时间则停止")]
+    public float freeTime = 1.0f;
 
     [Tooltip("发呆超过该时间则休息。")]
     public float sleepTime = 20.0f;
@@ -79,7 +78,7 @@ public class GameActionNormal : StateMachineNode
         data.delayChance = delayChance;
         data.awakeChance = awakeChance;
         data.range = range;
-        data.slope = slope;
+        data.freeTime = freeTime;
         data.sleepTime = sleepTime;
         data.awakeTime = awakeTime;
         data.delayTime = delayTime;
@@ -136,8 +135,8 @@ public struct GameActionNormalData : IComponentData
     [Tooltip("散步下次路点范围。")]
     public float range;
 
-    [Tooltip("小于该高度则回头")]
-    public float slope;
+    [Tooltip("卡住超过这个时间则停止")]
+    public float freeTime;
 
     [Tooltip("发呆超过该时间则休息。")]
     public float sleepTime;
@@ -161,6 +160,7 @@ public struct GameActionNormalInfo : IComponentData
     public float duration;
     public float elapsedTime;
     public double time;
+    public float3 position;
 }
 
 [BurstCompile, 
@@ -247,6 +247,8 @@ public partial struct GameActionNormalSystem : ISystem, IEntityCommandProducerJo
     
     public struct Entry : IStateMachineCondition
     {
+        public double time;
+        
         [WriteOnly]
         public NativeArray<GameActionNormalInfo> infos;
 
@@ -268,7 +270,8 @@ public partial struct GameActionNormalSystem : ISystem, IEntityCommandProducerJo
             info.speedScale = (half)1.0f;
             info.duration = 0.0f;
             info.elapsedTime = 0.0f;
-            info.time = 0.0;
+            info.time = time;
+            info.position = float3.zero;
             infos[index] = info;
 
             return true;
@@ -277,6 +280,8 @@ public partial struct GameActionNormalSystem : ISystem, IEntityCommandProducerJo
     
     public struct FactoryEntry : IStateMachineFactory<Entry>
     {
+        public double time;
+
         [ReadOnly]
         public ComponentTypeHandle<GameActionNormalData> instanceType;
 
@@ -285,6 +290,7 @@ public partial struct GameActionNormalSystem : ISystem, IEntityCommandProducerJo
 
         public bool Create(int unfilteredChunkIndex, in ArchetypeChunk chunk, out Entry entry)
         {
+            entry.time = time;
             //schedulerEntry.instances = chunk.GetNativeArray(ref instanceType);
             entry.infos = chunk.GetNativeArray(ref infoType);
 
@@ -439,8 +445,23 @@ public partial struct GameActionNormalSystem : ISystem, IEntityCommandProducerJo
             bool isHasPositions = index < this.positions.Length;
             var positions = isHasPositions ? this.positions[index] : default;
             if (!isDrowning && isHasPositions && positions.Length > 0)
-                return 0;
+            {
+                float3 position = positions[0].value;
+                if (math.all(math.abs(position - info.position) > extends[index][0].value))
+                {
+                    info.position = position;
+                    info.time = time;
+                    infos[index] = info;
 
+                    return 0;
+                }
+                
+                if((float)(time - info.time) < instance.sleepTime)
+                    return 0;
+                
+                positions.Clear();
+            }
+            
             //bool isExists = index < this.positions.Length, isBackward = false;
             //float3 translation = translations[index].Value, forward = math.forward(rotations[index].Value);
             /*DynamicBuffer<GameNodePosition> positions = isExists ? this.positions[index] : default;
@@ -633,8 +654,12 @@ public partial struct GameActionNormalSystem : ISystem, IEntityCommandProducerJo
                                 ref versions);
 
                         SetSpeedScale((info.flag & GameActionNormalInfo.Flag.MuteDelay) == GameActionNormalInfo.Flag.MuteDelay ? GameNodeSpeedScale.Normal : instance.speedScale, entity, ref info);
+                        
+                        
+                        info.position = translation;
                     }
 
+                    info.time = time;
                     info.flag &= ~(GameActionNormalInfo.Flag.MuteDelay | GameActionNormalInfo.Flag.MuteDream);
 
                     /*GameNodeVersion version = versions[entity];
@@ -890,6 +915,7 @@ public partial struct GameActionNormalSystem : ISystem, IEntityCommandProducerJo
         factoryExit.speedScaleComponentType = __speedScaleComponentType.UpdateAsRef(ref state);
 
         FactoryEntry factoryEntry;
+        factoryEntry.time = time;
         factoryEntry.instanceType = __instanceType.UpdateAsRef(ref state);
         factoryEntry.infoType = infoType;
 
@@ -898,7 +924,7 @@ public partial struct GameActionNormalSystem : ISystem, IEntityCommandProducerJo
         int entityCount = __core.entryGroup.CalculateEntityCount();
 
         FactoryRun factoryRun;
-        factoryRun.time = __time.nextTime;
+        factoryRun.time = time;
         factoryRun.entityType = __entityType.UpdateAsRef(ref state);
         factoryRun.translationType = __translationType.UpdateAsRef(ref state);
         factoryRun.rotationType = __rotationType.UpdateAsRef(ref state);

@@ -927,10 +927,15 @@ public partial struct GameEntityRollbackSystem : ISystem, IRollbackCore
     {
         public RollbackComponentRestoreFunction<GameEntityCamp> camps;
 
+        public RollbackBufferRestoreFunction<GameEntityItem> items;
+        
         public void Execute(int index, int entityIndex, in Entity entity)
         {
             if (camps.IsExists(entity))
                 camps.Invoke(entityIndex, entity);
+            
+            if(items.IsExists(entity))
+                items.Invoke(entityIndex, entity);
         }
     }
 
@@ -938,9 +943,12 @@ public partial struct GameEntityRollbackSystem : ISystem, IRollbackCore
     {
         public RollbackComponentSaveFunction<GameEntityCamp> camps;
 
+        public RollbackBufferSaveFunction<GameEntityItem> items;
+
         public void Execute(in ArchetypeChunk chunk, int firstEntityIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             camps.Invoke(chunk, firstEntityIndex, useEnabledMask, chunkEnabledMask);
+            items.Invoke(chunk, firstEntityIndex, useEnabledMask, chunkEnabledMask);
         }
     }
 
@@ -948,18 +956,23 @@ public partial struct GameEntityRollbackSystem : ISystem, IRollbackCore
     {
         public RollbackComponentClearFunction<GameEntityCamp> camps;
 
+        public RollbackBufferClearFunction<GameEntityItem> items;
+
         public void Remove(int fromIndex, int count)
         {
+            items.Remove(fromIndex, count);
         }
 
         public void Move(int fromIndex, int toIndex, int count)
         {
             camps.Move(fromIndex, toIndex, count);
+            items.Move(fromIndex, toIndex, count);
         }
 
         public void Resize(int count)
         {
             camps.Resize(count);
+            items.Resize(count);
         }
     }
 
@@ -968,13 +981,14 @@ public partial struct GameEntityRollbackSystem : ISystem, IRollbackCore
     private RollbackManager<Restore, Save, Clear> __manager;
 
     private RollbackComponent<GameEntityCamp> __camps;
+    private RollbackBuffer<GameEntityItem> __items;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         using(var builder = new EntityQueryBuilder(Allocator.Temp))
         __group = builder
-                .WithAll<RollbackObject, GameEntityCamp>()
+                .WithAll<RollbackObject, GameEntityCamp, GameEntityItem>()
                 .Build(ref state);
 
         var containerManager = state.WorldUnmanaged.GetExistingSystemUnmanaged<RollbackSystemGroup>().containerManager;
@@ -982,6 +996,7 @@ public partial struct GameEntityRollbackSystem : ISystem, IRollbackCore
         __manager = containerManager.CreateManager<Restore, Save, Clear>(ref state);
 
         __camps = containerManager.CreateComponent<GameEntityCamp>(ref state);
+        __items = containerManager.CreateBuffer<GameEntityItem>(ref state);
     }
 
     [BurstCompile]
@@ -1000,6 +1015,7 @@ public partial struct GameEntityRollbackSystem : ISystem, IRollbackCore
     {
         Restore restore;
         restore.camps = __manager.DelegateRestore(__camps, ref state);
+        restore.items = __manager.DelegateRestore(__items, ref state);
 
         state.Dependency = __manager.ScheduleParallel(restore, frameIndex, state.Dependency, true);
     }
@@ -1010,6 +1026,7 @@ public partial struct GameEntityRollbackSystem : ISystem, IRollbackCore
 
         Save save;
         save.camps = __manager.DelegateSave(__camps, ref data, ref state);
+        save.items = __manager.DelegateSave(__items, __group, ref data, ref state);
 
         state.Dependency = __manager.ScheduleParallel(save, frameIndex, entityType, __group, data);
     }
@@ -1018,6 +1035,7 @@ public partial struct GameEntityRollbackSystem : ISystem, IRollbackCore
     {
         Clear clear;
         clear.camps = __manager.DelegateClear(__camps);
+        clear.items = __manager.DelegateClear(__items);
 
         state.Dependency = __manager.Schedule(clear, maxFrameIndex, frameIndex, frameCount, state.Dependency);
     }
@@ -1156,7 +1174,6 @@ public partial struct GameEntityActorRollbackSystem : ISystem, IRollbackCore
         public RollbackComponentRestoreFunction<GameEntityActorHit> actorHits;
         public RollbackComponentRestoreFunction<GameEntityHit> hits;
 
-        public RollbackBufferRestoreFunction<GameEntityItem> items;
         public RollbackBufferRestoreFunction<GameEntityActorActionInfo> actorActionInfos;
 
         public EntityCommandQueue<Entity>.Writer entityManager;
@@ -1177,9 +1194,6 @@ public partial struct GameEntityActorRollbackSystem : ISystem, IRollbackCore
             //UnityEngine.Debug.Log("Restore: " + entity.ToString() + " : " + actorTimes[index].value + ":" + frameIndex);
 
             hits.InvokeDiff(entityIndex, entity);
-
-            if (items.IsExists(entity))
-                items.Invoke(entityIndex, entity);
 
             actorActionInfos.Invoke(entityIndex, entity);
 
@@ -1219,7 +1233,6 @@ public partial struct GameEntityActorRollbackSystem : ISystem, IRollbackCore
         public RollbackComponentSaveFunction<GameEntityActorHit> actorHits;
         public RollbackComponentSaveFunction<GameEntityHit> hits;
 
-        public RollbackBufferSaveFunction<GameEntityItem> items;
         public RollbackBufferSaveFunction<GameEntityActorActionInfo> actorActionInfos;
 
         public void Execute(in ArchetypeChunk chunk, int firstEntityIndex, bool useEnabledMask, in v128 chunkEnabledMask)
@@ -1234,7 +1247,6 @@ public partial struct GameEntityActorRollbackSystem : ISystem, IRollbackCore
             actorHits.Invoke(chunk, firstEntityIndex, useEnabledMask, chunkEnabledMask);
             hits.Invoke(chunk, firstEntityIndex, useEnabledMask, chunkEnabledMask);
 
-            items.Invoke(chunk, firstEntityIndex, useEnabledMask, chunkEnabledMask);
             actorActionInfos.Invoke(chunk, firstEntityIndex, useEnabledMask, chunkEnabledMask);
         }
     }
@@ -1252,12 +1264,10 @@ public partial struct GameEntityActorRollbackSystem : ISystem, IRollbackCore
         public RollbackComponentClearFunction<GameEntityActorHit> actorHits;
         public RollbackComponentClearFunction<GameEntityHit> hits;
 
-        public RollbackBufferClearFunction<GameEntityItem> items;
         public RollbackBufferClearFunction<GameEntityActorActionInfo> actorActionInfos;
 
         public void Remove(int fromIndex, int count)
         {
-            items.Remove(fromIndex, count);
             actorActionInfos.Remove(fromIndex, count);
         }
 
@@ -1271,7 +1281,6 @@ public partial struct GameEntityActorRollbackSystem : ISystem, IRollbackCore
             actorHits.Move(fromIndex, toIndex, count);
             hits.Move(fromIndex, toIndex, count);
 
-            items.Move(fromIndex, toIndex, count);
             actorActionInfos.Move(fromIndex, toIndex, count);
         }
 
@@ -1285,7 +1294,6 @@ public partial struct GameEntityActorRollbackSystem : ISystem, IRollbackCore
             actorHits.Resize(count);
             hits.Resize(count);
 
-            items.Resize(count);
             actorActionInfos.Resize(count);
         }
     }
@@ -1303,7 +1311,6 @@ public partial struct GameEntityActorRollbackSystem : ISystem, IRollbackCore
     private RollbackComponent<GameEntityActorHit> __actorHits;
     private RollbackComponent<GameEntityHit> __hits;
 
-    private RollbackBuffer<GameEntityItem> __items;
     private RollbackBuffer<GameEntityActorActionInfo> __actorActionInfos;
 
     private ComponentLookup<GameActionData> __actions;
@@ -1332,7 +1339,6 @@ public partial struct GameEntityActorRollbackSystem : ISystem, IRollbackCore
         __actorTimes = containerManager.CreateComponent<GameEntityActorTime>(ref state);
         __actorHits = containerManager.CreateComponent<GameEntityActorHit>(ref state);
         __hits = containerManager.CreateComponent<GameEntityHit>(ref state);
-        __items = containerManager.CreateBuffer<GameEntityItem>(ref state);
         __actorActionInfos = containerManager.CreateBuffer<GameEntityActorActionInfo>(ref state);
 
         __actions = state.GetComponentLookup<GameActionData>(true);
@@ -1367,7 +1373,6 @@ public partial struct GameEntityActorRollbackSystem : ISystem, IRollbackCore
         restore.actorHits = __manager.DelegateRestore(__actorHits, ref state);
         restore.hits = __manager.DelegateRestore(__hits, ref state);
 
-        restore.items = __manager.DelegateRestore(__items, ref state);
         restore.actorActionInfos = __manager.DelegateRestore(__actorActionInfos, ref state);
         restore.entityManager = entityManager.writer;
 
@@ -1390,7 +1395,6 @@ public partial struct GameEntityActorRollbackSystem : ISystem, IRollbackCore
         save.actorTimes = __manager.DelegateSave(__actorTimes, ref data, ref state);
         save.actorHits = __manager.DelegateSave(__actorHits, ref data, ref state);
         save.hits = __manager.DelegateSave(__hits, ref data, ref state);
-        save.items = __manager.DelegateSave(__items, __group, ref data, ref state);
         save.actorActionInfos = __manager.DelegateSave(__actorActionInfos, __group, ref data, ref state);
 
         state.Dependency = __manager.ScheduleParallel(
@@ -1412,7 +1416,6 @@ public partial struct GameEntityActorRollbackSystem : ISystem, IRollbackCore
         clear.actorHits = __manager.DelegateClear(__actorHits);
         clear.hits = __manager.DelegateClear(__hits);
 
-        clear.items = __manager.DelegateClear(__items);
         clear.actorActionInfos = __manager.DelegateClear(__actorActionInfos);
 
         state.Dependency = __manager.Schedule(clear, maxFrameIndex, frameIndex, frameCount, state.Dependency);

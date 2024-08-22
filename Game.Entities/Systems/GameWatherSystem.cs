@@ -140,7 +140,7 @@ public partial struct GameWatcherSystem : ISystem
             int rigidbodyIndex = collisionWorld.GetRigidBodyIndex(entityArray[index]);
             if (rigidbodyIndex == -1)
             {
-                UnityEngine.Debug.LogError("Watcher's Rigidbody Invail!");
+                UnityEngine.Debug.LogError("Watcher's Rigidbody is invailed!");
 
                 return;
             }
@@ -161,18 +161,17 @@ public partial struct GameWatcherSystem : ISystem
             
             GameEntityNode node;
             GameActionTargetType type;
-            node.entity = rigidbody.Entity;
             if (isExists)
             {
-                node.camp = destination.camp;
+                node = destination;
 
-                type = GameActionTargetType.Ally;
+                type = GameActionTargetType.Self | GameActionTargetType.Ally;
 
                 info.type = GameWatcherInfo.Type.Camp;
             }
             else
             {
-                node.camp = source.camp;
+                node = source;
 
                 type = instance.type;
 

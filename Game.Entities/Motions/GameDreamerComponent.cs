@@ -535,9 +535,12 @@ public class GameDreamerComponent : EntityProxyComponent, IEntityComponent
             if (count > result.index)
             {
                 status = result.status;
-                index = i;
-                level = result.index;
-                
+                if (result.index != -1)
+                {
+                    index = i;
+                    level = result.index;
+                }
+
                 switch (result.status)
                 {
                     case GameDreamerStatus.Sleep:

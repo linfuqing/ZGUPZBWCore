@@ -162,7 +162,7 @@ public struct GameAreaCollectInstanceAreaIndices : IJobChunk, IEntityCommandProd
             EntityData<GameAreaPrefab> prefab;
             prefab.entity = entityArray[index];
             prefab.value.areaIndex = areaIndex;
-            //entityManager.Enqueue(prefab);
+            entityManager.Enqueue(prefab);
         }
     }
 
