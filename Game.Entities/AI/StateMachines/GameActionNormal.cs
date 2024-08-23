@@ -321,6 +321,9 @@ public partial struct GameActionNormalSystem : ISystem, IEntityCommandProducerJo
         public NativeArray<GameOwner> owners;
 
         [ReadOnly]
+        public NativeArray<GameNodeStoppingDistance> stoppingDistances;
+
+        [ReadOnly]
         public NativeArray<GameNodeSpeed> speeds;
 
         [ReadOnly]
@@ -447,7 +450,7 @@ public partial struct GameActionNormalSystem : ISystem, IEntityCommandProducerJo
             if (!isDrowning && isHasPositions && positions.Length > 0)
             {
                 float3 position = positions[0].value;
-                if (math.all(math.abs(position - info.position) > extends[index][0].value))
+                if (math.all(math.abs(position - info.position) > stoppingDistances[index].value))
                 {
                     info.position = position;
                     info.time = time;
@@ -720,6 +723,9 @@ public partial struct GameActionNormalSystem : ISystem, IEntityCommandProducerJo
         public ComponentTypeHandle<GameOwner> ownerType;
 
         [ReadOnly]
+        public ComponentTypeHandle<GameNodeStoppingDistance> stoppingDistanceType;
+
+        [ReadOnly]
         public ComponentTypeHandle<GameNodeSpeed> speedType;
 
         [ReadOnly]
@@ -780,6 +786,7 @@ public partial struct GameActionNormalSystem : ISystem, IEntityCommandProducerJo
             run.translations = chunk.GetNativeArray(ref translationType);
             run.rotations = chunk.GetNativeArray(ref rotationType);
             run.owners = chunk.GetNativeArray(ref ownerType);
+            run.stoppingDistances = chunk.GetNativeArray(ref stoppingDistanceType);
             run.speeds = chunk.GetNativeArray(ref speedType);
             run.velocities = chunk.GetNativeArray(ref velocityType);
             run.delay = chunk.GetNativeArray(ref delayType);
@@ -814,6 +821,8 @@ public partial struct GameActionNormalSystem : ISystem, IEntityCommandProducerJo
     private ComponentTypeHandle<Rotation> __rotationType;
 
     private ComponentTypeHandle<GameOwner> __ownerType;
+
+    private ComponentTypeHandle<GameNodeStoppingDistance> __stoppingDistanceType;
 
     private ComponentTypeHandle<GameNodeSpeed> __speedType;
 
@@ -865,6 +874,7 @@ public partial struct GameActionNormalSystem : ISystem, IEntityCommandProducerJo
         __translationType = state.GetComponentTypeHandle<Translation>(true);
         __rotationType = state.GetComponentTypeHandle<Rotation>(true);
         __ownerType = state.GetComponentTypeHandle<GameOwner>(true);
+        __stoppingDistanceType = state.GetComponentTypeHandle<GameNodeStoppingDistance>(true);
         __speedType = state.GetComponentTypeHandle<GameNodeSpeed>(true);
         __velocityType = state.GetComponentTypeHandle<GameNodeVelocity>(true);
         __delayType = state.GetComponentTypeHandle<GameNodeDelay>(true);
@@ -929,6 +939,7 @@ public partial struct GameActionNormalSystem : ISystem, IEntityCommandProducerJo
         factoryRun.translationType = __translationType.UpdateAsRef(ref state);
         factoryRun.rotationType = __rotationType.UpdateAsRef(ref state);
         factoryRun.ownerType = __ownerType.UpdateAsRef(ref state);
+        factoryRun.stoppingDistanceType = __stoppingDistanceType.UpdateAsRef(ref state);
         factoryRun.speedType = __speedType.UpdateAsRef(ref state);
         factoryRun.velocityType = __velocityType.UpdateAsRef(ref state);
         factoryRun.delayType = __delayType.UpdateAsRef(ref state);
