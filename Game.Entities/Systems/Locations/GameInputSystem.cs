@@ -1050,9 +1050,12 @@ public partial struct GameInputSystem : ISystem
 
                     if (items.IsCreated)
                     {
-                        int numActionIndices;
+                        int numActionIndices, numItems = actionDefinition.items.Length;
                         foreach (var item in items)
                         {
+                            if(item.index < 0 || item.index >= numItems)
+                                continue;
+
                             ref var actionIndices = ref actionDefinition.items[item.index].actionIndices;
                             numActionIndices = actionIndices.Length;
                             for(int i = 0; i < numActionIndices; ++i)
