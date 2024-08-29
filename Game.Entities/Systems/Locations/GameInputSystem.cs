@@ -1079,7 +1079,7 @@ public partial struct GameInputSystem : ISystem
 
             var actionInstances = this.actionInstances[index];
             var actorActions = this.actorActions[index];
-            var items = this.items[index];
+            var items = index < this.items.Length ? this.items[index] : default;
             int camp = camps[index].value;
             if (IsSelectable(selection, camp, actorActions, actionInstances, items, out result.itemIndex))
                 result.entity = selection;
