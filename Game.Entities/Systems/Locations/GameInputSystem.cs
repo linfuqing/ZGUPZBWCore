@@ -40,11 +40,11 @@ public struct GameInputActionDefinition
     {
         public NativeArray<Action> actions;
         public DynamicBuffer<GameEntityActorActionData> actorActions;
-        public DynamicBuffer<GameInputActionInstance> actionInstances;
+        //public DynamicBuffer<GameInputActionInstance> actionInstances;
 
         public int Compare(int x, int y)
         {
-            return actions[actorActions[actionInstances[x].actorActionIndex].actionIndex].priority.CompareTo(actions[actorActions[actionInstances[y].actorActionIndex].actionIndex].priority);
+            return actions[actorActions[x].actionIndex].priority.CompareTo(actions[actorActions[y].actionIndex].priority);
         }
     }
 
@@ -101,12 +101,12 @@ public struct GameInputActionDefinition
             int actorStatus,
             float actorVelocity,
             float dot,
-            float delta/*,
-            double time,
-            in GameEntityActorTime actorTime*/)
+            float delta, 
+            float distance)
         {
             if (layerMask != 0 && this.layerMask != 0 && (layerMask & this.layerMask) == 0 ||
-                targetType != 0 && this.targetType != 0 && (targetType & this.targetType) == 0)
+                targetType != 0 && this.targetType != 0 && (targetType & this.targetType) == 0 || 
+                distance > this.distance)
                 return false;
 
             if (this.button == button &&
@@ -124,7 +124,13 @@ public struct GameInputActionDefinition
         }
     }
 
+    public struct Item
+    {
+        public BlobArray<int> actionIndices;
+    }
+
     public BlobArray<Action> actions;
+    public BlobArray<Item> items;
 
     public bool Did<T>(
         GameInputButton button,
@@ -138,57 +144,82 @@ public struct GameInputActionDefinition
         in DynamicBuffer<GameEntityActorActionInfo> actorActionInfos,
         in DynamicBuffer<GameEntityActorActionData> actorActions,
         in DynamicBuffer<GameInputActionInstance> actionInstances,
+        in DynamicBuffer<GameEntityItem> items,
         ref int actorActionIndex,
         ref int layerMask,
         ref GameActionTargetType targetType,
-        ref T filter,
-        out float distance) where T : IGameInputActionFilter
+        ref float distance,
+        ref T filter) where T : IGameInputActionFilter
     {
         /*layerMask = 0;
-        targetType = 0;*/
-        distance = 0.0f;
+        targetType = 0;
+        distance = 0.0f;*/
 
         /*if (actorActionIndex == 20 && button == GameInputButton.Down && group == 2)
             UnityEngine.Debug.Log("-");*/
 
-        int numActionInstances = actionInstances.Length;
-        var indices = new FixedList512Bytes<int>();
-        for (int i = 0; i < numActionInstances; ++i)
-            indices.Add(i);
+        var actorActionIndices = new FixedList512Bytes<int>();
+        foreach (var actionInstance in actionInstances)
+        {
+            if (actionInstance.activeCount < 1)
+                continue;
+
+            actorActionIndices.Add(actionInstance.actorActionIndex);
+        }
+
+        int i, j, numActionIndices, numActorActions = actorActions.Length, numItems = this.items.Length;
+        foreach (var item in items)
+        {
+            if(item.index < 0 || item.index >= numItems)
+                continue;
+            
+            ref var actionIndices = ref this.items[item.index].actionIndices;
+            numActionIndices = actionIndices.Length;
+            for (i = 0; i < numActionIndices; ++i)
+            {
+                ref int actionIndex = ref actionIndices[i];
+
+                for (j = 0; j < numActorActions; ++j)
+                {
+                    if (actorActions[j].actionIndex == actionIndex)
+                        break;
+                }
+                
+                if(j < numActorActions && actorActionIndices.IndexOf(j) == -1)
+                    actorActionIndices.Add(j);
+            }
+        }
 
         Comparer comparer;
         comparer.actions = actions.AsArray();
         comparer.actorActions = actorActions;
-        comparer.actionInstances = actionInstances;
+        //comparer.actionInstances = actionInstances;
 
-        indices.Sort(comparer);
+        actorActionIndices.Sort(comparer);
 
         GameEntityActorActionData actorAction;
-        GameInputActionInstance actionInstance;
+        //GameInputActionInstance actionInstance;
         if (actorActionIndex != -1)
         {
             int preActionIndex = actorActions[actorActionIndex].actionIndex;
-            for (int i = 0; i < numActionInstances; ++i)
+            foreach (var actorActionIndexToDo in actorActionIndices)
             {
-                actionInstance = actionInstances[indices[i]];
-                if (actionInstance.activeCount > 0)
+                /*if (actorActionIndex == 132)
                 {
-                    /*if (actorActionIndex == 132)
-                    {
-                        if(actionInstance.actorActionIndex == 133)
-                            UnityEngine.Debug.LogError(delta);
-                    }*/
-                    
-                    actorAction = actorActions[actionInstance.actorActionIndex];
+                    if(actionInstance.actorActionIndex == 133)
+                        UnityEngine.Debug.LogError(delta);
+                }*/
 
-                    //if (actorAction.actionIndex == 19 && actorActionIndex == 3)
-                    /*if (actorAction.actionIndex == 2 && preActionIndex == 19)
-                    {
-                        UnityEngine.Debug.Log("?");
-                    }*/
+                actorAction = actorActions[actorActionIndexToDo];
 
-                    ref var action = ref actions[actorAction.actionIndex];
-                    if (action.Did(
+                //if (actorAction.actionIndex == 19 && actorActionIndex == 3)
+                /*if (actorAction.actionIndex == 2 && preActionIndex == 19)
+                {
+                    UnityEngine.Debug.Log("?");
+                }*/
+
+                ref var action = ref actions[actorAction.actionIndex];
+                if (action.Did(
                         button,
                         targetType,
                         layerMask,
@@ -197,71 +228,67 @@ public struct GameInputActionDefinition
                         actorStatus,
                         actorVelocity,
                         dot,
-                        delta/*,
-                        time,
-                        actorTime*/) &&
-                        filter.Check(actorAction.actionIndex, time) &&
-                        (actorActionInfos.Length <= actionInstance.actorActionIndex || actorActionInfos[actionInstance.actorActionIndex].coolDownTime < time))
+                        delta, 
+                        distance) &&
+                    filter.Check(actorAction.actionIndex, time) &&
+                    (actorActionInfos.Length <= actorActionIndexToDo ||
+                     actorActionInfos[actorActionIndexToDo].coolDownTime < time))
+                {
+                    /*if (actionInstance.actorActionIndex == 20 && actorActionIndex == 16)
                     {
-                        /*if (actionInstance.actorActionIndex == 20 && actorActionIndex == 16)
-                        {
-                            UnityEngine.Debug.LogError('-');
-                        }*/
-                        //if (actorActionInfos[actionInstance.actorActionIndex].coolDownTime < time)
-                        {
-                            actorActionIndex = actionInstance.actorActionIndex;
-                            layerMask = action.layerMask;
-                            targetType = action.targetType;
-                            distance = action.distance;
+                        UnityEngine.Debug.LogError('-');
+                    }*/
+                    //if (actorActionInfos[actionInstance.actorActionIndex].coolDownTime < time)
+                    {
+                        actorActionIndex = actorActionIndexToDo;
+                        layerMask = action.layerMask;
+                        targetType = action.targetType;
+                        distance = action.distance;
 
-                            return true;
-                        }
-
-                        //break;
+                        return true;
                     }
+
+                    //break;
                 }
             }
         }
 
-        for (int i = 0; i < numActionInstances; ++i)
+        foreach (var actorActionIndexToDo in actorActionIndices)
         {
-            actionInstance = actionInstances[indices[i]];
-            if (actionInstance.activeCount > 0)
+            actorAction = actorActions[actorActionIndexToDo];
+
+            /*if (actorActionIndex == 20 && actionInstance.actorActionIndex == 3 && button == GameInputButton.Down && group == 2)
+                UnityEngine.Debug.Log("1");*/
+
+            ref var action = ref actions[actorAction.actionIndex];
+            if (action.Did(
+                    button,
+                    targetType,
+                    layerMask,
+                    group,
+                    -1,
+                    actorStatus,
+                    actorVelocity,
+                    dot,
+                    delta, 
+                    distance) &&
+                filter.Check(actorAction.actionIndex, time) &&
+                (actorActionInfos.Length <= actorActionIndexToDo ||
+                 actorActionInfos[actorActionIndexToDo].coolDownTime < time))
             {
-                actorAction = actorActions[actionInstance.actorActionIndex];
-
-                /*if (actorActionIndex == 20 && actionInstance.actorActionIndex == 3 && button == GameInputButton.Down && group == 2)
-                    UnityEngine.Debug.Log("1");*/
-
-                ref var action = ref actions[actorAction.actionIndex];
-                if (action.Did(
-                        button,
-                        targetType,
-                        layerMask,
-                        group,
-                        -1,
-                        actorStatus,
-                        actorVelocity,
-                        dot,
-                        delta/*,
-                        time,
-                        actorTime*/) &&
-                        filter.Check(actorAction.actionIndex, time) &&
-                        (actorActionInfos.Length <= actionInstance.actorActionIndex || actorActionInfos[actionInstance.actorActionIndex].coolDownTime < time))
+                /*if (actionInstance.actorActionIndex == 20)
                 {
-                    /*if (actionInstance.actorActionIndex == 20)
-                    {
-                        UnityEngine.Debug.LogError('-');
-                    }*/
-                    
-                    actorActionIndex = actionInstance.actorActionIndex;
-                    layerMask = action.layerMask;
-                    targetType = action.targetType;
-                    distance = action.distance;
+                    UnityEngine.Debug.LogError('-');
+                }*/
 
-                    return true;
-                }
+                actorActionIndex = actorActionIndexToDo;
+                layerMask = action.layerMask;
+                targetType = action.targetType;
+                distance = action.distance;
+
+                return true;
             }
+
         }
 
         return false;
@@ -356,6 +383,36 @@ public struct GameInputAction : IComponentData
            Check(targetType == 0 ? GameActionTargetType.Enemy : targetType, camp, camps[entity].value);
     }
 
+    public bool Find(
+        int camp, 
+        in GameInputTarget target, 
+        in ComponentLookup<PhysicsShapeCompoundCollider> colliders,
+        in ComponentLookup<GameNodeStatus> states,
+        in ComponentLookup<GameEntityCamp> camps)
+    {
+        if(!camps.HasComponent(target.entity))
+            return false;
+                
+        if(!states.HasComponent(target.entity) || ((GameEntityStatus)states[target.entity].value & GameEntityStatus.Mask) == GameEntityStatus.Dead)
+            return false;
+                
+        if (!colliders.HasComponent(target.entity))
+            return false;
+
+        var collider = colliders[target.entity].value;
+        if (!collider.IsCreated)
+            return false;
+
+        layerMask = (int)collider.Value.Filter.BelongsTo;
+
+        targetType = camp == camps[target.entity].value ? GameActionTargetType.Ally : GameActionTargetType.Enemy;
+
+        this.distance = target.distance;
+        this.target = target.entity;
+
+        return true;
+    }
+
     public bool Did(
         GameInputButton button,
         int actorActionIndex,
@@ -398,7 +455,24 @@ public struct GameInputAction : IComponentData
             layerMask = 0;
             targetType = 0;
             this.distance = 0.0f;
-            target = Entity.Null;
+            this.target = Entity.Null;
+
+            GameInputTarget target;
+            if (selection != Entity.Null && translations.HasComponent(selection))
+            {
+                target.distance = math.distance(translations[selection].Value, position);
+                target.entity = selection;
+                Find(camp, target, colliders, states, camps);
+            }
+            else
+            {
+                int i, numTargets = targets.length;
+                for (i = 0; i < numTargets; ++i)
+                {
+                    if (Find(camp, targets[i], colliders, states, camps))
+                        break;
+                }
+            }
         }
 
         float artTime = 0.0f;
@@ -422,32 +496,55 @@ public struct GameInputAction : IComponentData
         }
 
         bool result = false;
-        float delta = (float)(time - minActionTime), distance = 0.0f;
+        float delta = (float)(time - minActionTime), distance = this.distance;
         var filter = new Filter(rage, actorTime, actionSetDefinition);
         if (actorActionIndex != -1 && actorActionIndex != this.actorActionIndex)
         {
-            distance = 0.0f;
-
             var actorAction = actorActions[actorActionIndex];
 
-            ref var action = ref definition.Value.actions[actorAction.actionIndex];
-            result = action.Did(
-                button,
-                targetType,
-                layerMask,
-                group,
-                isTimeout || this.actorActionIndex == -1 || action.preActions.Length < 1 ? -1 : actorActions[this.actorActionIndex].actionIndex,
-                actorStatus,
-                actorVelocity,
-                dot,
-                delta) &&
-                filter.Check(actorAction.actionIndex, time);
-
+            result = filter.Check(actorAction.actionIndex, time) && actorActionInfos.Length <= actorActionIndex || actorActionInfos[actorActionIndex].coolDownTime < time;
             if (result)
             {
-                result = actorActionInfos.Length <= actorActionIndex || actorActionInfos[actorActionIndex].coolDownTime < time;
+                ref var action = ref definition.Value.actions[actorAction.actionIndex];
+                int preActionIndex = isTimeout || this.actorActionIndex == -1 || action.preActions.Length < 1
+                    ? -1
+                    : actorActions[this.actorActionIndex].actionIndex;
+                result = action.Did(
+                    button,
+                    targetType,
+                    layerMask,
+                    group,
+                    preActionIndex,
+                    actorStatus,
+                    actorVelocity,
+                    dot,
+                    delta,
+                    distance);
+
+                if (!result && layerMask != 0)
+                {
+                    result = action.Did(
+                        button,
+                        0,
+                        0,
+                        group,
+                        preActionIndex,
+                        actorStatus,
+                        actorVelocity,
+                        dot,
+                        delta,
+                        0.0f);
+                    
+                    if(result)
+                        target = Entity.Null;
+                }
+
                 if (result)
+                {
+                    layerMask = action.layerMask;
+                    targetType = action.targetType;
                     distance = action.distance;
+                }
             }
         }
 
@@ -467,23 +564,58 @@ public struct GameInputAction : IComponentData
                 actorActionInfos,
                 actorActions,
                 actionInstances,
+                items, 
                 ref actorActionIndex,
                 ref layerMask,
                 ref targetType,
-                ref filter,
-                out distance);
+                ref distance,
+                ref filter);
+
+            if (!result && layerMask != 0)
+            {
+                int layerMask = 0;
+                GameActionTargetType targetType = 0;
+
+                distance = 0.0f;
+
+                result = definition.Value.Did(
+                    button,
+                    group,
+                    actorStatus,
+                    actorVelocity,
+                    dot, //math.normalizesafe(direction, forward),
+                    delta,
+                    time,
+                    //actorTime, 
+                    actorActionInfos,
+                    actorActions,
+                    actionInstances,
+                    items, 
+                    ref actorActionIndex,
+                    ref layerMask,
+                    ref targetType,
+                    ref distance,
+                    ref filter);
+
+                if (result)
+                {
+                    this.layerMask = layerMask;
+                    this.targetType = targetType;
+                    
+                    target = Entity.Null;
+                }
+            }
         }
 
         if (result)
         {
+            this.distance = math.max(distance, maxDistance);
+
             if (target == Entity.Null && targetType != 0)
             {
                 if (Predicate(camp, selection, states, camps, colliders))
                     target = selection;
-
-                this.distance = math.max(distance, maxDistance);
-
-                if (target == Entity.Null)
+                else
                 {
                     GameInputTarget target;
                     int numTargets = targets.length;
@@ -535,6 +667,11 @@ public struct GameInputActionInstance : IBufferElementData
 {
     public int actorActionIndex;
     public int activeCount;
+}
+
+public struct GameInputItem : IBufferElementData
+{
+    public int index;
 }
 
 public struct GameInputSelection : IComponentData
@@ -618,6 +755,7 @@ public struct GameInputEntity : IComponentData
 
 public struct GameInputSelectionTarget : IComponentData
 {
+    public int itemIndex;
     public Entity entity;
 }
 
@@ -803,7 +941,7 @@ public partial struct GameInputSystem : ISystem
 
         public Entity selection;
 
-        public BlobAssetReference<GameActionSetDefinition> actionSetDefinition;
+        public BlobAssetReference<GameInputActionDefinition> actionDefinition;
 
         [ReadOnly]
         public NativeArray<GameInputTarget> targets;
@@ -841,6 +979,9 @@ public partial struct GameInputSystem : ISystem
         [ReadOnly]
         public BufferAccessor<GameInputActionInstance> actionInstances;
 
+        [ReadOnly] 
+        public BufferAccessor<GameInputItem> items;
+
         [ReadOnly]
         public NativeArray<GameEntityCamp> camps;
 
@@ -850,8 +991,12 @@ public partial struct GameInputSystem : ISystem
             in Entity entity,
             int camp,
             in DynamicBuffer<GameEntityActorActionData> actorActions,
-            in DynamicBuffer<GameInputActionInstance> actionInstances)
+            in DynamicBuffer<GameInputActionInstance> actionInstances, 
+            in DynamicBuffer<GameInputItem> items, 
+            out int itemIndex)
         {
+            itemIndex = -1;
+            
             if (physicsRaycastCollidersToIgnore.HasComponent(entity) && physicsRaycastCollidersToIgnore.IsComponentEnabled(entity))
                 return false;
             
@@ -861,10 +1006,15 @@ public partial struct GameInputSystem : ISystem
             if (states.HasComponent(entity))
             {
                 var status = states[entity].value & (int)GameEntityStatus.Mask;
-                if ((int)GameEntityStatus.Dead == status)
-                    return false;
-                else if ((int)GameEntityStatus.KnockedOut == status)
-                    return true;
+                switch ((GameEntityStatus)status)
+                {
+                    case GameEntityStatus.Dead:
+                        return false;
+                    case GameEntityStatus.KnockedOut:
+                        return true;
+                    default:
+                        break;
+                }
             }
 
             if (pickables.HasComponent(entity))
@@ -886,14 +1036,35 @@ public partial struct GameInputSystem : ISystem
                 }
                 else if (!entities.HasComponent(entity) && colliders.HasComponent(entity))
                 {
+                    ref var actionDefinition = ref this.actionDefinition.Value;
                     uint belongsTo = colliders[entity].Value.Value.Filter.BelongsTo;
                     foreach (var actionInstance in actionInstances)
                     {
                         if (actionInstance.activeCount > 0)
                         {
-                            ref var action = ref actionSetDefinition.Value.values[actorActions[actionInstance.actorActionIndex].actionIndex];
-                            if ((action.instance.damageMask & belongsTo) != 0)
+                            ref var action = ref actionDefinition.actions[actorActions[actionInstance.actorActionIndex].actionIndex];
+                            if ((action.layerMask & belongsTo) != 0)
                                 return true;
+                        }
+                    }
+
+                    if (items.IsCreated)
+                    {
+                        int numActionIndices;
+                        foreach (var item in items)
+                        {
+                            ref var actionIndices = ref actionDefinition.items[item.index].actionIndices;
+                            numActionIndices = actionIndices.Length;
+                            for(int i = 0; i < numActionIndices; ++i)
+                            {
+                                ref var action = ref actionDefinition.actions[actionIndices[i]];
+                                if ((action.layerMask & belongsTo) != 0)
+                                {
+                                    itemIndex = item.index;
+                                    
+                                    return true;
+                                }
+                            }
                         }
                     }
                 }
@@ -908,8 +1079,9 @@ public partial struct GameInputSystem : ISystem
 
             var actionInstances = this.actionInstances[index];
             var actorActions = this.actorActions[index];
+            var items = this.items[index];
             int camp = camps[index].value;
-            if (IsSelectable(selection, camp, actorActions, actionInstances))
+            if (IsSelectable(selection, camp, actorActions, actionInstances, items, out result.itemIndex))
                 result.entity = selection;
             else
             {
@@ -922,7 +1094,7 @@ public partial struct GameInputSystem : ISystem
                     if (target.distance > maxDistance)
                         continue;
 
-                    if (IsSelectable(target.entity, camp, actorActions, actionInstances))
+                    if (IsSelectable(target.entity, camp, actorActions, actionInstances, items, out result.itemIndex))
                     {
                         result.entity = target.entity;
 
@@ -944,7 +1116,7 @@ public partial struct GameInputSystem : ISystem
 
         public Entity selection;
 
-        public BlobAssetReference<GameActionSetDefinition> actionSetDefinition;
+        public BlobAssetReference<GameInputActionDefinition> actionDefinition;
 
         [ReadOnly]
         public SharedList<GameInputTarget>.Reader targets;
@@ -984,6 +1156,9 @@ public partial struct GameInputSystem : ISystem
 
         [ReadOnly]
         public BufferTypeHandle<GameInputActionInstance> actionInstanceType;
+
+        [ReadOnly] 
+        public BufferTypeHandle<GameInputItem> itemType;
 
         public ComponentTypeHandle<GameInputSelectionTarget> resultType;
 
@@ -1032,7 +1207,7 @@ public partial struct GameInputSystem : ISystem
                 //select.builtInCamps = builtInCamps;
                 select.maxDistance = maxDistance;
                 select.selection = this.selection;
-                select.actionSetDefinition = actionSetDefinition;
+                select.actionDefinition = actionDefinition;
                 select.targets = targets;
                 select.colliders = colliders;
                 select.physicsRaycastCollidersToIgnore = physicsRaycastCollidersToIgnore;
@@ -1046,6 +1221,7 @@ public partial struct GameInputSystem : ISystem
                 select.camps = chunk.GetNativeArray(ref campType);
                 select.actorActions = chunk.GetBufferAccessor(ref actorActionType);
                 select.actionInstances = chunk.GetBufferAccessor(ref actionInstanceType);
+                select.items = chunk.GetBufferAccessor(ref itemType);
                 select.results = chunk.GetNativeArray(ref resultType);
 
                 var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -1055,7 +1231,8 @@ public partial struct GameInputSystem : ISystem
             else
             {
                 GameInputSelectionTarget result;
-
+                result.itemIndex = -1;
+                
                 var results = chunk.GetNativeArray(ref resultType);
 
                 var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -1103,7 +1280,7 @@ public partial struct GameInputSystem : ISystem
 
     private struct Guide
     {
-        public BlobAssetReference<GameActionSetDefinition> actionSetDefinition;
+        public BlobAssetReference<GameInputActionDefinition> actionDefinition;
 
         public GameQuestGuideManager.ReadOnly manager;
 
@@ -1147,7 +1324,7 @@ public partial struct GameInputSystem : ISystem
             guideTarget.type = GameQuestGuideVariantType.Entity;
             guideTarget.entity = Entity.Null;
 
-            ref var actionSetDefinition = ref this.actionSetDefinition.Value;
+            ref var actionDefinition = ref this.actionDefinition.Value;
 
             var actionInstances = this.actionInstances[index];
             var actorActions = this.actorActions[index];
@@ -1202,9 +1379,9 @@ public partial struct GameInputSystem : ISystem
                                     if (actionInstance.activeCount > 0)
                                     {
                                         ref var action =
-                                            ref actionSetDefinition.values[
+                                            ref actionDefinition.actions[
                                                 actorActions[actionInstance.actorActionIndex].actionIndex];
-                                        if ((action.instance.damageMask & belongsTo) != 0)
+                                        if ((action.layerMask & belongsTo) != 0)
                                         {
                                             isContains = true;
 
@@ -1240,7 +1417,7 @@ public partial struct GameInputSystem : ISystem
     [BurstCompile]
     private struct GuideEx : IJobChunk
     {
-        public BlobAssetReference<GameActionSetDefinition> actionSetDefinition;
+        public BlobAssetReference<GameInputActionDefinition> actionDefinition;
 
         public GameQuestGuideManager.ReadOnly manager;
 
@@ -1281,7 +1458,7 @@ public partial struct GameInputSystem : ISystem
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
             Guide guide;
-            guide.actionSetDefinition = actionSetDefinition;
+            guide.actionDefinition = actionDefinition;
             guide.manager = manager;
             guide.targets = targets.AsArray();
             guide.colliders = colliders;
@@ -1334,6 +1511,8 @@ public partial struct GameInputSystem : ISystem
 
     private BufferTypeHandle<GameInputActionInstance> __actionInstanceType;
 
+    private BufferTypeHandle<GameInputItem> __itemType;
+
     private ComponentTypeHandle<GameInputSelectionTarget> __selectionTargetType;
 
     private ComponentTypeHandle<GameInputGuideTarget> __guideTargetType;
@@ -1378,6 +1557,7 @@ public partial struct GameInputSystem : ISystem
         __parentType = state.GetComponentTypeHandle<GameNodeParent>(true);
         __actorActionType = state.GetBufferTypeHandle<GameEntityActorActionData>(true);
         __actionInstanceType = state.GetBufferTypeHandle<GameInputActionInstance>(true);
+        __itemType = state.GetBufferTypeHandle<GameInputItem>(true);
         __selectionTargetType = state.GetComponentTypeHandle<GameInputSelectionTarget>();
         __guideTargetType = state.GetComponentTypeHandle<GameInputGuideTarget>();
 
@@ -1409,7 +1589,7 @@ public partial struct GameInputSystem : ISystem
     {
         if (!SystemAPI.HasSingleton<MainCameraFrustum>() ||
             !SystemAPI.HasSingleton<GameInputRaycast>() ||
-            !SystemAPI.HasSingleton<GameActionSetData>())
+            !SystemAPI.HasSingleton<GameInputActionData>())
             return;
 
         var mainCameraFrustum = SystemAPI.GetSingleton<MainCameraFrustum>();
@@ -1464,12 +1644,15 @@ public partial struct GameInputSystem : ISystem
         var actionInstanceType = __actionInstanceType.UpdateAsRef(ref state);
 
         var targetsReader = targets.reader;
+        
+        
+        var instance = SystemAPI.GetSingleton<GameInputActionData>();
 
         SelectEx select;
         select.maxDistance = MaxDistance;
         //select.builtInCamps = (int)GameDataConstans.BuiltInCamps;
         select.selection = SystemAPI.HasSingleton<GameInputSelection>() ? SystemAPI.GetSingleton<GameInputSelection>().entity : Entity.Null;
-        select.actionSetDefinition = actionSetDefinition;
+        select.actionDefinition = instance.definition;
         select.targets = targetsReader;
         select.colliders = colliders;
         select.physicsRaycastCollidersToIgnore = __physicsRaycastCollidersToIgnore.UpdateAsRef(ref state);
@@ -1483,6 +1666,7 @@ public partial struct GameInputSystem : ISystem
         select.campType = campType;
         select.actorActionType = actorActionType;
         select.actionInstanceType = actionInstanceType;
+        select.itemType = __itemType.UpdateAsRef(ref state);
         select.resultType = __selectionTargetType.UpdateAsRef(ref state);
 
         var submitJobHandle = select.ScheduleParallelByRef(__group, jobHandle);
@@ -1501,7 +1685,7 @@ public partial struct GameInputSystem : ISystem
             guideStart.ScheduleByRef(JobHandle.CombineDependencies(questGuideJobManager.readWriteJobHandle, jobHandle));
 
         GuideEx guide;
-        guide.actionSetDefinition = actionSetDefinition;
+        guide.actionDefinition = instance.definition;
         guide.manager = questGuideManager.readOnly;
         guide.targets = targetsReader;
         guide.identityTypes = __identityTypes.UpdateAsRef(ref state);
@@ -1535,7 +1719,7 @@ public partial struct GameInputSystem : ISystem
  CreateAfter(typeof(GameInputSystem))]//, UpdateInGroup(typeof(GameRollbackSystemGroup), OrderFirst = true)]
 public partial struct GameInputActionSystem : ISystem
 {
-    public struct Apply
+    private struct Apply
     {
         public float maxDistance;
         public double time;
@@ -1713,9 +1897,10 @@ public partial struct GameInputActionSystem : ISystem
                 oldTime, 
                 direction,
                 out _, 
-                out int camp);
+                out int camp, 
+                out float3 position);
 
-            __Apply(result, GameInputStatus.As(button), index, camp, direction, ref action);
+            __Apply(result, GameInputStatus.As(button), index, camp, direction, position, ref action);
         }
 
         public void Execute(
@@ -1747,6 +1932,7 @@ public partial struct GameInputActionSystem : ISystem
             var value = CollectKeys(status.value, keys);
             var actionTargetStatus = value;
             int camp;
+            float3 position;
             switch (value)
             {
                 case GameInputStatus.Value.KeyDown:
@@ -1761,7 +1947,8 @@ public partial struct GameInputActionSystem : ISystem
                         status.time, 
                         direction,
                         out isTimeout, 
-                        out camp);
+                        out camp, 
+                        out position);
                     if (value == GameInputStatus.Value.KeyUp)
                     {
                         if (result || isTimeout)
@@ -1780,7 +1967,8 @@ public partial struct GameInputActionSystem : ISystem
                         status.time, 
                         direction,
                         out _,
-                        out camp);
+                        out camp, 
+                        out position);
                     if (result)
                         value = GameInputStatus.Value.KeyDown;
                     else //if (isTimeout || actorTime < time)
@@ -1794,7 +1982,8 @@ public partial struct GameInputActionSystem : ISystem
                             status.time, 
                             direction,
                             out _,
-                            out camp);
+                            out camp, 
+                            out position);
                         
                         value = result ? GameInputStatus.Value.KeyHold : GameInputStatus.Value.KeyDown;
                     }
@@ -1809,7 +1998,8 @@ public partial struct GameInputActionSystem : ISystem
                         status.time, 
                         direction,
                         out _,
-                        out camp);
+                        out camp, 
+                        out position);
                     value = result ? GameInputStatus.Value.KeyHoldAndUp : GameInputStatus.Value.KeyUp;
                     break;
                 case GameInputStatus.Value.KeyHoldAndUp:
@@ -1822,7 +2012,8 @@ public partial struct GameInputActionSystem : ISystem
                         status.time, 
                         direction,
                         out _,
-                        out camp);
+                        out camp, 
+                        out position);
                     value = GameInputStatus.Value.KeyUp;
                     break;
                 case GameInputStatus.Value.KeyUpAndDownAndUp:
@@ -1835,7 +2026,8 @@ public partial struct GameInputActionSystem : ISystem
                         status.time, 
                         direction,
                         out _,
-                        out camp);
+                        out camp, 
+                        out position);
                     value = GameInputStatus.Value.KeyDownAndUp;
                     break;
                 default:
@@ -1848,11 +2040,12 @@ public partial struct GameInputActionSystem : ISystem
                         status.time, 
                         direction,
                         out _,
-                        out camp);
+                        out camp, 
+                        out position);
                     break;
             }
 
-            __Apply(result, actionTargetStatus, index, camp, direction, ref action);
+            __Apply(result, actionTargetStatus, index, camp, direction, position, ref action);
 
             if (value != status.value || math.abs(time - status.time) > math.DBL_MIN_NORMAL)
             {
@@ -1871,13 +2064,14 @@ public partial struct GameInputActionSystem : ISystem
             double oldTime, 
             in float3 direction,
             out bool isTimeout, 
-            out int camp/*,
-            out double actorTimeValue*/)
+            out int camp, 
+            out float3 position)
         {
             var entity = GameNodeParent.GetRootMain(entityArray[index], parents);
             //var actorTime = actorTimes[entity];
             //actorTimeValue = actorTime.value;
             float3 forward = math.forward(rotations[entity].Value);
+            position = translations[entity].Value;
             camp = camps[entity].value;
             return action.Did(
                 button,
@@ -1891,7 +2085,7 @@ public partial struct GameInputActionSystem : ISystem
                 maxDistance,
                 oldTime, 
                 time,
-                translations[entity].Value,
+                position,
                 selection,
                 actorTimes[entity],
                 targets,
@@ -1915,6 +2109,7 @@ public partial struct GameInputActionSystem : ISystem
             int index,
             int camp, 
             in float3 direction,
+            in float3 position, 
             ref GameInputAction action)
         {
             if (result)
@@ -1922,7 +2117,7 @@ public partial struct GameInputActionSystem : ISystem
                 GameInputActionTarget actionTarget;
                 actionTarget.status = status;
                 actionTarget.actorActionIndex = action.actorActionIndex;
-                actionTarget.entity = action.target == Entity.Null ? __GetActionTarget(index, camp, action) : action.target;
+                actionTarget.entity = action.target == Entity.Null ? __GetActionTarget(index, camp, position, action) : action.target;
                 actionTarget.direction = direction;
 
                 if (actionTarget.isDo)
@@ -1935,17 +2130,17 @@ public partial struct GameInputActionSystem : ISystem
                 GameInputActionTarget actionTarget;
                 actionTarget.status = status;
                 actionTarget.actorActionIndex = -1;
-                actionTarget.entity = __GetActionTarget(index, camp, action);
+                actionTarget.entity = __GetActionTarget(index, camp, position, action);
                 actionTarget.direction = direction;
 
                 actionTargets[index] = actionTarget;
             }
         }
 
-        private Entity __GetActionTarget(int index, int camp, in GameInputAction action)
+        private Entity __GetActionTarget(int index, int camp, in float3 position, in GameInputAction action)
         {
             Entity entity = actionTargets[index].entity;
-            return action.Predicate(camp, entity, nodeStates, camps, colliders) ? entity : Entity.Null;
+            return action.Predicate(camp, entity, nodeStates, camps, colliders) && action.distance * action.distance >= math.distancesq(translations[entity].Value, position) ? entity : Entity.Null;
             /*if (nodeStates.HasComponent(entity) && ((GameEntityStatus)nodeStates[entity].value & GameEntityStatus.Mask) != GameEntityStatus.Dead)
                 return entity;
 
@@ -1954,7 +2149,7 @@ public partial struct GameInputActionSystem : ISystem
     }
 
     [BurstCompile]
-    public struct ApplyEx : IJobChunk
+    private struct ApplyEx : IJobChunk
     {
         public float maxDistance;
         public double time;
