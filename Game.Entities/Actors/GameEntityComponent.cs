@@ -131,12 +131,12 @@ public struct GameEntityItem : IBufferElementData
 {
     public int index;
 
-    public static implicit operator GameEntityItem(int x)
+    /*public static implicit operator GameEntityItem(int x)
     {
         GameEntityItem item;
         item.index = x;
         return item;
-    }
+    }*/
 }
 
 [EntityComponent(typeof(GameEntityCampDefault))]
@@ -231,6 +231,20 @@ public class GameEntityComponent : EntityProxyComponent, IEntityComponent
 
         _itemIndices[index] = itemIndex;
 
+        //commander.SetBuffer(entity, __GetItemIndices(_itemIndices));
+
+        GameEntityItem item;
+        item.index = itemIndex;
+        commander.SetBuffer(entity, index, item);
+    }
+
+    public void SetItemCount(EntityCommander commander, int value)
+    {
+        int length = _itemIndices == null ? 0 : _itemIndices.Length;
+        Array.Resize(ref _itemIndices, value);
+        for (int i = length; i < value; ++i)
+            _itemIndices[i] = -1;
+        
         commander.SetBuffer(entity, __GetItemIndices(_itemIndices));
     }
 
@@ -256,7 +270,7 @@ public class GameEntityComponent : EntityProxyComponent, IEntityComponent
 
         var items = new GameEntityItem[numValues];
         for (int i = 0; i < numValues; ++i)
-            items[i] = values[i];
+            items[i].index = values[i];
 
         return items;
     }

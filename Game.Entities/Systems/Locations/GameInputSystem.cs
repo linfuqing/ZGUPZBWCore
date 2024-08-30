@@ -44,7 +44,11 @@ public struct GameInputActionDefinition
 
         public int Compare(int x, int y)
         {
-            return actions[actorActions[x].actionIndex].priority.CompareTo(actions[actorActions[y].actionIndex].priority);
+            int result = actions[actorActions[x].actionIndex].priority.CompareTo(actions[actorActions[y].actionIndex].priority);
+            if (result == 0)
+                return x.CompareTo(y);
+
+            return result;
         }
     }
 
