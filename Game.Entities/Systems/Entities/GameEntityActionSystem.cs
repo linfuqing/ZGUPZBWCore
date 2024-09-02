@@ -1804,6 +1804,7 @@ public partial struct GameEntityActionSystem : ISystem
             GameEntityActorHitTarget actorHitTarget;
             GameActionEntity entity;
             GameDeadline time;
+            var instanceEx = this.instancesEx[index];
             var entities = this.entities[index];
             int length = entities.Length;
             //string log = instance.entity.ToString();
@@ -1818,6 +1819,8 @@ public partial struct GameEntityActionSystem : ISystem
                     if (actorHits.HasComponent(entity.target))
                     {
                         actorHit = actorHits[entity.target];
+                        actorHit.destinationMask |= instanceEx.value.breakMask;
+                        
                         ++actorHit.destinationTimes;
                         actorHit.destinationHit += entity.delta;
 
@@ -1850,13 +1853,14 @@ public partial struct GameEntityActionSystem : ISystem
             if (rages.HasComponent(instance.entity))
             {
                 var rage = rages[instance.entity];
-                rage.value += hitResult * instancesEx[index].info.rageScale;
+                rage.value += hitResult * instanceEx.info.rageScale;
                 rages[instance.entity] = rage;
             }
 
             if (actorHits.HasComponent(instance.entity))
             {
                 actorHit = actorHits[instance.entity];
+                actorHit.sourceMask |= instanceEx.value.breakMask;
                 actorHit.sourceHit += hitResult;
 
                 var status = states[index].value;

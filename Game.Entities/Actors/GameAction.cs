@@ -264,6 +264,8 @@ public struct GameAction
 
     public uint damageMask;
     
+    public uint breakMask;
+
     public uint actionMask;
 
     public uint actorMask;

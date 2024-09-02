@@ -60,6 +60,8 @@ public partial struct GameWeaponSystem : ISystem
     [Serializable]
     public struct Weapon
     {
+        public uint breakMask;
+        
         public float damage;
 
         public float damageToBeUsed;
@@ -124,15 +126,17 @@ public partial struct GameWeaponSystem : ISystem
                     {
                         child = enumerator.Current;
                         if (hierarchy.TryGetValue(child.handle, out temp) && 
-                            weapons.TryGetValue(temp.type, out weapon) &&
+                            weapons.TryGetValue(temp.type, out weapon) && 
                             handleEntities.TryGetValue(GameItemStructChangeFactory.Convert(child.handle), out itemEntity) && 
                             durabilities.HasComponent(itemEntity))
                         {
                             value = weapon.damage * deltaTime;
 
-                            value += actorHit.sourceTimes * weapon.damageToBeUsed;
+                            if(weapon.breakMask == actorHit.sourceMask || (weapon.breakMask & actorHit.sourceMask) != 0)
+                                value += actorHit.sourceTimes * weapon.damageToBeUsed;
 
-                            value += actorHit.destinationHit * weapon.damageToBeHurt;
+                            if(weapon.breakMask == actorHit.destinationMask || (weapon.breakMask & actorHit.destinationMask) != 0)
+                                value += actorHit.destinationHit * weapon.damageToBeHurt;
 
                             value += actorHit.sourceHit * weapon.damageRate;/*math.select(
                                 0.0f,

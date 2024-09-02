@@ -225,6 +225,9 @@ public struct GameEntityActorTime : IComponentData
 
 public struct GameEntityActorHit : IComponentData
 {
+    public uint sourceMask;
+    public uint destinationMask;
+    
     public int sourceTimes;
     public int destinationTimes;
     public float sourceHit;
