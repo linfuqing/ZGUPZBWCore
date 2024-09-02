@@ -110,7 +110,7 @@ public struct GameInputActionDefinition
         {
             if (layerMask != 0 && this.layerMask != 0 && (layerMask & this.layerMask) == 0 ||
                 targetType != 0 && this.targetType != 0 && (targetType & this.targetType) == 0 || 
-                distance > this.distance)
+                this.distance > math.FLT_MIN_NORMAL && distance > this.distance)
                 return false;
 
             if (this.button == button &&
@@ -203,24 +203,12 @@ public struct GameInputActionDefinition
 
         GameEntityActorActionData actorAction;
         //GameInputActionInstance actionInstance;
-        if (actorActionIndex != -1)
+        //if (actorActionIndex != -1)
         {
-            int preActionIndex = actorActions[actorActionIndex].actionIndex;
+            int preActionIndex = actorActionIndex == -1 ? -1 : actorActions[actorActionIndex].actionIndex;
             foreach (var actorActionIndexToDo in actorActionIndices)
             {
-                /*if (actorActionIndex == 132)
-                {
-                    if(actionInstance.actorActionIndex == 133)
-                        UnityEngine.Debug.LogError(delta);
-                }*/
-
                 actorAction = actorActions[actorActionIndexToDo];
-
-                //if (actorAction.actionIndex == 19 && actorActionIndex == 3)
-                /*if (actorAction.actionIndex == 2 && preActionIndex == 19)
-                {
-                    UnityEngine.Debug.Log("?");
-                }*/
 
                 ref var action = ref actions[actorAction.actionIndex];
                 if (action.Did(
@@ -238,31 +226,19 @@ public struct GameInputActionDefinition
                     (actorActionInfos.Length <= actorActionIndexToDo ||
                      actorActionInfos[actorActionIndexToDo].coolDownTime < time))
                 {
-                    /*if (actionInstance.actorActionIndex == 20 && actorActionIndex == 16)
-                    {
-                        UnityEngine.Debug.LogError('-');
-                    }*/
-                    //if (actorActionInfos[actionInstance.actorActionIndex].coolDownTime < time)
-                    {
-                        actorActionIndex = actorActionIndexToDo;
-                        layerMask = action.layerMask;
-                        targetType = action.targetType;
-                        distance = action.distance;
+                    actorActionIndex = actorActionIndexToDo;
+                    layerMask = action.layerMask;
+                    targetType = action.targetType;
+                    distance = action.distance;
 
-                        return true;
-                    }
-
-                    //break;
+                    return true;
                 }
             }
         }
 
-        foreach (var actorActionIndexToDo in actorActionIndices)
+        /*foreach (var actorActionIndexToDo in actorActionIndices)
         {
             actorAction = actorActions[actorActionIndexToDo];
-
-            /*if (actorActionIndex == 20 && actionInstance.actorActionIndex == 3 && button == GameInputButton.Down && group == 2)
-                UnityEngine.Debug.Log("1");*/
 
             ref var action = ref actions[actorAction.actionIndex];
             if (action.Did(
@@ -280,11 +256,6 @@ public struct GameInputActionDefinition
                 (actorActionInfos.Length <= actorActionIndexToDo ||
                  actorActionInfos[actorActionIndexToDo].coolDownTime < time))
             {
-                /*if (actionInstance.actorActionIndex == 20)
-                {
-                    UnityEngine.Debug.LogError('-');
-                }*/
-
                 actorActionIndex = actorActionIndexToDo;
                 layerMask = action.layerMask;
                 targetType = action.targetType;
@@ -293,7 +264,7 @@ public struct GameInputActionDefinition
                 return true;
             }
 
-        }
+        }*/
 
         return false;
     }
@@ -525,7 +496,7 @@ public struct GameInputAction : IComponentData
                     delta,
                     distance);
 
-                if (!result && layerMask != 0)
+                if (!result)
                 {
                     result = action.Did(
                         button,
@@ -575,7 +546,7 @@ public struct GameInputAction : IComponentData
                 ref distance,
                 ref filter);
 
-            if (!result && layerMask != 0)
+            if (!result)
             {
                 int layerMask = 0;
                 GameActionTargetType targetType = 0;
@@ -600,6 +571,29 @@ public struct GameInputAction : IComponentData
                     ref targetType,
                     ref distance,
                     ref filter);
+
+                if (!result && actorActionIndex != -1)
+                {
+                    actorActionIndex = -1;
+                    result = definition.Value.Did(
+                        button,
+                        group,
+                        actorStatus,
+                        actorVelocity,
+                        dot, //math.normalizesafe(direction, forward),
+                        delta,
+                        time,
+                        //actorTime, 
+                        actorActionInfos,
+                        actorActions,
+                        actionInstances,
+                        items, 
+                        ref actorActionIndex,
+                        ref layerMask,
+                        ref targetType,
+                        ref distance,
+                        ref filter);
+                }
 
                 if (result)
                 {
