@@ -10,7 +10,13 @@ using System.Collections.Generic;
 
 public struct GameActionItemSetDefinition
 {
-    public BlobArray<GameActionInfo> values;
+    public struct Item
+    {
+        public uint layerMask;
+        public GameActionInfo value;
+    }
+    
+    public BlobArray<Item> values;
 }
 
 public struct GameActionSetDefinition

@@ -464,8 +464,8 @@ public struct GameInputAction : IComponentData
                 {
                     ref var actionItem = ref actionItems[item.index];
 
-                    rage -= actionItem.rageCost;
-                    artTime += actionItem.artTime;
+                    rage -= actionItem.value.rageCost;
+                    artTime += actionItem.value.artTime;
                 }
             }
         }

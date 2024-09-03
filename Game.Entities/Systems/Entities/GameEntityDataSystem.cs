@@ -432,12 +432,16 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         }
 
         public bool Calculate(
+            uint breakMask, 
+            in BlobAssetReference<GameActionItemSetDefinition> items, 
             in GameItemHandle handle,
             in NativeArray<float> inputs,
             ref NativeArray<float> outputs)
         {
             return __Calculate(
                 false,
+                breakMask, 
+                items, 
                 handle,
                 inputs,
                 ref outputs,
@@ -453,6 +457,8 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
         public bool __Calculate(
             bool isSibling,
+            uint breakMask, 
+            in BlobAssetReference<GameActionItemSetDefinition> items, 
             in GameItemHandle handle,
             in NativeArray<float> inputs,
             ref NativeArray<float> outputs,
@@ -462,6 +468,8 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
             {
                 __Calculate(
                     true,
+                    breakMask, 
+                    items, 
                     item.siblingHandle,
                     inputs,
                     ref outputs,
@@ -469,20 +477,27 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
                 if (isSibling)
                 {
+                    uint layerMask;
                     GameItemInfo childItem;
                     while (enumerator.MoveNext())
                     {
                         if (__Calculate(
                             false,
+                            breakMask, 
+                            items, 
                             enumerator.Current.handle,
                             inputs,
                             ref outputs,
                             out childItem) &&
                             itemTypeIndices.TryGetValue(childItem.type, out int itemIndex))
                         {
-                            int temp = itemIndex * propertyCount;
-                            for (int j = 0; j < propertyCount; ++j)
-                                outputs[j] += inputs[temp++];
+                            layerMask = items.IsCreated ? items.Value.values[itemIndex].layerMask : 0;
+                            if (layerMask == breakMask || (layerMask & breakMask) != 0)
+                            {
+                                int temp = itemIndex * propertyCount;
+                                for (int j = 0; j < propertyCount; ++j)
+                                    outputs[j] += inputs[temp++];
+                            }
                         }
                     }
                 }
@@ -491,6 +506,8 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                     while (enumerator.MoveNext())
                         __Calculate(
                             false,
+                            breakMask, 
+                            items, 
                             enumerator.Current.handle,
                             inputs,
                             ref outputs,
@@ -643,6 +660,8 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         public BuffCalculator buffCalculator;
         public Spawner spawner;
 
+        public BlobAssetReference<GameActionItemSetDefinition> items;
+
         [ReadOnly]
         public NativeArray<ActionData> actions;
 
@@ -654,6 +673,9 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
         [ReadOnly]
         public ComponentLookup<GameActionData> instances;
+
+        [ReadOnly]
+        public ComponentLookup<GameActionDataEx> instancesEx;
 
         [ReadOnly]
         public ComponentLookup<GameItemRoot> itemRoots;
@@ -700,7 +722,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                             handleEntity,
                             ref attackArray);
 
-                        buffCalculator.Calculate(handle, itemAttacks.Reinterpret<float>(), ref attackArray);
+                        buffCalculator.Calculate(instancesEx[initializer.entity].value.breakMask, items, handle, itemAttacks.Reinterpret<float>(), ref attackArray);
 
                         buffCalculator.Calculate(handle, ref buff.value);
                     }
@@ -873,6 +895,8 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
                             out Entity handleEntity))
                     {
                         buffCalculator.Calculate(
+                            0,
+                            default, 
                             handle,
                             itemDefences.Reinterpret<float>(),
                             ref defences);
@@ -1110,6 +1134,8 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
     private ComponentTypeHandle<GameActionData> __instanceType;
 
     private ComponentLookup<GameActionData> __instances;
+    
+    private ComponentLookup<GameActionDataEx> __instancesEx;
 
     private ComponentLookup<GameItemRoot> __itemRoots;
 
@@ -1318,6 +1344,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         __instanceType = state.GetComponentTypeHandle<GameActionData>(true);
 
         __instances = state.GetComponentLookup<GameActionData>(true);
+        __instancesEx = state.GetComponentLookup<GameActionDataEx>(true);
 
         __itemRoots = state.GetComponentLookup<GameItemRoot>(true);
         __entityVariants = state.GetComponentLookup<GameItemVariant>(true);
@@ -1400,7 +1427,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        if (__hitCount < 1)
+        if (__hitCount < 1 || !SystemAPI.HasSingleton<GameActionItemSetData>())
             return;
 
         var counter = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
@@ -1450,6 +1477,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         var itemHandleEntities = __handleEntities.reader;
 
         ApplyInitializers applyInitializers;
+        applyInitializers.items = SystemAPI.GetSingleton<GameActionItemSetData>().definition;
         applyInitializers.propertyCalculator = propertyCalculator;
         applyInitializers.buffCalculator = buffCalculator;
         applyInitializers.spawner = spawner;
@@ -1457,6 +1485,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         applyInitializers.initializers = initializers.reader;
         applyInitializers.itemHandleEntities = itemHandleEntities;
         applyInitializers.instances = instances;
+        applyInitializers.instancesEx = __instancesEx.UpdateAsRef(ref state);
         applyInitializers.itemRoots = itemRoots;
         applyInitializers.actionAttacks = __actionAttacks.AsArray();
         applyInitializers.itemAttacks = __itemAttacks.AsArray();

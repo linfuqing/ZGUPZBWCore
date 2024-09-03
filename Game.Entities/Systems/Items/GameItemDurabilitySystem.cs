@@ -146,7 +146,7 @@ public partial struct GameWeaponSystem : ISystem
                                     info.hit > 0.0f);*/
                             }
 
-                            if(weapon.breakMask == actorHit.destinationMask || (weapon.breakMask & actorHit.destinationMask) != 0)
+                            //if(weapon.breakMask == actorHit.destinationMask || (weapon.breakMask & actorHit.destinationMask) != 0)
                                 value += actorHit.destinationHit * weapon.damageToBeHurt;
 
                             if (math.abs(value) > math.FLT_MIN_NORMAL)

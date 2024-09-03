@@ -1206,7 +1206,11 @@ public partial struct GameEntityActorSystem : ISystem
                             entityItem = entityItems[i];
 
                             if (entityItem.index >= 0 && entityItem.index < length)
-                                action.info += items.values[entityItem.index];
+                            {
+                                ref var item = ref items.values[entityItem.index];
+                                if(item.layerMask == action.instance.breakMask || (item.layerMask & action.instance.breakMask) != 0)
+                                    action.info += item.value;
+                            }
                         }
                     }
 
