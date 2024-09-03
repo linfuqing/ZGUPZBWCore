@@ -132,19 +132,22 @@ public partial struct GameWeaponSystem : ISystem
                         {
                             value = weapon.damage * deltaTime;
 
-                            if(weapon.breakMask == actorHit.sourceMask || (weapon.breakMask & actorHit.sourceMask) != 0)
+                            if (weapon.breakMask == actorHit.sourceMask ||
+                                (weapon.breakMask & actorHit.sourceMask) != 0)
+                            {
                                 value += actorHit.sourceTimes * weapon.damageToBeUsed;
+
+                                value += actorHit.sourceHit * weapon.damageRate; /*math.select(
+                                    0.0f,
+                                    math.select(
+                                        0.0f,
+                                        1.0f - math.saturate((math.min(weapon.fullHit, info.hit) - weapon.overHit) / weapon.fullHit),
+                                        weapon.fullHit > math.FLT_MIN_NORMAL) * weapon.damageRate,
+                                    info.hit > 0.0f);*/
+                            }
 
                             if(weapon.breakMask == actorHit.destinationMask || (weapon.breakMask & actorHit.destinationMask) != 0)
                                 value += actorHit.destinationHit * weapon.damageToBeHurt;
-
-                            value += actorHit.sourceHit * weapon.damageRate;/*math.select(
-                                0.0f,
-                                math.select(
-                                    0.0f,
-                                    1.0f - math.saturate((math.min(weapon.fullHit, info.hit) - weapon.overHit) / weapon.fullHit), 
-                                    weapon.fullHit > math.FLT_MIN_NORMAL) * weapon.damageRate, 
-                                info.hit > 0.0f);*/
 
                             if (math.abs(value) > math.FLT_MIN_NORMAL)
                             {

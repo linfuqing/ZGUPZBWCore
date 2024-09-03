@@ -1810,7 +1810,7 @@ public partial struct GameInputActionSystem : ISystem
                                 switch (key.status)
                                 {
                                     case GameInputKey.Status.Up:
-                                        value = GameInputStatus.Value.Normal;
+                                        value = GameInputStatus.Value.KeyDownAndUp;//GameInputStatus.Value.Normal;
                                         break;
                                     case GameInputKey.Status.Click:
                                         value = GameInputStatus.Value.KeyDownAndUp;
