@@ -736,7 +736,7 @@ public partial struct GameDataItemLevelDeserializationSystem : ISystem
 
         state.Dependency = JobHandle.CombineDependencies(guidIndicesJobManager.readOnlyJobHandle, itemManagerJobManager.readOnlyJobHandle, jobHandle);
 
-        __core.value.Update<Deserializer, DeserializerFactory>(ref factory, ref state, true);
+        __core.value.Update<Deserializer, DeserializerFactory>(__group, ref factory, ref state, true);
 
         jobHandle = state.Dependency;
 

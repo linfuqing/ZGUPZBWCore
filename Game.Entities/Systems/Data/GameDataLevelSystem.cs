@@ -5,7 +5,7 @@ using Unity.Jobs;
 using ZG;
 
 #region GameLevelManager
-[assembly: RegisterGenericJobType(typeof(EntityDataIndexComponentInit<GameLevel, GameLevelWrapper>))]
+//[assembly: RegisterGenericJobType(typeof(EntityDataIndexComponentInit<GameLevel, GameLevelWrapper>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataIndexComponentInit<GameItemLevel, GameItemLevelWrapper>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataIndexBufferInit<GameSoul, GameSoulLevelWrapper>))]
 
@@ -16,7 +16,7 @@ using ZG;
 //[assembly: EntityDataDeserialize(typeof(GameLevelManager), typeof(GameDataLevelContainerDeserializationSystem), (int)GameDataConstans.Version)]
 #endregion
 
-#region GameLevel
+/*#region GameLevel
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentSerialize<EntityDataSerializationIndexComponentDataSystemCore<GameLevel, GameLevelWrapper>.Serializer, EntityDataSerializationIndexComponentDataSystemCore<GameLevel, GameLevelWrapper>.SerializerFactory>))]
 [assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<EntityDataDeserializationIndexComponentDataSystemCore<GameLevel, GameLevelWrapper>.Deserializer, EntityDataDeserializationIndexComponentDataSystemCore<GameLevel, GameLevelWrapper>.DeserializerFactory>))]
 //[assembly: EntityDataSerialize(typeof(GameLevel), typeof(GameDataLevelSerializationSystem))]
@@ -35,14 +35,14 @@ using ZG;
 //[assembly: RegisterGenericJobType(typeof(EntityDataComponentDeserialize<ComponentDataDeserializationSystem<GamePower>.Deserializer, ComponentDataDeserializationSystem<GamePower>.DeserializerFactory>))]
 //[assembly: EntityDataSerialize(typeof(GamePower))]
 //[assembly: EntityDataDeserialize(typeof(GamePower), (int)GameDataConstans.Version)]
-#endregion
+#endregion*/
 
 public struct GameLevelManager
 {
 
 }
 
-public struct GameLevelWrapper : IEntityDataIndexReadWriteWrapper<GameLevel>, 
+/*public struct GameLevelWrapper : IEntityDataIndexReadWriteWrapper<GameLevel>, 
     IEntityDataSerializationIndexWrapper<GameLevel>, 
     IEntityDataDeserializationIndexWrapper<GameLevel>
 {
@@ -76,7 +76,7 @@ public struct GameLevelWrapper : IEntityDataIndexReadWriteWrapper<GameLevel>,
     {
         return EntityDataIndexReadWriteWrapperUtility.Deserialize<GameLevel, GameLevelWrapper>(ref this, ref reader, guidIndices);
     }
-}
+}*/
 
 public struct GameItemLevelWrapper : IEntityDataIndexReadWriteWrapper<GameItemLevel>, 
     IEntityDataSerializationIndexWrapper<GameItemLevel>, 
@@ -161,11 +161,11 @@ public struct GameDataSoulContainer : IComponentData
     UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server")]
 public partial struct GameDataLevelContainerSerializationSystem : ISystem, IEntityDataSerializationIndexContainerSystem
 {
-    private EntityQuery __instanceGroup;
+    //private EntityQuery __instanceGroup;
     private EntityQuery __itemGroup;
     private EntityQuery __soulGroup;
 
-    private ComponentTypeHandle<GameLevel> __instanceType;
+    //private ComponentTypeHandle<GameLevel> __instanceType;
     private ComponentTypeHandle<GameItemLevel> __itemType;
     private BufferTypeHandle<GameSoul> __soulType;
     private EntityDataSerializationIndexContainerSystemCore __core;
@@ -175,11 +175,11 @@ public partial struct GameDataLevelContainerSerializationSystem : ISystem, IEnti
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+        /*using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __instanceGroup = builder
                     .WithAll<GameLevel, EntityDataIdentity, EntityDataSerializable>()
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
-                    .Build(ref state);
+                    .Build(ref state);*/
 
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __itemGroup = builder
@@ -193,7 +193,7 @@ public partial struct GameDataLevelContainerSerializationSystem : ISystem, IEnti
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
 
-        __instanceType = state.GetComponentTypeHandle<GameLevel>(true);
+        //__instanceType = state.GetComponentTypeHandle<GameLevel>(true);
         __itemType = state.GetComponentTypeHandle<GameItemLevel>(true);
         __soulType = state.GetBufferTypeHandle<GameSoul>(true);
 
@@ -213,8 +213,8 @@ public partial struct GameDataLevelContainerSerializationSystem : ISystem, IEnti
 
         var guids = SystemAPI.GetSingleton<GameDataSoulContainer>().guids;
 
-        GameLevelWrapper instanceWrapper;
-        jobHandle = __core.CommandUpdate(__instanceGroup, guids, __instanceType.UpdateAsRef(ref state), ref instanceWrapper, jobHandle);
+        //GameLevelWrapper instanceWrapper;
+        //jobHandle = __core.CommandUpdate(__instanceGroup, guids, __instanceType.UpdateAsRef(ref state), ref instanceWrapper, jobHandle);
 
         GameItemLevelWrapper itemWrapper;
         jobHandle = __core.CommandUpdate(__itemGroup, guids, __itemType.UpdateAsRef(ref state), ref itemWrapper, jobHandle);
@@ -226,7 +226,7 @@ public partial struct GameDataLevelContainerSerializationSystem : ISystem, IEnti
     }
 }
 
-[BurstCompile,
+/*[BurstCompile,
     EntityDataSerializationSystem(typeof(GameLevel)),
     CreateAfter(typeof(GameDataLevelContainerSerializationSystem)),
     UpdateInGroup(typeof(EntityDataSerializationSystemGroup)), AutoCreateIn("Server"),
@@ -307,7 +307,7 @@ public partial struct GameDataPowerSerializationSystem : ISystem
     {
         __core.Update(ref state);
     }
-}
+}*/
 
 [BurstCompile,
     EntityDataDeserializationSystem(typeof(GameLevelManager), (int)GameDataConstans.Version),
@@ -338,7 +338,7 @@ public partial struct GameDataLevelContainerDeserializationSystem : ISystem, IEn
     }
 }
 
-[BurstCompile,
+/*[BurstCompile,
     EntityDataDeserializationSystem(typeof(GameLevel), (int)GameDataConstans.Version),
     CreateAfter(typeof(EntityDataDeserializationComponentSystem)),
     CreateAfter(typeof(GameDataLevelContainerDeserializationSystem)),
@@ -420,4 +420,4 @@ public partial struct GameDataPowerDeserializationSystem : ISystem
     {
         __core.Update(ref state);
     }
-}
+}*/

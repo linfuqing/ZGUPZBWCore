@@ -1315,6 +1315,9 @@ public partial struct GameInputSystem : ISystem
         [ReadOnly]
         public BufferAccessor<GameInputActionInstance> actionInstances;
 
+        [ReadOnly] 
+        public BufferAccessor<GameInputItem> items;
+
         public NativeArray<GameInputGuideTarget> guideTargets;
 
         public NativeList<GameQuestGuideManager.Variant>.ParallelWriter guideResults;
@@ -1329,6 +1332,7 @@ public partial struct GameInputSystem : ISystem
 
             var actionInstances = this.actionInstances[index];
             var actorActions = this.actorActions[index];
+            var items = this.items[index];
             int camp = camps[index].value, identityType;
             uint belongsTo;
             bool isContains;
@@ -1387,6 +1391,29 @@ public partial struct GameInputSystem : ISystem
                                             isContains = true;
 
                                             break;
+                                        }
+                                    }
+                                }
+                                
+                                if (!isContains && items.IsCreated)
+                                {
+                                    int numActionIndices, numItems = actionDefinition.items.Length;
+                                    foreach (var item in items)
+                                    {
+                                        if(item.index < 0 || item.index >= numItems)
+                                            continue;
+
+                                        ref var actionIndices = ref actionDefinition.items[item.index].actionIndices;
+                                        numActionIndices = actionIndices.Length;
+                                        for(int i = 0; i < numActionIndices; ++i)
+                                        {
+                                            ref var action = ref actionDefinition.actions[actionIndices[i]];
+                                            if ((action.layerMask & belongsTo) != 0)
+                                            {
+                                                isContains = true;
+                                                
+                                                break;
+                                            }
                                         }
                                     }
                                 }
@@ -1452,6 +1479,9 @@ public partial struct GameInputSystem : ISystem
         [ReadOnly]
         public BufferTypeHandle<GameInputActionInstance> actionInstanceType;
 
+        [ReadOnly] 
+        public BufferTypeHandle<GameInputItem> itemType;
+
         public ComponentTypeHandle<GameInputGuideTarget> guideTargetType;
         
         public NativeList<GameQuestGuideManager.Variant>.ParallelWriter guideResults;
@@ -1471,6 +1501,7 @@ public partial struct GameInputSystem : ISystem
             guide.camps = chunk.GetNativeArray(ref campType);
             guide.actorActions = chunk.GetBufferAccessor(ref actorActionType);
             guide.actionInstances = chunk.GetBufferAccessor(ref actionInstanceType);
+            guide.items = chunk.GetBufferAccessor(ref itemType);
             guide.guideTargets = chunk.GetNativeArray(ref guideTargetType);
             guide.guideResults = guideResults;
 
@@ -1643,9 +1674,9 @@ public partial struct GameInputSystem : ISystem
         var campType = __campType.UpdateAsRef(ref state);
         var actorActionType = __actorActionType.UpdateAsRef(ref state);
         var actionInstanceType = __actionInstanceType.UpdateAsRef(ref state);
+        var itemType = __itemType.UpdateAsRef(ref state);
 
         var targetsReader = targets.reader;
-        
         
         var instance = SystemAPI.GetSingleton<GameInputActionData>();
 
@@ -1667,7 +1698,7 @@ public partial struct GameInputSystem : ISystem
         select.campType = campType;
         select.actorActionType = actorActionType;
         select.actionInstanceType = actionInstanceType;
-        select.itemType = __itemType.UpdateAsRef(ref state);
+        select.itemType = itemType;
         select.resultType = __selectionTargetType.UpdateAsRef(ref state);
 
         var submitJobHandle = select.ScheduleParallelByRef(__group, jobHandle);
@@ -1698,6 +1729,7 @@ public partial struct GameInputSystem : ISystem
         guide.campType = campType;
         guide.actorActionType = actorActionType;
         guide.actionInstanceType = actionInstanceType;
+        guide.itemType = itemType;
         guide.guideTargetType = __guideTargetType.UpdateAsRef(ref state);
         guide.guideResults = __guideResults.AsParallelWriter();
 

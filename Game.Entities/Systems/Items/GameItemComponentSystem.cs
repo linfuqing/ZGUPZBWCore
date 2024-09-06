@@ -531,7 +531,7 @@ public struct GameItemComponentDataInitSystemCore<T> where T : struct, IComponen
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __group = builder
                     .WithAll<GameItemData>()
-                    .WithNone<GameItemType, T>()
+                    .WithNone<GameItemType, EntityDataDeserializable, T>()
                     .Build(ref state);
 
         var world = state.WorldUnmanaged;

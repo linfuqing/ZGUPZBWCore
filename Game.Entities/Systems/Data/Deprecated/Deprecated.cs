@@ -3,14 +3,14 @@ using Unity.Entities;
 using Unity.Burst;
 using Unity.Jobs;
 
-[assembly: RegisterGenericJobType(typeof(GameItemComponentDataSyncInit<GameLevel, GameItemLevel, GameItemLevelSyncInitSystem.Converter, GameItemLevelSyncInitSystem.Factory>))]
+/*[assembly: RegisterGenericJobType(typeof(GameItemComponentDataSyncInit<GameLevel, GameItemLevel, GameItemLevelSyncInitSystem.Converter, GameItemLevelSyncInitSystem.Factory>))]
 [assembly: RegisterGenericJobType(typeof(GameItemComponentDataSyncApply<GameLevel, GameItemLevel, GameItemLevelSyncApplySystem.Converter, GameItemLevelSyncApplySystem.Factory>))]
 
 [assembly: RegisterGenericJobType(typeof(GameItemComponentDataSyncInit<GameExp, GameItemExp, GameItemExpSyncInitSystem.Converter, GameItemExpSyncInitSystem.Factory>))]
 [assembly: RegisterGenericJobType(typeof(GameItemComponentDataSyncApply<GameExp, GameItemExp, GameItemExpSyncApplySystem.Converter, GameItemExpSyncApplySystem.Factory>))]
 
 [assembly: RegisterGenericJobType(typeof(GameItemComponentDataSyncInit<GamePower, GameItemPower, GameItemPowerSyncInitSystem.Converter, GameItemPowerSyncInitSystem.Factory>))]
-[assembly: RegisterGenericJobType(typeof(GameItemComponentDataSyncApply<GamePower, GameItemPower, GameItemPowerSyncApplySystem.Converter, GameItemPowerSyncApplySystem.Factory>))]
+[assembly: RegisterGenericJobType(typeof(GameItemComponentDataSyncApply<GamePower, GameItemPower, GameItemPowerSyncApplySystem.Converter, GameItemPowerSyncApplySystem.Factory>))]*/
 
 public struct GameVariant : IComponentData
 {
@@ -22,7 +22,7 @@ public struct GameNickname : IComponentData
     public FixedString128Bytes value;
 }
 
-public struct GameLevel : IComponentData
+/*public struct GameLevel : IComponentData
 {
     public int handle;
 }
@@ -305,4 +305,4 @@ public partial struct GameItemPowerSyncApplySystem : ISystem
         Factory factory;
         __core.UpdateComponentData<GamePower, GameItemPower, Converter, Factory>(ref state, factory);
     }
-}
+}*/
