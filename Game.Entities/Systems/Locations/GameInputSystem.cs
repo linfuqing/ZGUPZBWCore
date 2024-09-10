@@ -754,6 +754,7 @@ public struct GameInputEntity : IComponentData
 public struct GameInputGuideTarget : IComponentData
 {
     public GameQuestGuideVariantType type;
+    public int questID;
     public Entity entity;
 }
 
@@ -1351,6 +1352,7 @@ public partial struct GameInputSystem : ISystem
         {
             GameInputGuideTarget guideTarget;
             guideTarget.type = GameQuestGuideVariantType.Entity;
+            guideTarget.questID = -1;
             guideTarget.entity = Entity.Null;
 
             ref var actionDefinition = ref this.actionDefinition.Value;
@@ -1371,20 +1373,20 @@ public partial struct GameInputSystem : ISystem
 
                 identityType = identityTypes[target.entity].value;
                 isContains = campMap.HasComponent(target.entity) && campMap[target.entity].value == camp;
-                if (manager.IsPublished(GameQuestGuideVariantType.Entity, identityType))
+                if (manager.IsPublished(GameQuestGuideVariantType.Entity, identityType, out guideTarget.questID))
                     guideTarget.type = GameQuestGuideVariantType.Entity;
                 else
                 {
                     if (isContains)
                     {
                         if (manager.IsPublished(GameQuestGuideVariantType.EntityAlly,
-                                identityType))
+                                identityType, out guideTarget.questID))
                             guideTarget.type = GameQuestGuideVariantType.EntityAlly;
                         else
                             continue;
                     }
                     else if (manager.IsPublished(GameQuestGuideVariantType.EntityEnemy,
-                                 identityType))
+                                 identityType, out guideTarget.questID))
                         guideTarget.type = GameQuestGuideVariantType.EntityEnemy;
                     else
                         continue;

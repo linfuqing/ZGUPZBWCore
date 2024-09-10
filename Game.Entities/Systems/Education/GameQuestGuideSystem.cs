@@ -168,35 +168,46 @@ public struct GameQuestGuideManager
             return __guides.TryGetValue(guideIndex, out var guide) && __IsPublished(guide, variant, ref priority);
         }
 
-        public bool IsPublished(in Variant variant)
+        public bool IsPublished(in Variant variant, out int questID)
         {
             foreach (var guideIndex in __guideIndices)
             {
                 if (IsPublished(guideIndex.Value, variant))
+                {
+                    questID = guideIndex.Key;
+                    
                     return true;
+                }
             }
 
+            questID = -1;
+            
             return false;
         }
 
-        public bool IsPublished(GameQuestGuideVariantType variantType)
+        public bool IsPublished(GameQuestGuideVariantType variantType, out int questID)
         {
             foreach (var guideIndex in __guideIndices)
             {
                 if (IsPublished(guideIndex.Value, variantType))
+                {
+                    questID = guideIndex.Key;
+                    
                     return true;
+                }
             }
 
+            questID = -1;
             return false;
         }
 
-        public bool IsPublished(GameQuestGuideVariantType variantType, int id)
+        public bool IsPublished(GameQuestGuideVariantType variantType, int id, out int questID)
         {
             Variant variant;
             variant.type = variantType;
             variant.id = id;
 
-            return IsPublished(variant);
+            return IsPublished(variant, out questID);
         }
 
         private bool __Contains(int variantSetIndex, in GameQuestGuideVariantType variantType)
@@ -497,8 +508,8 @@ public struct GameQuestGuideManager
                 return false;
 
             bool isPublished = callback.isGlobal
-                ? __readOnly.IsPublished(callback.variantType)
-                : __readOnly.IsPublished(new Variant(callback.variantType, callback.id));
+                ? __readOnly.IsPublished(callback.variantType, out _)
+                : __readOnly.IsPublished(new Variant(callback.variantType, callback.id), out _);
             if (isPublished == callback.isPublished)
             {
                 if (isPublished != __callbackStates[index])
@@ -586,7 +597,7 @@ public struct GameQuestGuideManager
         foreach (var pair in __callbacks)
         {
             callback = pair.Value;
-            if ((callback.isGlobal ? readOnly.IsPublished(callback.variantType) : readOnly.IsPublished(new Variant(callback.variantType, callback.id))) == callback.isPublished)
+            if ((callback.isGlobal ? readOnly.IsPublished(callback.variantType, out _) : readOnly.IsPublished(new Variant(callback.variantType, callback.id), out _)) == callback.isPublished)
             {
                 callbackResult.index = pair.Key;
                 callbackResult.handle = callback.handle;
@@ -662,19 +673,19 @@ public struct GameQuestGuideManager
         return readOnly.IsPublished(guideIndex, variant);
     }
 
-    public bool IsPublished(in Variant variant)
+    public bool IsPublished(in Variant variant, out int questID)
     {
-        return readOnly.IsPublished(variant);
+        return readOnly.IsPublished(variant, out questID);
     }
 
-    public bool IsPublished(GameQuestGuideVariantType variantType)
+    public bool IsPublished(GameQuestGuideVariantType variantType, out int questID)
     {
-        return readOnly.IsPublished(variantType);
+        return readOnly.IsPublished(variantType, out questID);
     }
 
-    public bool IsPublished(GameQuestGuideVariantType variantType, int id)
+    public bool IsPublished(GameQuestGuideVariantType variantType, int id, out int questID)
     {
-        return readOnly.IsPublished(variantType, id);
+        return readOnly.IsPublished(variantType, id, out questID);
     }
 
     public void Clear()
