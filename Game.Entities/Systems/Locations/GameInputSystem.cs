@@ -751,15 +751,15 @@ public struct GameInputEntity : IComponentData
 
 }
 
-public struct GameInputSelectionTarget : IComponentData
-{
-    public int itemIndex;
-    public Entity entity;
-}
-
 public struct GameInputGuideTarget : IComponentData
 {
     public GameQuestGuideVariantType type;
+    public Entity entity;
+}
+
+public struct GameInputSelectionTarget : IBufferElementData
+{
+    public int itemIndex;
     public Entity entity;
 }
 
@@ -972,6 +972,9 @@ public partial struct GameInputSystem : ISystem
         public ComponentLookup<GameEntityCamp> campMap;
 
         [ReadOnly]
+        public NativeArray<GameEntityCamp> camps;
+
+        [ReadOnly]
         public BufferAccessor<GameEntityActorActionData> actorActions;
 
         [ReadOnly]
@@ -980,10 +983,7 @@ public partial struct GameInputSystem : ISystem
         [ReadOnly] 
         public BufferAccessor<GameInputItem> items;
 
-        [ReadOnly]
-        public NativeArray<GameEntityCamp> camps;
-
-        public NativeArray<GameInputSelectionTarget> results;
+        public BufferAccessor<GameInputSelectionTarget> results;
         
         public bool IsSelectable(
             in Entity entity,
@@ -1076,6 +1076,9 @@ public partial struct GameInputSystem : ISystem
 
         public void Execute(int index)
         {
+            var results = this.results[index];
+            results.Clear();
+            
             GameInputSelectionTarget result;
 
             var actionInstances = this.actionInstances[index];
@@ -1083,28 +1086,47 @@ public partial struct GameInputSystem : ISystem
             var items = index < this.items.Length ? this.items[index] : default;
             int camp = camps[index].value;
             if (IsSelectable(selection, camp, actorActions, actionInstances, items, out result.itemIndex))
-                result.entity = selection;
-            else
             {
-                result.entity = Entity.Null;
+                result.entity = selection;
 
-                //ref var actionSetDefinition = ref this.actionSetDefinition.Value;
+                results.Add(result);
+            }
+            
+            //result.entity = Entity.Null;
 
-                foreach (var target in targets)
+            //ref var actionSetDefinition = ref this.actionSetDefinition.Value;
+
+            bool isContains;
+            foreach (var target in targets)
+            {
+                if (target.distance > maxDistance || target.entity == selection)
+                    continue;
+
+                /*isContains = false;
+                foreach (var temp in results)
                 {
-                    if (target.distance > maxDistance)
-                        continue;
-
-                    if (IsSelectable(target.entity, camp, actorActions, actionInstances, items, out result.itemIndex))
+                    if (temp.entity == target.entity)
                     {
-                        result.entity = target.entity;
-
+                        isContains = true;
+                        
                         break;
                     }
                 }
+                
+                if(isContains)
+                    continue;*/
+
+                if (!IsSelectable(target.entity, camp, actorActions, actionInstances, items, out result.itemIndex))
+                    continue;
+                
+                result.entity = target.entity;
+
+                //break;
+
+                results.Add(result);
             }
 
-            results[index] = result;
+            //results[index] = result;
         }
     }
 
@@ -1161,7 +1183,7 @@ public partial struct GameInputSystem : ISystem
         [ReadOnly] 
         public BufferTypeHandle<GameInputItem> itemType;
 
-        public ComponentTypeHandle<GameInputSelectionTarget> resultType;
+        public BufferTypeHandle<GameInputSelectionTarget> resultType;
 
         public bool IsSelectable(in Entity entity)
         {
@@ -1223,7 +1245,7 @@ public partial struct GameInputSystem : ISystem
                 select.actorActions = chunk.GetBufferAccessor(ref actorActionType);
                 select.actionInstances = chunk.GetBufferAccessor(ref actionInstanceType);
                 select.items = chunk.GetBufferAccessor(ref itemType);
-                select.results = chunk.GetNativeArray(ref resultType);
+                select.results = chunk.GetBufferAccessor(ref resultType);
 
                 var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
                 while (iterator.NextEntityIndex(out int i))
@@ -1234,13 +1256,16 @@ public partial struct GameInputSystem : ISystem
                 GameInputSelectionTarget result;
                 result.itemIndex = -1;
                 
-                var results = chunk.GetNativeArray(ref resultType);
-
+                var resultsBufferAccessor = chunk.GetBufferAccessor(ref resultType);
+                DynamicBuffer<GameInputSelectionTarget> results;
                 var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
                 while (iterator.NextEntityIndex(out int i))
                 {
+                    results = resultsBufferAccessor[i];
+                    results.ResizeUninitialized(1);
+                    
                     result.entity = selection;
-                    results[i] = result;
+                    results[0] = result;
                 }
             }
         }
@@ -1545,7 +1570,7 @@ public partial struct GameInputSystem : ISystem
 
     private BufferTypeHandle<GameInputItem> __itemType;
 
-    private ComponentTypeHandle<GameInputSelectionTarget> __selectionTargetType;
+    private BufferTypeHandle<GameInputSelectionTarget> __selectionTargetType;
 
     private ComponentTypeHandle<GameInputGuideTarget> __guideTargetType;
 
@@ -1590,7 +1615,7 @@ public partial struct GameInputSystem : ISystem
         __actorActionType = state.GetBufferTypeHandle<GameEntityActorActionData>(true);
         __actionInstanceType = state.GetBufferTypeHandle<GameInputActionInstance>(true);
         __itemType = state.GetBufferTypeHandle<GameInputItem>(true);
-        __selectionTargetType = state.GetComponentTypeHandle<GameInputSelectionTarget>();
+        __selectionTargetType = state.GetBufferTypeHandle<GameInputSelectionTarget>();
         __guideTargetType = state.GetComponentTypeHandle<GameInputGuideTarget>();
 
         __physicsWorld = state.WorldUnmanaged.GetExistingSystemUnmanaged<GamePhysicsWorldBuildSystem>().physicsWorld;
@@ -1664,7 +1689,7 @@ public partial struct GameInputSystem : ISystem
         sortTargets.targets = targets.writer;
         jobHandle = sortTargets.ScheduleByRef(JobHandle.CombineDependencies(targetsJobManager.readWriteJobHandle, jobHandle));
 
-        var actionSetDefinition = SystemAPI.GetSingleton<GameActionSetData>().definition;
+        //var actionSetDefinition = SystemAPI.GetSingleton<GameActionSetData>().definition;
 
         var colliders = __colliders.UpdateAsRef(ref state);
         var pickables = __pickables.UpdateAsRef(ref state);
