@@ -477,7 +477,7 @@ public struct GameInputAction : IComponentData
         {
             var actorAction = actorActions[actorActionIndex];
 
-            result = filter.Check(actorAction.actionIndex, time) && actorActionInfos.Length <= actorActionIndex || actorActionInfos[actorActionIndex].coolDownTime < time;
+            result = filter.Check(actorAction.actionIndex, time) && (actorActionInfos.Length <= actorActionIndex || actorActionInfos[actorActionIndex].coolDownTime < time);
             if (result)
             {
                 ref var action = ref definition.Value.actions[actorAction.actionIndex];

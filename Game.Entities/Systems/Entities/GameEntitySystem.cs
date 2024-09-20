@@ -3466,7 +3466,11 @@ public partial struct GameEntityCannelEventsSystem : ISystem
     }
 }
 
-[BurstCompile, UpdateInGroup(typeof(GameRollbackSystemGroup)), UpdateAfter(typeof(GameEntityActorSystemGroup)), UpdateBefore(typeof(GameEntityActionBeginEntityCommandSystemGroup))]
+[BurstCompile, 
+ CreateAfter(typeof(GameEntityActionBeginStructChangeSystem)), 
+ UpdateInGroup(typeof(GameRollbackSystemGroup)), 
+ UpdateAfter(typeof(GameEntityActorSystemGroup)), 
+ UpdateBefore(typeof(GameEntityActionBeginEntityCommandSystemGroup))]
 public partial struct GameEntityClearActionSystem : ISystem
 {
     private struct ClearActions
@@ -3590,33 +3594,39 @@ public partial struct GameEntityClearActionSystem : ISystem
     }
 
     private uint __lastSystemVersion;
+    //private GameUpdateTime __time;
     private EntityQuery __actionGroup;
     private EntityQuery __entityGroup;
-    /*private EntityQuery __syncDataGroup;
-    private EntityQuery __updateDataGroup;*/
-    private GameUpdateTime __time;
+    private EntityTypeHandle __entityType;
+    private ComponentTypeHandle<GameActionStatus> __statusType;
+    private ComponentTypeHandle<GameActionData> __instanceType;
+    private BufferTypeHandle<GameEntityAction> __entityActionType;
+    private BufferLookup<GameEntityAction> __entityActions;
+
     private EntityCommandPool<Entity> __destroyEntityCommander;
     private EntityCommandPool<EntityCommandStructChange> __removeComponentCommander;
 
+    [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        __actionGroup = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameActionStatus>(),
-            ComponentType.ReadOnly<GameActionData>()/*, 
-            ComponentType.ReadOnly<GameActionDisabled>()*/);
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __actionGroup = builder
+                .WithAll<GameActionStatus, GameActionData>()
+                .Build(ref state);
 
-        //__actionGroup.SetChangedVersionFilter(typeof(GameActionStatus));
+        using (var builder = new EntityQueryBuilder(Allocator.Temp))
+            __entityGroup = builder
+                .WithAll<GameEntityAction>()
+                .WithNone<GameEntityActorData>()
+                .Build(ref state);
 
-        __entityGroup = state.GetEntityQuery(
-            ComponentType.ReadOnly<GameEntityAction>(),
-            ComponentType.Exclude<GameEntityActorData>());
+        __entityType = state.GetEntityTypeHandle();
+        __statusType = state.GetComponentTypeHandle<GameActionStatus>(true);
+        __instanceType = state.GetComponentTypeHandle<GameActionData>(true);
+        __entityActionType = state.GetBufferTypeHandle<GameEntityAction>(true);
+        __entityActions = state.GetBufferLookup<GameEntityAction>();
 
-        /*__syncDataGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameSyncData>());
-        __updateDataGroup = state.GetEntityQuery(ComponentType.ReadOnly<GameUpdateData>());*/
-
-        __time = new GameUpdateTime(ref state);
-
-        var manager = state.World.GetOrCreateSystemUnmanaged<GameEntityActionBeginStructChangeSystem>().manager;
+        var manager = state.WorldUnmanaged.GetExistingSystemUnmanaged<GameEntityActionBeginStructChangeSystem>().manager;
         __destroyEntityCommander = manager.destoyEntityPool;
         __removeComponentCommander = manager.removeComponentPool;
     }
@@ -3629,15 +3639,12 @@ public partial struct GameEntityClearActionSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        /*var syncData = __syncDataGroup.GetSingleton<GameSyncData>();
-        var updateData = __updateDataGroup.GetSingleton<GameUpdateData>();
-        if (!updateData.IsUpdate(syncData.frameIndex))
-            return;*/
-        if (!__time.IsVail())
-            return;
+        //if (!__time.IsVail())
+        //    return;
 
+        var entityType = __entityType.UpdateAsRef(ref state);
         var jobHandle = state.Dependency;
-        var statusType = state.GetComponentTypeHandle<GameActionStatus>(true);
+        var statusType = __statusType.UpdateAsRef(ref state);
         uint globalSystemVersion = statusType.GlobalSystemVersion;
         if (ChangeVersionUtility.DidChange(globalSystemVersion, __lastSystemVersion))
         {
@@ -3645,12 +3652,12 @@ public partial struct GameEntityClearActionSystem : ISystem
 
             ClearActionsEx clearActions;
             clearActions.lastSystemVersion = __lastSystemVersion;
-            clearActions.entityType = state.GetEntityTypeHandle();
-            clearActions.statusType = state.GetComponentTypeHandle<GameActionStatus>(true);
-            clearActions.instanceType = state.GetComponentTypeHandle<GameActionData>(true);
-            clearActions.entityActions = state.GetBufferLookup<GameEntityAction>();
+            clearActions.entityType = entityType;
+            clearActions.statusType = statusType;
+            clearActions.instanceType = __instanceType.UpdateAsRef(ref state);
+            clearActions.entityActions = __entityActions.UpdateAsRef(ref state);
             clearActions.entityManager = destroyEntityCommander.writer;
-            jobHandle = clearActions.Schedule(__actionGroup, jobHandle);
+            jobHandle = clearActions.ScheduleByRef(__actionGroup, jobHandle);
 
             destroyEntityCommander.AddJobHandleForProducer<ClearActionsEx>(jobHandle);
 
@@ -3662,11 +3669,11 @@ public partial struct GameEntityClearActionSystem : ISystem
             var removeComponentCommander = __removeComponentCommander.Create();
 
             ClearEntitiesEx clearEntities;
-            clearEntities.entityType = state.GetEntityTypeHandle();
-            clearEntities.entityActionType = state.GetBufferTypeHandle<GameEntityAction>(true);
+            clearEntities.entityType = entityType;
+            clearEntities.entityActionType = __entityActionType.UpdateAsRef(ref state);
             clearEntities.entityManager = removeComponentCommander.parallelWriter;
 
-            jobHandle = clearEntities.ScheduleParallel(__entityGroup, jobHandle);
+            jobHandle = clearEntities.ScheduleParallelByRef(__entityGroup, jobHandle);
 
             removeComponentCommander.AddJobHandleForProducer<ClearEntitiesEx>(jobHandle);
         }

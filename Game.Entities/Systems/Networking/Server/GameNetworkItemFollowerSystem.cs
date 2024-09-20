@@ -311,7 +311,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
 
         public NativeQueue<Result> results;
 
-        public NetworkDriver driver;
+        //public NetworkDriver driver;
         public NetworkRPCCommander rpcCommander;
 
         public void Execute()
@@ -322,6 +322,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
             int value;
             DataStreamWriter stream;
             NetworkIdentity identity;
+            NetworkServerEntityChannel channel;
             GameItemType itemType;
             GameItemObjectData itemObject;
             GameItemName itemName;
@@ -340,9 +341,9 @@ public partial struct GameItemServerFollowerSystem : ISystem
 
                         if(!itemTypes.TryGetComponent(command.destination, out itemType))
                             continue;
-                    
-                        if (!rpcCommander.BeginCommand(identity.id, channels[instance.addChannel].pipeline,
-                                driver, out stream))
+
+                        channel = channels[instance.addChannel];
+                        if (!rpcCommander.BeginCommand(identity.id, channel.capacity, channel.pipeline, out stream))
                             continue;
 
                         stream.WritePackedUInt(instance.addHandle, model);
@@ -351,8 +352,8 @@ public partial struct GameItemServerFollowerSystem : ISystem
                         stream.WritePackedUInt((uint)itemObject.type, model);
                         break;
                     case GameItemOwnSystem.CommandType.Remove:
-                        if (!rpcCommander.BeginCommand(identity.id, channels[instance.removeChannel].pipeline,
-                                driver, out stream))
+                        channel = channels[instance.removeChannel];
+                        if (!rpcCommander.BeginCommand(identity.id, channel.capacity, channel.pipeline, out stream))
                             continue;
 
                         stream.WritePackedUInt(instance.removeHandle, model);
@@ -362,8 +363,8 @@ public partial struct GameItemServerFollowerSystem : ISystem
                         if(!itemObjects.TryGetComponent(command.destination, out itemObject))
                             continue;
 
-                        if (!rpcCommander.BeginCommand(identity.id, channels[instance.deleteChannel].pipeline,
-                                driver, out stream))
+                        channel = channels[instance.deleteChannel];
+                        if (!rpcCommander.BeginCommand(identity.id, channel.capacity, channel.pipeline, out stream))
                             continue;
 
                         itemNames.TryGetComponent(command.destination, out itemName);
@@ -392,8 +393,8 @@ public partial struct GameItemServerFollowerSystem : ISystem
                     !identities.TryGetComponent(result.entity, out identity))
                     continue;
 
-                if (!rpcCommander.BeginCommand(identity.id, channels[instance.setChannel].pipeline,
-                        driver, out stream))
+                channel = channels[instance.setChannel];
+                if (!rpcCommander.BeginCommand(identity.id, channel.capacity, channel.pipeline, out stream))
                     continue;
                 
                 stream.WritePackedUInt(instance.setHandle, model);
@@ -531,7 +532,7 @@ public partial struct GameItemServerFollowerSystem : ISystem
             var channels = SystemAPI.GetSingletonBuffer<NetworkServerEntityChannel>(true).AsNativeArray();
             if (channels.Length > 0)
             {
-                var manager = __managerGroup.GetSingleton<NetworkServerManager>();
+                //var manager = __managerGroup.GetSingleton<NetworkServerManager>();
                 var controller = __controllerGroup.GetSingleton<NetworkRPCController>();
 
                 Apply apply;
@@ -545,18 +546,18 @@ public partial struct GameItemServerFollowerSystem : ISystem
                 apply.instances = __instances.UpdateAsRef(ref state);
                 apply.commands = __commands;
                 apply.results = __results;
-                apply.driver = manager.server.driver;
+                //apply.driver = manager.server.driver;
                 apply.rpcCommander = controller.commander;
 
-                ref var managerJobManager = ref manager.lookupJobManager;
+                //ref var managerJobManager = ref manager.lookupJobManager;
                 ref var controllerJobManager = ref controller.lookupJobManager;
 
                 jobHandle = JobHandle.CombineDependencies(jobHandle,
-                    managerJobManager.readWriteJobHandle,
+                    //managerJobManager.readWriteJobHandle,
                     controllerJobManager.readWriteJobHandle);
                 jobHandle = apply.ScheduleByRef(jobHandle);
 
-                managerJobManager.readWriteJobHandle = jobHandle;
+                //managerJobManager.readWriteJobHandle = jobHandle;
                 controllerJobManager.readWriteJobHandle = jobHandle;
             }
         }

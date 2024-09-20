@@ -139,7 +139,7 @@ public partial struct GameAnimatorTransformFactorySystem : ISystem
             transform.forwardAmount = math.sqrt(lengthsq) * math.sign(velocity.sign);
             transform.turnAmount = lengthsq > staticThresholds[entity].value && velocity.deltaTime > math.FLT_MIN_NORMAL ?
                 math.atan2(value.x, value.z)
-                                    ///Math.SignedAngleËÆºõÓÐÎÊÌâ
+                                    ///Math.SignedAngleä¼¼ä¹Žæœ‰é—®é¢˜
                                     /*Math.SignedAngle(
                                         math.float3(0.0f, 0.0f, 1.0f), 
                                         value / transform.forwardAmount,

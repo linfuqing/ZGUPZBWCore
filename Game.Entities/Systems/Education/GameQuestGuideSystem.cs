@@ -264,10 +264,11 @@ public struct GameQuestGuideManager
 
         private bool __IsPublished(in Guide guide, in GameQuestGuideVariantType variantType, out int priority)
         {
-            priority = guide.priority;
+            priority = int.MinValue;
             
             bool isCompleted = __IsCompleted(guide.variantSetIndex);
             int childIndex = guide.childIndex;
+            Guide child;
             if (isCompleted)
             {
                 if ((guide.flag & GameQuestGuideFlag.Key) == GameQuestGuideFlag.Key)
@@ -288,73 +289,80 @@ public struct GameQuestGuideManager
 
                 childIndex = guide.childIndex;
             }
-
-            Guide child;
-            if (!isCompleted && 
-                __Contains(guide.variantSetIndex, variantType))
+            else
             {
-                if ((guide.flag & GameQuestGuideFlag.Hide) == GameQuestGuideFlag.Hide)
-                    return false;
+                priority = guide.priority;
 
-                bool temp = true;
-                while (childIndex != -1)
+                if (__Contains(guide.variantSetIndex, variantType))
                 {
-                    if (!__IsChildCompleted(childIndex, /*ref priority, */out childIndex, out child))
+                    if ((guide.flag & GameQuestGuideFlag.Hide) == GameQuestGuideFlag.Hide)
+                        return false;
+
+                    bool temp = true;
+                    while (childIndex != -1)
                     {
-                        temp = false;
-                        break;
+                        if (!__IsChildCompleted(childIndex, /*ref priority, */out childIndex, out child))
+                        {
+                            temp = false;
+                            break;
+                        }
+
+                        if ((child.flag & GameQuestGuideFlag.Key) != GameQuestGuideFlag.Key &&
+                            !__IsCompleted(child.variantSetIndex))
+                        {
+                            temp = false;
+                            break;
+                        }
                     }
 
-                    if ((child.flag & GameQuestGuideFlag.Key) != GameQuestGuideFlag.Key &&
-                        !__IsCompleted(child.variantSetIndex))
-                    {
-                        temp = false;
-                        break;
-                    }
+                    if (temp)
+                        return true;
+
+                    childIndex = guide.childIndex;
                 }
-
-                if (temp)
-                    return true;
-
-                childIndex = guide.childIndex;
             }
 
             bool result = false;
-            int targetPriority;
+            int maxPriority = int.MinValue, targetPriority;
             while (childIndex != -1)
             {
                 child = __guides[childIndex];
 
                 if (__IsPublished(child, variantType, out targetPriority))
                 {
-                    if (targetPriority >= priority)
+                    if (targetPriority >= maxPriority)
                     {
-                        priority = targetPriority;
+                        maxPriority = targetPriority;
 
                         result = true;
                     }
                 }
                 else if (targetPriority > priority)
                 {
-                    priority = targetPriority;
+                    maxPriority = targetPriority;
 
-                    result = false;
+                    //TODO：临时先注掉判定优先级
+                    //result = false;
                 }
 
                 childIndex = child.siblingIndex;
             }
+
+            if(maxPriority != int.MinValue)
+                priority = maxPriority;
 
             return result;
         }
 
         private bool __IsPublished(in Guide guide, in Variant variant, out int priority)
         {
-            priority = guide.priority;
-            
+            Guide child;
             bool isCompleted = __IsCompleted(guide.variantSetIndex);
             int childIndex = guide.childIndex;
             if (isCompleted)
             {
+                priority = int.MinValue;
+            
                 if ((guide.flag & GameQuestGuideFlag.Key) == GameQuestGuideFlag.Key)
                     return false;
 
@@ -373,63 +381,68 @@ public struct GameQuestGuideManager
 
                 childIndex = guide.childIndex;
             }
-
-            Guide child;
-            if (!isCompleted && __Contains(guide.variantSetIndex, variant))
+            else
             {
-                if ((guide.flag & GameQuestGuideFlag.Hide) == GameQuestGuideFlag.Hide)
-                    return false; 
-                
-                bool temp = true;
-                //int priorityTemp = priority;
-                while (childIndex != -1)
+                priority = guide.priority;
+
+                if (__Contains(guide.variantSetIndex, variant))
                 {
-                    if (!__IsChildCompleted(childIndex, /*ref priorityTemp, */out childIndex, out child))
+                    if ((guide.flag & GameQuestGuideFlag.Hide) == GameQuestGuideFlag.Hide)
+                        return false;
+
+                    bool temp = true;
+                    //int priorityTemp = priority;
+                    while (childIndex != -1)
                     {
-                        temp = false;
-                        break;
+                        if (!__IsChildCompleted(childIndex, /*ref priorityTemp, */out childIndex, out child))
+                        {
+                            temp = false;
+                            break;
+                        }
+
+                        if ((child.flag & GameQuestGuideFlag.Key) != GameQuestGuideFlag.Key &&
+                            !__IsCompleted(child.variantSetIndex))
+                        {
+                            temp = false;
+                            break;
+                        }
                     }
 
-                    if ((child.flag & GameQuestGuideFlag.Key) != GameQuestGuideFlag.Key &&
-                        !__IsCompleted(child.variantSetIndex))
-                    {
-                        temp = false;
-                        break;
-                    }
+                    if (temp)
+                        return true;
+
+                    childIndex = guide.childIndex;
                 }
-
-                if (temp)
-                    return true;
-
-                childIndex = guide.childIndex;
             }
 
             bool result = false;
-            int targetPriority;
+            int maxPriority = int.MinValue, targetPriority;
             while (childIndex != -1)
             {
                 child = __guides[childIndex];
 
                 if (__IsPublished(child, variant, out targetPriority))
                 {
-                    if (targetPriority >= priority)
+                    if (targetPriority >= maxPriority)
                     {
-                        priority = targetPriority;
+                        maxPriority = targetPriority;
 
                         result = true;
                     }
                 }
-                else if (targetPriority > priority)
+                else if (targetPriority > maxPriority)
                 {
-                    priority = targetPriority;
+                    maxPriority = targetPriority;
 
-                    result = false;
+                    //TODO：临时先注掉判定优先级
+                    //result = false;
                 }
 
                 childIndex = child.siblingIndex;
             }
 
-            //priority = maxPriority;
+            if(maxPriority != int.MinValue)
+                priority = maxPriority;
 
             return result;
         }

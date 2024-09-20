@@ -397,6 +397,7 @@ public struct GameItemManager
                 return false;
             }
 
+            int depth = 0;
             return __Find(
                 true, 
                 flag, 
@@ -2019,6 +2020,7 @@ public struct GameItemManager
 
         //if (isRoot)
         {
+            int depth = 0;
             var resultTemp = __Find(
                 flag,
                 //0,
@@ -2030,13 +2032,14 @@ public struct GameItemManager
                 children,
                 positiveFilters,
                 negativeFilters,
+                ref depth, 
                 out int parentChildIndexTemp,
                 out Handle parentHandleTemp);
 
             switch (resultTemp)
             {
                 case FindResult.Empty:
-                    if (result == FindResult.None)
+                    if (result == FindResult.None || !isRoot && depth == 0)
                     {
                         parentChildIndex = parentChildIndexTemp;
                         parentHandle = parentHandleTemp;
@@ -2068,6 +2071,7 @@ public struct GameItemManager
         in NativeParallelMultiHashMap<int, Child> children,
         in NativeParallelMultiHashMap<int, int> positiveFilters,
         in NativeParallelMultiHashMap<int, int> negativeFilters,
+        ref int depth, 
         out int parentChildIndex,
         out Handle parentHandle)
     {
@@ -2081,9 +2085,11 @@ public struct GameItemManager
 
         if ((flag & GameItemFindFlag.Children) == GameItemFindFlag.Children && children.TryGetFirstValue(handle.index, out var child, out var iterator))
         {
+            ++depth;
+            
             Info temp;
             Handle resultParentHandle = Handle.Empty;
-            int resultParentChildIndex = -1, typeCount = types[type].count;
+            int resultParentChildIndex = -1, typeCount = types[type].count, resultDepth = depth, currentDepth;
             var result = FindResult.None;
             do
             {
@@ -2097,6 +2103,7 @@ public struct GameItemManager
 
                 if ((typeDefinition.flag & GameItemTypeDefinition.Flag.HideInHierarchy) != GameItemTypeDefinition.Flag.HideInHierarchy)
                 {
+                    currentDepth = depth;
                     switch (__Find(
                                 flag | GameItemFindFlag.Self,
                                 //depth - 1,
@@ -2108,6 +2115,7 @@ public struct GameItemManager
                                 children,
                                 positiveFilters,
                                 negativeFilters,
+                                ref currentDepth, 
                                 out parentChildIndex,
                                 out parentHandle))
                     {
@@ -2116,8 +2124,12 @@ public struct GameItemManager
 
                             resultParentChildIndex = parentChildIndex;
                             resultParentHandle = parentHandle;
+
+                            resultDepth = currentDepth;
                             break;
                         case FindResult.Normal:
+                            depth = currentDepth;
+                            
                             return FindResult.Normal;
                     }
                 }
@@ -2127,9 +2139,13 @@ public struct GameItemManager
             {
                 parentChildIndex = resultParentChildIndex;
                 parentHandle = resultParentHandle;
+
+                depth = resultDepth;
                 
                 return result;
             }
+            
+            --depth;
         }
 
         if ((flag & GameItemFindFlag.Self) == GameItemFindFlag.Self && 
