@@ -164,36 +164,54 @@ internal struct GameQuestManagerData
     }
 
     public readonly bool Update(
+        in NativeArray<GameFormula> formulas, 
         in GameItemManager.Hierarchy itemManager, 
         in GameItemHandle itemHandle, 
         int index, 
         ref int conditionBits)
     {
-        GameQuestCommandCondition command;
-        command.type = GameQuestConditionType.Get;
-        
         NativeList<GameQuestCommandCondition> commands = default;
         
         var info = __infos[index];
 
         var conditions = __conditions.AsArray().Slice(info.conditionStartIndex, info.conditionCount);
-
+        GameQuestCommandCondition command;
+        GameFormula formula;
         foreach (var condition in conditions)
         {
-            if(condition.type != GameQuestConditionType.Get)
-                continue;
+            switch (condition.type)
+            {
+                case GameQuestConditionType.Get:
+                    command.type = GameQuestConditionType.Get;
+                    command.count = itemManager.CountOf(itemHandle, condition.index);
+                    /*if (command.count < 1)
+                        continue;*/
 
-            command.count = itemManager.CountOf(itemHandle, condition.index);
-            /*if (command.count < 1)
-                continue;*/
+                    command.index = condition.index;
+                    command.label = info.label;
 
-            command.index = condition.index;
-            command.label = info.label;
-
-            if (!commands.IsCreated)
-                commands = new NativeList<GameQuestCommandCondition>(Allocator.Temp);
+                    if (!commands.IsCreated)
+                        commands = new NativeList<GameQuestCommandCondition>(Allocator.Temp);
             
-            commands.Add(command);
+                    commands.Add(command);
+                    break;
+                case GameQuestConditionType.Upgrade:
+                    if (GameFormulaManager.IndexOf(condition.index, formulas, out formula) != -1)
+                    {
+                        command.type = GameQuestConditionType.Upgrade;
+                        command.count = formula.count;
+                        command.index = condition.index;
+                        command.label = info.label;
+
+                        if (!commands.IsCreated)
+                            commands = new NativeList<GameQuestCommandCondition>(Allocator.Temp);
+            
+                        commands.Add(command);
+                    }
+                    break;
+                default:
+                    break;
+            }
         }
 
         bool result;
@@ -254,8 +272,8 @@ internal struct GameQuestManagerData
         if (quest.status == GameQuestStatus.Complete)
             return false;
 
-        if (!IsClear(quest))
-            return false;
+        /*if (!IsClear(quest))
+            return false;*/
 
         quest.status = GameQuestStatus.Complete;
         quests[index] = quest;
@@ -473,6 +491,7 @@ public struct GameQuestManager
     }
 
     public readonly unsafe bool Update(
+        in NativeArray<GameFormula> formulas, 
         in GameItemManager.Hierarchy itemManager,
         in GameItemHandle itemHandle,
         int index,
@@ -480,7 +499,7 @@ public struct GameQuestManager
     {
         __CheckRead();
 
-        return _data->Update(itemManager, itemHandle, index, ref conditionBits);
+        return _data->Update(formulas, itemManager, itemHandle, index, ref conditionBits);
     }
 
     public readonly unsafe bool Finish(
@@ -639,6 +658,9 @@ public partial struct GameQuestSystem : ISystem
         [ReadOnly]
         public NativeArray<GameItemRoot> itemRoots;
 
+        [ReadOnly]
+        public BufferAccessor<GameFormula> formulas;
+
         public BufferAccessor<GameQuest> quests;
 
         public BufferAccessor<GameQuestCommand> commands;
@@ -663,12 +685,13 @@ public partial struct GameQuestSystem : ISystem
             var commands = this.commands[index];
             if (commands.Length > 0)
             {
+                var formulas = this.formulas[index].AsNativeArray();
                 int numQuests = quests.Length;
                 for (int i = 0; i < numQuests; ++i)
                 {
                     ref var quest = ref quests.ElementAt(i);
                     if(quest.status == GameQuestStatus.Normal)
-                        manager.Update(itemManager, itemHandle, quest.index, ref quest.conditionBits);
+                        manager.Update(formulas, itemManager, itemHandle, quest.index, ref quest.conditionBits);
                 }
 
                 int moneyTemp;
@@ -773,6 +796,8 @@ public partial struct GameQuestSystem : ISystem
         [ReadOnly]
         public GameQuestManager manager;
         [ReadOnly]
+        public BufferTypeHandle<GameFormula> formulaType;
+        [ReadOnly]
         public ComponentTypeHandle<GameItemRoot> itemRootType;
 
         public ComponentTypeHandle<GameMoney> monyType;
@@ -793,6 +818,7 @@ public partial struct GameQuestSystem : ISystem
             command.itemManager = itemManager;
             command.manager = manager;
             command.itemRoots = chunk.GetNativeArray(ref itemRootType);
+            command.formulas = chunk.GetBufferAccessor(ref formulaType);
             command.quests = chunk.GetBufferAccessor(ref questType);
             command.commands = chunk.GetBufferAccessor(ref commandType);
             command.commandConditions = chunk.GetBufferAccessor(ref commandConditionType);
@@ -855,6 +881,8 @@ public partial struct GameQuestSystem : ISystem
     private GameItemManagerShared __itemManager;
     private NativeQueue<GameQuestItem> __items;
 
+    private BufferTypeHandle<GameFormula> __formulaType;
+
     private ComponentTypeHandle<GameItemRoot> __itemRootType;
 
     private ComponentTypeHandle<GameMoney> __monyType;
@@ -888,6 +916,7 @@ public partial struct GameQuestSystem : ISystem
 
         //__group.AddChangedVersionFilter(ComponentType.ReadWrite<GameQuestCommandCondition>());
 
+        __formulaType = state.GetBufferTypeHandle<GameFormula>(true);
         __itemRootType = state.GetComponentTypeHandle<GameItemRoot>(true);
         __monyType = state.GetComponentTypeHandle<GameMoney>();
         __questType = state.GetBufferTypeHandle<GameQuest>();
@@ -917,6 +946,7 @@ public partial struct GameQuestSystem : ISystem
         command.time = state.WorldUnmanaged.Time.ElapsedTime;
         command.itemManager = __itemManager.hierarchy;
         command.manager = manager;
+        command.formulaType = __formulaType.UpdateAsRef(ref state);
         command.itemRootType = __itemRootType.UpdateAsRef(ref state);
         command.monyType = __monyType.UpdateAsRef(ref state);
         command.commandType = __commandType.UpdateAsRef(ref state);

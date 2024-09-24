@@ -160,7 +160,7 @@ public struct GameFormulaManager : IDisposable
                     return false;
             }
 
-            int formulaIndex = IndexOf(index, formulas, out var formula);
+            int formulaIndex = IndexOf(index, formulas.AsNativeArray(), out var formula);
 
             int length = 0, temp = formula.count + count;
             for (i = formula.level; i < info.levelCount; ++i)
@@ -191,7 +191,8 @@ public struct GameFormulaManager : IDisposable
             ref int money,
             ref DynamicBuffer<GameFormula> formulas)
         {
-            int formulaIndex = IndexOf(index, formulas, out var formula);
+            var formulaArray = formulas.AsNativeArray();
+            int formulaIndex = IndexOf(index, formulaArray, out var formula);
 
             if (formula.level < 0)
                 return false;
@@ -207,7 +208,7 @@ public struct GameFormulaManager : IDisposable
                 GameFormula temp;
                 for (int i = 0; i < info.parentCount; ++i)
                 {
-                    if (IndexOf(__parentIndices[info.parentStartIndex + i], formulas, out temp) == -1 || temp.level < 1)
+                    if (IndexOf(__parentIndices[info.parentStartIndex + i], formulaArray, out temp) == -1 || temp.level < 1)
                         return false;
                 }
             }
@@ -236,7 +237,7 @@ public struct GameFormulaManager : IDisposable
     internal static readonly SharedStatic<int> StaticSafetyID = SharedStatic<int>.GetOrCreate<GameFormulaManager>();
 #endif
 
-    public static int IndexOf(int index, in DynamicBuffer<GameFormula> formulas, out GameFormula formula)
+    public static int IndexOf(int index, in NativeArray<GameFormula> formulas, out GameFormula formula)
     {
         int numFormulas = formulas.Length, i;
         for (i = 0; i < numFormulas; ++i)

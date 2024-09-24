@@ -1021,7 +1021,10 @@ public partial struct GameFormulaFactorySystem : ISystem
 
                 if (count > 0)
                 {
-                    if (GameFormulaManager.IndexOf(formulaIndex, formulas[command.entity], out temp) == -1)
+                    if (GameFormulaManager.IndexOf(
+                            formulaIndex, 
+                            formulas[command.entity].AsNativeArray(), 
+                            out temp) == -1)
                         temp = default;
 
                     instance.formulaIndex = formulaIndex;

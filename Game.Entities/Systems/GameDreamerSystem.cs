@@ -744,7 +744,9 @@ public partial struct GameDreamEventSystem : ISystem
             __group = builder
                 .WithAll<EntityObject<GameDreamerComponent>>()
                 .WithAllRW<GameDreamerVersion, GameDreamerEvent>()
+                .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                 .Build(ref state);
+        //__group.SetChangedVersionFilter(ComponentType.ReadOnly<GameDreamerVersion>());
         
         __time = new GameRollbackTime(ref state);
         
