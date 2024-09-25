@@ -199,7 +199,7 @@ internal struct GameQuestManagerData
                     if (GameFormulaManager.IndexOf(condition.index, formulas, out formula) != -1)
                     {
                         command.type = GameQuestConditionType.Upgrade;
-                        command.count = formula.count;
+                        command.count = formula.level;
                         command.index = condition.index;
                         command.label = info.label;
 
