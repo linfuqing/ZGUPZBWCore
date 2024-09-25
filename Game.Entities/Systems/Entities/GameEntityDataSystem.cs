@@ -101,6 +101,11 @@ public struct GameActionPickableData
     }
 }
 
+public struct GameEntityActionImmunityDeadline : IComponentData
+{
+    public float value;
+}
+
 [BurstCompile,
     //CreateAfter(typeof(GameEntityActionLocationSystem)),
     //CreateAfter(typeof(GamePhysicsWorldBuildSystem)),
@@ -805,6 +810,8 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
     [BurstCompile]
     private struct ApplyDamagers : IJob
     {
+        public double elapsedTime;
+        
         public PropertyCalculator propertyCalculator;
         public BuffCalculator buffCalculator;
         public Spawner spawner;
@@ -851,6 +858,18 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         [ReadOnly]
         public ComponentLookup<GameAnimalInfo> animalInfos;
 
+        [ReadOnly] 
+        public ComponentLookup<GameDataDeadline> deadlines;
+
+        [ReadOnly] 
+        public ComponentLookup<GameDataDeadlineStatus> deadlineStates;
+
+        [ReadOnly] 
+        public ComponentLookup<GameDataDeadlineMask> deadlineMasks;
+
+        [ReadOnly] 
+        public ComponentLookup<GameEntityActionImmunityDeadline> immunityDeadlines;
+
         [ReadOnly]
         public ComponentLookup<GameEntityTorpidityData> torpidityMaxes;
         
@@ -875,6 +894,21 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
         public void Execute(in GameEntityActionDamager damager, ref NativeArray<float> defences)
         {
+            if (immunityDeadlines.HasComponent(damager.target) &&
+                deadlineStates.HasComponent(damager.target) &&
+                deadlines.HasComponent(damager.target) &&
+                deadlineMasks.HasComponent(damager.target))
+            {
+                float time = GameDataTimeUtility.CalculateTime(
+                    deadlineStates[damager.target].value,
+                    deadlines[damager.target].value,
+                    deadlineMasks[damager.target].time,
+                    elapsedTime);
+
+                if (time > immunityDeadlines[damager.target].value)
+                    return;
+            }
+            
             var instance = instances[damager.entity];
 
             float torpor = 0.0f;
@@ -1151,28 +1185,36 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
     private ComponentLookup<GameAnimalInfo> __animalInfos;
 
-    private ComponentLookup<GameEntityTorpidityData> __torpidityMaxes;
-
-    private ComponentLookup<GameEntityTorpidity> __torpidites;
-
     private ComponentLookup<GameEntityHealthData> __healthMaxes;
 
     private ComponentLookup<GameEntityHealth> __healthes;
 
-    private BufferLookup<GameEntityDefence> __defences;
+    private ComponentLookup<GameEntityTorpidityData> __torpidityMaxes;
 
-    private BufferLookup<GameActionAttack> __attacks;
+    private ComponentLookup<GameEntityTorpidity> __torpidites;
 
-    private ComponentLookup<GameActionBuff> __buffs;
+    private ComponentLookup<GameEntityActionImmunityDeadline> __immunityDeadlines;
+
+    private ComponentLookup<GameDataDeadline> __deadlines;
+
+    private ComponentLookup<GameDataDeadlineStatus> __deadlineStates;
+
+    private ComponentLookup<GameDataDeadlineMask> __deadlineMasks;
 
     private ComponentLookup<GameOwner> __owners;
 
     private ComponentLookup<GameNodeStatus> __nodeStates;
 
+    private BufferLookup<GameEntityDefence> __defences;
+
+    private BufferLookup<GameActionAttack> __attacks;
+
     private BufferLookup<GameEntityHealthDamage> __damageOuputs;
 
     private BufferLookup<GameEntityHealthBuff> __healthOutputs;
     private BufferLookup<GameEntityTorpidityBuff> __torpidityOutputs;
+
+    private ComponentLookup<GameActionBuff> __buffs;
 
     private GameEntityActionManager __actionManager;
 
@@ -1352,10 +1394,6 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         __entityPowers = state.GetComponentLookup<GameItemPower>(true);
         __entityLevels = state.GetComponentLookup<GameItemLevel>(true);
         
-        __owners = state.GetComponentLookup<GameOwner>(true);
-
-        __nodeStates = state.GetComponentLookup<GameNodeStatus>(true);
-
         __animals = state.GetComponentLookup<GameAnimalData>(true);
         __animalInfos = state.GetComponentLookup<GameAnimalInfo>(true);
         __healthMaxes = state.GetComponentLookup<GameEntityHealthData>(true);
@@ -1363,14 +1401,24 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         __torpidityMaxes = state.GetComponentLookup<GameEntityTorpidityData>(true);
         __torpidites = state.GetComponentLookup<GameEntityTorpidity>(true);
 
+        __immunityDeadlines = state.GetComponentLookup<GameEntityActionImmunityDeadline>(true);
+        __deadlines = state.GetComponentLookup<GameDataDeadline>(true);
+
+        __deadlineStates = state.GetComponentLookup<GameDataDeadlineStatus>(true);
+        __deadlineMasks = state.GetComponentLookup<GameDataDeadlineMask>(true);
+
+        __owners = state.GetComponentLookup<GameOwner>(true);
+        __nodeStates = state.GetComponentLookup<GameNodeStatus>(true);
+
         __defences = state.GetBufferLookup<GameEntityDefence>(true);
         __attacks = state.GetBufferLookup<GameActionAttack>();
-        __buffs = state.GetComponentLookup<GameActionBuff>();
         
         __damageOuputs = state.GetBufferLookup<GameEntityHealthDamage>();
         __healthOutputs = state.GetBufferLookup<GameEntityHealthBuff>();
         __torpidityOutputs = state.GetBufferLookup<GameEntityTorpidityBuff>();
 
+        __buffs = state.GetComponentLookup<GameActionBuff>();
+        
         var world = state.WorldUnmanaged;
         ref var actionSystem = ref world.GetExistingSystemUnmanaged<GameEntityActionSystem>();
         __group = actionSystem.group;
@@ -1518,6 +1566,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         var damagers = __actionManager.damagers;
 
         ApplyDamagers applyDamagers;
+        applyDamagers.elapsedTime = state.WorldUnmanaged.Time.ElapsedTime;
         applyDamagers.propertyCalculator = propertyCalculator;
         applyDamagers.buffCalculator = buffCalculator;
         applyDamagers.spawner = spawner;
@@ -1534,6 +1583,10 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
         applyDamagers.buffs = buffs;
         applyDamagers.animals = __animals.UpdateAsRef(ref state);
         applyDamagers.animalInfos = __animalInfos.UpdateAsRef(ref state);
+        applyDamagers.deadlines = __deadlines.UpdateAsRef(ref state);
+        applyDamagers.deadlineStates = __deadlineStates.UpdateAsRef(ref state);
+        applyDamagers.deadlineMasks = __deadlineMasks.UpdateAsRef(ref state);
+        applyDamagers.immunityDeadlines = __immunityDeadlines.UpdateAsRef(ref state);
         applyDamagers.torpidityMaxes = __torpidityMaxes.UpdateAsRef(ref state);
         applyDamagers.torpidities = __torpidites.UpdateAsRef(ref state);
         applyDamagers.healthMaxes = __healthMaxes.UpdateAsRef(ref state);
