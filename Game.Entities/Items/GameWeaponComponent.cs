@@ -1,30 +1,37 @@
 ﻿using System;
 using Unity.Entities;
 using Unity.Mathematics;
+using UnityEngine;
 using ZG;
 
-//[assembly: RegisterEntityObject(typeof(GameWeaponComponent))]
+[assembly: RegisterEntityObject(typeof(GameWeaponComponent))]
 
-[Serializable]
 public struct GameWeaponResult
 {
     public float value;
     public GameItemHandle handle;
 }
 
-[Serializable]
-public struct GameWeaponCallback : ICleanupComponentData
+public struct GameWeaponFunctionWrapper : IFunctionWrapper
 {
-    public CallbackHandle<GameWeaponResult> value;
+    public GameWeaponResult result;
+    public EntityObject<GameWeaponComponent> value;
+
+    public void Invoke()
+    {
+        var component = value.value;
+        if (component != null)
+            component._OnChanged(result);
+    }
 }
 
-//[EntityComponent]
-[EntityComponent(typeof(GameWeaponCallback))]
-public class GameWeaponComponent : EntityProxyComponent, IEntitySystemStateComponent
+[EntityComponent]
+//[EntityComponent(typeof(GameWeaponCallback))]
+public class GameWeaponComponent : MonoBehaviour
 {
     public event Action<GameItemHandle, float> onDamage;
 
-    private void __Damage(GameWeaponResult result)
+    internal void _OnChanged(GameWeaponResult result)
     {
         if (this == null)
             return;
@@ -32,12 +39,4 @@ public class GameWeaponComponent : EntityProxyComponent, IEntitySystemStateCompo
         if (math.abs(result.value) > math.FLT_MIN_NORMAL && onDamage != null)
             onDamage(result.handle, result.value);
     }
-
-    void IEntitySystemStateComponent.Init(in Entity entity, EntityComponentAssigner assigner)
-    {
-        GameWeaponCallback callback;
-        callback.value = new Action<GameWeaponResult>(__Damage).Register();
-        assigner.SetComponentData(entity, callback);
-    }
-
 }

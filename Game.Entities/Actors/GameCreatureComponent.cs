@@ -4,37 +4,31 @@ using Unity.Mathematics;
 using UnityEngine;
 using ZG;
 
-[Serializable]
 public struct GameCreatureTemperature : IComponentData
 {
     public sbyte value;
 }
 
-[Serializable]
 public struct GameCreatureFood : IComponentData
 {
     public float value;
 }
 
-[Serializable]
 public struct GameCreatureWater : IComponentData
 {
     public float value;
 }
 
-[Serializable]
 public struct GameCreatureFoodBuffFromTemperature : IComponentData
 {
     public float scale;
 }
 
-[Serializable]
 public struct GameCreatureWaterBuffFromTemperature : IComponentData
 {
     public float scale;
 }
 
-[Serializable]
 public struct GameCreatureFoodBuff : IComponentData, IBuff<float>
 {
     public float value;
@@ -50,7 +44,6 @@ public struct GameCreatureFoodBuff : IComponentData, IBuff<float>
     }
 }
 
-[Serializable]
 public struct GameCreatureWaterBuff : IComponentData, IBuff<float>
 {
     public float value;
@@ -66,7 +59,6 @@ public struct GameCreatureWaterBuff : IComponentData, IBuff<float>
     }
 }
 
-[Serializable]
 public struct GameCreatureDisabled : IComponentData
 {
 

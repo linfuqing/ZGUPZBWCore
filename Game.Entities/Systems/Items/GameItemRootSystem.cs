@@ -714,9 +714,9 @@ public partial struct GameItemRootEntitySystem : ISystem
 
     private EntityQuery __group;
 
-    public EntityTypeHandle __entityType;
+    private EntityTypeHandle __entityType;
 
-    public ComponentTypeHandle<GameItemRoot> __rootType;
+    private ComponentTypeHandle<GameItemRoot> __rootType;
 
     private ComponentLookup<GameItemRoot> __roots;
 
