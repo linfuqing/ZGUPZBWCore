@@ -135,30 +135,28 @@ public class GamePhysicsHierarchyDatabase : ScriptableObject, ISerializationCall
                     Create(childShape, child, shapes, ref childShapeIndices);
                 }
             }
-            else
+            
+            int childShapeIndex = -1;
+            string name = shape == null ? null : shape.name;
+            if (name != null)
             {
-                int childShapeIndex = -1;
-                string name = shape == null ? null : shape.name;
-                if (name != null)
+                int i, numShapes = shapes == null ? 0 : shapes.Length;
+                for (i = 0; i < numShapes; ++i)
                 {
-                    int i, numShapes = shapes == null ? 0 : shapes.Length;
-                    for (i = 0; i < numShapes; ++i)
-                    {
-                        if (shapes[i].name == name)
-                            break;
-                    }
-
-                    if (i < numShapes)
-                        childShapeIndex = i;
-                    else
-                        Debug.LogError($"Shape {name} has not been found!");
+                    if (shapes[i].name == name)
+                        break;
                 }
 
-                if (childShapeIndices == null)
-                    childShapeIndices = new List<int>();
-
-                childShapeIndices.Add(childShapeIndex);
+                if (i < numShapes)
+                    childShapeIndex = i;
+                else
+                    Debug.LogError($"Shape {name} has not been found!");
             }
+
+            if (childShapeIndices == null)
+                childShapeIndices = new List<int>();
+
+            childShapeIndices.Add(childShapeIndex);
         }
 
         public BlobAssetReference<GamePhysicsHierarchyDefinition> ToAsset()

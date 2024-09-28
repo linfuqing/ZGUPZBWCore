@@ -67,6 +67,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
     
     private struct Spawn
     {
+        public bool hasOrigin;
         public double time;
         
         [ReadOnly]
@@ -133,7 +134,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
                         entity = physicsShapeParents.HasComponent(physicsTriggerEvent.entity)
                             ? physicsShapeParents[physicsTriggerEvent.entity].entity
                             : physicsTriggerEvent.entity;
-                        if (__IsVail(entity))
+                        if (__IsOnline(entity))
                         {
                             isContains = true;
 
@@ -161,7 +162,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
                     for (int i = 0; i < numRangeEntities; ++i)
                     {
                         entity = rangeEntities[i];
-                        if (!__IsVail(entity))
+                        if (!__IsOnline(entity))
                         {
                             temp.value = entity;
                             outputs.Enqueue(temp);
@@ -207,7 +208,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
                             entity = physicsShapeParents.HasComponent(physicsTriggerEvent.entity)
                                 ? physicsShapeParents[physicsTriggerEvent.entity].entity
                                 : physicsTriggerEvent.entity;
-                            if (__IsVail(entity) &&
+                            if (__IsOnline(entity) &&
                                 !rangeEntityArray.Contains(entity))
                             {
                                 ++numRangeEntities;
@@ -292,16 +293,14 @@ public partial struct GameRangeSpawnerSystem : ISystem
                             entity = physicsShapeParents.HasComponent(physicsTriggerEvent.entity)
                                 ? physicsShapeParents[physicsTriggerEvent.entity].entity
                                 : physicsTriggerEvent.entity;
-                            if (!itemRoots.HasComponent(entity))
-                                continue;
+                            if (itemRoots.HasComponent(entity))
+                            {
+                                moveItem.source = itemRoots[entity].handle;
+                                moveItem.destination = __GetItemRoot(entity);
 
-                            moveItem.source = itemRoots[entity].handle;
-                            moveItem.destination = __GetItemRoot(entity);
-
-                            if (moveItem.source.Equals(moveItem.destination))
-                                continue;
-
-                            moveItems.Enqueue(moveItem);
+                                if (!moveItem.source.Equals(moveItem.destination))
+                                    moveItems.Enqueue(moveItem);
+                            }
                         }
                     }
                 }
@@ -324,8 +323,14 @@ public partial struct GameRangeSpawnerSystem : ISystem
             return nodeStates.HasComponent(entity) &&
                    ((GameEntityStatus)nodeStates[entity].value & GameEntityStatus.Mask) !=
                    GameEntityStatus.Dead && 
-                   areaNodePresentations.HasComponent(entity) && 
-                   areaNodePresentations[entity].areaIndex != -1;
+                   areaNodePresentations.HasComponent(entity);// && 
+                   //areaNodePresentations[entity].areaIndex != -1;
+        }
+        
+        private bool __IsOnline(in Entity entity)
+        {
+            return __IsVail(entity) && 
+                   (hasOrigin || areaNodePresentations[entity].areaIndex != -1);
         }
     }
 
@@ -351,6 +356,8 @@ public partial struct GameRangeSpawnerSystem : ISystem
         public ComponentLookup<GameOwner> owners;
         [ReadOnly] 
         public EntityTypeHandle entityType;
+        [ReadOnly] 
+        public ComponentTypeHandle<GameRangeSpawnerOrigin> originType;
         [ReadOnly]
         public BufferTypeHandle<PhysicsShapeChildEntity> physicsShapeChildEntityType;
         [ReadOnly]
@@ -378,6 +385,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
             in v128 chunkEnabledMask)
         {
             Spawn spawn;
+            spawn.hasOrigin = chunk.Has(ref originType);
             spawn.time = time;
             spawn.spawner = spawner;
             spawn.physicsTriggerEvents = physicsTriggerEvents;
@@ -584,6 +592,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
     private ComponentLookup<GameRangeSpawnerOrigin> __origins;
 
     private EntityTypeHandle __entityType;
+    private ComponentTypeHandle<GameRangeSpawnerOrigin> __originType;
     
     private BufferTypeHandle<PhysicsShapeChildEntity> __physicsShapeChildEntityType;
     private BufferTypeHandle<PhysicsTriggerEvent> __physicsTriggerEventType;
@@ -651,6 +660,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
         __origins = state.GetComponentLookup<GameRangeSpawnerOrigin>(true);
         
         __entityType = state.GetEntityTypeHandle();
+        __originType = state.GetComponentTypeHandle<GameRangeSpawnerOrigin>(true);
         __physicsShapeChildEntityType = state.GetBufferTypeHandle<PhysicsShapeChildEntity>(true);
         __physicsTriggerEventType = state.GetBufferTypeHandle<PhysicsTriggerEvent>(true);
         __followerType = state.GetBufferTypeHandle<GameFollower>(true);
@@ -713,6 +723,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
         spawn.itemRoots = __itemRoots.UpdateAsRef(ref state);
         spawn.owners = __owners.UpdateAsRef(ref state);
         spawn.entityType = __entityType.UpdateAsRef(ref state);
+        spawn.originType = __originType.UpdateAsRef(ref state);
         spawn.physicsShapeChildEntityType = __physicsShapeChildEntityType.UpdateAsRef(ref state);
         spawn.followerType = __followerType.UpdateAsRef(ref state);
         spawn.nodeType = __nodeType.UpdateAsRef(ref state);

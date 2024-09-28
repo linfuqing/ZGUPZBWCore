@@ -32,11 +32,11 @@ public struct GamePhysicsHierarchyDefinition
     {
         UnityEngine.Assertions.Assert.IsTrue(index >= 0 && index < sourceDefinition.childShapeIndices.Length);
 
-        int shpaeShapeIndex = sourceDefinition.childShapeIndices[index];
+        int shapeShapeIndex = sourceDefinition.childShapeIndices[index];
 
-        UnityEngine.Assertions.Assert.IsTrue(shpaeShapeIndex >= 0 && shpaeShapeIndex < sourceDefinition.shapes.Length);
+        UnityEngine.Assertions.Assert.IsTrue(shapeShapeIndex >= 0 && shapeShapeIndex < sourceDefinition.shapes.Length);
 
-        ref var sourceShape = ref sourceDefinition.shapes[shpaeShapeIndex];
+        ref var sourceShape = ref sourceDefinition.shapes[shapeShapeIndex];
         sourceInactiveTriggers.Reinterpret<int>().AddRange(sourceShape.shapeIndices.AsArray());
 
         PhysicsHierarchyInactiveTriggers inactiveTriggers;
@@ -67,11 +67,11 @@ public struct GamePhysicsHierarchyDefinition
     {
         UnityEngine.Assertions.Assert.IsTrue(index >= 0 && index < sourceDefinition.childShapeIndices.Length);
 
-        int shpaeShapeIndex = sourceDefinition.childShapeIndices[index];
+        int shapeShapeIndex = sourceDefinition.childShapeIndices[index];
 
-        UnityEngine.Assertions.Assert.IsTrue(shpaeShapeIndex >= 0 && shpaeShapeIndex < sourceDefinition.shapes.Length);
+        UnityEngine.Assertions.Assert.IsTrue(shapeShapeIndex >= 0 && shapeShapeIndex < sourceDefinition.shapes.Length);
 
-        ref var sourceShape = ref sourceDefinition.shapes[shpaeShapeIndex];
+        ref var sourceShape = ref sourceDefinition.shapes[shapeShapeIndex];
         int numInactiveTriggers = sourceInactiveTriggers.Length, numShapeIndices = sourceShape.shapeIndices.Length, shapeIndex, i, j;
         for(i = 0; i < numShapeIndices; ++i)
         {
