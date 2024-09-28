@@ -68,6 +68,7 @@ public struct GameFoodsData : IComponentData
 
 public struct GameFoodCommand : IComponentData, IEnableableComponent
 {
+    public bool isActive;
     public int count;
     public GameItemHandle handle;
 }
@@ -137,21 +138,32 @@ public partial struct GameFoodSystem : ISystem
         public NativeArray<NetworkIdentityType> identityTypes;
 
         [ReadOnly] 
+        public NativeArray<GameNodeStatus> nodeStates;
+
+        [ReadOnly] 
         public NativeArray<GameNodeCharacterSurface> nodeCharacterSurfaces;
+
+        [ReadOnly] 
+        public NativeArray<GameCreatureData> creatures;
+
+        [ReadOnly] 
+        public NativeArray<GameAnimalData> animals;
 
         [ReadOnly] 
         public NativeArray<GameFoodCommand> foodCommands;
 
         public NativeArray<GameMoney> moneies;
 
+        public NativeArray<GameAnimalInfo> animalInfos;
+
+        public NativeArray<GameCreatureWater> waters;
+
+        public NativeArray<GameCreatureFood> foods;
+
         public BufferAccessor<GameEntityHealthBuff> healthBuffs;
 
         public BufferAccessor<GameEntityTorpidityBuff> torpidityBuffs;
         
-        //public BufferAccessor<GameCreatureWaterBuff> waterBuffs;
-
-        //public BufferAccessor<GameCreatureFoodBuff> foodBuffs;
-
         public BufferAccessor<GameQuestCommandCondition> questCommandConditions;
 
         public BufferAccessor<GameFormulaCommand> formulaCommands;
@@ -230,7 +242,7 @@ public partial struct GameFoodSystem : ISystem
                 }
             }
 
-            __Buff(index, power, ref food);
+            __Buff(foodCommand.isActive, index, power, ref food);
 
             return __Player(
                 index, 
@@ -242,24 +254,57 @@ public partial struct GameFoodSystem : ISystem
         }
 
         private void __Buff(
+            bool isActive, 
             int index, 
             float power, 
-            ref GameFoodsDefinition.Food food)
+            ref GameFoodsDefinition.Food foodDefinition)
         {
             if (index < healthBuffs.Length)
             {
                 GameEntityHealthBuff healthBuff;
-                healthBuff.value = food.health * power;
-                healthBuff.duration = food.time;
+                healthBuff.value = foodDefinition.health * power;
+                healthBuff.duration = foodDefinition.time;
                 healthBuffs[index].Add(healthBuff);
             }
             
             if (index < torpidityBuffs.Length)
             {
                 GameEntityTorpidityBuff torpidityBuff;
-                torpidityBuff.value = food.torpidity * power;
-                torpidityBuff.duration = food.time;
+                torpidityBuff.value = foodDefinition.torpidity * power;
+                torpidityBuff.duration = foodDefinition.time;
                 torpidityBuffs[index].Add(torpidityBuff);
+            }
+
+            if (index < creatures.Length)
+            {
+                var creature = creatures[index];
+
+                if (index < foods.Length)
+                {
+                    var food = foods[index];
+                    food.value = math.clamp(food.value + foodDefinition.food, 0.0f, creature.foodMax);
+                    foods[index] = food;
+                }
+                
+                if (index < waters.Length)
+                {
+                    var water = waters[index];
+                    water.value = math.clamp(water.value + foodDefinition.water, 0.0f, creature.waterMax);
+                    waters[index] = water;
+                }
+            }
+
+            if (isActive && 
+                index < animals.Length && 
+                index < animalInfos.Length)
+            {
+                bool isKnockedOut = index < nodeStates.Length && nodeStates[index].value == (int)GameEntityStatus.KnockedOut;
+                
+                var animalInfo = animalInfos[index];
+                animalInfo.value =
+                    math.clamp(animalInfo.value + (isKnockedOut ? foodDefinition.beta : foodDefinition.alpha), 0.0f,
+                        animals[index].max);
+                animalInfos[index] = animalInfo;
             }
         }
 
@@ -411,12 +456,26 @@ public partial struct GameFoodSystem : ISystem
         public ComponentTypeHandle<NetworkIdentityType> identityTypeType;
 
         [ReadOnly] 
+        public ComponentTypeHandle<GameNodeStatus> nodeStatusType;
+
+        [ReadOnly] 
         public ComponentTypeHandle<GameNodeCharacterSurface> nodeCharacterSurfaceType;
 
         [ReadOnly] 
+        public ComponentTypeHandle<GameCreatureData> creatureType;
+
+        [ReadOnly]
+        public ComponentTypeHandle<GameAnimalData> animalType;
+
         public ComponentTypeHandle<GameFoodCommand> foodCommandType;
 
         public ComponentTypeHandle<GameMoney> moneyType;
+
+        public ComponentTypeHandle<GameAnimalInfo> animalInfoType;
+
+        public ComponentTypeHandle<GameCreatureWater> waterType;
+
+        public ComponentTypeHandle<GameCreatureFood> foodType;
 
         public BufferTypeHandle<GameEntityHealthBuff> healthBuffType;
 
@@ -452,9 +511,15 @@ public partial struct GameFoodSystem : ISystem
             eat.itemDurabilities = itemDurabilities;
             eat.formulas = chunk.GetBufferAccessor(ref formulaType);
             eat.identityTypes = chunk.GetNativeArray(ref identityTypeType);
+            eat.nodeStates = chunk.GetNativeArray(ref nodeStatusType);
             eat.nodeCharacterSurfaces = chunk.GetNativeArray(ref nodeCharacterSurfaceType);
+            eat.creatures = chunk.GetNativeArray(ref creatureType);
+            eat.animals = chunk.GetNativeArray(ref animalType);
             eat.foodCommands = chunk.GetNativeArray(ref foodCommandType);
             eat.moneies = chunk.GetNativeArray(ref moneyType);
+            eat.foods = chunk.GetNativeArray(ref foodType);
+            eat.waters = chunk.GetNativeArray(ref waterType);
+            eat.animalInfos = chunk.GetNativeArray(ref animalInfoType);
             eat.healthBuffs = chunk.GetBufferAccessor(ref healthBuffType);
             eat.torpidityBuffs = chunk.GetBufferAccessor(ref torpidityBuffType);
             eat.questCommandConditions = chunk.GetBufferAccessor(ref questCommandConditionType);
@@ -531,11 +596,23 @@ public partial struct GameFoodSystem : ISystem
     
     private ComponentTypeHandle<NetworkIdentityType> __identityTypeType;
 
+    private ComponentTypeHandle<GameNodeStatus> __nodeStatusType;
+
     private ComponentTypeHandle<GameNodeCharacterSurface> __nodeCharacterSurfaceType;
+
+    private ComponentTypeHandle<GameCreatureData> __creatureType;
+
+    private ComponentTypeHandle<GameAnimalData> __animalType;
 
     private ComponentTypeHandle<GameFoodCommand> __foodCommandType;
 
     private ComponentTypeHandle<GameMoney> __moneyType;
+
+    private ComponentTypeHandle<GameAnimalInfo> __animalInfoType;
+
+    private ComponentTypeHandle<GameCreatureWater> __waterType;
+
+    private ComponentTypeHandle<GameCreatureFood> __foodType;
 
     private BufferTypeHandle<GameEntityHealthBuff> __healthBuffType;
 
@@ -579,9 +656,15 @@ public partial struct GameFoodSystem : ISystem
         __itemDurabilities = state.GetComponentLookup<GameItemDurability>(true);
         __formulaType = state.GetBufferTypeHandle<GameFormula>(true);
         __identityTypeType = state.GetComponentTypeHandle<NetworkIdentityType>(true);
+        __nodeStatusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
         __nodeCharacterSurfaceType = state.GetComponentTypeHandle<GameNodeCharacterSurface>(true);
+        __creatureType = state.GetComponentTypeHandle<GameCreatureData>(true);
+        __animalType = state.GetComponentTypeHandle<GameAnimalData>(true);
         __foodCommandType = state.GetComponentTypeHandle<GameFoodCommand>();
         __moneyType = state.GetComponentTypeHandle<GameMoney>();
+        __animalInfoType = state.GetComponentTypeHandle<GameAnimalInfo>();
+        __foodType = state.GetComponentTypeHandle<GameCreatureFood>();
+        __waterType = state.GetComponentTypeHandle<GameCreatureWater>();
         __healthBuffType = state.GetBufferTypeHandle<GameEntityHealthBuff>();
         __torpidityBuffType = state.GetBufferTypeHandle<GameEntityTorpidityBuff>();
         __questCommandConditionType = state.GetBufferTypeHandle<GameQuestCommandCondition>();
@@ -635,9 +718,15 @@ public partial struct GameFoodSystem : ISystem
         eat.itemDurabilities = __itemDurabilities.UpdateAsRef(ref state);
         eat.formulaType = __formulaType.UpdateAsRef(ref state);
         eat.identityTypeType = __identityTypeType.UpdateAsRef(ref state);
+        eat.nodeStatusType = __nodeStatusType.UpdateAsRef(ref state);
         eat.nodeCharacterSurfaceType = __nodeCharacterSurfaceType.UpdateAsRef(ref state);
+        eat.creatureType = __creatureType.UpdateAsRef(ref state);
+        eat.animalType = __animalType.UpdateAsRef(ref state);
         eat.foodCommandType = __foodCommandType.UpdateAsRef(ref state);
         eat.moneyType = __moneyType.UpdateAsRef(ref state);
+        eat.animalInfoType = __animalInfoType.UpdateAsRef(ref state);
+        eat.foodType = __foodType.UpdateAsRef(ref state);
+        eat.waterType = __waterType.UpdateAsRef(ref state);
         eat.healthBuffType = __healthBuffType.UpdateAsRef(ref state);
         eat.torpidityBuffType = __torpidityBuffType.UpdateAsRef(ref state);
         eat.questCommandConditionType = __questCommandConditionType.UpdateAsRef(ref state);

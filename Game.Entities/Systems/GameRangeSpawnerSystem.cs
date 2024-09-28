@@ -77,8 +77,8 @@ public partial struct GameRangeSpawnerSystem : ISystem
         public ComponentLookup<PhysicsShapeParent> physicsShapeParents;
         [ReadOnly] 
         public ComponentLookup<GameAreaNodePresentation> areaNodePresentations;
-        [ReadOnly] 
-        public ComponentLookup<GameAreaNode> areaNodes;
+        //[ReadOnly] 
+        //public ComponentLookup<GameAreaNode> areaNodes;
         [ReadOnly]
         public ComponentLookup<GameNodeStatus> nodeStates;
         [ReadOnly]
@@ -325,8 +325,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
                    ((GameEntityStatus)nodeStates[entity].value & GameEntityStatus.Mask) !=
                    GameEntityStatus.Dead && 
                    areaNodePresentations.HasComponent(entity) && 
-                   areaNodes.HasComponent(entity) && 
-                   areaNodes[entity].areaIndex != -1;
+                   areaNodePresentations[entity].areaIndex != -1;
         }
     }
 
@@ -342,8 +341,8 @@ public partial struct GameRangeSpawnerSystem : ISystem
         public ComponentLookup<PhysicsShapeParent> physicsShapeParents;
         [ReadOnly] 
         public ComponentLookup<GameAreaNodePresentation> areaNodePresentations;
-        [ReadOnly] 
-        public ComponentLookup<GameAreaNode> areaNodes;
+        //[ReadOnly] 
+        //public ComponentLookup<GameAreaNode> areaNodes;
         [ReadOnly]
         public ComponentLookup<GameNodeStatus> nodeStates;
         [ReadOnly]
@@ -384,7 +383,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
             spawn.physicsTriggerEvents = physicsTriggerEvents;
             spawn.physicsShapeParents = physicsShapeParents;
             spawn.areaNodePresentations = areaNodePresentations;
-            spawn.areaNodes = areaNodes;
+            //spawn.areaNodes = areaNodes;
             spawn.nodeStates = nodeStates;
             spawn.itemRoots = itemRoots;
             spawn.owners = owners;
@@ -579,7 +578,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
     private BufferLookup<PhysicsTriggerEvent> __physicsTriggerEvents;
     private ComponentLookup<PhysicsShapeParent> __physicsShapeParents;
     private ComponentLookup<GameAreaNodePresentation> __areaNodePresentations;
-    private ComponentLookup<GameAreaNode> __areaNodes;
+    //private ComponentLookup<GameAreaNode> __areaNodes;
     private ComponentLookup<GameItemRoot> __itemRoots;
     private ComponentLookup<GameOwner> __owners;
     private ComponentLookup<GameRangeSpawnerOrigin> __origins;
@@ -646,7 +645,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
         __physicsTriggerEvents = state.GetBufferLookup<PhysicsTriggerEvent>(true);
         __physicsShapeParents = state.GetComponentLookup<PhysicsShapeParent>(true);
         __areaNodePresentations = state.GetComponentLookup<GameAreaNodePresentation>(true);
-        __areaNodes = state.GetComponentLookup<GameAreaNode>(true);
+        //__areaNodes = state.GetComponentLookup<GameAreaNode>(true);
         __itemRoots = state.GetComponentLookup<GameItemRoot>(true);
         __owners = state.GetComponentLookup<GameOwner>(true);
         __origins = state.GetComponentLookup<GameRangeSpawnerOrigin>(true);
@@ -709,7 +708,7 @@ public partial struct GameRangeSpawnerSystem : ISystem
         spawn.physicsTriggerEvents = __physicsTriggerEvents.UpdateAsRef(ref state);
         spawn.physicsShapeParents = physicsShapeParents;
         spawn.areaNodePresentations = __areaNodePresentations.UpdateAsRef(ref state);
-        spawn.areaNodes = __areaNodes.UpdateAsRef(ref state);
+        //spawn.areaNodes = __areaNodes.UpdateAsRef(ref state);
         spawn.nodeStates = nodeStates;
         spawn.itemRoots = __itemRoots.UpdateAsRef(ref state);
         spawn.owners = __owners.UpdateAsRef(ref state);
