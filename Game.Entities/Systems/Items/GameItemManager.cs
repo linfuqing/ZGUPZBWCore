@@ -397,7 +397,7 @@ public struct GameItemManager
                 return false;
             }
 
-            int depth = 0;
+            //int depth = 0;
             return __Find(
                 true, 
                 flag, 

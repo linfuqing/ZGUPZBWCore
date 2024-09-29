@@ -1097,7 +1097,7 @@ public partial struct GameInputSystem : ISystem
 
             //ref var actionSetDefinition = ref this.actionSetDefinition.Value;
 
-            bool isContains;
+            //bool isContains;
             foreach (var target in targets)
             {
                 if (target.distance > maxDistance || target.entity == selection)

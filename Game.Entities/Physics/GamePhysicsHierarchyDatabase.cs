@@ -129,34 +129,36 @@ public class GamePhysicsHierarchyDatabase : ScriptableObject, ISerializationCall
                     childShape = child.GetComponent<IPhysicsHierarchyShape>();
                     if (childShape == null)
                         childShape = shape;
-                    else /*if (!child.gameObject.activeInHierarchy)
+                    /*else if (!child.gameObject.activeInHierarchy)
                         continue;*/
 
                     Create(childShape, child, shapes, ref childShapeIndices);
                 }
             }
-            
-            int childShapeIndex = -1;
-            string name = shape == null ? null : shape.name;
-            if (name != null)
+            else
             {
-                int i, numShapes = shapes == null ? 0 : shapes.Length;
-                for (i = 0; i < numShapes; ++i)
+                int childShapeIndex = -1;
+                string name = shape == null ? null : shape.name;
+                if (name != null)
                 {
-                    if (shapes[i].name == name)
-                        break;
+                    int i, numShapes = shapes == null ? 0 : shapes.Length;
+                    for (i = 0; i < numShapes; ++i)
+                    {
+                        if (shapes[i].name == name)
+                            break;
+                    }
+
+                    if (i < numShapes)
+                        childShapeIndex = i;
+                    else
+                        Debug.LogError($"Shape {name} has not been found!");
                 }
 
-                if (i < numShapes)
-                    childShapeIndex = i;
-                else
-                    Debug.LogError($"Shape {name} has not been found!");
+                if (childShapeIndices == null)
+                    childShapeIndices = new List<int>();
+
+                childShapeIndices.Add(childShapeIndex);
             }
-
-            if (childShapeIndices == null)
-                childShapeIndices = new List<int>();
-
-            childShapeIndices.Add(childShapeIndex);
         }
 
         public BlobAssetReference<GamePhysicsHierarchyDefinition> ToAsset()

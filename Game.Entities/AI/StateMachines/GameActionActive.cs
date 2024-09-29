@@ -933,14 +933,14 @@ public partial struct GameActionActiveSystem : ISystem
                                 SingletonAssetContainerHandle handle;
                                 handle.instanceID = actions.instanceID;
 
-                                int numActorActions = actorActionInfos.Length, i;
+                                var actorActions = this.actorActions[index];
+                                int numActorActions = actorActions.Length, numActorActionInfos = actorActionInfos.Length, i;
                                 double coolDownTime;
                                 RigidTransform sourceTransform = math.RigidTransform(quaternion.LookRotationSafe(forward, math.up()), source),
                                     destinationTransform = math.RigidTransform(targetRotation, destination),
                                     transform = math.mul(math.inverse(destinationTransform), sourceTransform);
                                 //var collider = physicsColliders[info.entity].Value;
                                 var actor = actors[index];
-                                var actorActions = this.actorActions[index];
                                 for (i = 0; i < numActorActions; ++i)
                                 {
                                     ref var action = ref actions.values[actorActions[i].actionIndex];
@@ -950,7 +950,9 @@ public partial struct GameActionActiveSystem : ISystem
                                     {
                                         handle.index = action.colliderIndex;
 
-                                        coolDownTime = actorActionInfos[i].coolDownTime;
+                                        coolDownTime = i < numActorActionInfos
+                                            ? actorActionInfos[i].coolDownTime
+                                            : 0.0f;
                                         if (coolDownTime < time &&
                                             isDiffDirection == action.info.distance < 0.0f &&
                                             IsDo(

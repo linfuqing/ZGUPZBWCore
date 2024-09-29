@@ -129,6 +129,9 @@ public partial struct GameFoodSystem : ISystem
         public NativeHashMap<int, float> times;
 
         [ReadOnly] 
+        public ComponentLookup<GameItemTime> itemTimes;
+
+        [ReadOnly] 
         public ComponentLookup<GameItemDurability> itemDurabilities;
 
         [ReadOnly]
@@ -183,63 +186,71 @@ public partial struct GameFoodSystem : ISystem
                item.type >= definition.foods.Length)
                 return 0;
 
+            float power = foodCommand.count;
+            
             ref var food = ref definition.foods[item.type];
             
-            bool isSample = false;//, isChange = false;
+            //bool isSample = false;//, isChange = false;
             if (food.areaMask != 0 && 
                 index < nodeCharacterSurfaces.Length && 
                 (food.areaMask & nodeCharacterSurfaces[index].layerMask) != 0)
             {
-                if (durabilities.TryGetValue(item.type, out float durability))
+                if (handleEntities.TryGetValue(GameItemStructChangeFactory.Convert(foodCommand.handle),
+                        out Entity entity))
                 {
-                    ChangedItemDurability changedItemDurability;
-                    changedItemDurability.handle = foodCommand.handle;
-                    changedItemDurability.value = durability;
-                    changedDurabilities.Enqueue(changedItemDurability);
+                    if (durabilities.TryGetValue(item.type, out float durability) &&
+                        itemDurabilities.TryGetComponent(entity, out var itemDurability))
+                    {
+                        ChangedItemDurability changedItemDurability;
+                        changedItemDurability.handle = foodCommand.handle;
+                        changedItemDurability.value = durability - itemDurability.value;
+                        changedDurabilities.Enqueue(changedItemDurability);
 
-                    //isChange = true;
+                        //isChange = true;
+                    }
+
+                    if (times.TryGetValue(item.type, out float time) && 
+                        itemTimes.TryGetComponent(entity, out var itemTime))
+                    {
+                        ChangedItemTime changedItemTime;
+                        changedItemTime.handle = foodCommand.handle;
+                        changedItemTime.value = time - itemTime.value;
+                        changedTimes.Enqueue(changedItemTime);
+
+                        //isChange = true;
+                    }
                 }
 
-                if (times.TryGetValue(item.type, out float time))
-                {
-                    ChangedItemTime changedItemTime;
-                    changedItemTime.handle = foodCommand.handle;
-                    changedItemTime.value = time;
-                    changedTimes.Enqueue(changedItemTime);
-
-                    //isChange = true;
-                }
-
-                isSample = true;
+                //isSample = true;
             }
-
-            float power = foodCommand.count;
-            if (isSample)
+            /*if (isSample)
             {
                 //if (!isChange)
                     //actor.Break();
-            }
+            }*/
             else
             {
                 if (food.durability > math.FLT_MIN_NORMAL && 
                     handleEntities.TryGetValue(GameItemStructChangeFactory.Convert(foodCommand.handle), out Entity entity) && 
                     itemDurabilities.TryGetComponent(entity, out var itemDurability))
                 {
-                    if (food.durability > itemDurability.value)
-                        power = itemDurability.value / food.durability;
+                    if (food.durability >= itemDurability.value)
+                        return 0;//power = itemDurability.value / food.durability;
 
                     ChangedItemDurability changedItemDurability;
                     changedItemDurability.handle = foodCommand.handle;
-                    changedItemDurability.value = itemDurability.value - food.durability * power;
+                    changedItemDurability.value = /*itemDurability.value - */food.durability * power;
                     changedDurabilities.Enqueue(changedItemDurability);
                 }
-                else
+                else if (food.areaMask == 0)
                 {
                     RemovedItem removedItem;
                     removedItem.handle = foodCommand.handle;
                     removedItem.count = foodCommand.count;
                     removedItems.Enqueue(removedItem);
                 }
+                else
+                    return 0;
             }
 
             __Buff(foodCommand.isActive, index, power, ref food);
@@ -447,6 +458,9 @@ public partial struct GameFoodSystem : ISystem
         public NativeHashMap<int, float> times;
 
         [ReadOnly] 
+        public ComponentLookup<GameItemTime> itemTimes;
+
+        [ReadOnly] 
         public ComponentLookup<GameItemDurability> itemDurabilities;
 
         [ReadOnly]
@@ -508,6 +522,7 @@ public partial struct GameFoodSystem : ISystem
             eat.handleEntities = handleEntities;
             eat.durabilities = durabilities;
             eat.times = times;
+            eat.itemTimes = itemTimes;
             eat.itemDurabilities = itemDurabilities;
             eat.formulas = chunk.GetBufferAccessor(ref formulaType);
             eat.identityTypes = chunk.GetNativeArray(ref identityTypeType);
@@ -568,11 +583,13 @@ public partial struct GameFoodSystem : ISystem
             while (removedItems.TryDequeue(out var removedItem))
                 itemManager.Remove(removedItem.handle, removedItem.count);
 
+            GameItemHandle handle;
             Entity entity;
             GameWeaponFunctionWrapper functionWrapper;
             while (changedDurabilities.TryDequeue(out var changedDurability))
             {
-                if(!handleRootEntities.TryGetValue(changedDurability.handle, out entity) || 
+                handle = itemManager.GetRoot(changedDurability.handle);
+                if(!handleRootEntities.TryGetValue(handle, out entity) || 
                    !components.TryGetComponent(entity, out functionWrapper.value))
                     continue;
 
@@ -590,6 +607,7 @@ public partial struct GameFoodSystem : ISystem
     
     private ComponentLookup<EntityObject<GameWeaponComponent>> __components;
 
+    private ComponentLookup<GameItemTime> __itemTimes;
     private ComponentLookup<GameItemDurability> __itemDurabilities;
 
     private BufferTypeHandle<GameFormula> __formulaType;
@@ -653,6 +671,7 @@ public partial struct GameFoodSystem : ISystem
                 .Build(ref state);
         
         __components = state.GetComponentLookup<EntityObject<GameWeaponComponent>>(true);
+        __itemTimes = state.GetComponentLookup<GameItemTime>(true);
         __itemDurabilities = state.GetComponentLookup<GameItemDurability>(true);
         __formulaType = state.GetBufferTypeHandle<GameFormula>(true);
         __identityTypeType = state.GetComponentTypeHandle<NetworkIdentityType>(true);
@@ -715,6 +734,7 @@ public partial struct GameFoodSystem : ISystem
         eat.handleEntities = handleEntities.reader;
         eat.durabilities = __durabilities;
         eat.times = __times;
+        eat.itemTimes = __itemTimes.UpdateAsRef(ref state);
         eat.itemDurabilities = __itemDurabilities.UpdateAsRef(ref state);
         eat.formulaType = __formulaType.UpdateAsRef(ref state);
         eat.identityTypeType = __identityTypeType.UpdateAsRef(ref state);
