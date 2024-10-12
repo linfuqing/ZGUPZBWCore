@@ -272,9 +272,12 @@ internal struct GameQuestManagerData
         if (quest.status == GameQuestStatus.Complete)
             return false;
 
-        /*if (!IsClear(quest))
-            return false;*/
-
+#if DEBUG
+        if (!IsClear(quest))
+            UnityEngine.Debug.LogError($"Complete the quest {quest.index} which is not be clear!");
+            //return false;
+#endif
+        
         quest.status = GameQuestStatus.Complete;
         quests[index] = quest;
 

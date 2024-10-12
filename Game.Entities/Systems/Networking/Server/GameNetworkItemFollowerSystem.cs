@@ -32,7 +32,7 @@ public struct GameServerItemFollower : IBufferElementData
  CreateAfter(typeof(GameItemOwnSystem)), 
  //CreateAfter(typeof(GameItemResultSystem)), 
  UpdateBefore(typeof(NetworkRPCSystem))]
-public partial struct GameItemServerFollowerSystem : ISystem
+public partial struct GameServerItemFollowerSystem : ISystem
 {
     private struct Result
     {

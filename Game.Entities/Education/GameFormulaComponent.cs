@@ -16,7 +16,7 @@ public struct GameFormulaCommand : IBufferElementData, IEnableableComponent
     public int count;
 }
 
-public struct GameFormulaEvent : IBufferElementData
+public struct GameFormulaEvent : IBufferElementData, IEnableableComponent
 {
     public int index;
     public int count;

@@ -349,13 +349,15 @@ public partial struct GameFormulaSystem : ISystem
 
         public BufferAccessor<GameFormulaEvent> events;
 
-        public void Execute(int index)
+        public bool Execute(int index)
         {
+            var events = this.events[index];
+            events.Clear();
+            
             int type = identities[index].type, sourceMoney = moneys[index].value, destinationMoney = sourceMoney, count;
             //Entity entity = entityArray[index];
             var instances = this.instances[index];
             var commands = this.commands[index];
-            var events = this.events[index];
             foreach (var command in commands)
             {
                 if (command.count > 0)
@@ -382,12 +384,16 @@ public partial struct GameFormulaSystem : ISystem
             }
 
             commands.Clear();
+
+            return events.Length > 0;
         }
     }
 
     [BurstCompile]
     private struct CommandEx : IJobChunk
     {
+        public uint lastSystemVersion;
+        
         [ReadOnly]
         public GameFormulaManager manager;
 
@@ -405,7 +411,8 @@ public partial struct GameFormulaSystem : ISystem
 
         public BufferTypeHandle<GameFormulaEvent> eventType;
 
-        public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+        public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask,
+            in v128 chunkEnabledMask)
         {
             Command command;
             command.manager = manager;
@@ -416,10 +423,13 @@ public partial struct GameFormulaSystem : ISystem
             command.instances = chunk.GetBufferAccessor(ref instanceType);
             command.events = chunk.GetBufferAccessor(ref eventType);
 
+            bool result;
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
             {
-                command.Execute(i);
+                result = command.Execute(i);
+                
+                chunk.SetComponentEnabled(ref eventType, i, result);
 
                 chunk.SetComponentEnabled(ref commandType, i, false);
             }
@@ -449,10 +459,11 @@ public partial struct GameFormulaSystem : ISystem
         using (var builder = new EntityQueryBuilder(Allocator.Temp))
             __group = builder
                     .WithAll<EntityDataIdentity>()
-                    .WithAllRW<GameFormula, GameFormulaCommand>()
+                    .WithAllRW<GameFormula>()
+                    .WithAnyRW<GameFormulaCommand, GameFormulaEvent>()
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
-        __group.SetChangedVersionFilter(ComponentType.ReadWrite<GameFormulaCommand>());
+        //__group.SetChangedVersionFilter(ComponentType.ReadWrite<GameFormulaCommand>());
 
         //__entityType = state.GetEntityTypeHandle();
         __identityType = state.GetComponentTypeHandle<EntityDataIdentity>(true);
@@ -474,6 +485,7 @@ public partial struct GameFormulaSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         CommandEx command;
+        command.lastSystemVersion = state.LastSystemVersion;
         command.manager = manager;
         //command.entityType = __entityType.UpdateAsRef(ref state);
         command.identityType = __identityType.UpdateAsRef(ref state);
