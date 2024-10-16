@@ -212,6 +212,13 @@ public struct GameActionCondition : IBufferElementData
 public struct GameActionGroup : IBufferElementData
 {
     public int mask;
+
+    [Tooltip("指定目标，0则为不限制")]
+    public GameActionTargetType targetType;
+
+    [Tooltip("指定目标，0则为不限制")]
+    public LayerMask layerMask;
+    
     public float chance;
 
     [Tooltip("Cos(最小角度)")]
@@ -251,6 +258,8 @@ public struct GameActionGroup : IBufferElementData
 
     public int Did(
         int mask, 
+        uint layerMask, 
+        GameActionTargetType targetType, 
         float health,
         float torpidity,
         float dot,
@@ -258,6 +267,12 @@ public struct GameActionGroup : IBufferElementData
         ref float chance)
     {
         if ((mask & this.mask) == 0)
+            return 0;
+
+        if (this.layerMask != 0 && layerMask != 0 && (this.layerMask & layerMask) == 0)
+            return 0;
+
+        if (this.targetType != 0 && targetType != 0 && (this.targetType & targetType) == 0)
             return 0;
 
         if (health < minHealth ||
@@ -284,6 +299,8 @@ public struct GameActionGroup : IBufferElementData
 
     public static int Did(
         int mask,
+        uint layerMask, 
+        GameActionTargetType targetType, 
         float health,
         float torpidity,
         float dot, 
@@ -294,7 +311,7 @@ public struct GameActionGroup : IBufferElementData
         int numGroups = groups.Length, maskTemp;
         for(int i = 0; i < numGroups; ++i)
         {
-            maskTemp = groups[i].Did(mask, health, torpidity, dot, distance, ref chance);
+            maskTemp = groups[i].Did(mask, layerMask, targetType, health, torpidity, dot, distance, ref chance);
             if (maskTemp != 0)
                 return maskTemp;
         }

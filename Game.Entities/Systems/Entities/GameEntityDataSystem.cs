@@ -226,7 +226,7 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
     }
 
     [BurstCompile]
-    private struct Recapcity : IJob
+    private struct Recapacity : IJob
     {
         [ReadOnly, DeallocateOnJobCompletion]
         public NativeArray<int> counter;
@@ -1490,10 +1490,10 @@ public partial struct GameEntityActionDataSystem : ISystem//, IEntityCommandProd
 
         ref var spawnCommandsJobManager = ref __spawnCommands.lookupJobManager;
 
-        Recapcity recapcity;
-        recapcity.counter = counter;
-        recapcity.results = __spawnCommands.writer;
-        inputDeps = recapcity.ScheduleByRef(JobHandle.CombineDependencies(inputDeps, spawnCommandsJobManager.readWriteJobHandle));
+        Recapacity recapacity;
+        recapacity.counter = counter;
+        recapacity.results = __spawnCommands.writer;
+        inputDeps = recapacity.ScheduleByRef(JobHandle.CombineDependencies(inputDeps, spawnCommandsJobManager.readWriteJobHandle));
 
         ref var handleEntitiesJobManager = ref __handleEntities.lookupJobManager;
         ref var itemManagerJobManager = ref __itemManager.lookupJobManager;

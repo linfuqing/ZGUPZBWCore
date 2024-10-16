@@ -509,13 +509,13 @@ public partial struct GameActionActiveSystem : ISystem
         public ComponentLookup<PhysicsCollider> physicsColliders;
 
         [ReadOnly]
+        public ComponentLookup<GameEntityCamp> campMap;
+
+        [ReadOnly]
         public ComponentLookup<GameActionActiveProtectedTime> protectedTimes;
 
         [ReadOnly]
         public NativeArray<Entity> entityArray;
-
-        [ReadOnly]
-        public NativeArray<GameOwner> owners;
 
         [ReadOnly]
         public NativeArray<GameNodeStatus> states;
@@ -531,6 +531,9 @@ public partial struct GameActionActiveSystem : ISystem
 
         [ReadOnly]
         public NativeArray<GameNodeCharacterDesiredVelocity> desiredVelocities;
+
+        [ReadOnly]
+        public NativeArray<GameEntityCamp> camps;
 
         [ReadOnly]
         public NativeArray<GameEntityHealthData> healthData;
@@ -874,7 +877,29 @@ public partial struct GameActionActiveSystem : ISystem
                                             actorActionInfos,
                                             conditionActions);
 
-                                    info.groupMask = result == GameActionConditionResult.OK ? GameActionGroup.Did(groupMask, health, torpidity, dot, distance, random.NextFloat(), groups) : 0;
+                                    GameActionTargetType targetType;
+                                    if (entity == info.entity)
+                                        targetType = GameActionTargetType.Self;
+                                    else
+                                    {
+                                        int sourceCamp = index < camps.Length ? camps[index].value : 0,
+                                            destinationCamp = campMap.HasComponent(info.entity) ? campMap[info.entity].value : 0;
+
+                                        targetType = sourceCamp == destinationCamp
+                                            ? GameActionTargetType.Ally
+                                            : GameActionTargetType.Enemy;
+                                    }
+                                    
+                                    info.groupMask = result == GameActionConditionResult.OK ? GameActionGroup.Did(
+                                        groupMask, 
+                                        categoryBits, 
+                                        targetType, 
+                                        health, 
+                                        torpidity, 
+                                        dot, 
+                                        distance, 
+                                        random.NextFloat(), 
+                                        groups) : 0;
 
                                     info.conditionIndex = -1;
                                 }
@@ -1155,12 +1180,13 @@ public partial struct GameActionActiveSystem : ISystem
         public ComponentLookup<PhysicsCollider> physicsColliders;
 
         [ReadOnly]
+        public ComponentLookup<GameEntityCamp> camps;
+
+        [ReadOnly]
         public ComponentLookup<GameActionActiveProtectedTime> protectedTimes;
 
         [ReadOnly]
         public EntityTypeHandle entityType;
-        [ReadOnly]
-        public ComponentTypeHandle<GameOwner> ownerType;
         [ReadOnly]
         public ComponentTypeHandle<GameNodeStatus> statusType;
         [ReadOnly]
@@ -1171,6 +1197,8 @@ public partial struct GameActionActiveSystem : ISystem
         public ComponentTypeHandle<GameNodeActorStatus> actorStatusType;
         [ReadOnly]
         public ComponentTypeHandle<GameNodeCharacterDesiredVelocity> desiredVelocityType;
+        [ReadOnly]
+        public ComponentTypeHandle<GameEntityCamp> campType;
         [ReadOnly]
         public ComponentTypeHandle<GameEntityHealthData> healthDataType;
         [ReadOnly]
@@ -1241,14 +1269,15 @@ public partial struct GameActionActiveSystem : ISystem
             run.rotations = rotations;
             run.physicsMassMap = physicsMasses;
             run.physicsColliders = physicsColliders;
+            run.campMap = camps;
             run.protectedTimes = protectedTimes;
             run.entityArray = chunk.GetNativeArray(entityType);
-            run.owners = chunk.GetNativeArray(ref ownerType);
             run.states = chunk.GetNativeArray(ref statusType);
             run.delay = chunk.GetNativeArray(ref delayType);
             run.angles = chunk.GetNativeArray(ref angleType);
             run.actorStates = chunk.GetNativeArray(ref actorStatusType);
             run.desiredVelocities = chunk.GetNativeArray(ref desiredVelocityType);
+            run.camps = chunk.GetNativeArray(ref campType);
             run.healthData = chunk.GetNativeArray(ref healthDataType);
             run.healthes = chunk.GetNativeArray(ref healthType);
             run.torpidityData = chunk.GetNativeArray(ref torpidityDataType);
@@ -1291,19 +1320,20 @@ public partial struct GameActionActiveSystem : ISystem
 
     private ComponentLookup<PhysicsCollider> __physicsColliders;
 
+    private ComponentLookup<GameEntityCamp> __camps;
+
     private ComponentLookup<GameActionActiveProtectedTime> __protectedTimes;
 
     private EntityTypeHandle __entityType;
 
     private ComponentTypeHandle<Translation> __translationType;
 
-    private ComponentTypeHandle<GameOwner> __ownerType;
-
     private ComponentTypeHandle<GameNodeStatus> __statusType;
     private ComponentTypeHandle<GameNodeDelay> __delayType;
     private ComponentTypeHandle<GameNodeAngle> __angleType;
     private ComponentTypeHandle<GameNodeActorStatus> __actorStatusType;
     private ComponentTypeHandle<GameNodeCharacterDesiredVelocity> __desiredVelocityType;
+    private ComponentTypeHandle<GameEntityCamp> __campType;
     private ComponentTypeHandle<GameEntityHealthData> __healthDataType;
     private ComponentTypeHandle<GameEntityHealth> __healthType;
     private ComponentTypeHandle<GameEntityTorpidityData> __torpidityDataType;
@@ -1351,16 +1381,16 @@ public partial struct GameActionActiveSystem : ISystem
         __rotations = state.GetComponentLookup<Rotation>(true);
         __physicsMasses = state.GetComponentLookup<PhysicsMass>(true);
         __physicsColliders = state.GetComponentLookup<PhysicsCollider>(true);
+        __camps = state.GetComponentLookup<GameEntityCamp>(true);
         __protectedTimes = state.GetComponentLookup<GameActionActiveProtectedTime>(true);
         __entityType = state.GetEntityTypeHandle();
         __translationType = state.GetComponentTypeHandle<Translation>(true);
-        __ownerType = state.GetComponentTypeHandle<GameOwner>(true);
         __statusType = state.GetComponentTypeHandle<GameNodeStatus>(true);
         __delayType = state.GetComponentTypeHandle<GameNodeDelay>(true);
         __angleType = state.GetComponentTypeHandle<GameNodeAngle>(true);
         __actorStatusType = state.GetComponentTypeHandle<GameNodeActorStatus>(true);
         __desiredVelocityType = state.GetComponentTypeHandle<GameNodeCharacterDesiredVelocity>(true);
-        __angleType = state.GetComponentTypeHandle<GameNodeAngle>(true);
+        __campType = state.GetComponentTypeHandle<GameEntityCamp>(true);
         __healthDataType = state.GetComponentTypeHandle<GameEntityHealthData>(true);
         __healthType = state.GetComponentTypeHandle<GameEntityHealth>(true);
         __torpidityDataType = state.GetComponentTypeHandle<GameEntityTorpidityData>(true);
@@ -1426,15 +1456,15 @@ public partial struct GameActionActiveSystem : ISystem
         factoryRun.rotations = __rotations.UpdateAsRef(ref state);
         factoryRun.physicsMasses = __physicsMasses.UpdateAsRef(ref state);
         factoryRun.physicsColliders = __physicsColliders.UpdateAsRef(ref state);
+        factoryRun.camps = __camps.UpdateAsRef(ref state);
         factoryRun.protectedTimes = __protectedTimes.UpdateAsRef(ref state);
         factoryRun.entityType = __entityType.UpdateAsRef(ref state);
-        factoryRun.ownerType = __ownerType.UpdateAsRef(ref state);
         factoryRun.statusType = __statusType.UpdateAsRef(ref state);
         factoryRun.delayType = __delayType.UpdateAsRef(ref state);
         factoryRun.angleType = __angleType.UpdateAsRef(ref state);
         factoryRun.actorStatusType = __actorStatusType.UpdateAsRef(ref state);
         factoryRun.desiredVelocityType = __desiredVelocityType.UpdateAsRef(ref state);
-        factoryRun.angleType = __angleType.UpdateAsRef(ref state);
+        factoryRun.campType = __campType.UpdateAsRef(ref state);
         factoryRun.healthDataType = __healthDataType.UpdateAsRef(ref state);
         factoryRun.healthType = __healthType.UpdateAsRef(ref state);
         factoryRun.torpidityDataType = __torpidityDataType.UpdateAsRef(ref state);
