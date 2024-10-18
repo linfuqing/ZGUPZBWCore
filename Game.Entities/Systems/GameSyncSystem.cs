@@ -186,6 +186,10 @@ public struct GameSyncUTCTimeOffset : IComponentData
 {
     public double value;
 }
+public struct GameSyncUTCFrame : IComponentData
+{
+    public uint index;
+}
 
 public struct GameSyncVersion : IComponentData
 {
@@ -267,6 +271,8 @@ public struct GameSyncManager : IComponentData
 
     public readonly EntityQuery Group;
 
+    public readonly SystemHandle SystemHandle;
+
     private SystemGroup __systemGroup;
 
     public bool isVail => version != 0;
@@ -314,6 +320,7 @@ public struct GameSyncManager : IComponentData
     public static ComponentType[] ComponentTypes = new ComponentType[]
     {
         ComponentType.ReadWrite<GameSyncVersion>(),
+        ComponentType.ReadWrite<GameSyncUTCFrame>(),
         ComponentType.ReadWrite<GameSyncUTCTimeOffset>(),
         //ComponentType.ReadWrite<GameSyncUTCTime>(),
         ComponentType.ReadOnly<GameSyncManager>()
@@ -344,10 +351,10 @@ public struct GameSyncManager : IComponentData
 
         __systemGroup = SystemGroupUtility.GetOrCreateSystemGroup(systemState.World, typeof(GameSyncSystemGroup));
 
-        var enttiyManager = systemState.EntityManager;
-        var systemHandle = systemState.SystemHandle;
-        enttiyManager.AddComponent(systemHandle, new ComponentTypeSet(ComponentTypes));
-        enttiyManager.SetComponentData(systemHandle, this);
+        SystemHandle = systemState.SystemHandle;
+        var entityManager = systemState.EntityManager;
+        entityManager.AddComponent(SystemHandle, new ComponentTypeSet(ComponentTypes));
+        entityManager.SetComponentData(SystemHandle, this);
     }
 
     public long GetFrameIndex(double time)
@@ -427,6 +434,9 @@ public struct GameSyncManager : IComponentData
             EntityManager.SetComponentData(__entity, utcData);*/
 
             uint utcFrameIndex = (uint)GetFrameIndex(utcTime)/*(uint)GetFrameIndex(utcElapsedTime)*/, realFrameIndex = SyncTime.frameIndex;
+            GameSyncUTCFrame utcFrame;
+            utcFrame.index = utcFrameIndex;
+            world.EntityManager.SetComponentData(SystemHandle, utcFrame);
 
             if (utcFrameIndex > realFrameIndex + upperFrameCount)
             {

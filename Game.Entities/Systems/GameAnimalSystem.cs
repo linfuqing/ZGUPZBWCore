@@ -161,10 +161,18 @@ public partial struct GameAnimalSystem : ISystem
             Result result;
             var foodIndices = this.foodIndices[index];
             ref var definition = ref this.definition.Value;
-            int numFoodIndices = foodIndices.Length, count, i;
+            int numFoodIndices = foodIndices.Length, foodIndex, count, i;
             for (i = 0; i < numFoodIndices; ++i)
             {
-                ref var food = ref definition.foods[foodIndices[i].value];
+                foodIndex = foodIndices[i].value;
+                if (foodIndex < 0 || foodIndex >= definition.foods.Length)
+                {
+                    UnityEngine.Debug.LogError($"{entityArray[i]} food index {i} == {foodIndex}");
+                    
+                    continue;
+                }
+
+                ref var food = ref definition.foods[foodIndex];
                 if (food.threshold > value)
                     continue;
 
