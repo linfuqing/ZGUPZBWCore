@@ -251,14 +251,18 @@ public struct GameNPCWorld
         int index, 
         int stageIndex, 
         in quaternion rotation, 
-        in float3 position)
+        in float3 position, 
+        out int originStageIndex)
     {
+        originStageIndex = -1;
         if (__npcs.TryGetValue(index, out var npc))
         {
             npc.quadTreeItem.Get(out _, out float3 min, out float3 max, out int layer);
 
             if (__quadTree.Remove(npc.quadTreeItem))
             {
+                originStageIndex = npc.stageIndex;
+                
                 npc.stageIndex = stageIndex;
                 
                 float3 offset = position - npc.position;
@@ -584,7 +588,12 @@ public struct GameNPCWorldShared : ILandscapeWorld<int>
             max);
     }
 
-    public unsafe bool Move(int index, int stageIndex, in quaternion rotation, in float3 position)
+    public unsafe bool Move(
+        int index, 
+        int stageIndex, 
+        in quaternion rotation, 
+        in float3 position, 
+        out int originStageIndex)
     {
         lookupJobManager.CompleteReadWriteDependency();
 
@@ -594,7 +603,8 @@ public struct GameNPCWorldShared : ILandscapeWorld<int>
             index, 
             stageIndex, 
             rotation, 
-            position);
+            position, 
+            out originStageIndex);
     }
 
     public unsafe bool Inactive(int index)
