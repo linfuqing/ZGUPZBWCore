@@ -172,6 +172,18 @@ public struct GameNPCWorld
         if(__world.isCreated)
             __world.Dispose();
     }
+    
+    public void Clear()
+    {
+        __activeIndices.Clear();
+        __npcs.Clear();
+        
+        if(__quadTree.isCreated)
+            __quadTree.Clear(~0u);
+        
+        if(__world.isCreated)
+            __world.Restore();
+    }
 
     public void Reset(int layers, in float3 min, in float3 max)
     {
@@ -509,6 +521,15 @@ public struct GameNPCWorldShared : ILandscapeWorld<int>
         AllocatorManager.Free(allocator, __data);
 
         __data = null;
+    }
+
+    public unsafe void Clear()
+    {
+        lookupJobManager.CompleteReadWriteDependency();
+
+        __CheckWrite();
+
+        __data->instance.Clear();
     }
 
     public unsafe void Reset(int layers, in float3 min, in float3 max)
