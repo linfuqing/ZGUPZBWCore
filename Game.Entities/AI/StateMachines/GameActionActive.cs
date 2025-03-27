@@ -846,151 +846,91 @@ public partial struct GameActionActiveSystem : ISystem
                         isRunAway = hasPosition;
                     else if (!isWatch || !protectedTimes.HasComponent(info.entity) || protectedTimes[info.entity].value < time)
                     {
-                        if (actorTimes[index].value >= time || commands.IsComponentEnabled(entity))
+                        if (index < actorTimes.Length && actorTimes[index].value >= time || commands.IsComponentEnabled(entity))
                             isRunAway = false;
                         else
                         {
-                            bool isHasAngle = index < angles.Length;
-                            float3 surfaceForward = isHasAngle ? math.forward(quaternion.RotateY(angles[index].value)) : float3.zero;
-
-                            var actorActionInfos = this.actorActionInfos[index];
-                            float dot = math.dot(forward, surfaceForward);
-                            bool isDiffDirection = isHasAngle && dot < 0.0f;
-                            GameEntityActionCommand command;
-                            if (groups.Length > 0)
+                            if (index < this.actorActionInfos.Length)
                             {
-                                var conditions = this.conditions[index];
-                                var conditionActions = this.conditionActions[index];
-                                var groups = this.groups[index];
+                                var actorActionInfos = this.actorActionInfos[index];
+                                bool isHasAngle = index < angles.Length;
+                                float3 surfaceForward = isHasAngle
+                                    ? math.forward(quaternion.RotateY(angles[index].value))
+                                    : float3.zero;
 
-                                float actorVelocity = index < desiredVelocities.Length ? math.rotate(math.inverse(quaternion.LookRotationSafe(forward, math.up())), desiredVelocities[index].linear).z : 0.0f;
-                                int actorStatus = index < actorStates.Length ? (int)actorStates[index].value : 0, groupMask = 0;
-                                if (info.groupMask == 0/* || !isDelay*/)
+                                float dot = math.dot(forward, surfaceForward);
+                                bool isDiffDirection = isHasAngle && dot < 0.0f;
+                                GameEntityActionCommand command;
+                                if (index < this.conditions.Length && index < this.conditionActions.Length && index < groups.Length)
                                 {
-                                    var result = GameActionCondition.Did(
+                                    var conditions = this.conditions[index];
+                                    var conditionActions = this.conditionActions[index];
+                                    var groups = this.groups[index];
+
+                                    float actorVelocity = index < desiredVelocities.Length
+                                        ? math.rotate(math.inverse(quaternion.LookRotationSafe(forward, math.up())),
+                                            desiredVelocities[index].linear).z
+                                        : 0.0f;
+                                    int actorStatus = index < actorStates.Length ? (int)actorStates[index].value : 0,
+                                        groupMask = 0;
+                                    if (info.groupMask == 0 /* || !isDelay*/)
+                                    {
+                                        var result = GameActionCondition.Did(
                                             time,
                                             actorVelocity,
                                             actorStatus,
-                                            ref groupMask, 
+                                            ref groupMask,
                                             ref info.conditionIndex,
                                             conditions,
                                             actorActionInfos,
                                             conditionActions);
 
-                                    GameActionTargetType targetType;
-                                    if (entity == info.entity)
-                                        targetType = GameActionTargetType.Self;
-                                    else
-                                    {
-                                        int sourceCamp = index < camps.Length ? camps[index].value : 0,
-                                            destinationCamp = campMap.HasComponent(info.entity) ? campMap[info.entity].value : 0;
-
-                                        targetType = sourceCamp == destinationCamp
-                                            ? GameActionTargetType.Ally
-                                            : GameActionTargetType.Enemy;
-                                    }
-                                    
-                                    info.groupMask = result == GameActionConditionResult.OK ? GameActionGroup.Did(
-                                        groupMask, 
-                                        categoryBits, 
-                                        targetType, 
-                                        health, 
-                                        torpidity, 
-                                        dot, 
-                                        distance, 
-                                        random.NextFloat(), 
-                                        groups) : 0;
-
-                                    info.conditionIndex = -1;
-                                }
-
-                                if (info.groupMask != 0)
-                                {
-                                    var result = GameActionCondition.Did(
-                                         time,
-                                         actorVelocity,
-                                         actorStatus,
-                                         ref info.groupMask, 
-                                         ref info.conditionIndex,
-                                         conditions,
-                                         actorActionInfos,
-                                         conditionActions);
-                                    if (result == GameActionConditionResult.OK)
-                                    {
-                                        command.version = commandVersions[index].value;
-                                        command.index = conditions[info.conditionIndex].actionIndex;
-                                        //command.time = time;
-                                        command.entity = info.entity;
-                                        command.forward = forward;
-                                        command.distance = float3.zero;
-                                        //command.offset = float3.zero;
-                                        commands[entity] = command;
-
-                                        commands.SetComponentEnabled(entity, true);
-
-                                        hasPosition = false;
-                                    }
-                                    else
-                                        info.groupMask = 0;
-                                }
-
-                                /*if(info.groupMask == 0 && isHasPosition)
-                                {
-                                    GameActionGroup group;
-                                    int numGroups = groups.Length;
-                                    for (int i = 0; i < numGroups; ++i)
-                                    {
-                                        group = groups[i];
-                                        if ((group.mask & groupMask) == 0)
-                                            continue;
-
-                                        if (group.minDistance < group.maxDistance && group.Did(health, torpidity, dot) != 0)
+                                        GameActionTargetType targetType;
+                                        if (entity == info.entity)
+                                            targetType = GameActionTargetType.Self;
+                                        else
                                         {
-                                            instance.maxAlertDistance = math.min(instance.maxAlertDistance, group.maxDistance);
-                                            instance.minAlertDistance = math.max(instance.minAlertDistance, group.minDistance);
+                                            int sourceCamp = index < camps.Length ? camps[index].value : 0,
+                                                destinationCamp = campMap.HasComponent(info.entity)
+                                                    ? campMap[info.entity].value
+                                                    : 0;
+
+                                            targetType = sourceCamp == destinationCamp
+                                                ? GameActionTargetType.Ally
+                                                : GameActionTargetType.Enemy;
                                         }
+
+                                        info.groupMask = result == GameActionConditionResult.OK
+                                            ? GameActionGroup.Did(
+                                                groupMask,
+                                                categoryBits,
+                                                targetType,
+                                                health,
+                                                torpidity,
+                                                dot,
+                                                distance,
+                                          random.NextFloat(),
+                                                groups)
+                                            : 0;
+
+                                        info.conditionIndex = -1;
                                     }
-                                }*/
-                            }
-                            else
-                            {
-                                ref var actions = ref this.actions.Value;
-                                SingletonAssetContainerHandle handle;
-                                handle.instanceID = actions.instanceID;
 
-                                var actorActions = this.actorActions[index];
-                                int numActorActions = actorActions.Length, numActorActionInfos = actorActionInfos.Length, i;
-                                double coolDownTime;
-                                RigidTransform sourceTransform = math.RigidTransform(quaternion.LookRotationSafe(forward, math.up()), source),
-                                    destinationTransform = math.RigidTransform(targetRotation, destination),
-                                    transform = math.mul(math.inverse(destinationTransform), sourceTransform);
-                                //var collider = physicsColliders[info.entity].Value;
-                                var actor = actors[index];
-                                for (i = 0; i < numActorActions; ++i)
-                                {
-                                    ref var action = ref actions.values[actorActions[i].actionIndex];
-                                    if ((action.instance.damageType & GameActionTargetType.Enemy) == GameActionTargetType.Enemy &&
-                                        (action.instance.damageMask & categoryBits) != 0 &&
-                                        action.colliderIndex != -1)
+                                    if (info.groupMask != 0)
                                     {
-                                        handle.index = action.colliderIndex;
-
-                                        coolDownTime = i < numActorActionInfos
-                                            ? actorActionInfos[i].coolDownTime
-                                            : 0.0f;
-                                        if (coolDownTime < time &&
-                                            isDiffDirection == action.info.distance < 0.0f &&
-                                            IsDo(
-                                                collisionTolerance,
-                                                math.abs(action.info.distance) * (actor.distanceScale > math.FLT_MIN_NORMAL ? actor.distanceScale : 1.0f),
-                                                (actor.rangeScale > math.FLT_MIN_NORMAL ? actor.rangeScale : 1.0f) * (action.info.scale > math.FLT_MIN_NORMAL ? action.info.scale : 1.0f),
-                                                math.select(action.instance.offset, action.instance.offset * actor.offsetScale, actor.offsetScale > math.FLT_MIN_NORMAL),
-                                                transform,
-                                                actionColliders[handle],
-                                                collider))
+                                        var result = GameActionCondition.Did(
+                                            time,
+                                            actorVelocity,
+                                            actorStatus,
+                                            ref info.groupMask,
+                                            ref info.conditionIndex,
+                                            conditions,
+                                            actorActionInfos,
+                                            conditionActions);
+                                        if (result == GameActionConditionResult.OK)
                                         {
                                             command.version = commandVersions[index].value;
-                                            command.index = i;
+                                            command.index = conditions[info.conditionIndex].actionIndex;
                                             //command.time = time;
                                             command.entity = info.entity;
                                             command.forward = forward;
@@ -1001,8 +941,99 @@ public partial struct GameActionActiveSystem : ISystem
                                             commands.SetComponentEnabled(entity, true);
 
                                             hasPosition = false;
+                                        }
+                                        else
+                                            info.groupMask = 0;
+                                    }
 
-                                            break;
+                                    /*if(info.groupMask == 0 && isHasPosition)
+                                    {
+                                        GameActionGroup group;
+                                        int numGroups = groups.Length;
+                                        for (int i = 0; i < numGroups; ++i)
+                                        {
+                                            group = groups[i];
+                                            if ((group.mask & groupMask) == 0)
+                                                continue;
+
+                                            if (group.minDistance < group.maxDistance && group.Did(health, torpidity, dot) != 0)
+                                            {
+                                                instance.maxAlertDistance = math.min(instance.maxAlertDistance, group.maxDistance);
+                                                instance.minAlertDistance = math.max(instance.minAlertDistance, group.minDistance);
+                                            }
+                                        }
+                                    }*/
+                                }
+                                else if(index < this.actorActions.Length)
+                                {
+                                    ref var actions = ref this.actions.Value;
+                                    SingletonAssetContainerHandle handle;
+                                    handle.instanceID = actions.instanceID;
+
+                                    var actorActions = this.actorActions[index];
+                                    int numActions = actions.values.Length, 
+                                        numActorActions = actorActions.Length,
+                                        numActorActionInfos = actorActionInfos.Length,
+                                        actionIndex, i;
+                                    double coolDownTime;
+                                    RigidTransform sourceTransform =
+                                            math.RigidTransform(quaternion.LookRotationSafe(forward, math.up()),
+                                                source),
+                                        destinationTransform = math.RigidTransform(targetRotation, destination),
+                                        transform = math.mul(math.inverse(destinationTransform), sourceTransform);
+                                    //var collider = physicsColliders[info.entity].Value;
+                                    var actor = index < actors.Length ? actors[index] : default;
+                                    for (i = 0; i < numActorActions; ++i)
+                                    {
+                                        actionIndex = actorActions[i].actionIndex;
+                                        if(actionIndex < 0 || actionIndex >= numActions)
+                                            continue;
+                                        
+                                        ref var action = ref actions.values[actionIndex];
+                                        if ((action.instance.damageType & GameActionTargetType.Enemy) ==
+                                            GameActionTargetType.Enemy &&
+                                            (action.instance.damageMask & categoryBits) != 0 &&
+                                            action.colliderIndex != -1)
+                                        {
+                                            handle.index = action.colliderIndex;
+
+                                            coolDownTime = i < numActorActionInfos
+                                                ? actorActionInfos[i].coolDownTime
+                                                : 0.0f;
+                                            if (coolDownTime < time &&
+                                                isDiffDirection == action.info.distance < 0.0f &&
+                                                IsDo(
+                                                    collisionTolerance,
+                                                    math.abs(action.info.distance) *
+                                                    (actor.distanceScale > math.FLT_MIN_NORMAL
+                                                        ? actor.distanceScale
+                                                        : 1.0f),
+                                                    (actor.rangeScale > math.FLT_MIN_NORMAL ? actor.rangeScale : 1.0f) *
+                                                    (action.info.scale > math.FLT_MIN_NORMAL
+                                                        ? action.info.scale
+                                                        : 1.0f),
+                                                    math.select(action.instance.offset,
+                                                        action.instance.offset * actor.offsetScale,
+                                                        actor.offsetScale > math.FLT_MIN_NORMAL),
+                                                    transform,
+                                                    actionColliders[handle],
+                                                    collider))
+                                            {
+                                                command.version = commandVersions[index].value;
+                                                command.index = i;
+                                                //command.time = time;
+                                                command.entity = info.entity;
+                                                command.forward = forward;
+                                                command.distance = float3.zero;
+                                                //command.offset = float3.zero;
+                                                commands[entity] = command;
+
+                                                commands.SetComponentEnabled(entity, true);
+
+                                                hasPosition = false;
+
+                                                break;
+                                            }
                                         }
                                     }
                                 }
@@ -1099,7 +1130,7 @@ public partial struct GameActionActiveSystem : ISystem
                 else
                     isRunAway = hasPosition;
 
-                if (isRunAway && index < directions.Length && !delay[index].Check(time)/*!isDelay*/)
+                if (isRunAway && index < directions.Length && (index >= delay.Length || !delay[index].Check(time))/*!isDelay*/)
                 {
                     float3 value = -forward;
                     var direction = directions[index];

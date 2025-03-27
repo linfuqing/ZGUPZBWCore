@@ -419,7 +419,13 @@ public struct GameSyncManager : IComponentData
         }
     }*/
 
-    public void Update(uint upperFrameCount, uint lowerFrameCount, uint maxFrameCountToUpdate, double utcTime, ref WorldUnmanaged world)
+    public void Update(
+        uint upperFrameCount, 
+        uint lowerFrameCount, 
+        uint maxFrameCountToUpdate, 
+        uint maxFrameCountToKeep, 
+        double utcTime, 
+        ref WorldUnmanaged world)
     {
         //this.utcTime = utcTime;
 
@@ -434,13 +440,26 @@ public struct GameSyncManager : IComponentData
             EntityManager.SetComponentData(__entity, utcData);*/
 
             uint utcFrameIndex = (uint)GetFrameIndex(utcTime)/*(uint)GetFrameIndex(utcElapsedTime)*/, realFrameIndex = SyncTime.frameIndex;
+            if (maxFrameCountToKeep > 0)
+            {
+                uint frameCount = utcFrameIndex - realFrameIndex;
+                if (frameCount > maxFrameCountToKeep)
+                {
+                    WaitFor(frameCount);
+
+                    utcFrameIndex = realFrameIndex;
+                }
+            }
+
             GameSyncUTCFrame utcFrame;
             utcFrame.index = utcFrameIndex;
             world.EntityManager.SetComponentData(SystemHandle, utcFrame);
-
             if (utcFrameIndex > realFrameIndex + upperFrameCount)
             {
-                uint frameCountToUpdate = math.min(utcFrameIndex - (realFrameIndex + (upperFrameCount >> 1)) + 1, maxFrameCountToUpdate);
+                uint upperFrameIndex = realFrameIndex + (upperFrameCount >> 1) - 1, 
+                    frameCountToUpdate = math.min(utcFrameIndex - upperFrameIndex, maxFrameCountToUpdate);
+
+                //utcFrameIndex = upperFrameIndex + frameCountToUpdate;
 
                 //for (uint i = realFrameIndex + (upperFrameCount >> 1); i <= utcFrameIndex; ++i)
                 for (uint i = 0; i < frameCountToUpdate; ++i)
@@ -475,6 +494,8 @@ public partial class GameSyncSystemGroup : SystemBase
 
     public uint maxFrameCountPerUpdate = 64;//UnityEngine.Time.maximumDeltaTime;
 
+    public uint maxFrameCountToKeep = 0;
+    
     //public uint maxFrameCountForWating = 8;
     //public uint maxFrameCountForUpdating = 8;
 
@@ -581,7 +602,14 @@ public partial class GameSyncSystemGroup : SystemBase
         var world = World.Unmanaged;
 
         //__manager.Update(upperFrameCount, lowerFrameCount, maxFrameCountPerUpdate, utcTime, ref world);
-        GameSyncUtility.UpdateFunction(upperFrameCount, lowerFrameCount, maxFrameCountPerUpdate, GameSyncUtility.utcTime, ref world, ref __manager);
+        GameSyncUtility.UpdateFunction(
+            upperFrameCount, 
+            lowerFrameCount, 
+            maxFrameCountPerUpdate, 
+            maxFrameCountToKeep, 
+            GameSyncUtility.utcTime, 
+            ref world, 
+            ref __manager);
 
         double time = rollbackManager.time, animationElapsedTime = this.animationElapsedTime;
         //if (animationElapsedTime < time)
@@ -606,6 +634,7 @@ public static class GameSyncUtility
         uint upperFrameCount,
         uint lowerFrameCount,
         uint maxFrameCountToUpdate,
+        uint maxFrameCountToKeep, 
         double utcTime,
         ref WorldUnmanaged world,
         ref GameSyncManager manager);
@@ -618,11 +647,12 @@ public static class GameSyncUtility
         uint upperFrameCount, 
         uint lowerFrameCount, 
         uint maxFrameCountToUpdate, 
+        uint maxFrameCountToKeep, 
         double utcTime, 
         ref WorldUnmanaged world, 
         ref GameSyncManager manager)
     {
-        manager.Update(upperFrameCount, lowerFrameCount, maxFrameCountToUpdate, utcTime, ref world);
+        manager.Update(upperFrameCount, lowerFrameCount, maxFrameCountToUpdate, maxFrameCountToKeep, utcTime, ref world);
     }
 
     public static double utcTime =>
